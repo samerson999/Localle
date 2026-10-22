@@ -1,0 +1,23 @@
+/* Satoshi (Fontshare / Indian Type Foundry), hospedada no projeto — pesos 400/500/700 (a escala usa semibold e bold;
+   a Satoshi não tem 600 estático, o navegador casa 600 com o 700 carregado automaticamente). */
+@font-face {
+  font-family: 'Satoshi';
+  src: url('../assets/fonts/Satoshi-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satoshi';
+  src: url('../assets/fonts/Satoshi-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satoshi';
+  src: url('../assets/fonts/Satoshi-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

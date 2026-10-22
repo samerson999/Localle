@@ -1,0 +1,258 @@
+/* Tokens visuais da plataforma: ÚNICO lugar com valores literais de cor, fonte, raio e sombra.
+   Componentes, CSS e gráficos usam só estes nomes. Trocar a identidade visual = editar este arquivo.
+   A cor da revenda (--brand e derivadas) é sobrescrita em runtime por lib/brand.ts. */
+
+/* fonte da interface: Satoshi (Fontshare/ITF), hospedada em src/assets/fonts e carregada por styles/fonts.css.
+   Geist Mono continua por <link> no index.html, só para identificadores (placa, IMEI, código).
+   Geist (sans) também continua por ali, só para o comparativo em /design — não é usada fora de lá. */
+
+:root {
+  /* ---------- tipografia ---------- */
+  --font-sans: 'Satoshi', ui-sans-serif, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, Consolas, monospace;
+  /* mono só para identificadores (placa, IMEI, código de OS/frota/contrato): zero cortado para não virar O.
+     A Geist Mono já desenha o zero cortado por padrão; slashed-zero cobre as fontes de reserva. */
+  --mono-numeric: slashed-zero tabular-nums;
+  /* valores (R$, km, %, datas, colunas de tabela): fonte normal com algarismos tabulares, nunca mono.
+     A Satoshi tem a feature 'tnum' (algarismos tabulares), então o token vale para as duas fontes. */
+  --num-numeric: tabular-nums lining-nums;
+
+  /* escala tipográfica (tamanho / altura de linha / tracking). Nada abaixo de 12px, exceto eixo de gráfico (11).
+     Ajustada +≈7% em relação à escala da Geist: a Satoshi tem x-height ~9% menor (0,484 vs 0,530 do em quadrado;
+     cap-height é quase igual, 0,716 vs 0,710), então o texto minúsculo ficava visivelmente menor no mesmo tamanho.
+     A proporção entre os passos (hierarquia) foi mantida. */
+  --fs-display: 60px;  --lh-display: 1;    --ls-display: -0.035em; /* número principal da tela */
+  --fs-kpi: 43px;      --lh-kpi: 1.05;     --ls-kpi: -0.03em;      /* número do card de KPI */
+  --fs-title: 34px;    --lh-title: 1.1;    --ls-title: -0.025em;   /* título de página */
+  --fs-h2: 21px;       --lh-h2: 1.25;      --ls-h2: -0.015em;      /* título de seção */
+  --fs-h3: 17px;       --lh-h3: 1.35;      --ls-h3: -0.01em;       /* título de card */
+  --fs-body: 15px;     --lh-body: 1.5;                              /* texto corrido, célula de tabela */
+  --fs-small: 14px;    --lh-small: 1.45;    --ls-small: -0.02em;    /* texto secundário, rótulo de campo */
+  --fs-caption: 13px;  --lh-caption: 1.4;                           /* legenda, microtexto, data de atualização */
+  --fs-axis: 11px;                                                  /* só eixo de gráfico (exceção, não ajustado) */
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  /* número: unidade, prefixo (R$) e decimais menores que o inteiro nos tamanhos grandes */
+  --num-minor: 0.55em;
+
+  /* ---------- superfícies (cinza frio próprio; não é a escala slate/gray do Tailwind) ---------- */
+  --canvas: #F2F4F7;
+  --card: #FFFFFF;
+  --card-2: #F8F9FB;
+  --surface-hover: #E8EBF0; /* hover na sidebar, trilho do controle segmentado */
+  --surface-selected: #EEF3FC; /* linha selecionada: leve tom frio, fixo (não segue a revenda); o chip de placa continua visível */
+  --surface-muted: #F4F6F9; /* célula vazia, trilhos discretos */
+  --track: #E9ECF1; /* trilho de barras de progresso */
+  --switch-off: #D3D9E1;
+  --avatar: #E3E7ED;
+  --scrim: rgba(17, 24, 39, 0.32);
+
+  /* ---------- bordas ---------- */
+  --line: #E6E9EE;
+  --line-strong: #C9D0DA;
+  --line-hover: #A9B2BF;
+
+  /* ---------- texto (contraste medido sobre --canvas, o pior caso) ---------- */
+  --ink: #111827; /* 16,1:1 */
+  --ink-hover: #252D3D; /* hover do botão escuro */
+  --ink-2: #4B5466; /* 6,9:1 */
+  --ink-3: #646D7E; /* 4,7:1: texto pequeno pode ficar direto no canvas */
+  --on-dark: #FFFFFF; /* texto sobre superfície escura */
+  --on-dark-2: #E6E9EF;
+  --on-dark-3: #AEB6C3;
+  --on-dark-hover: rgba(255, 255, 255, 0.1);
+  --on-dark-btn-hover: #E8EBF0;
+
+  /* grafite: fallback de tudo que a cor da revenda pinta (botão, seleção, halo, card de dica) */
+  --graphite: #1E2433;
+  --graphite-soft: #ECEEF2; /* superfície do card de dica quando a marca cai no grafite */
+
+  /* ---------- dado: FIXO, nunca segue a revenda.
+     azul = realizado; rosa = perda/desvio; hachura = estimado/meta. Vermelho nunca aparece em gráfico:
+     a barra em destaque é sempre --real, boa ou ruim, e o chip de variação diz se é bom ou ruim. ---------- */
+  --real: #1D5BEA;
+  --real-soft: #E3EBFD;
+  --real-muted: color-mix(in srgb, var(--real) 24%, white); /* barras fora de destaque (meses anteriores) */
+  --real-mid: color-mix(in srgb, var(--real) 55%, white); /* segunda série, ranking fora do topo */
+  --loss-muted: color-mix(in srgb, var(--loss) 30%, white); /* perda fora de destaque */
+  --loss: #E8337A; /* barras, pontos e hachuras */
+  --loss-ink: #C2185B; /* texto e variação ruim */
+  --loss-soft: #FCE6EF;
+  --pos: #137A3D; /* só em variações boas (texto do chip, 4,9:1) */
+  --prev: #C7D0DC; /* período anterior (neutro) */
+  --target: #8E98A8; /* traço da hachura de meta */
+  --route: #8E98A8; /* trajeto previsto/total no mapa */
+
+  /* ---------- escala categórica (StackedBars): no máximo 4, mesmo matiz com hachura.
+     Quando a série tem significado (realizado, perda, anterior), use o token do significado. ---------- */
+  --cat-1: var(--real); /* sólido */
+  --cat-2: var(--real); /* hachurado */
+  --cat-3: var(--real-soft); /* sólido claro */
+  --cat-4: var(--prev); /* neutro hachurado */
+
+  /* ---------- status (ponto + texto, sem fundo): FIXO, nunca segue a revenda.
+     Pontos com no mínimo 3:1 sobre o card; o texto do status fica em --ink.
+     Vermelho só para crítico, erro e ação destrutiva; atenção é laranja; perda consumada é rosa. ---------- */
+  --mov: #178F4B; /* em movimento, em dia, ativo, concluído */
+  --warn: #D26A06; /* parado ligado, prazo próximo */
+  --crit: #D42A1E; /* só status crítico */
+  --crit-ink: #B42318; /* texto de erro, ação destrutiva */
+  --crit-soft: #FDECEA; /* fundo de aviso de erro */
+  --warn-ink: #9A4A06; /* texto de aviso */
+  --warn-soft: #FEF2E4; /* fundo de aviso */
+  --pos-soft: #E4F4EA; /* fundo do chip de variação boa */
+  --status-mov: var(--mov);
+  --status-parado: var(--warn);
+  --status-off: var(--ink-2); /* desligado: anel; sem sinal: anel tracejado */
+  --status-crit: var(--crit);
+
+  /* ---------- mapa: as cores de status são exclusivas dos veículos ---------- */
+  --map-bg: #E9EDF2;
+  --map-tiles: saturate(0.35) brightness(1.04); /* base apagada: as cores de status e zona se destacam */
+  --cluster-bg: var(--graphite); /* grupo de veículos: escuro e neutro, com o número */
+  --cluster-ink: var(--on-dark);
+  /* cercas: paleta própria de zonas, sem verde, laranja, vermelho ou rosa (usar nesta ordem) */
+  /* conferido sobre o mapa e em simulação de deuteranopia: índigo saiu por se confundir com a rota (--real) */
+  --zone-1: #6D4AE0; /* violeta */
+  --zone-2: #9C3D97; /* ameixa */
+  --zone-3: #0B6E7F; /* petróleo */
+  --zone-4: #4E5B70; /* ardósia */
+  --zone-fill-opacity: 0.14;
+  --zone-stroke-width: 2px;
+  --fence: var(--zone-4); /* cerca sem zona definida */
+  --fence-fill: var(--zone-4);
+
+  /* ---------- cor da revenda (padrão; lib/brand.ts sobrescreve em runtime) ----------
+     A marca pinta só: botão principal; controles de seleção (checkbox, radio, toggle, segmentado,
+     aba ativa, paginação); halo do veículo selecionado; superfície do card de dica (um por tela).
+     Cai para o grafite quando não passa no contraste (3:1 componente, 4,5:1 texto) ou quando é
+     vermelha ou laranja, mesmo passando, para não parecer alerta. */
+  --brand-default: #1D5BEA;
+  --brand: var(--brand-default); /* cor crua da revenda: só na marca em si (logo, tela de login) */
+  --brand-fill: var(--brand-default); /* botão principal e controle selecionado (ou grafite) */
+  --brand-fill-hover: color-mix(in srgb, var(--brand-fill) 88%, white);
+  --brand-fill-press: color-mix(in srgb, var(--brand-fill) 85%, black);
+  --brand-fill-ink: #FFFFFF; /* texto e ícone sobre --brand-fill */
+  --brand-halo: color-mix(in srgb, var(--brand-fill) 22%, transparent); /* halo do veículo selecionado */
+  --brand-tip: color-mix(in srgb, var(--brand-fill) 7%, white); /* superfície do card de dica */
+  --brand-tip-line: color-mix(in srgb, var(--brand-fill) 22%, white);
+  --brand-link: var(--brand-default); /* link: cor da revenda quando ela pinta; grafite sublinhado no fallback */
+  --brand-link-decoration: none;
+  --brand-ink: #FFFFFF; /* texto sobre a cor crua da marca (logo com iniciais) */
+
+  /* ---------- foco: anel duplo fixo (claro por dentro, grafite por fora); aparece sobre grafite e sobre fundo escuro ---------- */
+  --focus-inner: var(--card);
+  --focus-outer: var(--graphite);
+  --brand-ring: var(--focus-outer); /* nome antigo, mantido para quem ainda usa */
+
+  /* ---------- contadores: o do "Precisa de você" é crítico (vermelho); os demais são neutros ---------- */
+  --counter-bg: var(--surface-hover);
+  --counter-ink: var(--ink);
+  --counter-crit-bg: var(--crit);
+  --counter-crit-ink: #FFFFFF;
+  --brand-soft: color-mix(in srgb, var(--brand-fill) 5%, white); /* área de upload, item selecionado */
+  --brand-soft-line: color-mix(in srgb, var(--brand-fill) 25%, white);
+
+  /* ---------- espaçamento (base 4px; os nomes dizem onde usar) ---------- */
+  /* Escala: só estes passos. Fora dela (2, 6, 10, 14, 28 px…) não se usa. Os nomes abaixo dizem ONDE usar;
+     as telas usam os nomes (via Stack, Grid, Card, FormField… em components/primitives.tsx e ui.tsx), não os passos. */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-24: 96px;
+  /* proximidade: o espaço dentro de um grupo é sempre menor que o espaço entre grupos */
+  /* página */
+  --page-x: var(--sp-4);        /* margem lateral no celular */
+  --page-x-md: var(--sp-10);    /* margem lateral a partir de md */
+  --page-top: var(--sp-6);      /* topo do conteúdo no celular */
+  --page-top-md: var(--sp-6);   /* topo do conteúdo a partir de md: o cabeçalho da página fica na linha do botão "Precisa de você" */
+  --page-head: var(--sp-10);    /* cabeçalho da página → conteúdo (abas e ações já são conteúdo: ficam a 16 do que controlam) */
+  --page-end: var(--sp-24);     /* respiro no fim da página: o simulador e os avisos flutuantes não cobrem o último card */
+  --gap-section: var(--sp-10);  /* entre seções */
+  --gap-grid: var(--sp-4);      /* entre cards */
+  /* card */
+  --pad-card: var(--sp-6);      /* respiro interno do card */
+  --pad-card-sm: var(--sp-4);   /* card compacto, KPI em grade, painel flutuante */
+  --card-head: var(--sp-4);     /* cabeçalho do card → conteúdo */
+  --card-head-sm: var(--sp-3);  /* idem no card compacto */
+  --card-foot: var(--sp-4);     /* acima e abaixo do divisor do rodapé (dica, leitura) */
+  --gap-stack: var(--sp-3);     /* entre blocos dentro do card */
+  --gap-tight: var(--sp-2);     /* entre itens de um mesmo bloco (chips, botões, título e apoio) */
+  --gap-hair: var(--sp-1);      /* entre linhas de um mesmo item (rótulo e valor) */
+  /* KPI */
+  --kpi-title: var(--sp-3);     /* título → número */
+  --kpi-meta: var(--sp-2);      /* número → linha de apoio (chip, meta) */
+  --kpi-chart: var(--sp-5);     /* apoio → gráfico */
+  /* listas e tabelas: a primeira e a última célula usam o padding do card que as contém (--bleed), para alinhar com o título */
+  --cell-x: var(--sp-3);        /* entre colunas */
+  --bleed: 0px;                 /* padding horizontal do contêiner atual; Card, Panel e Modal redefinem */
+  /* formulários */
+  --field-label: 6px;           /* rótulo → campo (exceção da escala, pedida pelo padrão de formulário) */
+  --gap-field: var(--sp-4);     /* entre campos */
+  --gap-group: var(--sp-8);     /* entre grupos de campos */
+  --form-actions: var(--sp-6);  /* último campo → ações do formulário */
+  /* ícone → texto */
+  --gap-icon: var(--sp-2);      /* ícone e rótulo em botão, item, linha */
+  --gap-icon-head: var(--sp-3); /* ícone e título no cabeçalho do card */
+  /* alturas */
+  --h-ctl: 40px;     /* botão, campo, select */
+  --h-ctl-sm: 32px;  /* botão pequeno, chip de filtro */
+  --h-ctl-lg: 48px;  /* login, portaria no celular */
+  --h-row: 48px;     /* linha de tabela */
+  --h-row-sm: 40px;  /* tabela densa */
+
+  /* ---------- raios ---------- */
+  --r-card: 12px; /* piloto aprovado em Manutenção (2026-10-21); agora global */
+  --r-panel: 16px; /* painéis flutuantes */
+  --r-pop: 12px; /* popovers, menu "⋮" */
+  --r-dock: 12px;
+  --r-ctl: 12px; /* campos, segmentado */
+  --r-btn: 12px; /* botões, itens de menu */
+  --r-tight: 8px; /* chip de variação, miniaturas */
+  --r-chip: 6px; /* placa, código, etiqueta */
+  --r-pill: 999px;
+  --r-swatch: 3px; /* quadradinho de cor em legenda de gráfico/lista */
+
+  /* ---------- placa e códigos (mono, zero cortado) ---------- */
+  --plate-bg: #EDF0F4;
+  --plate-ink: var(--ink);
+  --plate-sel-line: var(--ink); /* selecionada: aro escuro; a cor da revenda não marca seleção de conteúdo */
+  --plate-off-ink: var(--ink-3);
+  --plate-off-bg: var(--surface-muted);
+
+  /* ---------- sombras: quase nenhuma; só para o que flutua. Card no canvas não tem sombra, só borda. ---------- */
+  --shadow-card: none;
+  --shadow-seg: 0 1px 2px rgba(17, 24, 39, 0.08);
+  --shadow-float: 0 1px 3px rgba(17, 24, 39, 0.18);
+  --shadow-dock: 0 8px 24px -12px rgba(17, 24, 39, 0.22);
+  --shadow-pop: 0 12px 32px -12px rgba(17, 24, 39, 0.2);
+  --shadow-panel: 0 12px 32px -12px rgba(17, 24, 39, 0.3);
+  --shadow-modal: 0 24px 48px -24px rgba(17, 24, 39, 0.35);
+  --shadow-marker: 0 1px 3px rgba(17, 24, 39, 0.22), 0 0 0 1px rgba(17, 24, 39, 0.06);
+  --shadow-marker-sel: 0 0 0 6px var(--brand-halo), 0 2px 6px rgba(17, 24, 39, 0.25); /* halo na cor da revenda (ou grafite) */
+
+  /* ---------- documentos impressos (folha de ponto, relatórios) ---------- */
+  --doc-bg: #FFFFFF;
+  --doc-ink: #111827;
+  --doc-rule: #9AA3B2;
+  --doc-head: #EEF1F5;
+  --doc-muted: #555555;
+  --doc-off-ink: #777777;
+  --doc-off-bg: #FAFAFA;
+  --doc-viol-bg: #FDECEA;
+
+  /* ---------- outros ---------- */
+  --skeleton-a: #EAEDF2;
+  --skeleton-b: #F4F6F9;
+  --scroll-thumb: #C9D0DA;
+  --scroll-thumb-hover: #A9B2BF;
+  --selection: color-mix(in srgb, var(--real) 22%, white);
+
+  /* ---------- movimento ---------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-row: 120ms;
+  --t-page: 200ms;
+  --t-pill: 250ms;
+  --t-bar: 400ms;
+  --t-exit: 140ms; /* saída de modal, painel e popover: sempre mais rápida que a entrada */
+  --t-swap: 150ms; /* troca de conteúdo de aba (só opacidade) */
+  --t-progress: 300ms; /* barra de progresso mudando de valor */
+  --t-glide: 800ms; /* marcador do mapa indo para a nova posição */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}

@@ -1,0 +1,126 @@
+/* Regras globais da plataforma. Só usam tokens (styles/tokens.css); nenhum valor literal de cor, fonte, raio ou sombra. */
+
+/* ---------- superfícies do navegador ---------- */
+::selection { background: var(--selection); color: var(--ink); }
+html { caret-color: var(--ink); scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: var(--r-pill); border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
+:focus-visible { outline: 2px solid var(--focus-outer); outline-offset: 2px; box-shadow: 0 0 0 2px var(--focus-inner); } /* anel duplo */
+a { text-underline-offset: 3px; }
+.link-brand { color: var(--brand-link); text-decoration-line: var(--brand-link-decoration); text-underline-offset: 3px; }
+.link-brand:hover { text-decoration-line: underline; }
+/* contêineres com padding horizontal: tabelas e listas dentro deles encostam na borda e recuam a 1ª e a última célula
+   por --bleed, para o texto alinhar com o título do card (Card, Panel, Modal, FloatingPanel aplicam a classe) */
+.bleed-card { --bleed: var(--pad-card); }
+.bleed-card-sm { --bleed: var(--pad-card-sm); }
+.num { font-variant-numeric: var(--num-numeric); font-feature-settings: 'tnum' 1; }
+.font-mono { font-variant-numeric: var(--mono-numeric); }
+
+/* ---------- hachura: estimado, meta, previsto ---------- */
+.hatch-real { background-color: var(--real-soft); background-image: repeating-linear-gradient(-45deg, var(--real) 0 1.5px, transparent 1.5px 6px); }
+.hatch-loss { background-color: var(--loss-soft); background-image: repeating-linear-gradient(-45deg, var(--loss) 0 1.5px, transparent 1.5px 6px); }
+.hatch-target { background-color: var(--card-2); background-image: repeating-linear-gradient(-45deg, var(--target) 0 1px, transparent 1px 6px); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.hatch-prev { background-color: var(--surface-muted); background-image: repeating-linear-gradient(-45deg, var(--prev) 0 1.5px, transparent 1.5px 6px); }
+
+/* séries de gráfico: sólido ou hachurado, sempre por token */
+.fill-real { background-color: var(--real); }
+.fill-loss { background-color: var(--loss); }
+.fill-prev { background-color: var(--prev); }
+.fill-real-soft { background-color: var(--real-soft); }
+.fill-cat-1 { background-color: var(--cat-1); }
+.fill-cat-2 { background-color: var(--real-soft); background-image: repeating-linear-gradient(-45deg, var(--cat-2) 0 1.5px, transparent 1.5px 6px); }
+.fill-cat-3 { background-color: var(--cat-3); }
+.fill-cat-4 { background-color: var(--surface-muted); background-image: repeating-linear-gradient(-45deg, var(--cat-4) 0 1.5px, transparent 1.5px 6px); }
+
+/* ---------- gráficos (Recharts) ---------- */
+
+/* ---------- status (ponto, anel, anel tracejado) ---------- */
+.st-dot { fill: currentColor; }
+.st-mov { color: var(--status-mov); }
+.st-parado { color: var(--status-parado); }
+.st-off, .st-nosignal { color: var(--status-off); }
+.st-crit { color: var(--status-crit); }
+.st-loss { color: var(--loss); }
+.st-ring { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.st-ring.dashed { stroke-dasharray: 2 1.6; }
+/* status mudou (em movimento → parado): a cor faz a passagem em vez de trocar seco, na lista e no marcador */
+.st-mov, .st-parado, .st-off, .st-nosignal, .st-crit, .st-loss { transition: color var(--t-bar) ease; }
+
+/* ---------- mapa ---------- */
+.leaflet-container { font-family: inherit; background: var(--map-bg); }
+.leaflet-tile-pane { filter: var(--map-tiles); }
+.leaflet-control-attribution { font-size: 10.5px; background: color-mix(in srgb, var(--card) 80%, transparent) !important; border-radius: var(--r-chip) 0 0 0; }
+.leaflet-bar { border: 0 !important; border-radius: var(--r-ctl) !important; overflow: hidden; box-shadow: var(--shadow-float) !important; }
+.leaflet-bar a { width: 36px !important; height: 36px !important; line-height: 36px !important; color: var(--ink) !important; border-color: var(--line) !important; font-weight: 400; }
+.leaflet-bar a:hover { background: var(--card-2) !important; }
+.veh-marker { display: flex; align-items: center; gap: 5px; }
+.veh-marker .disc { width: 30px; height: 30px; border-radius: var(--r-pill); background: var(--card); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-marker); flex-shrink: 0; }
+.veh-marker .tag { background: var(--card); border-radius: var(--r-chip); padding: 2px 6px; font: 500 11.5px/1.35 var(--font-mono); color: var(--ink); white-space: nowrap; box-shadow: var(--shadow-marker); }
+.veh-marker .tag .note { font-family: var(--font-sans); color: var(--ink-2); margin-left: 6px; }
+.veh-marker.sel .disc { box-shadow: var(--shadow-marker-sel); }
+.veh-marker.sel .tag { background: var(--ink); color: var(--on-dark); }
+.veh-marker.sel .tag .note { color: var(--on-dark-3); }
+/* disco na cor do status (--vc), seta de direção vazada em --card; desligado/sem sinal: disco claro com aro */
+.veh-marker { --vc: var(--status-off); }
+.veh-marker[data-k="mov"] { --vc: var(--status-mov); }
+.veh-marker[data-k="parado"] { --vc: var(--status-parado); }
+.veh-marker[data-k="crit"] { --vc: var(--status-crit); }
+.veh-marker .disc { position: relative; background: var(--vc); transition: background-color var(--t-bar) ease; }
+.veh-marker[data-k="off"] .disc, .veh-marker[data-k="nosignal"] .disc { background: var(--card); outline: 1.5px solid var(--vc); outline-offset: -1.5px; }
+.veh-marker[data-k="nosignal"] .disc { outline-style: dashed; }
+.veh-marker:not([data-k="off"]):not([data-k="nosignal"]) .disc { border: 2px solid var(--card); } /* aro claro: o disco se destaca sobre o mapa */
+/* seta de direção: sempre visível, gira pelo caminho mais curto com o heading do rastreador */
+.veh-dir { fill: var(--card); transition: transform var(--t-bar) ease; }
+.veh-marker[data-k="off"] .veh-dir, .veh-marker[data-k="nosignal"] .veh-dir { fill: var(--vc); }
+/* ---------- movimento ---------- */
+@keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes panel-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+.anim-page { animation: page-in var(--t-page) var(--ease-out) both; }
+.anim-fade { animation: fade-in var(--t-page) ease both; }
+.panel-in { animation: panel-in 240ms var(--ease-out) both; }
+.grow-y { transform-box: fill-box; transform-origin: bottom; animation: grow-y var(--t-bar) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 30ms); }
+.grow-x { transform-origin: left; animation: grow-x var(--t-bar) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 30ms); }
+.skeleton { background: linear-gradient(90deg, var(--skeleton-a) 0%, var(--skeleton-b) 40%, var(--skeleton-a) 80%) 0 0 / 300% 100%; animation: shimmer 1.4s linear infinite; border-radius: var(--r-tight); }
+.row-hover { transition: background-color var(--t-row) ease; }
+/* saídas: mais curtas e com aceleração (ease-in); o elemento some sem disputar atenção */
+@keyframes page-out { to { opacity: 0; transform: translateY(4px); } }
+@keyframes panel-out { to { opacity: 0; transform: translateX(16px); } }
+@keyframes fade-out { to { opacity: 0; } }
+.anim-out { animation: page-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
+.anim-fade-out { animation: fade-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
+.panel-out { animation: panel-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
+.anim-swap { animation: fade-in var(--t-swap) ease both; }
+/* toast */
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(0.98); } }
+.toast-in { animation: toast-in var(--t-page) var(--ease-out) both; }
+.toast-out { animation: toast-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
+/* contador que aumentou por item crítico novo: um pulso só */
+@keyframes pulse-once { 30% { transform: scale(1.2); } 100% { transform: scale(1); box-shadow: 0 0 0 7px transparent; } }
+.pulse-once { animation: pulse-once 600ms var(--ease-out); box-shadow: 0 0 0 0 color-mix(in srgb, var(--counter-crit-bg) 50%, transparent); }
+/* barra de progresso: recorte animado (mantém a ponta arredondada, sem animar largura) */
+.progress-fill { transition: clip-path var(--t-progress) var(--ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-page, .grow-y, .grow-x, .panel-in, .toast-in { animation: fade-in 150ms ease both !important; transform: none !important; }
+  .anim-out, .panel-out, .toast-out { animation: fade-out var(--t-exit) ease both !important; }
+  .pulse-once { animation: none; }
+  .skeleton { animation: none; }
+  /* só fades curtos: nada desliza nem cresce (pílulas, menu, barras de progresso mudam direto) */
+  *, *::before, *::after { transition-property: opacity, color, background-color, border-color !important; transition-duration: 150ms !important; }
+  .anim-swap, .anim-fade { animation-duration: 150ms !important; }
+}
+
+/* grupo de veículos no mapa (MapBits › ClusteredVehicles): escuro e neutro, com o número; só o ponto crítico tem cor */
+.veh-cluster { position: absolute; transform: translate(-50%, -50%); min-width: 36px; height: 36px; padding: 0 10px; border-radius: var(--r-pill); background: var(--cluster-bg); border: 2px solid var(--card); box-shadow: var(--shadow-marker); display: flex; align-items: center; justify-content: center; gap: 6px; font: 600 13px/1 var(--font-sans); color: var(--cluster-ink); cursor: pointer; font-variant-numeric: tabular-nums; }
+.veh-cluster.lg { height: 40px; min-width: 40px; font-size: 14px; }
+.veh-cluster .dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--status-crit); box-shadow: 0 0 0 1.5px var(--card); }
+
+/* ícone ao lado de texto: caixa com a altura de uma linha do texto ao redor (1lh) e o ícone centrado nela.
+   Alinha opticamente com a primeira linha, em qualquer tamanho de texto, sem margem de ajuste. */
+.ico-line { display: inline-flex; align-items: center; height: 1lh; flex-shrink: 0; }

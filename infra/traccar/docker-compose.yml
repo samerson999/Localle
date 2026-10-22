@@ -1,0 +1,51 @@
+name: traccar
+
+services:
+  traccar-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: traccar
+      POSTGRES_USER: traccar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-America/Recife}
+    volumes:
+      - traccar-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U traccar']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  traccar:
+    image: traccar/traccar:latest
+    restart: unless-stopped
+    depends_on:
+      traccar-db:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-America/Recife}
+    volumes:
+      - ./conf/traccar.xml:/opt/traccar/conf/traccar.xml:ro
+      - traccar-data:/opt/traccar/data
+      - traccar-logs:/opt/traccar/logs
+    ports:
+      - '8082:8082'   # painel e API (fechar para a internet depois do reverse proxy com HTTPS)
+      - '5001:5001'   # gps103 (Coban/TK103B)
+      - '5002:5002'   # tk103
+      - '5004:5004'   # gl200 (Queclink)
+      - '5011:5011'   # suntech
+      - '5013:5013'   # h02 (SinoTrack)
+      - '5015:5015'   # jt808
+      - '5020:5020'   # meitrack
+      - '5023:5023'   # gt06 (Concox/J16)
+      - '5027:5027'   # teltonika (TCP)
+      - '5027:5027/udp'
+      - '5046:5046'   # ruptela
+      - '5055:5055'   # osmand (celular/testes)
+      - '5093:5093'   # watch
+
+volumes:
+  traccar-db-data:
+  traccar-data:
+  traccar-logs:

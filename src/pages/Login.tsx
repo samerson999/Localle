@@ -1,0 +1,50 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useStore } from '../lib/store';
+import { BrandMark } from '../components/Layout';
+import { homeOf } from '../lib/support';
+import { Button, Input, Field, cx } from '../components/ui';
+
+export default function Login() {
+  const b = useStore((s) => s.revenda.branding);
+  const nav = useNavigate();
+  const [email, setEmail] = useState('gestor@demo.com');
+  const [pass, setPass] = useState('demo');
+  const [err, setErr] = useState('');
+  const enter = () => {
+    if (pass !== 'demo') return setErr('Senha incorreta. Na simulação a senha é "demo".');
+    const em = email.toLowerCase(); const role = em.includes('locale') ? 'locale' : em.includes('revenda') ? 'revenda' : em.includes('portaria') ? 'portaria' : 'gestor';
+    useStore.getState().patch(() => ({ session: { email, role, name: role === 'locale' ? 'Rafael · Locale' : role === 'revenda' ? 'Admin da revenda' : role === 'portaria' ? 'Portaria Matriz' : 'Erivan Melo' } }));
+    nav(homeOf({ role }));
+  };
+  const pos = b.photoPos;
+  const photo = (
+    <div className={cx('relative overflow-hidden bg-ink p-10 md:p-14 flex items-end', pos === 'fundo' ? 'absolute inset-0' : 'flex-[999_1_520px] min-h-[320px]')}>
+      {b.photo ? <img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" /> : (
+        <svg aria-hidden="true" viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-40"><g fill="none" stroke="var(--brand)" strokeWidth="2"><path d="M-20 620 C 160 560, 240 700, 420 610 S 700 520, 860 600" /><path d="M-20 300 C 120 360, 300 240, 460 330 S 720 420, 860 300" /><path d="M200 -20 C 240 200, 160 420, 260 640 S 300 860, 280 940" /><path d="M600 -20 C 560 220, 660 460, 580 700 S 620 860, 640 940" /></g></svg>
+      )}
+      {b.photo && <div className="absolute inset-0 bg-scrim" />}
+      {pos !== 'fundo' && <div className="relative max-w-md"><h2 className="text-on-dark text-[clamp(28px,3.4vw,40px)] font-semibold leading-[1.1] tracking-[-0.025em]">{b.tagline}</h2></div>}
+    </div>
+  );
+  const form = (
+    <div className={cx('relative flex items-center p-6 md:p-10', pos === 'fundo' ? 'w-full min-h-screen justify-end md:pr-20' : pos === 'centro' ? 'w-full min-h-screen justify-center' : 'flex-[1_1_460px] justify-center')}>
+      <form onSubmit={(e) => { e.preventDefault(); enter(); }} className="w-full max-w-[400px] bg-card rounded-card p-6 sm:p-8 md:p-10 flex flex-col gap-5">
+        <div className="flex items-center gap-3"><BrandMark size={48} /><div className="flex flex-col"><span className="text-h3 font-semibold">{b.name}</span><span className="text-small text-ink-2">Gestão de frotas e rastreamento</span></div></div>
+        <div><h1 className="text-h2 font-semibold">Entrar</h1><p className="text-body text-ink-2 mt-1">Use o e-mail cadastrado pela sua central.</p></div>
+        <Field label="E-mail ou usuário"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" /></Field>
+        <Field label="Senha"><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} className="h-ctl-lg" autoComplete="current-password" /></Field>
+        {err && <p role="alert" className="text-small font-medium text-crit-ink">{err}</p>}
+        <Button type="submit" size="lg">Acessar plataforma</Button>
+        <div className="text-caption text-ink-2 bg-card-2 border border-line rounded-ctl p-3 leading-relaxed">Simulação: <span className="font-semibold text-ink">gestor@demo.com</span> entra como gestor da frota; <span className="font-semibold text-ink">revenda@demo.com</span> entra como admin da rastreadora (Painel da revenda); <span className="font-semibold text-ink">locale@demo.com</span> entra como administração da plataforma (Painel da Locale). Os dois só veem a frota do cliente pelo acesso de suporte; <span className="font-semibold text-ink">portaria@demo.com</span> entra só na tela de saída e entrada, para o celular. Senha: <span className="font-semibold text-ink">demo</span>.</div>
+        <div className="text-small text-ink-2 border-t border-line pt-4">Suporte: <span className="num">{b.supportPhone}</span></div>
+      </form>
+    </div>
+  );
+  if (pos === 'centro') return <div className="min-h-screen relative bg-canvas">{form}</div>;
+  return (
+    <div className={cx('min-h-screen relative flex flex-wrap bg-canvas', pos === 'direita' && 'flex-row-reverse')}>
+      {photo}{form}
+    </div>
+  );
+}

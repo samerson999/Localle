@@ -1,0 +1,40 @@
+name: plataforma-db
+
+services:
+  db:
+    # Imagem oficial do TimescaleDB com PostGIS já incluído (timescaledb-ha).
+    # Alternativa sem o "-ha" (mais enxuta) se PostGIS não for necessário: timescale/timescaledb:latest-pg16.
+    image: timescale/timescaledb-ha:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-plataforma}
+      POSTGRES_USER: ${POSTGRES_USER:-plataforma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-America/Recife}
+    volumes:
+      - plataforma-db-data:/home/postgres/pgdata/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - '5432:5432'   # em VPS de produção, não publicar; usar só a rede privada entre VPS-APP e VPS-DB
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-plataforma}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-plataforma}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-plataforma}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 500
+      DEFAULT_POOL_SIZE: 25
+    ports:
+      - '6432:6432'   # a API conecta aqui, não direto na 5432, quando houver mais de uma instância
+
+volumes:
+  plataforma-db-data:

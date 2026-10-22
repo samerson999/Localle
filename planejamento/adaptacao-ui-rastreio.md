@@ -30,7 +30,7 @@ Consequência prática: esta Fase 2 não é "adotar os padrões do Visor", é um
 | `--ls-display` | `-0.035em` (mantido) | — | **mantido -0.035em** | Idem — mesma lógica de R-3. |
 | `--ls-small` | `-0.02em` (criado) | Visor (texto 14px, ex. título de card): `-0.28px` em 14px = **-0.02em** | **`--ls-small: -0.02em`**, aplicado em `text-small` | **APLICADO.** Testado ao vivo pelo usuário entre -0.01em e -0.02em; valor final -0.02em. |
 | Transição de cor (`duration-[120ms]` em `Button`/`IconButton`) | `120ms`, sem easing explícito (Tailwind `transition-colors` = `ease` por padrão, mas a classe usa `duration-[120ms]` isolado) | Visor: `150ms`, `cubic-bezier(0.4,0,0.2,1)` (Tailwind `ease` padrão) | **150ms** nas transições de cor (`Button`, `IconButton`, `TextButton`, item de sidebar) | Diretriz explícita do usuário — só para transições **de cor**; não mexe em `--t-pill` (250ms, slide de indicador), `--t-page` (200ms), `--t-bar` (400ms, mapa/gráfico), que são categorias diferentes (movimento de layout, não cor). |
-| Item ativo da sidebar (`bg-graphite` fixo em `SidebarMenu`) | `--surface-active-neutral` (ink a 7% translúcido) + `text-ink` | Visor: azul do Visor a ~10% opacidade | **`--surface-active-neutral`, independente da cor da revenda** — **APLICADO (R-4 resolvido)** | O usuário optou por não usar a cor da marca (que poderia "virar rosa" com revenda vermelha, risco documentado em R-4): opção neutra que funciona em qualquer cor de revenda. Pílula FLIP mantida. |
+| Item ativo da sidebar (`bg-graphite` fixo em `SidebarMenu`) | `--brand-soft` (fundo) + `text-brand-link` + `font-semibold` (texto e ícone, via `currentColor`) | Visor: azul do Visor a ~10% opacidade, texto azul em negrito | **Cor da revenda, com fallback automático** — **APLICADO (R-4 reaberto e revertido em 2026-10-22)** | Decisão trocada: o usuário pediu para replicar o visual do Visor. Em vez de lógica nova, reaproveitou-se `brandVars()` (`lib/brand.ts`), que já cai para grafite quando a cor da revenda é vermelha/baixo contraste — risco do R-4 original coberto sem código extra. Pílula FLIP mantida. Token `--surface-active-neutral` (da decisão anterior) removido de `tokens.css`/`tailwind.config.js` por ficar sem uso. |
 
 ---
 
@@ -152,7 +152,7 @@ Consequência prática: esta Fase 2 não é "adotar os padrões do Visor", é um
 
 - **R-3 [RESOLVIDO]**: Decisão tomada — **não aplicar** -0.04em uniforme. A Satoshi (fonte real do rastreio) não é a DM Sans (fonte do Visor usada na medição); os valores atuais (`--ls-kpi: -0.03em`, `--ls-display: -0.035em`) já são calibrados para a Satoshi e foram mantidos sem alteração.
 
-- **R-4 [RESOLVIDO]**: Decisão tomada pelo usuário — item ativo da sidebar usa `--surface-active-neutral` (ink a 7% translúcido) + `text-ink`, **independente da cor da revenda**, em vez de usar a cor da marca a 10% de opacidade (opção descartada por manter o risco de "virar rosa" com revenda vermelha) ou do grafite sólido anterior. Pílula FLIP mantida.
+- **R-4 [RESOLVIDO, revertido em 2026-10-22]**: Resolvido primeiro com `--surface-active-neutral` (neutro, independente da revenda). Depois o usuário pediu para replicar o item ativo do Visor (fundo + texto + ícone na cor da marca, em negrito). Em vez de reintroduzir o risco original ("vira rosa" com revenda vermelha), a implementação reaproveitou `brandVars()`/`--brand-soft`/`--brand-link` (já existentes, já com fallback para grafite nos casos de risco) — mesmo resultado visual do Visor para a maioria das revendas, sem lógica nova e sem o risco. Pílula FLIP mantida.
 
 - **R-5 [RESOLVIDO após verificação visual, 2026-10-21]**: `--r-card`/`--r-ctl`/`--r-btn` em 12px, aplicado globalmente. Verificação visual por código (1440px e 390px) cobrindo monitoramento (mapa + painéis flutuantes + dock), formulário com input de ícone (`SearchInput`, `inputCls`), tabela paginada (`Table`/`Pagination`), modal (`Modal`) e ⌘K (`CommandPalette`): nenhum problema encontrado além do radius do `Modal` (ver correção abaixo). KPIs (`KpiHero`/`KpiTile`/`Stat`) confirmados diretamente sobre `--canvas` em todas as telas auditadas.
 
@@ -171,4 +171,46 @@ Arquivos alterados nesta fase:
 - `src/components/Sidebar.tsx` — item ativo em `--surface-active-neutral` (em vez de grafite sólido), `SidebarMenuButton` em `duration-150`.
 - `src/components/story.tsx` — `KpiHero`/`KpiTile` sem borda, acompanhando `Card`.
 
-Commit separado para a correção de código (`fix: Modal usa rounded-panel...`); este documento é commitado à parte.
+---
+
+## Migração (2026-10-22)
+
+Varredura completa de `src/pages/` e `src/components/` (exceto os componentes padrão já cobertos acima) em busca de estilos ad hoc que escapam de `Card`/`CardHeader`/`Button`/`Stat`/`Sidebar`/`Modal`. Inventário detalhado, decisões e status item a item em `/planejamento/migracao-ui-inventario.md`. Backup do estado anterior em `../rastreio-backup-ui-2026-10-22` (cópia de `src/`).
+
+18 ocorrências catalogadas contra os 8 padrões pedidos (cards ad hoc fora do `Card`, radius literal/fora da escala, grafite ativo fora da sidebar, transição de cor ≠150ms, sombra em card, título manual em vez de `CardHeader`, ícone/badge com fundo colorido indevido, valores literais inline). Resultado: 11 aplicadas, 3 mantidas por decisão explícita (nenhuma pendente). Typecheck e build passaram sem erros após a execução.
+
+Arquivos alterados:
+- `src/styles/tokens.css` — novo token `--r-swatch: 3px` (swatch de legenda, radius 3px já existente, só nomeado).
+- `tailwind.config.js` — `rounded-swatch` exposto na escala `borderRadius`.
+- `src/components/ui.tsx` — `Checkbox`/`Radio`/`Switch` (transição de cor) em `duration-150`.
+- `src/components/charts.tsx`, `src/components/chartTip.tsx` — swatches de legenda/tooltip em `rounded-swatch` (era `rounded-[3px]`).
+- `src/pages/Cercas.tsx` — painel "Nova cerca"/"Editar cerca" (era `<aside>` manual) agora é `<Card>`; legenda da tabela em `rounded-swatch`.
+- `src/pages/Jornada.tsx` — prévia da folha de ponto (era `<div>` manual) agora é `<Card>`.
+- `src/pages/Login.tsx` — borda removida do `<form>` de login (mantido como `<form>`, sobre `--canvas`).
+- `src/pages/Replay.tsx` — overlay "sem posições no período" tratado como painel flutuante (`rounded-panel shadow-panel`, era `rounded-card shadow-pop`).
+- `src/pages/design/KpiHeroDestaque.tsx` — borda removida (página de showcase).
+- `src/pages/Pneus.tsx` — comentário explicando que `rounded-[10px]` da posição do pneu é forma ilustrativa, fora da escala de componentes (mantido sem mudança visual).
+
+**Itens DECISÃO pendentes: nenhum.** Todos os 13 itens marcados como DECISÃO na Fase A já foram resolvidos pelo usuário (ver tabela em `migracao-ui-inventario.md`): 3 aplicados (Login, Replay, KpiHeroDestaque) e 3 mantidos sem alteração (PortariaApp, Pneus, animações de gráfico em `charts.tsx`).
+
+---
+
+## Densidade de texto (2026-10-22)
+
+Rodada separada, voltada a reduzir texto em cards e gráficos (referência: Visor, seções 2 e 7 de `referencia-ui-visor.md`), não a estilo visual. Regras em `/planejamento/regras-densidade-ui.md`; diagnóstico, piloto e lotes de execução em `/planejamento/densidade-ui-diagnostico.md`. Backup do estado anterior em `../rastreio-backup-densidade-2026-10-22`.
+
+**Piloto**: `Manutencao.tsx` (aprovado após 2 rodadas de ajuste). **Expansão**: 3 lotes cobrindo todas as telas de BI/gráfico do produto (`Combustivel`, `Checklist`, `Ranking`, `Viagens`, `Telemetria`, `Multas`, `Pneus`, `Relatorios`, `Jornada`, `Revenda`, `Locale`); as 7 telas restantes (`Ativos`, `Monitoramento`, `Alertas`, `PrecisaDeVoce`, `Replay`, `Cercas`, `PortariaApp`) foram varridas e já estavam compliant, sem mudanças. Typecheck e build passaram sem erros em todos os lotes.
+
+Principais padrões corrigidos:
+- `period` de `ChartCard` repetindo o período já visível no filtro/toolbar da tela (removido em ~15 ocorrências).
+- `period`/`sentence` explicando em texto algo já óbvio no gráfico (destaque visual, ordenação, instrução de interação como "clique para…").
+- `KpiHero`: `sentence` redundante com badge de variação + barra de meta; rótulos dos extremos da escala de meta (mantido só o marcador).
+- Gráfico "Para onde foi o tempo da frota" (Manutenção): trocado de `Waterfall` (escala 0–100%) para `RankBars` (causas por hora, sem a âncora de topo/base) — ganho de simplicidade, sem tocar no componente compartilhado.
+- `maintNeeds()` (`lib/insights.ts`): parou de mostrar duas métricas de prazo (km e dias) ao mesmo tempo quando o plano tem gatilho "ambos" — mostra só a vencida ou a mais perto de vencer. Afeta `Manutencao.tsx`, `PrecisaDeVoce.tsx`, `NeedsPanel.tsx` e os e-mails de escalonamento.
+- `findPatterns()`: "Falha que se repete" parou de listar as placas na frase, só a contagem.
+
+**Fora de escopo, por decisão explícita do usuário**: `ColumnChart` (gráfico de barras verticais) é um padrão aprovado — nenhuma tela teve sua estrutura, escala ou estilo alterados; as regras R6–R10 não se aplicam a ele.
+
+**Itens em aberto (DECISÃO, sem aplicação)**:
+- `Ranking.tsx`, card "Em atenção": título monta um `StatusDot` + contagem à mão em vez da estrutura padrão de título/sub — é mudança de composição do card, não de texto.
+- Melhoria futura registrada (não é desta rodada): o botão "Revisar OS" do `PatternCard` (Manutenção) deveria abrir a lista de OS já filtrada pelo padrão identificado, em vez de só navegar para a aba geral.

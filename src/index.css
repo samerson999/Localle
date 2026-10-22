@@ -1,0 +1,30 @@
+@import './styles/fonts.css';
+@import './styles/tokens.css';
+@import './styles/base.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+html, body, #root { height: 100%; }
+html, body { overflow-x: clip; }
+body { @apply bg-canvas text-ink font-sans antialiased; }
+@media print { .no-print { display:none !important; } body { background: var(--doc-bg); } .print-area { box-shadow:none !important; border:0 !important; } }
+
+/* ---------- documentos para impressão ---------- */
+.print-portal { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 9mm; }
+  body.printing-doc #root { display: none !important; }
+  body.printing-doc .print-portal { display: block; }
+  .doc-sheet { break-after: page; page-break-after: always; }
+  .doc-sheet:last-child { break-after: auto; page-break-after: auto; }
+  .doc-sheet table { page-break-inside: auto; }
+  .doc-sheet tr { break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.doc-sheet { background: var(--doc-bg); color: var(--doc-ink); font-size: 11px; line-height: 1.35; }
+.doc-sheet table { width: 100%; border-collapse: collapse; }
+.doc-sheet th, .doc-sheet td { border: 1px solid var(--doc-rule); padding: 3px 5px; text-align: left; vertical-align: top; }
+.doc-sheet th { background: var(--doc-head); font-weight: 700; }
+.doc-sheet .muted { color: var(--doc-muted); }
+.doc-sheet tr.off td { color: var(--doc-off-ink); background: var(--doc-off-bg); }
+.doc-sheet tr.viol td { background: var(--doc-viol-bg); }

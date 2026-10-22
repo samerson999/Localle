@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { fileToDataURL } from '../lib/utils';
 import { Icon } from './icons';
 import { AssetSilhouette, silhouetteOf } from './assetArt';
@@ -58,10 +59,12 @@ export function TextButton({ tone = 'brand', className = '', ...p }: React.Butto
 
 // Botão só com ícone: aria-label obrigatório. sidebar = hover sobre o canvas; on-dark = sobre superfície escura.
 // outline = botão de mapa e barra de ferramentas (fundo de card com borda).
-type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string; size?: 'sm' | 'md'; tone?: 'default' | 'sidebar' | 'on-dark' | 'outline' };
+type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string; size?: 'sm' | 'md' | 'touch'; tone?: 'default' | 'sidebar' | 'on-dark' | 'outline' };
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(({ size = 'md', tone = 'default', className = '', ...p }, r) => {
   const t = { default: 'text-ink-2 hover:text-ink hover:bg-card-2', sidebar: 'text-ink-2 hover:text-ink hover:bg-surface-hover', 'on-dark': 'text-on-dark hover:bg-on-dark-hover', outline: 'bg-card border border-line-strong text-ink hover:bg-card-2' }[tone];
-  return <button ref={r} type="button" {...p} className={cx('inline-flex items-center justify-center shrink-0 transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed', size === 'sm' ? 'w-8 h-8 rounded-btn' : 'w-10 h-10 rounded-ctl', t, className)} />;
+  // touch = 44×44 (alvo de toque recomendado), só para a barra fixa do mobile; sm/md seguem a densidade do desktop.
+  const sizeCls = size === 'sm' ? 'w-8 h-8 rounded-btn' : size === 'touch' ? 'w-11 h-11 rounded-ctl' : 'w-10 h-10 rounded-ctl';
+  return <button ref={r} type="button" {...p} className={cx('inline-flex items-center justify-center shrink-0 transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed', sizeCls, t, className)} />;
 });
 
 // Faixa de aviso dentro da página: warn = estado temporário/pendente, crit = erro.
@@ -258,7 +261,7 @@ export function Form({ className = '', actions, children, ...p }: React.FormHTML
 export function FormActions({ className = '', align = 'end', children }: { className?: string; align?: 'start' | 'end' | 'between'; children: React.ReactNode }) {
   return <div className={cx('flex flex-wrap items-center gap-tight mt-form-actions', { start: '', end: 'justify-end', between: 'justify-between' }[align], className)}>{children}</div>;
 }
-const inputCls = 'h-ctl w-full border border-line-strong rounded-ctl px-3 text-body text-ink bg-card placeholder:text-ink-3 hover:border-line-hover focus:border-graphite transition-colors disabled:bg-surface-muted disabled:text-ink-3 disabled:border-line disabled:cursor-not-allowed aria-[invalid=true]:border-crit';
+const inputCls = 'h-ctl w-full border border-line-strong rounded-ctl px-3 text-body text-ink bg-card placeholder:text-ink-3 hover:border-line-hover focus:outline-none transition-colors disabled:bg-surface-muted disabled:text-ink-3 disabled:border-line disabled:cursor-not-allowed aria-[invalid=true]:border-crit';
 // type date/datetime-local/month/time usa os seletores próprios (DateInput, TimeInput) no lugar dos nativos.
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }>(({ className = '', invalid, ...p }, r) => {
   if (p.type === 'date' || p.type === 'datetime-local' || p.type === 'month') return <DateInput {...(p as any)} className={className} />;
@@ -338,8 +341,89 @@ export function Select({ className = '', options, value, onChange, disabled, id,
     </>
   );
 }
+// Combobox com busca: campo de texto que filtra a lista conforme o usuário digita, numa lista suspensa
+// (portal, como o Select). `onQuery` é opcional — quando informado, simula o carregamento dos registros
+// (ex.: buscar no servidor) em vez de filtrar a lista inteira já carregada; sem ele, filtra `options` local.
+export type SearchSelectOption = { value: string; label: string; sub?: string };
+export function SearchSelect({ options, value, onChange, onQuery, placeholder = 'Buscar…', className = '', emptyLabel = 'Nenhum resultado', ...p }: {
+  options: SearchSelectOption[]; value?: string; onChange: (value: string) => void; onQuery?: (q: string) => Promise<SearchSelectOption[]>;
+  placeholder?: string; className?: string; emptyLabel?: string; 'aria-label'?: string;
+}) {
+  const selected = options.find((o) => o.value === (value ?? ''));
+  const [query, setQuery] = useState(selected?.label || '');
+  const [open, setOpen] = useState(false);
+  const [act, setAct] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<SearchSelectOption[]>(options);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; width: number }>({ left: 0, top: 0, width: 0 });
+  const pres = usePresence(open);
+  const box = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const lid = useId();
+  const seq = useRef(0);
+
+  useEffect(() => { if (!open) setQuery(selected?.label || ''); }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open) return;
+    const q = query.trim().toLowerCase();
+    const id = ++seq.current;
+    if (onQuery) {
+      setLoading(true);
+      const t = setTimeout(() => onQuery(q).then((r) => { if (id === seq.current) { setResults(r); setLoading(false); setAct(0); } }), 180);
+      return () => clearTimeout(t);
+    }
+    setLoading(true);
+    const t = setTimeout(() => { setResults(q ? options.filter((o) => o.label.toLowerCase().includes(q) || o.sub?.toLowerCase().includes(q)) : options); setLoading(false); setAct(0); }, 150);
+    return () => clearTimeout(t);
+  }, [query, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const place = () => { const r = box.current!.getBoundingClientRect(); const up = r.bottom + 296 > window.innerHeight && r.top > window.innerHeight - r.bottom; setPos(up ? { left: r.left, bottom: window.innerHeight - r.top + 4, width: r.width } : { left: r.left, top: r.bottom + 4, width: r.width }); };
+  const show = () => { place(); setOpen(true); };
+  const pick = (o: SearchSelectOption | null) => { setOpen(false); onChange(o?.value ?? ''); setQuery(o?.label ?? ''); input.current?.focus(); };
+  useEffect(() => {
+    if (!open) return;
+    const out = (e: Event) => { if (!list.current?.contains(e.target as Node) && !box.current?.contains(e.target as Node)) setOpen(false); };
+    const scroll = (e: Event) => { if (!list.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', out); window.addEventListener('scroll', scroll, true); window.addEventListener('resize', scroll);
+    return () => { document.removeEventListener('mousedown', out); window.removeEventListener('scroll', scroll, true); window.removeEventListener('resize', scroll); };
+  }, [open]);
+  useEffect(() => { if (open) list.current?.children[act]?.scrollIntoView({ block: 'nearest' }); }, [open, act]);
+  const key = (e: React.KeyboardEvent) => {
+    if (!open) { if (['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); show(); } return; }
+    if (e.key === 'Escape') { e.preventDefault(); setOpen(false); setQuery(selected?.label || ''); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setAct((a) => Math.min(results.length - 1, a + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setAct((a) => Math.max(0, a - 1)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (results[act]) pick(results[act]); }
+  };
+  return (
+    <div ref={box} className={cx('relative', className)}>
+      <Icon name="busca" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
+      <input ref={input} role="combobox" aria-expanded={open} aria-controls={lid} aria-autocomplete="list" aria-label={p['aria-label']}
+        value={query} placeholder={placeholder} onKeyDown={key}
+        onFocus={show} onChange={(e) => { setQuery(e.target.value); if (!open) show(); }}
+        className={cx(inputCls, 'pl-10 pr-10')} />
+      {(query || value) && <button type="button" aria-label="Limpar" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
+      {pres.mounted && createPortal(
+        <ul ref={list} id={lid} role="listbox" aria-label={p['aria-label']} onMouseDown={(e) => e.preventDefault()}
+          style={{ left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.width }}
+          className={cx('fixed z-[1400] max-h-72 max-w-[min(420px,calc(100vw-16px))] overflow-y-auto bg-card border border-line rounded-pop shadow-pop p-1', pres.closing ? 'anim-out' : 'anim-page')}>
+          {loading ? <li className="flex items-center gap-icon px-stack py-tight text-small text-ink-2"><Spinner size={14} />Carregando registros…</li>
+            : results.length === 0 ? <li className="px-stack py-tight text-small text-ink-2">{emptyLabel}</li>
+            : results.map((o, i) => (
+              <li key={o.value} id={`${lid}-${i}`} role="option" aria-selected={o.value === value} onMouseEnter={() => setAct(i)} onClick={() => pick(o)}
+                className={cx('flex flex-col px-stack py-tight rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted', o.value === value && 'font-medium')}>
+                <span className="flex items-center gap-icon"><span className="flex-1 truncate">{o.label}</span>{o.value === value && <Icon name="ok" size={16} className="shrink-0" />}</span>
+                {o.sub && <span className="text-caption text-ink-2 truncate">{o.sub}</span>}
+              </li>
+            ))}
+        </ul>, document.body)}
+    </div>
+  );
+}
 export function Textarea({ className = '', ...p }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...p} className={cx('w-full border border-line-strong rounded-ctl p-3 text-body text-ink bg-card placeholder:text-ink-3 hover:border-line-hover focus:border-graphite transition-colors disabled:bg-surface-muted disabled:text-ink-3', className)} />;
+  return <textarea {...p} className={cx('w-full border border-line-strong rounded-ctl p-3 text-body text-ink bg-card placeholder:text-ink-3 hover:border-line-hover focus:outline-none transition-colors disabled:bg-surface-muted disabled:text-ink-3', className)} />;
 }
 // Controles de seleção: marcados na cor da revenda (--brand-fill, com fallback grafite). Foco = anel duplo.
 const peerFocus = 'peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--focus-outer)] peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[var(--focus-inner)]';
@@ -352,7 +436,7 @@ export function Check({ label, description, checked, onChange, indeterminate, di
     <label className={cx('inline-flex items-start gap-tight text-body', disabled ? 'cursor-not-allowed text-ink-3' : 'cursor-pointer', className)}>
       <span className="relative ico-line">
         <input ref={ref} type="checkbox" className="peer sr-only" checked={!!checked} disabled={disabled} aria-label={p['aria-label']} onChange={(e) => onChange(e.target.checked)} />
-        <span aria-hidden="true" className={cx('w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-colors duration-[120ms]', peerFocus,
+        <span aria-hidden="true" className={cx('w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-colors duration-150', peerFocus,
           on ? 'bg-brand-fill border-brand-fill text-brand-fill-ink' : 'bg-card border-line-hover', !disabled && !on && 'hover:border-ink-3', disabled && 'opacity-45')}>
           {indeterminate ? <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
             : checked ? <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.3 2.3 4.7-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
@@ -367,7 +451,7 @@ export function Radio({ label, description, checked, onChange, name, disabled, c
     <label className={cx('inline-flex items-start gap-tight text-body', disabled ? 'cursor-not-allowed text-ink-3' : 'cursor-pointer', className)}>
       <span className="relative ico-line">
         <input type="radio" name={name} className="peer sr-only" checked={!!checked} disabled={disabled} onChange={onChange} />
-        <span aria-hidden="true" className={cx('w-[18px] h-[18px] rounded-pill border-[1.5px] flex items-center justify-center transition-colors duration-[120ms]', peerFocus,
+        <span aria-hidden="true" className={cx('w-[18px] h-[18px] rounded-pill border-[1.5px] flex items-center justify-center transition-colors duration-150', peerFocus,
           checked ? 'border-brand-fill' : 'border-line-hover bg-card', disabled && 'opacity-45')}>
           <span className={cx('w-2 h-2 rounded-pill bg-brand-fill transition-transform duration-[120ms]', checked ? 'scale-100' : 'scale-0')} />
         </span>
@@ -381,7 +465,7 @@ export function Switch({ checked, onChange, ...p }: { checked: boolean; onChange
   return (
     <span className="relative inline-flex shrink-0">
       <input type="checkbox" role="switch" {...p} className="peer sr-only" checked={!!checked} onChange={(e) => onChange(e.target.checked)} />
-      <span aria-hidden="true" className={cx('w-10 h-6 rounded-pill bg-switch-off transition-colors duration-[120ms] peer-checked:bg-brand-fill peer-disabled:opacity-45 peer-disabled:cursor-not-allowed after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-pill after:bg-card after:shadow-seg after:transition-transform after:duration-[120ms] peer-checked:after:translate-x-4', peerFocus)} />
+      <span aria-hidden="true" className={cx('w-10 h-6 rounded-pill bg-switch-off transition-colors duration-150 peer-checked:bg-brand-fill peer-disabled:opacity-45 peer-disabled:cursor-not-allowed after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-pill after:bg-card after:shadow-seg after:transition-transform after:duration-[120ms] peer-checked:after:translate-x-4', peerFocus)} />
     </span>
   );
 }
@@ -447,6 +531,11 @@ function useSlider(value: string) {
   return { box, indicator, style };
 }
 const sliderText = 'transition-colors duration-[250ms]';
+// Visual único do controle segmentado (trilho em pílula + indicador que desliza na cor da revenda),
+// compartilhado por Tabs (estado) e NavTabs (rota) — mudar a forma aqui muda em toda a tela que usa qualquer um dos dois.
+const segTrack = 'relative inline-flex flex-wrap w-fit max-w-full gap-1 p-1 bg-card rounded-pill';
+const segIndicator = 'absolute rounded-pill bg-brand-fill';
+const segItem = (size: 'sm' | 'md', on: boolean, style: unknown) => cx('relative px-3 rounded-pill font-medium inline-flex items-center gap-tight', size === 'sm' ? 'h-7 text-caption' : 'h-8 text-small', sliderText, on ? cx('text-brand-fill-ink', !style && 'bg-brand-fill') : 'text-ink-2 hover:text-ink');
 
 // Contador neutro (abas, filtros, listas). O do "Precisa de você" é o único vermelho (Layout).
 export function CountBadge({ n, className = '' }: { n: number; className?: string }) {
@@ -454,17 +543,33 @@ export function CountBadge({ n, className = '' }: { n: number; className?: strin
 }
 // Controle segmentado: opção ativa na cor da revenda (--brand-fill, com fallback grafite), indicador que desliza.
 type TabItem = { key: string; label: string; count?: number };
-export function Tabs({ tabs, value, onChange, size = 'md' }: { tabs: TabItem[]; value: string; onChange: (k: string) => void; size?: 'sm' | 'md' }) {
+export function Tabs({ tabs, value, onChange, size = 'md', className = '' }: { tabs: TabItem[]; value: string; onChange: (k: string) => void; size?: 'sm' | 'md'; className?: string }) {
   const { box, indicator, style } = useSlider(value);
   return (
-    <div ref={box} role="tablist" className="relative inline-flex flex-wrap w-fit max-w-full gap-1 p-1 bg-card rounded-ctl">
-      {style && <span ref={indicator} aria-hidden="true" style={style} className="absolute rounded-tight bg-brand-fill" />}
+    <div ref={box} role="tablist" className={cx(segTrack, className)}>
+      {style && <span ref={indicator} aria-hidden="true" style={style} className={segIndicator} />}
       {tabs.map((t) => {
         const on = value === t.key;
-        return <button key={t.key} data-k={t.key} type="button" role="tab" aria-selected={on} onClick={() => onChange(t.key)}
-          className={cx('relative px-3 rounded-tight font-medium inline-flex items-center gap-tight', size === 'sm' ? 'h-7 text-caption' : 'h-8 text-small', sliderText, on ? cx('text-brand-fill-ink', !style && 'bg-brand-fill') : 'text-ink-2 hover:text-ink')}>
+        return <button key={t.key} data-k={t.key} type="button" role="tab" aria-selected={on} onClick={() => onChange(t.key)} className={segItem(size, on, style)}>
           {t.label}{t.count != null && <span className={cx('num text-caption', on ? 'opacity-80' : 'text-ink-3')}>{t.count}</span>}
         </button>;
+      })}
+    </div>
+  );
+}
+// Controle segmentado por rota (igual ao Tabs, mas cada opção é um link de navegação em vez de estado controlado).
+// Usa NavLink (sem preventDefault/navegação própria) para não recarregar a página ao trocar de aba.
+type NavTabItem = { to: string; label: string; end?: boolean };
+export function NavTabs({ tabs, size = 'md', className = '' }: { tabs: NavTabItem[]; size?: 'sm' | 'md'; className?: string }) {
+  const { pathname } = useLocation();
+  const active = tabs.find((t) => (t.end ? pathname === t.to : pathname.startsWith(t.to)))?.to ?? tabs[0]?.to;
+  const { box, indicator, style } = useSlider(active);
+  return (
+    <div ref={box} role="tablist" className={cx(segTrack, className)}>
+      {style && <span ref={indicator} aria-hidden="true" style={style} className={segIndicator} />}
+      {tabs.map((t) => {
+        const on = t.to === active;
+        return <NavLink key={t.to} to={t.to} end={t.end} data-k={t.to} className={segItem(size, on, style)}>{t.label}</NavLink>;
       })}
     </div>
   );
@@ -565,17 +670,41 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   );
 }
 
+// Trilha de navegação: usada quando a tela é uma sub-tela de algo (ex.: Relatórios > Cercas).
+// O último item é a página atual (sem link); os anteriores navegam de volta.
+export function Breadcrumbs({ items }: { items: { label: string; to?: string }[] }) {
+  const navigate = useNavigate();
+  return (
+    <nav aria-label="Trilha de navegação" className="flex items-center gap-tight text-small text-ink-2 mb-tight min-w-0">
+      {items.map((it, i) => {
+        const last = i === items.length - 1;
+        return (
+          <span key={i} className="flex items-center gap-tight min-w-0">
+            {i > 0 && <Icon name="chevron" size={12} className="shrink-0 text-ink-3 rotate-[-90deg]" />}
+            {last || !it.to
+              ? <span className={cx('truncate', last && 'text-ink font-medium')}>{it.label}</span>
+              : <button type="button" onClick={() => navigate(it.to!)} className="truncate hover:text-ink hover:underline underline-offset-2">{it.label}</button>}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
 // Cabeçalho de página: discreto (ícone + nome pequenos), o peso visual fica com o conteúdo abaixo.
 // Em telas de BI, passe `period` (seletor com comparação); em telas ao vivo, não passe.
-export function PageHeader({ icon, title, subtitle, children, period }: { icon?: Parameters<typeof Icon>[0]['name']; title: string; subtitle?: React.ReactNode; children?: React.ReactNode; period?: React.ReactNode }) {
+// `crumbs` é opcional: usar em sub-telas (ex.: um tipo de relatório dentro do hub de Relatórios).
+export function PageHeader({ icon, title, subtitle, children, period, crumbs }: { icon?: Parameters<typeof Icon>[0]['name']; title: string; subtitle?: React.ReactNode; children?: React.ReactNode; period?: React.ReactNode; crumbs?: { label: string; to?: string }[] }) {
   return (
-    <header className="flex flex-wrap items-center gap-x-6 gap-y-tight min-h-ctl mb-page-head md:pr-[var(--top-reserve,0px)]">
-      <div className="mr-auto min-w-0 flex items-center gap-tight text-ink-2">
-        {icon && <Icon name={icon} size={15} className="shrink-0" />}
-        <h1 className="text-small font-medium truncate">{title}</h1>
-        {subtitle && <span className="text-small text-ink-3 truncate hidden md:inline">· {subtitle}</span>}
+    <header className="flex flex-col mb-page-head">
+      {crumbs && <Breadcrumbs items={crumbs} />}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-tight min-h-ctl md:pr-[var(--top-reserve,0px)]">
+        <div className="mr-auto min-w-0 flex items-center gap-tight text-ink-2">
+          {icon && <Icon name={icon} size={15} className="shrink-0" />}
+          <h1 className="text-small font-medium truncate">{title}</h1>
+        </div>
+        {(period || children) && <div className="flex flex-wrap items-center gap-tight">{period}{children}</div>}
       </div>
-      {(period || children) && <div className="flex flex-wrap items-center gap-tight">{period}{children}</div>}
     </header>
   );
 }
@@ -806,9 +935,9 @@ export function ErrorState({ title = 'Não foi possível carregar', detail, onRe
 // Foto do ativo; sem foto, o ícone 3D escolhido no cadastro (src/images/png-tight); sem ícone, a silhueta
 // cheia da categoria (carreta: pelo tipo de implemento). Não é o glifo do marcador no mapa (MAP_GLYPH).
 export function AssetThumb({ asset, className = 'w-16 h-7' }: { asset: any; className?: string }) {
-  if (asset?.photo) return <img src={asset.photo} alt={`Foto de ${asset.name}`} className={cx('rounded-tight object-cover shrink-0', className)} />;
+  if (asset?.photo) return <img src={asset.photo} alt={`Foto de ${asset.name}`} loading="lazy" decoding="async" className={cx('rounded-tight object-cover shrink-0', className)} />;
   const icon = asset?.icon && pngIconUrl(asset.icon);
-  if (icon) return <img src={icon} alt="" draggable={false} className={cx('object-contain shrink-0', className)} />;
+  if (icon) return <img src={icon} alt="" draggable={false} decoding="async" className={cx('object-contain shrink-0', className)} />;
   return <AssetSilhouette category={silhouetteOf(asset)} className={cx('text-ink-3 shrink-0', className)} />;
 }
 
