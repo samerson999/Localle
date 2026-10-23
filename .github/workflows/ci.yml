@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'packages/shared/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+            api:
+              - 'apps/api/**'
+              - 'packages/shared/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web typecheck
+      - run: pnpm --filter web test
+      - run: pnpm --filter web build
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb-ha:pg16
+        env:
+          POSTGRES_DB: plataforma
+          POSTGRES_USER: plataforma
+          POSTGRES_PASSWORD: ci-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U plataforma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://plataforma:ci-password@localhost:5432/plataforma
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Extensões do Postgres (postgis/timescaledb/btree_gist/pgcrypto)
+        run: |
+          PGPASSWORD=ci-password psql -h localhost -U plataforma -d plataforma -c \
+            "create extension if not exists postgis; create extension if not exists timescaledb;"
+      - run: pnpm --filter api typecheck
+      - run: pnpm --filter api migrate:up
+      - run: pnpm --filter api test
+      - run: pnpm --filter api build
+      - name: Build da imagem Docker (valida o Dockerfile, não publica)
+        run: docker build -f apps/api/Dockerfile -t localle-api:ci .

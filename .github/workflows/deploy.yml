@@ -1,0 +1,124 @@
+name: Deploy produção
+
+# docs/ARQUITETURA-BACKEND.md § 7.3: em produção o build roda aqui (GitHub Actions), publica a imagem
+# pronta num registry (GHCR), e o Coolify de produção só faz pull+deploy — nunca builda a partir do
+# código-fonte em produção (isso é só homologação, configurado direto no Coolify, fora deste workflow).
+# Requer os secrets do repositório: COOLIFY_WEBHOOK_API, COOLIFY_WEBHOOK_WEB (URL de deploy webhook de
+# cada Resource no Coolify) — ver docs/DEPLOY-COOLIFY.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/deploy.yml'
+
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'packages/shared/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+            api:
+              - 'apps/api/**'
+              - 'packages/shared/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+
+  build-push-api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/api:latest
+            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+
+  build-push-web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/web:latest
+            ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+
+  migrate:
+    needs: [changes, build-push-api]
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    environment: producao
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Roda a partir do código-fonte (tem node-pg-migrate, devDependency, de propósito fora da imagem
+      # de runtime — ver apps/api/Dockerfile), contra o Postgres de produção via rede privada/WireGuard.
+      - run: pnpm --filter api migrate:up
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+  deploy-api:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: producao
+    steps:
+      - name: Avisa o Coolify para puxar a imagem nova da API
+        run: curl -fsS -X POST "${{ secrets.COOLIFY_WEBHOOK_API }}"
+
+  deploy-web:
+    needs: build-push-web
+    runs-on: ubuntu-latest
+    environment: producao
+    steps:
+      - name: Avisa o Coolify para puxar a imagem nova do front
+        run: curl -fsS -X POST "${{ secrets.COOLIFY_WEBHOOK_WEB }}"
