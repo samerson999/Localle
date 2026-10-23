@@ -3,3 +3,8 @@ dist
 .env
 infra/*/.env
 infra/traccar/conf
+dev-server.log
+.agents
+.impeccable
+skills-lock.json
+/planejamento
