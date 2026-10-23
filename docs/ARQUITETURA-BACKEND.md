@@ -1,8 +1,32 @@
 # Arquitetura de backend e infraestrutura (proposta validada)
 
-21/10/2026. Este documento fecha o item "Em aberto" de `PRODUCT.md` › Produção: a arquitetura de backend, banco e infraestrutura para sair do protótipo (`src/`, roda só no navegador) para o sistema real de telemetria. Trata domínio: decisões ficam aqui; passo a passo de comando fica em `docs/GUIA-TRACCAR.md` e em `infra/`.
+21/10/2026 (atualizado em 23/10/2026 — decisão de monorepo, seção 0). Este documento fecha o item "Em aberto" de `PRODUCT.md` › Produção: a arquitetura de backend, banco e infraestrutura para sair do protótipo (`apps/web/src`, roda só no navegador) para o sistema real de telemetria. Trata domínio: decisões ficam aqui; passo a passo de comando fica em `docs/GUIA-TRACCAR.md` e em `infra/`.
 
-Este repositório continua sendo o front-end. O backend (NestJS) nasce num repositório próprio quando a POC do rastreador real (ver `PRODUCT.md`) validar o volume de dados.
+**Decisão revista em 23/10/2026**: o backend (NestJS) **não** nasce em repositório separado — nasce como `apps/api/` neste mesmo repositório, monorepo com `pnpm` workspaces. Ver seção 0 para o motivo e a estrutura.
+
+---
+
+## 0. Monorepo: front e backend no mesmo repositório
+
+Decisão de 23/10/2026, revendo o que a seção 1 original previa (backend em repositório próprio).
+
+**Motivo**: há lógica que precisa ser idêntica no front e no backend — o registro de parâmetros do Setup (mesma fonte para tela e banco, quando existir), validações, os motores de cálculo hoje escritos como funções puras em `src/lib/` (manutenção, escalonamento, ranking, fuel, km, pneus, relatórios de rota), o contrato de polaridade de métricas e os tipos de posição/evento. Em repositórios separados isso vira cópia que diverge silenciosamente — o motor de "quando um ativo precisa de manutenção" calculado diferente no front (preview/simulação) e no backend (cálculo real) é exatamente o tipo de bug que não aparece em teste manual.
+
+**Estrutura**:
+```
+apps/web/        — front atual (Vite + React), movido de src/ para cá em 23/10/2026
+apps/api/         — NestJS, nasce quando a POC do rastreador real validar o volume (ver seção 8)
+packages/shared/  — tipos, contratos de API, motores de cálculo e regras de domínio puras (sem React/DOM/Zustand)
+infra/            — inalterado (infra/plataforma, infra/traccar)
+docs/             — inalterado
+pnpm-workspace.yaml, package.json (raiz) — workspace root
+```
+
+- **Workspaces com pnpm** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`). O front importa de `packages/shared` via alias `@localle/shared/<módulo>` (configurado em `apps/web/vite.config.ts` e `apps/web/tsconfig.json`); a API vai importar do mesmo pacote quando nascer.
+- **O que já foi extraído para `packages/shared`** (23/10/2026): `utils`, `catalog`, `couplings`, `trips`, `engine`, `fuel`, `pneus`, `km`, `assetStatus`, `insights`, `maint`, `maintKpis`, `escalation`, `billing`, `platformOverview`, `fines`, `jornada`, `ranking`, `can`, `canSim`, `checklist`, `assetDocs`, `audit`, `routeStats`, `routeMatch` — critério: função pura, sem depender de React/Zustand/`store`/`idb`/DOM, e sem ser fixture de demonstração do protótipo.
+- **O que ficou propositalmente em `apps/web`**: `seed.ts` e dados "simulados" do protótipo (são fixture de demo, não regra de negócio real), `tokens.ts` (lê `document`/CSS vars, só roda no navegador), tudo acoplado a React/Zustand/`store`/`idb`, e `positionsSource`/`rastreioApi`/`fenceStats`/`nearbyStats`/`speedStats` (acoplados ao mock de rede do protótipo). O **registro de parâmetros do Setup** e o **contrato de polaridade de métricas** (hoje só uma demonstração isolada em `apps/web/src/pages/design/metricPolarity.ts`, não consumida por nenhuma tela real) ainda não existem como código de produção — entram em `packages/shared` quando forem implementados de verdade, não antes.
+- **CI/CD com filtro por caminho**: quando os workflows do GitHub Actions existirem (ver `docs/DEPLOY-COOLIFY.md`, plano de deploy), mudanças em `apps/web/**` disparam só o deploy do front; em `apps/api/**`, só o da API; em `packages/shared/**`, os dois.
+- **No Coolify**, cada Resource de aplicação aponta para a pasta e o Dockerfile da sua app (`apps/web/Dockerfile`, futuro `apps/api/Dockerfile`), não para a raiz do monorepo.
 
 ---
 
@@ -30,7 +54,18 @@ Tudo aqui é a proposta técnica; falta a POC com um rastreador real (uma unidad
 
 `docs/especificacao-sql/` tem o desenho das tabelas pensado no protótipo Supabase (RLS por `client_id`, funções PL/pgSQL). Ele vale como **especificação de regra de negócio**, não como schema a copiar: no backend real, RLS por linha tende a sair do Postgres e virar filtro explícito por `client_id` em cada query do NestJS (mais simples de otimizar e de explicar num `EXPLAIN`), com o isolamento entre clientes garantido na camada de serviço, não no banco.
 
+**Isolamento por cliente — camada única + teste automático + RLS como segunda proteção** (decisão de 23/10/2026): o filtro por `client_id` na aplicação não pode ser uma convenção que cada desenvolvedor lembra de aplicar — vira obrigatório ao passar por uma **única camada de acesso ao banco** (ex.: um `BaseRepository`/query builder compartilhado no NestJS); nenhuma query de domínio chama o driver do Postgres diretamente. Dois reforços adicionais, obrigatórios antes de ligar a API a dados reais de múltiplos clientes:
+1. **Testes automáticos de leitura entre clientes** — suite de integração que, para cada endpoint/query sensível, tenta ler dado de um `client_id` autenticado como outro e falha o build se conseguir.
+2. **RLS como segunda camada de defesa** (não a primeira) nas tabelas mais sensíveis (`positions`, dados de faturamento/billing) — rede de segurança caso um bug no filtro da aplicação escape dos testes acima. O filtro de aplicação continua sendo a fonte da verdade (evita o problema de "blast radius" de RLS mal escrita degradando queries silenciosamente, visto em outros projetos na mesma escala).
+
 As tabelas de telemetria de alto volume (`can_samples`, `can_events`, e a futura `positions` vinda do Traccar) são as que mais importam para performance — são elas que crescem sem limite.
+
+**O desenho de `positions`/`events` desta seção está superado por `docs/ARQUITETURA-INTEGRACAO-TRACCAR.md` § 4**
+(23/10/2026): lá o schema ganha `rastreadores`, `instalacoes` (histórico veículo×rastreador com exclusão de
+sobreposição), `posicoes`/`eventos`/`comandos` com chave de deduplicação por `traccar_position_id`/
+`traccar_event_id`, `client_id`/`asset_id` resolvidos por histórico de instalação, e `ultima_posicao` como tabela
+própria em vez de agregação na hora. O exemplo de `positions` abaixo fica só como ilustração do raciocínio de
+hypertable/índice (seções 2.2–2.3), não como schema a implementar.
 
 ### 2.2 Hypertables (TimescaleDB)
 
@@ -73,8 +108,9 @@ select add_compression_policy('positions', interval '7 days');   -- comprime o q
 select add_retention_policy('positions', interval '13 months');  -- descarta posição crua depois de 13 meses
 ```
 
-- Comprime depois de 7 dias (a janela de replay e "passou por aqui" quase sempre olha a semana corrente, sem compressão).
-- Retenção de posição crua alinhada com o que o produto promete guardar (checar com o dono do produto; "13 meses" aqui é só exemplo, para cobrir comparação ano a ano).
+- Comprime depois de 7 dias (a janela de replay e "passou por aqui" quase sempre olha a semana corrente, sem compressão) — isso é igual para todo mundo, independe do plano do cliente.
+- **Retenção por plano do cliente, não política global** (decisão de 23/10/2026): o tempo de histórico de posição é definido pelo plano contratado (ex.: 3 meses, 1 ano, 5 anos — confirmar os planos exatos com o dono do produto; `apps/web/src/lib/plans.ts` já modela planos no front, hoje para o admin de clientes/planos, não para retenção de telemetria). O exemplo de `add_retention_policy('positions', interval '13 months')` acima está **errado como política única**: `add_retention_policy` do TimescaleDB vale para a hypertable inteira, não filtra por `client_id` — não dá para ter "3 meses para o cliente A e 5 anos para o cliente B" só com a policy nativa. A retenção por cliente precisa de uma **rotina própria** (job agendado na API, não a policy do Timescale): lê o plano vigente de cada cliente e deleta/arquiva as partições/linhas daquele `client_id` especificamente quando vencer o prazo do plano dele.
+- **Armazenamento frio em Parquet para o plano de 5 anos** (decisão de 23/10/2026): não faz sentido manter 5 anos de posição bruta comprimida no Postgres só porque um plano promete esse histórico. Para os clientes nesse plano, exportar os chunks/continuous aggregates mais antigos para **Parquet em object storage** antes de descartar do banco quente, mantendo um caminho de leitura separado (mais lento, aceitável) para consulta de histórico de 5 anos. Essa rotina de export é responsabilidade da API (`apps/api`), não do Postgres sozinho.
 - O que precisa durar além da retenção (km do dia, horas de motor, eventos por veículo) vira **continuous aggregate**, não fica na tabela crua:
 
 ```sql
@@ -106,12 +142,16 @@ Isso resolve o mesmo problema que a função `fn_can_report` resolve hoje em PL/
 
 ## 4. Ingestão: Traccar → fila → Postgres
 
+**Detalhamento completo (contratos, unidades, conciliação, quarentena, decisões de retenção) em
+`docs/ARQUITETURA-INTEGRACAO-TRACCAR.md`** — esta seção fica como resumo de alto nível; o front **nunca** fala com
+o Traccar, nem em protótipo de backend: quem chama a API/webhook do Traccar é sempre o NestJS.
+
 Decisão (seção 6): o Traccar recebe o protocolo do rastreador e já grava a posição no próprio Postgres dele (schema `tc_*`). A plataforma não precisa reimplementar os ~15 protocolos usados no Brasil (GT06, Teltonika, Suntech, Ruptela, Coban etc.) — isso é exatamente o que o PDF de integração já validou.
 
 Duas formas de levar a posição do Traccar para o schema da plataforma, em ordem de preferência:
 
 1. **Webhook do Traccar** (`Forwarding` em `Settings › Server`, ou por atributo do dispositivo): o Traccar manda um `POST` a cada posição nova para um endpoint da API. A API empilha numa fila (ver abaixo) e devolve 200 rápido.
-2. **Polling** (o que o adaptador atual faz, `server/traccar-adapter.ts`, a cada 30 s): mais simples, mas acrescenta até 30 s de atraso e decola mal acima de poucas centenas de veículos. Serve para a fase de protótipo; trocar pelo webhook antes de vender a módulos que dependem de alerta em tempo real (SOS, cerca).
+2. **Polling** (o que o protótipo faz hoje via `apps/web/src/lib/positionsSource.ts`/`rastreioApi.ts`, a cada 30 s): mais simples, mas acrescenta até 30 s de atraso e decola mal acima de poucas centenas de veículos. Serve para a fase de protótipo; trocar pelo webhook antes de vender a módulos que dependem de alerta em tempo real (SOS, cerca).
 
 Fila entre a ingestão e a gravação (decisão de `PRODUCT.md`, "fila entre a ingestão e a gravação"):
 
@@ -190,23 +230,27 @@ Pontos de atenção que a Hostinger impõe:
 
 ### 7.3 Docker Compose por VPS
 
-Este repositório já traz os dois compose de referência:
+A estrutura real neste repositório é `infra/plataforma/` e `infra/traccar/` (não `infra/docker-compose.db.yml`/`app.yml`, que nunca chegaram a existir — corrigido em 23/10/2026):
 
-- `infra/docker-compose.db.yml` — sobe no VPS-DB: Postgres com TimescaleDB+PostGIS, PgBouncer, backup agendado.
-- `infra/docker-compose.app.yml` — sobe no VPS-APP: Traccar, Redis, (quando o backend nascer) a API NestJS e o front-end.
-- `infra/traccar/` — o kit do Traccar generalizado (sem credencial real), referenciado por `docs/GUIA-TRACCAR.md`.
+- `infra/plataforma/` — Postgres 16 + TimescaleDB + PostGIS (banco da plataforma) + PgBouncer. Sobe no VPS-DB em produção; local em desenvolvimento.
+- `infra/traccar/` — Traccar + o Postgres próprio dele (kit generalizado, sem credencial real, referenciado por `docs/GUIA-TRACCAR.md`). Sobe no VPS-APP em produção; local em desenvolvimento.
+- Quando `apps/api` nascer, seu Dockerfile sobe no VPS-APP junto do Traccar e do front (`apps/web`).
 
-Para desenvolvimento local (um só computador, sem separar VPS), o mesmo `infra/docker-compose.app.yml` + `infra/docker-compose.db.yml` sobem juntos apontando para `localhost` — ver `infra/README.md`.
+Para desenvolvimento local (um só computador, sem separar VPS), `infra/plataforma/` e `infra/traccar/` sobem juntos apontando para `localhost` — ver `infra/README.md`.
 
-O Coolify, quando entrar, substitui a necessidade de rodar `docker compose up -d` manualmente em cada VPS: ele guarda os dois compose, faz o deploy a partir do GitHub (CI/CD) e sabe em qual servidor cada stack roda. Os arquivos em `infra/` continuam sendo a fonte da verdade mesmo com Coolify — ele os lê, não os substitui.
+**O guia real de deploy/CI-CD é `docs/DEPLOY-COOLIFY.md`** (plano aprovado em 22/10/2026, a executar quando os recursos — Postgres, Traccar, depois a API — estiverem prontos). Resumo do fluxo por ambiente:
+- **Homologação**: banco (`infra/plataforma`) e app na mesma VPS; o Coolify builda a imagem a partir do Dockerfile de cada app (`apps/web/Dockerfile`, futuro `apps/api/Dockerfile`) direto do código-fonte.
+- **Produção**: o build roda no GitHub Actions (não no Coolify), que publica a imagem pronta num registry; o Coolify de produção só faz `pull`+deploy. O banco fica em VPS separada, ligada por rede privada/WireGuard — a "Postgres URL (internal)" que o Coolify gera só vale entre recursos da mesma instância/servidor, não atravessa VPS.
+
+O Coolify, quando entrar, substitui a necessidade de rodar `docker compose up -d` manualmente em cada VPS: ele guarda os recursos e faz o deploy a partir do GitHub (CI/CD). Os arquivos em `infra/` continuam sendo a fonte da verdade para desenvolvimento local mesmo com Coolify em produção.
 
 ---
 
 ## 8. Ordem recomendada de execução
 
-1. **Dockerizar o ambiente local** (este commit): `infra/docker-compose.db.yml` com Postgres+TimescaleDB+PostGIS, `infra/docker-compose.app.yml` com Traccar — ambos rodando no computador do time, sem depender de VPS para desenvolver.
+1. **Dockerizar o ambiente local** (feito): `infra/plataforma/` com Postgres+TimescaleDB+PostGIS, `infra/traccar/` com Traccar — ambos rodando no computador do time, sem depender de VPS para desenvolver.
 2. **POC com o GT06 real** (já em andamento na VPS Hostinger — `docs/GUIA-TRACCAR.md`): confirmar volume de posições/dia e eventos/dia com 1 rastreador, depois estimar para 400 e para 2.000.
-3. **Nascer o repositório do backend (NestJS)**, com o schema de `positions`/`events` desta seção, lendo do Traccar via webhook (seção 4).
+3. **Nascer `apps/api` neste monorepo** (NestJS, decisão de 23/10/2026 — seção 0), com o schema de `positions`/`events` desta seção, lendo do Traccar via webhook (seção 4), e importando regras de `packages/shared` em vez de duplicá-las.
 4. **Provisionar os 2 VPS de homologação** com a topologia da seção 7.2, rede privada/WireGuard, firewall mínimo.
 5. **CI/CD** (GitHub Actions → Coolify) para homologação primeiro, produção depois, como já decidido em `PRODUCT.md`.
 6. Atualizar `PRODUCT.md` para registrar Traccar como o gateway (seção 6 deste documento) e marcar o item "infraestrutura ainda será discutida" como resolvido, com link para este arquivo.

@@ -8,10 +8,10 @@ A administração da plataforma foi desenhada por perfil, em três áreas separa
 
 1. **Console da Locale** (dona da plataforma) — estrutura final (✅ construído em 22/10/2026, ⏳ pendente):
    1. ✅ Visão geral (clientes, veículos ativos, receita prevista, margem estimada, "Precisa de você": inadimplência, contratos vencendo, rastreadores com problema, equipamentos a recolher). `src/pages/Locale.tsx`, dados em `src/lib/platformOverview.ts`.
-   2. ✅ Planos (criação e edição de planos parametrizáveis, com versões). `src/pages/Planos.tsx`, catálogo em `src/lib/plans.ts`.
-   3. ✅ Clientes (cadastro, plano, veículos, usuários, situação, saúde da conta). `src/pages/Clientes.tsx`, dados em `src/lib/clients.ts`. Suspensão hoje é um único nível — a suspensão gradual por etapas fica para quando houver definição com a operação.
-   4. ✅ Faturamento (cálculo do mês, exportação para o financeiro, registro de pagamentos, atraso). `src/pages/Faturamento.tsx`.
-   5. ✅ Rastreadores e chips (estoque, custos, vínculos, instalações). `src/pages/Rastreadores.tsx`, dados em `src/lib/trackerFleet.ts`. Falta o fluxo de devolução.
+   2. ✅ Contratos (23/10/2026: substitui o catálogo de Planos — contrato individual por cliente, mensalidade fixa ou por veículo ativo com franquia/excedente, funcionalidades, vigência e versionamento; "duplicar de outro contrato" acelera o cadastro sem vincular os dois). `src/pages/Contratos.tsx`, dados em `src/lib/contracts.ts`.
+   3. ✅ Clientes (cadastro, veículos, usuários, situação, saúde da conta; contrato é editado em Contratos). `src/pages/Clientes.tsx`, dados em `src/lib/clients.ts`. Pagamento aceita múltiplas datas/parciais (`payment.history`). Suspensão hoje é um único nível e suspende o acesso imediatamente — a suspensão gradual por etapas fica para quando houver definição com a operação.
+   4. ✅ Faturamento (apuração do mês a partir do contrato vigente: receita prevista, faturamento apurado — por medição diária de veículos-dia — e valor recebido; exportação para o financeiro, registro de pagamentos, atraso). `src/pages/Faturamento.tsx`.
+   5. ✅ Rastreadores e chips (estoque, custos, vínculos, instalações e recolhimento). `src/pages/Rastreadores.tsx`, dados em `src/lib/trackerFleet.ts`. Fluxo de recolhimento (23/10/2026): cancelamento de contrato não apaga o histórico nem encerra a instalação sozinho — o equipamento fica "pendente de recolhimento" até confirmação manual.
    6. ⏳ Central de rastreadores (estados de cada aparelho, ações de reconfiguração) — não construída: depende de decidir como as ações de reconfiguração se conectam ao comando que já existe por cliente (`sendCommand`/`commandDefs`).
    7. ✅ Jurídico (reservada, sem regra automática por enquanto). `src/pages/Juridico.tsx`.
    8. ✅ Saúde da plataforma. `src/pages/Saude.tsx`, dados em `src/lib/platformHealth.ts`.
@@ -24,7 +24,7 @@ Os dados de clientes, planos e rastreadores de cada tela foram seedados de forma
 
 Isso muda o que a seção 8 tratava como pendência 2 (módulos por revenda): fica adiado junto com o painel da revenda, não é mais parte do MVP deste plano.
 
-Planos parametrizáveis (preço por veículo, módulos incluídos/avulsos, limites de veículos e usuários, tempo de histórico, versionamento) e inadimplência/pagamento são **cobrança e contrato**, não parâmetros de operação — ficam nas telas 2 a 4 do Console da Locale, fora do registro `settings.ts` deste plano.
+Contratos (mensalidade, franquia, preço por veículo, módulos contratados, limites de usuários, tempo de histórico, versionamento) e inadimplência/pagamento são **cobrança e contrato**, não parâmetros de operação — ficam nas telas 2 a 4 do Console da Locale, fora do registro `settings.ts` deste plano.
 
 ## 1. Objetivo
 
@@ -398,6 +398,6 @@ Para fechar a fase, uma busca garante que não sobrou número de operação ness
 0. **Multas no modo Supabase:** no modo Supabase, as indicações de condutor críticas não entram no "Precisa de você" (a lista vem pronta do banco). Depende da decisão sobre o modo Supabase, que deve ser descontinuado.
 
 1. **Grupo no banco:** não existe tabela de grupos (os grupos só existem no navegador). Proposta: criar `asset_groups` e `assets.group_id` nesta migration, usados só pelo Setup até a fase 2.
-2. **Módulos:** ~~hoje o Painel da revenda liga e desliga módulos por cliente~~. Adiado em 22/10/2026 junto com o painel da revenda (ver seção 0): por ora, módulos vêm direto do **plano** contratado pelo cliente (tela Planos do Console da Locale), sem camada de revenda intermediária. A proposta original (Locale libera para a revenda, revenda distribui aos clientes) volta quando o Painel da revenda existir.
+2. **Módulos:** ~~hoje o Painel da revenda liga e desliga módulos por cliente~~. Adiado em 22/10/2026 junto com o painel da revenda (ver seção 0): por ora, módulos vêm direto do **contrato** do cliente (tela Contratos do Console da Locale), sem camada de revenda intermediária. A proposta original (Locale libera para a revenda, revenda distribui aos clientes) volta quando o Painel da revenda existir.
 3. **Tabelas atuais com valor efetivo e gatilho** (seção 4), em vez de mudar as funções dos módulos agora. Confirma?
 4. **Faixas mín./máx.:** são proposta técnica. Validar com a operação, principalmente sem sinal, bateria, faixas de RPM e salto de km.
