@@ -6,7 +6,7 @@ import { uid } from './utils';
 
 export const AUDITED: Record<string, string> = { assets: 'Ativo', drivers: 'Motorista', groups: 'Grupo', operations: 'Operação', fences: 'Cerca', rules: 'Regra de alerta', commandDefs: 'Comando' };
 // rótulos de exibição: inclui operações em lote de outros módulos, registradas explicitamente (auditEntry)
-export const AUDIT_LABEL: Record<string, string> = { ...AUDITED, sistema: 'Sistema', commands: 'Comando enviado', alerts: 'Alertas', checklist: 'Checklist', events: 'Telemetria', tires: 'Pneus', discipline: 'Jornada', workOrders: 'Manutenção' };
+export const AUDIT_LABEL: Record<string, string> = { ...AUDITED, sistema: 'Sistema', commands: 'Comando enviado', alerts: 'Alertas', checklist: 'Checklist', events: 'Telemetria', tires: 'Pneus', discipline: 'Jornada', workOrders: 'Manutenção', planos: 'Planos' };
 const MAX = 2000;
 // campos técnicos ou volumosos que não entram no diff
 const SKIP = new Set(['photo', 'installPhoto', 'file', 'specs', 'customFields', 'documents', 'lifecycle', 'odometerCheckDone']);

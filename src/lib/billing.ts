@@ -26,18 +26,7 @@ export function invoice(links: Link[], cfg: BillingCfg, ym: string) {
 }
 export const otherModel = (cfg: BillingCfg): BillingCfg => ({ ...cfg, model: cfg.model === 'por_rastreador' ? 'pacote_minimo' : 'por_rastreador' });
 
-// Rastreadoras simuladas para testar os cenários de cobrança (além da revenda da simulação)
+// Cobrança da revenda da simulação com a Locale (acesso de suporte, Painel da revenda)
 export function seedPlatform(now = Date.now()) {
-  const DAY = 86400000;
-  const mk = (id: string, name: string, base: number, growth: number, churn: number, vehiclesIdle: number, stock: number, cfg: Partial<BillingCfg>) => {
-    const links: Link[] = []; let k = 0;
-    for (let m = 14; m >= 0; m--) {
-      const d = new Date(now); d.setDate(1); d.setMonth(d.getMonth() - m);
-      const adds = m === 14 ? base : Math.round(growth * (0.6 + Math.random() * 0.8));
-      for (let i = 0; i < adds; i++) links.push({ imei: `86${id.length}${String(++k).padStart(10, '0')}`, assetName: `${['ABC', 'PEX', 'QRT', 'KZM', 'SNA'][k % 5]}${String(1000 + k).slice(-4)}`, client: ['Transportes Litoral', 'Frigorífico Agreste', 'Distribuidora Sertão', 'Construtora Mar'][k % 4], linkedAt: d.getTime() + Math.random() * 27 * DAY });
-      for (const l of links) if (!l.unlinkedAt && l.linkedAt < d.getTime() && Math.random() < churn) l.unlinkedAt = d.getTime() + Math.random() * 27 * DAY;
-    }
-    return { id, name, live: false, links: links.filter((l) => l.linkedAt <= now), vehiclesIdle, stock, billing: { ...DEFAULT_BILLING, ...cfg } };
-  };
-  return { tenants: [mk('t2', 'Rastreia Nordeste', 180, 14, 0.015, 23, 40, {}), mk('t3', 'Sat Track Caruaru', 45, 4, 0.02, 9, 12, { model: 'pacote_minimo', min: 80 }), mk('t4', 'Olinda Monitoramento', 8, 3, 0.03, 4, 6, {})], demoBilling: { ...DEFAULT_BILLING } };
+  return { demoBilling: { ...DEFAULT_BILLING } };
 }

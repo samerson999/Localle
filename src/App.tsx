@@ -28,6 +28,13 @@ const Ranking = lazy(() => import('./pages/Ranking'));
 const Revenda = lazy(() => import('./pages/Revenda'));
 const Pneus = lazy(() => import('./pages/Pneus'));
 const Locale = lazy(() => import('./pages/Locale'));
+const Planos = lazy(() => import('./pages/Planos'));
+const Clientes = lazy(() => import('./pages/Clientes'));
+const Faturamento = lazy(() => import('./pages/Faturamento'));
+const Equipe = lazy(() => import('./pages/Equipe'));
+const Saude = lazy(() => import('./pages/Saude'));
+const Juridico = lazy(() => import('./pages/Juridico'));
+const Rastreadores = lazy(() => import('./pages/Rastreadores'));
 const Design = lazy(() => import('./pages/Design'));
 const PrecisaDeVoce = lazy(() => import('./pages/PrecisaDeVoce'));
 const PortariaApp = lazy(() => import('./pages/PortariaApp'));
@@ -98,6 +105,13 @@ export default function App() {
           <Route path="/ranking" element={<Guard m="ranking"><Ranking /></Guard>} />
           <Route path="/pneus" element={<Guard m="pneus"><Pneus /></Guard>} />
           <Route path="/locale" element={<Locale />} />
+          <Route path="/locale/planos" element={<RoleOnly roles={['locale']}><Planos /></RoleOnly>} />
+          <Route path="/locale/clientes" element={<RoleOnly roles={['locale']}><Clientes /></RoleOnly>} />
+          <Route path="/locale/faturamento" element={<RoleOnly roles={['locale']}><Faturamento /></RoleOnly>} />
+          <Route path="/locale/equipe" element={<RoleOnly roles={['locale']}><Equipe /></RoleOnly>} />
+          <Route path="/locale/saude" element={<RoleOnly roles={['locale']}><Saude /></RoleOnly>} />
+          <Route path="/locale/juridico" element={<RoleOnly roles={['locale']}><Juridico /></RoleOnly>} />
+          <Route path="/locale/rastreadores" element={<RoleOnly roles={['locale']}><Rastreadores /></RoleOnly>} />
           <Route path="/revenda" element={<Revenda />} />
           <Route path="/design" element={<RoleOnly roles={['locale']}><Design /></RoleOnly>} />
         </Route>

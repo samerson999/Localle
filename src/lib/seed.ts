@@ -3,6 +3,8 @@ import { SPECS_DB, CTB } from './catalog';
 import { processTick, VState } from './engine';
 import { seedTires, DEFAULT_TIRE_CFG } from './pneus';
 import { seedPlatform } from './billing';
+import { seedPlans } from './plans';
+import { seedClients } from './clients';
 import { DEFAULT_RECIPIENTS } from './escalation';
 import { enrichFuelings } from './fuel';
 import { trailerKm } from './couplings';
@@ -313,7 +315,7 @@ export function buildSeed(now = Date.now()) {
   state.odometerReadings = [];
   state.maintRecipients = DEFAULT_RECIPIENTS.map((r) => ({ ...r })); // escalonamento por e-mail (fila simulada)
   state.escLog = {}; state.outbox = [];
-  state.platform = seedPlatform(now);
+  state.platform = { ...seedPlatform(now), plans: seedPlans(now), clients: seedClients(now) };
   // histórico motorista × veículo (lib/driverLinks): o vínculo atual começou há 45 dias; a1 teve outro motorista antes
   state.driverLinks = [{ id: 'dl0', assetId: 'a1', driverId: 'd7', start: now - 90 * DAY, end: now - 45 * DAY, source: 'escala' }, ...assets.filter((a: any) => a.driverId).map((a: any, i: number) => ({ id: 'dl' + (i + 1), assetId: a.id, driverId: a.driverId, start: now - 45 * DAY, end: null, source: a.id === 'a3' ? 'app' : 'escala' }))];
   // conflito para conferência: KHP4G42 na escala com Carla (d7), mas Paulo (d5) entrou pelo app há 6 h; vale o app (prioridade maior)

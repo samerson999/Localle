@@ -2,7 +2,7 @@ import { Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode 
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { useNeedsYou } from '../lib/needs';
-import { cx, IconButton, Skeleton } from './ui';
+import { cx, IconButton, Skeleton, confirmAction } from './ui';
 import { Icon } from './icons';
 import { OdometerAsk } from './RemoteBits';
 import { useRastreioSync } from '../lib/rastreioApi';
@@ -113,7 +113,16 @@ function LayoutBody() {
   const fleet = canSeeFleet(session);
   const allowed = (l: typeof GESTAO) => (fleet ? l.filter((n) => rev.modules[(n as any).mod ?? n.key]) : []);
   const admin = [
-    ...(session.role === 'locale' ? [{ key: 'locale', label: 'Painel da Locale', to: '/locale', icon: 'locale' }] : []),
+    ...(session.role === 'locale' ? [
+      { key: 'locale', label: 'Visão geral', to: '/locale', icon: 'locale' },
+      { key: 'locale-planos', label: 'Planos', to: '/locale/planos', icon: 'dinheiro' },
+      { key: 'locale-clientes', label: 'Clientes', to: '/locale/clientes', icon: 'revenda' },
+      { key: 'locale-faturamento', label: 'Faturamento', to: '/locale/faturamento', icon: 'banco' },
+      { key: 'locale-rastreadores', label: 'Rastreadores e chips', to: '/locale/rastreadores', icon: 'sinal' },
+      { key: 'locale-juridico', label: 'Jurídico', to: '/locale/juridico', icon: 'documento' },
+      { key: 'locale-saude', label: 'Saúde da plataforma', to: '/locale/saude', icon: 'monitoramento' },
+      { key: 'locale-equipe', label: 'Equipe e auditoria', to: '/locale/equipe', icon: 'historico' },
+    ] : []),
   ];
   const canConfig = session.role === 'revenda' || session.role === 'locale';
   const mods = [...allowed(OPERACAO), ...allowed(GESTAO), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
@@ -171,7 +180,7 @@ function LayoutBody() {
             <div className="flex items-center gap-stack mt-2 pt-3 pl-2 overflow-hidden border-t border-line">
               <div className="w-8 h-8 rounded-pill bg-avatar text-ink flex items-center justify-center font-semibold text-caption shrink-0" title={mini ? session.name : undefined}>{session.name.slice(0, 2).toUpperCase()}</div>
               <div className={cx('flex flex-col min-w-0 mr-auto', fade)}><span className="font-medium text-body truncate">{session.name}</span><span className="text-caption text-ink-2 truncate">{session.support ? 'Acesso de suporte' : session.role === 'locale' ? 'Administração Locale' : session.role === 'revenda' ? 'Admin da revenda' : 'Gestor da frota'}</span></div>
-              <IconButton aria-label="Sair" title="Sair" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={() => { patch(() => ({ session: null })); nav('/login'); }}><Icon name="sair" size={18} /></IconButton>
+              <IconButton aria-label="Sair" title="Sair" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.' })) { patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" size={18} /></IconButton>
             </div>
           </div>
         </SidebarFooter>

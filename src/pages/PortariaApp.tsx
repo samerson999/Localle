@@ -7,7 +7,7 @@ import { useStore, assetKm } from '../lib/store';
 import { registerGate } from '../lib/gate';
 import { TRIP_PARAMS, lastGate, nextGateKind } from '../lib/trips';
 import { BrandMark } from '../components/Layout';
-import { Button, Field, Input, Select, SearchSelect, IconButton, TimeInput, toast, EmptyState, Card } from '../components/ui';
+import { Button, Field, Input, Select, SearchSelect, IconButton, TimeInput, toast, EmptyState, Card, confirmAction } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
 import { StatusDot, Plate, AssetName } from '../components/story';
 import { Icon } from '../components/icons';
@@ -41,7 +41,7 @@ export default function PortariaApp() {
     <div className="min-h-screen bg-canvas flex flex-col">
       <header className="sticky top-0 z-10 flex items-center gap-2 px-4 h-14 bg-canvas border-b border-line">
         <BrandMark size={30} /><div className="flex flex-col min-w-0 mr-auto"><span className="font-semibold text-body truncate">Portaria</span><span className="text-caption text-ink-2 truncate">{session.name}</span></div>
-        <IconButton aria-label="Sair" title="Sair" onClick={() => { s.patch(() => ({ session: null })); nav('/login'); }}><Icon name="sair" /></IconButton>
+        <IconButton aria-label="Sair" title="Sair" onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.' })) { s.patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" /></IconButton>
       </header>
       <main className="flex-1 w-full max-w-[560px] mx-auto px-4 pt-4 pb-28 anim-page">
         {!asset ? (

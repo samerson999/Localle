@@ -151,7 +151,11 @@ function mergeSaved(persisted: any, current0: any) {
         ...(persisted?.fuelings && !persisted.fuelNfV1 ? { fuelings: enrichFuelings(persisted.fuelings), fuelGoals: { operations: { op1: 8, op2: 2.3, op3: 3 }, ...(persisted.fuelGoals || {}) } } : {}), fuelNfV1: true,
         // uma vez: abastecimentos antigos ganham o km que o rastreador marcava (para a divergência de km)
         ...(persisted?.fuelings && persisted.fuelNfV1 && !persisted.fuelKmV1 ? { fuelings: persisted.fuelings.map((f: any) => withTrackerKm(f)) } : {}), fuelKmV1: true, fuelCfg: persisted?.fuelCfg ?? { ocr: false },
-        revenda: persisted?.revenda ? { ...persisted.revenda, modules: { ...DEFAULT_MODULES, ...(persisted.revenda.modules || {}) } } : current.revenda });
+        revenda: persisted?.revenda ? { ...persisted.revenda, modules: { ...DEFAULT_MODULES, ...(persisted.revenda.modules || {}) } } : current.revenda,
+        // uma vez: catálogo de planos da Locale (Console da Locale · Planos) entra nos dados salvos antigos
+        ...(persisted?.platform && !persisted.platformPlansV1 ? { platform: { ...persisted.platform, plans: current.platform.plans } } : {}), platformPlansV1: true,
+        // uma vez: clientes da Locale (Console da Locale · Clientes) entram nos dados salvos antigos
+        ...(persisted?.platform && !persisted.platformClientsV1 ? { platform: { ...(persisted.platform.plans ? persisted.platform : { ...persisted.platform, plans: current.platform.plans }), clients: current.platform.clients } } : {}), platformClientsV1: true });
   return persisted?.seedRev === SEED_REV ? res : { ...seedOnce(), ...res, seedRev: SEED_REV };
 }
 

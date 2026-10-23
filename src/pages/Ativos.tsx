@@ -339,7 +339,7 @@ function IconPicker({ category, value, onChange }: { category: string; value: st
 // Engates do implemento: cada linha é a composição inteira em que ele esteve (cavalo + implementos, em ordem).
 // O km do implemento é a soma do que os cavalos rodaram com ele. A composição se edita na ficha do cavalo.
 // registro de alterações dos cadastros (lib/audit); com refId mostra só as do item, em versão compacta
-function AuditLog({ refId }: { refId?: string }) {
+export function AuditLog({ refId }: { refId?: string }) {
   const log = useStore((s) => s.auditLog || []);
   const [coll, setColl] = useState('');
   const [q, setQ] = useState('');
