@@ -7,6 +7,7 @@ import { alertaIdOf, alertaToAlert, alertIdFor, applyPosicao, assetIdFor, backen
 import { useStore } from './store';
 import * as M from './localleModulos';
 import { LIVE_GROUP } from './rastreioApi';
+import { erroHttp, fetchOuErro, mensagemDeErro, MSG_SESSAO } from './apiErro';
 
 // Integração com o NOSSO backend (apps/api): login (sempre real, não há mais login de simulação) e frota
 // ao vivo. As chamadas passam pelo proxy do Vite (/api-localle → LOCALLE_API_URL).
@@ -36,28 +37,28 @@ function encerrarSessao() {
 }
 
 async function postLogin(path: string, email: string, password: string): Promise<string | null> {
-  const r = await fetch(BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const r = await fetchOuErro(BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
   if (r.status === 401) return null;
   // 403 só vem depois da senha certa (cliente suspenso): a mensagem da API é a que o usuário precisa ver
   if (r.status === 403) throw new Error((await r.json().catch(() => null))?.message || 'Acesso suspenso');
-  if (!r.ok) throw new Error(`Servidor indisponível (HTTP ${r.status})`);
+  if (!r.ok) throw erroHttp(r.status);
   return (await r.json()).accessToken;
 }
 
 // ---------- convite de primeiro acesso (rotas públicas: a credencial é o token do e-mail) ----------
 export async function consultarConvite(token: string): Promise<{ email: string; clientName: string }> {
-  const r = await fetch(`${BASE}/auth/convites/${encodeURIComponent(token)}`);
-  if (!r.ok) throw new Error(r.status === 404 || r.status === 400 ? 'Convite inválido ou expirado. Peça um novo à Locale.' : `Servidor indisponível (HTTP ${r.status})`);
+  const r = await fetchOuErro(`${BASE}/auth/convites/${encodeURIComponent(token)}`);
+  if (!r.ok) throw r.status === 404 || r.status === 400 ? new Error('Convite inválido ou expirado. Peça um novo à Locale.') : erroHttp(r.status);
   return r.json();
 }
 
 /** Define a senha; em caso de sucesso já deixa a sessão aberta (token salvo). */
 export async function aceitarConvite(token: string, password: string): Promise<void> {
-  const r = await fetch(`${BASE}/auth/convites/${encodeURIComponent(token)}/aceitar`, {
+  const r = await fetchOuErro(`${BASE}/auth/convites/${encodeURIComponent(token)}/aceitar`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }),
   });
   const data = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(r.status === 404 ? 'Convite inválido ou expirado. Peça um novo à Locale.' : (data?.message || `HTTP ${r.status}`));
+  if (!r.ok) throw r.status === 404 ? new Error('Convite inválido ou expirado. Peça um novo à Locale.') : erroHttp(r.status, data);
   setToken(data.accessToken);
 }
 
@@ -76,9 +77,9 @@ export async function login(email: string, password: string): Promise<'gestor' |
 export function logout() { setToken(null); }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const r = await fetch(BASE + path, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (r.status === 401) { encerrarSessao(); throw new Error('Sessão expirada: entre de novo'); }
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const r = await fetchOuErro(BASE + path, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (r.status === 401) { encerrarSessao(); throw new Error(MSG_SESSAO); }
+  if (!r.ok) throw erroHttp(r.status, await r.json().catch(() => null));
   return r.json();
 }
 
@@ -117,16 +118,16 @@ export async function removerCerca(id: string) {
 
 /** Escrita: devolve o corpo JSON; erro da API (400/409…) vira Error com a mensagem dela, para o toast. */
 async function apiSend<T>(method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
-  const r = await fetch(BASE + path, {
+  const r = await fetchOuErro(BASE + path, {
     method,
     headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (r.status === 401) { encerrarSessao(); throw new Error('Sessão expirada: entre de novo'); }
+  if (r.status === 401) { encerrarSessao(); throw new Error(MSG_SESSAO); }
   if (r.status === 403) throw new Error('Seu acesso não permite esta alteração');
   if (r.status === 204) return null as T;
   const data = await r.json().catch(() => null);
-  if (!r.ok) throw new Error((data && (Array.isArray(data.message) ? data.message.join('; ') : data.message)) || `HTTP ${r.status}`);
+  if (!r.ok) throw erroHttp(r.status, data);
   return data as T;
 }
 
@@ -209,7 +210,7 @@ export function useAdminQuery<T>(load: () => Promise<T>, deps: unknown[] = []) {
     setState((s) => ({ ...s, loading: true }));
     load()
       .then((data) => vivo && setState({ data, error: '', loading: false }))
-      .catch((e) => vivo && setState((s) => ({ ...s, error: e.message || String(e), loading: false })));
+      .catch((e) => vivo && setState((s) => ({ ...s, error: mensagemDeErro(e), loading: false })));
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, ...deps]);
@@ -217,8 +218,8 @@ export function useAdminQuery<T>(load: () => Promise<T>, deps: unknown[] = []) {
 }
 
 // ---------- sincronização ----------
-interface SyncState { status: 'off' | 'ok' | 'erro'; ts: number; count: number; error: string }
-export const useLocalle = create<SyncState>(() => ({ status: 'off', ts: 0, count: 0, error: '' }));
+interface SyncState { status: 'off' | 'ok' | 'erro'; ts: number; count: number; error: string; modulosFalhos: string[] }
+export const useLocalle = create<SyncState>(() => ({ status: 'off', ts: 0, count: 0, error: '', modulosFalhos: [] }));
 
 const LIVE_HISTORY = 120;
 
@@ -300,9 +301,9 @@ function runStream(signal: AbortSignal) {
       try {
         if (attempt > 0) await syncAlertas(); // reconexão: o que mudou enquanto caído vem da API, não do pub/sub
         const qs = since ? `?since=${encodeURIComponent(since)}` : '';
-        const r = await fetch(`${BASE}/monitoring/stream${qs}`, { headers: { Authorization: `Bearer ${getToken()}` }, signal });
-        if (r.status === 401) { encerrarSessao(); throw new Error('Sessão expirada: entre de novo'); }
-        if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+        const r = await fetchOuErro(`${BASE}/monitoring/stream${qs}`, { headers: { Authorization: `Bearer ${getToken()}` }, signal });
+        if (r.status === 401) { encerrarSessao(); throw new Error(MSG_SESSAO); }
+        if (!r.ok || !r.body) throw erroHttp(r.status);
         const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
         const parse = createSseParser();
         attempt = 0;
@@ -319,7 +320,7 @@ function runStream(signal: AbortSignal) {
         throw new Error('Conexão de tempo real encerrada');
       } catch (e: any) {
         if (signal.aborted) return;
-        useLocalle.setState({ status: 'erro', ts: Date.now(), error: e.message || String(e) });
+        useLocalle.setState({ status: 'erro', ts: Date.now(), error: mensagemDeErro(e) });
         if (!getToken()) return;
         await new Promise((res) => setTimeout(res, RECONNECT_MS[Math.min(attempt++, RECONNECT_MS.length - 1)]));
       }
@@ -363,7 +364,7 @@ export function useLocalleSync() {
     Promise.all([syncFrota(), syncCercas(), syncAlertas(), syncRegras()])
       .then(() => syncModulos())
       .then(() => runStream(ctrl.signal))
-      .catch((e) => useLocalle.setState({ status: 'erro', ts: Date.now(), error: e.message || String(e) }));
+      .catch((e) => useLocalle.setState({ status: 'erro', ts: Date.now(), error: mensagemDeErro(e) }));
     return () => ctrl.abort();
   }, [email, role]);
 }
@@ -398,7 +399,7 @@ export function useRelatorioApi<T extends { assetId: string }>(rota: string, par
     const porId = new Map(reais.map((a) => [backendIdOf(a.id), a]));
     apiGet<T[]>(`/reports/${rota}?${qs}`)
       .then((rows) => vivo && setSt({ rows: rows.filter((r) => porId.has(r.assetId)).map((r) => ({ ...r, a: porId.get(r.assetId) })), loading: false, error: '' }))
-      .catch((e) => vivo && setSt({ rows: [], loading: false, error: e.message || String(e) }));
+      .catch((e) => vivo && setSt({ rows: [], loading: false, error: mensagemDeErro(e) }));
     return () => { vivo = false; };
   }, [chave, enabled]);
   return st;
@@ -425,10 +426,10 @@ export const revogarLink = (id: string) => apiSend('POST', `/links-localizacao/$
 export interface LinkPublico { placa: string; expiraEm: string; posicao: { lat: number; lon: number; fixTime: string; speedKmh: number | null; ignition: boolean | null } | null }
 /** Página pública: sem login. `abertura` = primeiro carregamento (conta como abertura para quem criou o link). */
 export async function abrirLinkPublico(token: string, abertura: boolean): Promise<LinkPublico | { motivo: 'expirado' | 'revogado' | 'invalido' }> {
-  const r = await fetch(`${BASE}/publico/localizacao/${encodeURIComponent(token)}${abertura ? '?abertura=1' : ''}`);
+  const r = await fetchOuErro(`${BASE}/publico/localizacao/${encodeURIComponent(token)}${abertura ? '?abertura=1' : ''}`);
   if (r.status === 410) return { motivo: (await r.json().catch(() => null))?.motivo === 'revogado' ? 'revogado' : 'expirado' };
   if (r.status === 404 || r.status === 400) return { motivo: 'invalido' };
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (!r.ok) throw erroHttp(r.status);
   return r.json();
 }
 
@@ -574,10 +575,14 @@ export async function cancelarViagem(id: string) { await apiSend('POST', `/viage
 
 /** Carga inicial de todos os módulos depois do login (cada um independente: um erro não derruba os outros). */
 export async function syncModulos() {
-  const partes = [syncMotoristas, syncGrupos, syncJornada, syncMultas, syncAbastecimentos, syncManutencao, syncChecklist, syncRanking, syncViagens];
-  const r = await Promise.allSettled(partes.map((f) => f()));
-  const falhas = r.filter((x): x is PromiseRejectedResult => x.status === 'rejected');
-  if (falhas.length) useLocalle.setState({ status: 'erro', ts: Date.now(), error: falhas.map((f) => f.reason?.message || String(f.reason)).join('; ') });
+  const partes: [string, () => Promise<unknown>][] = [
+    ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],
+    ['manutenção', syncManutencao], ['checklist', syncChecklist], ['ranking', syncRanking], ['viagens', syncViagens],
+  ];
+  const r = await Promise.allSettled(partes.map(([, f]) => f()));
+  const falhas = r.map((x, i) => (x.status === 'rejected' ? { nome: partes[i][0], motivo: mensagemDeErro(x.reason) } : null)).filter((x): x is { nome: string; motivo: string } => !!x);
+  // a tela mostra "não carregou: motoristas, multas" com botão de tentar de novo; a lista vazia não pode passar por "sem dados"
+  useLocalle.setState({ modulosFalhos: falhas.map((f) => f.nome), error: falhas.length ? falhas[0].motivo : '' });
 }
 
 

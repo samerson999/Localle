@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useStore } from './store';
+import { erroHttp, fetchOuErro } from './apiErro';
 
 // Integração com a plataforma de rastreamento real (API "user" v1.0).
 // As chamadas passam pelo proxy do Vite (/api-rastreio), que anexa a chave do .env.
@@ -11,8 +12,8 @@ const LIVE_HISTORY = 120; // pontos por veículo real guardados no navegador (o 
 export const LIVE_GROUP = { id: 'g_api', name: 'Frota real (rastreador)' };
 
 export async function apiCall(cmd: string) {
-  const r = await fetch('/api-rastreio?cmd=' + encodeURIComponent(cmd));
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const r = await fetchOuErro('/api-rastreio?cmd=' + encodeURIComponent(cmd));
+  if (!r.ok) throw erroHttp(r.status);
   const txt = await r.text();
   try { return JSON.parse(txt); } catch { throw new Error(txt.slice(0, 120) || 'Resposta vazia'); }
 }

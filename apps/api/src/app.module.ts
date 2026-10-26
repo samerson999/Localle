@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { HttpExceptionFilter } from './common/http-exception.filter';
 import { AssetsModule } from './assets/assets.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthGuard } from './auth/auth.guard';
@@ -80,6 +81,10 @@ import { ViagensModule } from './viagens/viagens.module';
   ],
   controllers: [HealthController],
   // AuthGuard global (achado #1 da auditoria de 23/10/2026) — fail-closed por padrão, ver auth/auth.guard.ts.
-  providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
+  // Filtro global: 5xx com rota+tenant no log e mensagem em português na resposta — ver common/http-exception.filter.ts.
+  providers: [
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+  ],
 })
 export class AppModule {}

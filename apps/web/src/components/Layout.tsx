@@ -6,7 +6,7 @@ import { cx, IconButton, Skeleton, confirmAction } from './ui';
 import { Icon } from './icons';
 import { OdometerAsk } from './RemoteBits';
 import { useRastreioSync } from '../lib/rastreioApi';
-import { logout, useLocalleSync } from '../lib/localleApi';
+import { logout, syncFrota, syncModulos, useLocalle, useLocalleSync } from '../lib/localleApi';
 import { useMaintJobs } from '../lib/maintJobs';
 import NeedsPanel from './NeedsPanel';
 import { canSeeFleet, endSupport, homeOf } from '../lib/support';
@@ -36,6 +36,31 @@ export function BrandMark({ size = 36 }: { size?: number }) {
   return b.logo
     ? <img src={b.logo} alt={b.name} style={{ height: size, maxWidth: size * 4 }} className="object-contain" />
     : <div style={{ width: size, height: size }} className="rounded-btn bg-brand text-brand-ink flex items-center justify-center font-semibold text-small shrink-0">{b.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}</div>;
+}
+
+// Falha de dado do backend que o usuário precisa ver sem abrir o dock: tempo real caído (posições podem estar
+// paradas) e módulo que não carregou (lista vazia não pode passar por "sem dados"). O stream reconecta sozinho;
+// o botão força uma recarga da frota/módulos agora.
+function AvisoBackend() {
+  const r = useLocalle();
+  const [tentando, setTentando] = useState(false);
+  const semTempoReal = r.status === 'erro';
+  if (!semTempoReal && !r.modulosFalhos.length) return null;
+  const tentar = async () => {
+    setTentando(true);
+    try { if (semTempoReal) await syncFrota(); if (r.modulosFalhos.length) await syncModulos(); } catch { /* o estado do aviso já reflete a falha */ } finally { setTentando(false); }
+  };
+  return (
+    <div role="alert" className="no-print sticky top-14 md:top-14 z-[30] flex flex-wrap items-center gap-x-stack gap-y-hair px-page md:px-page-md py-tight bg-crit-soft text-crit-ink text-small">
+      <Icon name="erro" size={16} className="shrink-0" />
+      <span className="mr-auto">
+        {semTempoReal
+          ? <><b>Sem conexão com o tempo real.</b> As posições e alertas podem estar desatualizados. {r.error}</>
+          : <><b>Não foi possível carregar:</b> {r.modulosFalhos.join(', ')}. {r.error}</>}
+      </span>
+      <button type="button" disabled={tentando} className="h-8 px-3 rounded-btn border border-current font-medium hover:bg-card disabled:opacity-60" onClick={tentar}>{tentando ? 'Tentando…' : 'Tentar agora'}</button>
+    </div>
+  );
 }
 
 function Counter({ n, pulse = 0, className = '' }: { n: number; pulse?: number; className?: string }) {
@@ -215,6 +240,7 @@ function LayoutBody() {
               <button type="button" className="h-8 px-3 rounded-btn border border-on-dark-hover hover:bg-on-dark-hover font-medium" onClick={() => { endSupport(); nav(homeOf({ ...session, support: undefined })); }}>Encerrar acesso</button>
             </div>
           )}
+          <AvisoBackend />
           <OdometerAsk />
           <main key={loc.pathname} className="flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end md:px-page-md md:pt-page-top-md anim-page"><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
         </div>
