@@ -127,7 +127,8 @@ function LayoutBody() {
     ] : []),
   ];
   const canConfig = session.role === 'revenda' || session.role === 'locale';
-  const mods = [...allowed(OPERACAO), ...allowed(GESTAO), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
+  // Setup (parâmetros de operação, docs/PLANO-SETUP-ADMIN.md): quem vê a frota configura a própria empresa; a API decide quem pode alterar
+  const mods = [...allowed(OPERACAO), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
   const mini = state === 'collapsed' && !openMobile; // só ícones (desktop recolhido)
   const sbw = mini ? SIDEBAR_WIDTH_ICON : SIDEBAR_WIDTH;
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');

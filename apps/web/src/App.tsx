@@ -29,6 +29,7 @@ const Jornada = lazy(() => import('./pages/Jornada'));
 const Ranking = lazy(() => import('./pages/Ranking'));
 const Revenda = lazy(() => import('./pages/Revenda'));
 const Pneus = lazy(() => import('./pages/Pneus'));
+const Setup = lazy(() => import('./pages/Setup'));
 const Locale = lazy(() => import('./pages/Locale'));
 const Contratos = lazy(() => import('./pages/Contratos'));
 const Clientes = lazy(() => import('./pages/Clientes'));
@@ -108,6 +109,7 @@ export default function App() {
           <Route path="/jornada" element={<Guard m="jornada"><Jornada /></Guard>} />
           <Route path="/ranking" element={<Guard m="ranking"><Ranking /></Guard>} />
           <Route path="/pneus" element={<Guard m="pneus"><Pneus /></Guard>} />
+          <Route path="/setup" element={<Setup />} />
           <Route path="/locale" element={<Locale />} />
           <Route path="/locale/contratos" element={<RoleOnly roles={['locale']}><Contratos /></RoleOnly>} />
           <Route path="/locale/clientes" element={<RoleOnly roles={['locale']}><Clientes /></RoleOnly>} />
