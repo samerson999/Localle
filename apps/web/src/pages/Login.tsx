@@ -3,19 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { BrandMark } from '../components/Layout';
 import { homeOf } from '../lib/support';
+import { login } from '../lib/localleApi';
 import { Button, Input, Field, cx } from '../components/ui';
 
 export default function Login() {
   const b = useStore((s) => s.revenda.branding);
   const nav = useNavigate();
-  const [email, setEmail] = useState('gestor@demo.com');
-  const [pass, setPass] = useState('demo');
+  const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
-  const enter = () => {
-    if (pass !== 'demo') return setErr('Senha incorreta. Na simulação a senha é "demo".');
-    const em = email.toLowerCase(); const role = em.includes('locale') ? 'locale' : em.includes('revenda') ? 'revenda' : em.includes('portaria') ? 'portaria' : 'gestor';
-    useStore.getState().patch(() => ({ session: { email, role, name: role === 'locale' ? 'Rafael · Locale' : role === 'revenda' ? 'Admin da revenda' : role === 'portaria' ? 'Portaria Matriz' : 'Erivan Melo' } }));
-    nav(homeOf({ role }));
+  const [busy, setBusy] = useState(false);
+  // Autenticação sempre na API (não há mais login de simulação): usuário de cliente entra como gestor da
+  // frota, superadmin da Locale no Painel da Locale. Permissões de cada papel são decididas pela API.
+  const enter = async () => {
+    setBusy(true); setErr('');
+    try {
+      const role = await login(email.trim(), pass);
+      useStore.getState().patch(() => ({ session: { email: email.trim(), role, name: email.trim() } }));
+      nav(homeOf({ role }));
+    } catch (e: any) {
+      setErr(e.message || String(e));
+    } finally { setBusy(false); }
   };
   const pos = b.photoPos;
   const photo = (
@@ -29,14 +37,13 @@ export default function Login() {
   );
   const form = (
     <div className={cx('relative flex items-center p-6 md:p-10', pos === 'fundo' ? 'w-full min-h-screen justify-end md:pr-20' : pos === 'centro' ? 'w-full min-h-screen justify-center' : 'flex-[1_1_460px] justify-center')}>
-      <form onSubmit={(e) => { e.preventDefault(); enter(); }} className="w-full max-w-[400px] bg-card rounded-card p-6 sm:p-8 md:p-10 flex flex-col gap-5">
+      <form onSubmit={(e) => { e.preventDefault(); void enter(); }} className="w-full max-w-[400px] bg-card rounded-card p-6 sm:p-8 md:p-10 flex flex-col gap-5">
         <div className="flex items-center gap-3"><BrandMark size={48} /><div className="flex flex-col"><span className="text-h3 font-semibold">{b.name}</span><span className="text-small text-ink-2">Gestão de frotas e rastreamento</span></div></div>
         <div><h1 className="text-h2 font-semibold">Entrar</h1><p className="text-body text-ink-2 mt-1">Use o e-mail cadastrado pela sua central.</p></div>
         <Field label="E-mail ou usuário"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" /></Field>
         <Field label="Senha"><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} className="h-ctl-lg" autoComplete="current-password" /></Field>
         {err && <p role="alert" className="text-small font-medium text-crit-ink">{err}</p>}
-        <Button type="submit" size="lg">Acessar plataforma</Button>
-        <div className="text-caption text-ink-2 bg-card-2 border border-line rounded-ctl p-3 leading-relaxed">Simulação: <span className="font-semibold text-ink">gestor@demo.com</span> entra como gestor da frota; <span className="font-semibold text-ink">revenda@demo.com</span> entra como admin da rastreadora (Painel da revenda); <span className="font-semibold text-ink">locale@demo.com</span> entra como administração da plataforma (Painel da Locale). Os dois só veem a frota do cliente pelo acesso de suporte; <span className="font-semibold text-ink">portaria@demo.com</span> entra só na tela de saída e entrada, para o celular. Senha: <span className="font-semibold text-ink">demo</span>.</div>
+        <Button type="submit" size="lg" disabled={busy}>{busy ? 'Entrando…' : 'Acessar plataforma'}</Button>
         <div className="text-small text-ink-2 border-t border-line pt-4">Suporte: <span className="num">{b.supportPhone}</span></div>
       </form>
     </div>

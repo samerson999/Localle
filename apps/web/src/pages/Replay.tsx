@@ -15,7 +15,8 @@ import { categoryOf } from '../components/assetArt';
 import { GlideMarker, bearing, FenceShapes, Address, TILE, ATTR } from '../components/MapBits';
 import { tv } from '../lib/tokens';
 import { EVENT_TYPES } from '@localle/shared/catalog';
-import { fetchRoute } from '../lib/rastreioApi';
+import { fetchLiveRoute } from '../lib/positionsSource';
+import { fetchEventos } from '../lib/localleApi';
 import { routeStats } from '@localle/shared/routeStats';
 import { matchToRoads } from '@localle/shared/routeMatch';
 import { fmtDT, fmtD, fmtT, haversine, num, toInputDT, HOUR, hm } from '@localle/shared/utils';
@@ -52,20 +53,31 @@ export default function Replay() {
     if (!asset?.tracker?.live) { setRemote(null); return; }
     let alive = true;
     setRemote({ pts: [], loading: true, error: '' });
-    fetchRoute(asset.tracker.imei, new Date(loaded.from).getTime(), new Date(loaded.to).getTime())
+    fetchLiveRoute(asset, new Date(loaded.from).getTime(), new Date(loaded.to).getTime())
       .then((p) => alive && setRemote({ pts: p, loading: false, error: '' }))
       .catch((e) => alive && setRemote({ pts: [], loading: false, error: e.message }));
     return () => { alive = false; };
-  }, [loaded, asset?.tracker?.imei]);
+  }, [loaded, asset?.id, asset?.tracker?.imei]);
   const pts = useMemo(() => {
     if (remote) return remote.pts;
     const f = new Date(loaded.from).getTime(), t = new Date(loaded.to).getTime();
     return (history[loaded.aid] || []).filter((p: any) => p[0] >= f && p[0] <= t);
   }, [loaded, remote]);
+  // veículo real: eventos do período vêm do backend (alarmes, cercas, regras); simulado: do store
+  const [evsReais, setEvsReais] = useState<any[] | null>(null);
+  useEffect(() => {
+    if (!asset?.tracker?.live || asset?.tracker?.source !== 'localle') { setEvsReais(null); return; }
+    let vivo = true;
+    fetchEventos(asset.id, new Date(loaded.from).getTime(), new Date(loaded.to).getTime())
+      .then((e) => vivo && setEvsReais(e))
+      .catch(() => vivo && setEvsReais([]));
+    return () => { vivo = false; };
+  }, [loaded, asset?.id]);
   const evs = useMemo(() => {
+    if (evsReais) return evsReais;
     const f = new Date(loaded.from).getTime(), t = new Date(loaded.to).getTime();
     return allEvents.filter((e: any) => e.assetId === loaded.aid && e.ts >= f && e.ts <= t);
-  }, [loaded, allEvents.length]);
+  }, [loaded, allEvents.length, evsReais]);
   const stats = useMemo(() => routeStats(pts), [pts]);
 
   // Ajusta o traçado desenhado às ruas (OSM/OSRM); sem internet ou com o serviço fora, cai na posição bruta do
@@ -125,7 +137,7 @@ export default function Replay() {
             {showF && <FenceShapes fences={fences} />}
             <Polyline positions={line} pathOptions={{ color: tv('--route'), weight: 4, opacity: 0.7 }} />
             <Polyline positions={done} pathOptions={{ color: tv('--real'), weight: 5 }} />
-            {showEv && evs.map((e: any) => <CircleMarker key={e.id} center={e.pos} radius={7} pathOptions={{ color: tv('--card'), fillColor: tv('--loss'), fillOpacity: 1, weight: 2 }}><Tooltip>{EVENT_TYPES[e.type]?.label} · {e.value} km/h · {fmtT(e.ts)}</Tooltip></CircleMarker>)}
+            {showEv && evs.map((e: any) => <CircleMarker key={e.id} center={e.pos} radius={7} pathOptions={{ color: tv('--card'), fillColor: tv('--loss'), fillOpacity: 1, weight: 2 }}><Tooltip>{(EVENT_TYPES[e.type]?.label ?? e.label)}{e.value == null ? "" : ` · ${e.value} km/h`} · {fmtT(e.ts)}</Tooltip></CircleMarker>)}
             {stats.stops.map((s: any, i: number) => <CircleMarker key={i} center={s.pos} radius={8} pathOptions={{ color: tv('--card'), fillColor: tv('--status-parado'), fillOpacity: 1, weight: 2 }}><Tooltip>Parada {fmtT(s.ts)}–{fmtT(s.end)}</Tooltip></CircleMarker>)}
             {cur && <GlideMarker key={asset?.id} category={categoryOf(asset)} position={snap(idx, cur)} plate={asset?.name || ''} note={`${cur[3]} km/h`} kind={cur[3] > 3 ? 'mov' : cur[4] ? 'parado' : 'off'} heading={idx > 0 ? bearing([pts[idx - 1][1], pts[idx - 1][2]], [cur[1], cur[2]]) : 0} selected />}
             <Fit pts={line} follow={follow && playing} cur={cur ? snap(idx, cur) : null} />
@@ -178,7 +190,7 @@ export default function Replay() {
         </div>
       </Card>
       <Card title="Eventos e paradas do percurso" icon="historico">
-        <Table emptyState={<EmptyState icon="ok" title="Nenhum evento ou parada neste percurso" />} head={['Hora', 'Ocorrência', 'Detalhe', 'Endereço', '']} rows={[...evs.map((e: any) => ({ ts: e.ts, t: EVENT_TYPES[e.type]?.label, d: e.value + ' km/h', pos: e.pos })), ...stats.stops.map((s: any) => ({ ts: s.ts, t: 'Parada', d: hm(s.end - s.ts), pos: s.pos }))].sort((a, b) => a.ts - b.ts).map((r) => [<span className="num">{fmtDT(r.ts)}</span>, <span className="font-medium">{r.t}</span>, <span className="num">{r.d}</span>, <Address pos={r.pos} className="text-small" />, <TextButton onClick={() => { const i = pts.findIndex((p: any) => p[0] >= r.ts); if (i >= 0) { setIdx(i); setPlaying(false); } }}>Ir para o ponto</TextButton>])} />
+        <Table emptyState={<EmptyState icon="ok" title="Nenhum evento ou parada neste percurso" />} head={['Hora', 'Ocorrência', 'Detalhe', 'Endereço', '']} rows={[...evs.map((e: any) => ({ ts: e.ts, t: (EVENT_TYPES[e.type]?.label ?? e.label), d: e.value == null ? '—' : e.value + ' km/h', pos: e.pos })), ...stats.stops.map((s: any) => ({ ts: s.ts, t: 'Parada', d: hm(s.end - s.ts), pos: s.pos }))].sort((a, b) => a.ts - b.ts).map((r) => [<span className="num">{fmtDT(r.ts)}</span>, <span className="font-medium">{r.t}</span>, <span className="num">{r.d}</span>, <Address pos={r.pos} className="text-small" />, <TextButton onClick={() => { const i = pts.findIndex((p: any) => p[0] >= r.ts); if (i >= 0) { setIdx(i); setPlaying(false); } }}>Ir para o ponto</TextButton>])} />
       </Card>
       </Stack>
 
@@ -197,7 +209,7 @@ export default function Replay() {
           const evPontos = [...evs.map((e: any) => e.pos as [number, number]), ...stats.stops.map((s: any) => s.pos as [number, number])];
           const evEnderecos = await resolveAddresses(evPontos);
           const evHead = ['Hora', 'Ocorrência', 'Detalhe', 'Endereço'];
-          const evRows = [...evs.map((e: any, i: number) => [fmtDT(e.ts), EVENT_TYPES[e.type]?.label, `${e.value} km/h`, evEnderecos[i]]),
+          const evRows = [...evs.map((e: any, i: number) => [fmtDT(e.ts), (EVENT_TYPES[e.type]?.label ?? e.label), (e.value == null ? "—" : `${e.value} km/h`), evEnderecos[i]]),
             ...stats.stops.map((s: any, i: number) => [fmtDT(s.ts), 'Parada', hm(s.end - s.ts), evEnderecos[evs.length + i]])].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
           const meta = { empresa: `${revenda.clientName} — Replay de percurso`, periodo: `Período: ${periodoLabel}`, filtros: `Veículo: ${asset?.name || '—'}`, emitidoEm: fmtDT(Date.now()) };
           if (formato === 'csv') csv(nomeArq('csv'), head, rows);

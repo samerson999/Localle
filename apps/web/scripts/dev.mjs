@@ -4,8 +4,11 @@
 // Também anuncia o endereço real: se a 5173 estiver ocupada (ex.: Docker), o Vite usa a próxima porta livre.
 import { spawn } from 'node:child_process';
 import { watch } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
-const vite = 'node_modules/vite/bin/vite.js';
+// resolve pelo Node: com node-linker=hoisted (.npmrc) o vite fica no node_modules da raiz
+const vite = join(dirname(createRequire(import.meta.url).resolve('vite/package.json')), 'bin/vite.js');
 const args = process.argv.slice(2);
 const plain = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 let child, timer, restarting = false;

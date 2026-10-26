@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
 import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
@@ -7,7 +8,7 @@ import { TILE, ATTR, Address } from '../components/MapBits';
 import { AssetName } from '../components/story';
 import { Icon } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
-import { nearbyPasses } from '../lib/nearbyStats';
+import { nearbyPasses } from '@localle/shared/nearbyStats';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
 import { resolveAddresses } from '../lib/geocode';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
@@ -43,8 +44,13 @@ export default function RelatorioPassouPorAqui() {
   const scope = assets.filter((a: any) => (!grp || a.groupIds?.includes(grp)) && (!aid || a.id === aid));
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
-  const passagens = useMemo(() => !centro ? [] : scope.flatMap((a: any) => nearbyPasses(posOf(a), centro, raio).map((p) => ({ a, p })))
-    .sort((x: any, y: any) => y.p.enter - x.p.enter), [scope.map((a: any) => a.id).join(), history, f, t, centro, raio]);
+  // veículos reais: passagens calculadas na API (PostGIS + nearbyPasses); simulados: aqui
+  const api = useRelatorioApi<{ assetId: string; passagens: any[] }>('passou-por-aqui', { from: new Date(f).toISOString(), to: new Date(t).toISOString(), lat: centro?.[0], lon: centro?.[1], raio }, scope, !!centro);
+  useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
+  const passagens = useMemo(() => !centro ? [] : [
+    ...scope.filter((a: any) => !isRealAsset(a)).flatMap((a: any) => nearbyPasses(posOf(a), centro, raio).map((p) => ({ a, p }))),
+    ...api.rows.flatMap((r) => r.passagens.map((p) => ({ a: r.a, p }))),
+  ].sort((x: any, y: any) => y.p.enter - x.p.enter), [scope.map((a: any) => a.id).join(), history, f, t, centro, raio, api.rows]);
 
   const filtradas = busca.trim()
     ? passagens.filter(({ a }: any) => [a.name, a.plate].some((s) => (s || '').toLowerCase().includes(busca.trim().toLowerCase())))

@@ -16,6 +16,14 @@ export default defineConfig(({ mode }) => {
       rewrite: (p: string) => '/api/api.php?api=user&ver=1.0&key=' + (env.RASTREIO_API_KEY || '') + '&' + (p.split('?')[1] || ''),
     },
   };
+  // Nosso backend (apps/api), sempre ligado (o login é real): /api-localle/... vai para a API sem o prefixo.
+  Object.assign(proxy, {
+    '/api-localle': {
+      target: env.LOCALLE_API_URL || 'http://localhost:3000',
+      changeOrigin: true,
+      rewrite: (p: string) => p.replace(/^\/api-localle/, ''),
+    },
+  });
   return {
     plugins: [react(), Icons({ compiler: 'jsx', jsx: 'react' })],
     resolve: {

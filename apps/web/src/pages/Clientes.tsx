@@ -1,138 +1,129 @@
-// Console da Locale · Clientes: cadastro, veículos, usuários, situação e saúde da conta.
-// O contrato comercial (mensalidade, franquia, funcionalidades) é editado em Contratos; aqui só mostra o resumo.
-// Ver docs/PLANO-SETUP-ADMIN.md, seção 0. Suspensão hoje é um único nível (não gradual) — ver nota no modal.
-import { useMemo, useState } from 'react';
-import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Select, toast, EmptyState } from '../components/ui';
+// Console da Locale · Clientes: cadastro real no backend (GET /clients, POST /superadmin/clients). Cliente nasce
+// com o admin inicial na mesma transação; o admin recebe um convite por e-mail e define a própria senha (a Locale
+// nunca a conhece). Situação vem do contrato (editado em Contratos); pagamento fica em Faturamento.
+import { useState } from 'react';
+import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Callout, toast, EmptyState } from '../components/ui';
 import { useStore } from '../lib/store';
-import { auditEntry } from '@localle/shared/audit';
-import { uid, brl, fmtD, fmtDT, num } from '@localle/shared/utils';
-import { currentVersion, type Contract } from '../lib/contracts';
-import type { ClientRecord, ClientStatus } from '../lib/clients';
+import { adminApi, useAdminQuery, type AdminClient } from '../lib/localleApi';
+import { fmtD, num } from '@localle/shared/utils';
+import { CONTRACT_BADGE } from './Contratos';
 
-const STATUS_BADGE: Record<ClientStatus, { tone: string; label: string }> = {
-  implantacao: { tone: 'orange', label: 'Em implantação' },
-  ativo: { tone: 'green', label: 'Ativo' },
-  suspenso: { tone: 'red', label: 'Suspenso' },
-};
-const BILLING_LABEL = { mensalidade_fixa: 'Mensalidade fixa', por_veiculo_ativo: 'Por veículo ativo' } as const;
+const conviteToast = (enviado: boolean, ok: string) =>
+  enviado ? toast(ok) : toast('Cadastro feito, mas o e-mail do convite não saiu.', { tone: 'crit', detail: 'Verifique o SMTP em Saúde da plataforma e use "Reenviar convite".' });
 
 export default function Clientes() {
   const session = useStore((s) => s.session);
-  const clients = useStore((s) => s.platform.clients) as ClientRecord[];
-  const contracts = useStore((s) => s.platform.contracts) as Contract[];
-  const [editing, setEditing] = useState<ClientRecord | null>(null);
-  const [paying, setPaying] = useState<ClientRecord | null>(null);
-  if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com locale@demo.com para ver o Console da Locale." /></Card>;
+  const { data, error, loading, reload } = useAdminQuery(adminApi.clients);
+  const [creating, setCreating] = useState(false);
+  const [renaming, setRenaming] = useState<AdminClient | null>(null);
+  const [adminFor, setAdminFor] = useState<AdminClient | null>(null);
+  if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com o acesso da Locale para ver o Console da Locale." /></Card>;
 
-  const contractOf = (id: string) => contracts.find((c) => c.clientId === id);
-  const sorted = useMemo(() => [...clients].sort((a, b) => (b.payment.daysLate || 0) - (a.payment.daysLate || 0)), [clients]);
+  const reenviar = async (c: AdminClient) => {
+    try {
+      const { conviteEnviado } = await adminApi.reenviarConvite(c.id, c.admin_pendente_id!);
+      conviteToast(conviteEnviado, 'Convite reenviado. O link anterior deixou de valer.');
+    } catch (e: any) { toast(e.message || String(e), { tone: 'crit' }); }
+  };
 
+  const clients = data || [];
   return (
     <div>
-      <PageHeader icon="revenda" title="Clientes" subtitle="Contrato, veículos, usuários, situação e saúde da conta" />
+      <PageHeader icon="revenda" title="Clientes" subtitle="Cadastro, acesso inicial, situação, veículos e usuários de cada conta">
+        <Button onClick={() => setCreating(true)}>Novo cliente</Button>
+      </PageHeader>
       <PageBody>
-        <Section title={`${clients.length} clientes`}>
+        {error && <Callout tone="crit">Não foi possível carregar os clientes: {error}</Callout>}
+        <Section title={loading && !data ? 'Clientes' : `${clients.length} clientes`}>
           <Card>
-            <Table minWidth={1050} align={['left', 'left', 'right', 'right', 'left', 'left', 'left', 'right']}
-              head={['Cliente', 'Cobrança', 'Veículos', 'Usuários', 'Situação', 'Pagamento', 'Contrato', '']}
-              rows={sorted.map((c) => {
-                const contract = contractOf(c.id);
-                return [
-                  <span className="font-medium">{c.name}</span>,
-                  contract ? BILLING_LABEL[currentVersion(contract).billingType] : '—',
-                  <span className="num">{num(c.vehicles)}</span>,
-                  <span className="num">{num(c.users)}</span>,
-                  <Badge tone={STATUS_BADGE[c.status].tone}>{STATUS_BADGE[c.status].label}</Badge>,
-                  c.payment.status === 'em_dia' ? <Badge tone="green">Em dia</Badge> : <span className="flex flex-col gap-hair"><Badge tone={c.payment.status === 'parcial' ? 'orange' : 'red'}>{c.payment.status === 'parcial' ? 'Parcial' : `${c.payment.daysLate} dias de atraso`}</Badge><span className="text-caption text-ink-2 num">{brl(c.payment.overdue)} em aberto</span></span>,
-                  c.contractEndsAt ? fmtD(c.contractEndsAt) : '—',
-                  <div className="flex gap-3">
-                    <TextButton onClick={() => setEditing(c)}>Editar</TextButton>
-                    {c.payment.status !== 'em_dia' && <TextButton onClick={() => setPaying(c)}>Registrar pagamento</TextButton>}
-                  </div>,
-                ];
-              })}
+            <Table minWidth={980} loading={loading && !data} align={['left', 'left', 'right', 'left', 'right', 'left', 'right']}
+              head={['Cliente', 'Situação', 'Veículos', 'Acesso', 'Rastreadores instalados', 'Cadastrado em', '']}
+              emptyState={<EmptyState title="Nenhum cliente cadastrado" detail="Cadastre o primeiro cliente com o e-mail do administrador dele." action={<Button onClick={() => setCreating(true)}>Novo cliente</Button>} />}
+              rows={clients.map((c) => [
+                <span className="font-medium">{c.name}</span>,
+                c.contrato_status ? <Badge tone={CONTRACT_BADGE[c.contrato_status].tone}>{CONTRACT_BADGE[c.contrato_status].label}</Badge> : <span className="text-small text-ink-2">Sem contrato</span>,
+                <span className="num">{num(c.veiculos)}</span>,
+                <span className="flex flex-col gap-hair">
+                  {c.usuarios_ativos ? <span className="num text-small">{num(c.usuarios_ativos)} {c.usuarios_ativos === 1 ? 'usuário' : 'usuários'}</span> : !c.convites_pendentes && <Badge tone="orange">Sem acesso</Badge>}
+                  {c.convites_pendentes > 0 && <Badge tone="orange">{c.convites_pendentes === 1 ? 'Convite pendente' : `${c.convites_pendentes} convites pendentes`}</Badge>}
+                </span>,
+                <span className="num">{num(c.rastreadores_instalados)}</span>,
+                <span className="num text-small">{fmtD(Date.parse(c.created_at))}</span>,
+                <div className="flex gap-3 justify-end">
+                  <TextButton onClick={() => setRenaming(c)}>Renomear</TextButton>
+                  {c.admin_pendente_id && <TextButton onClick={() => reenviar(c)}>Reenviar convite</TextButton>}
+                  {!c.usuarios_ativos && !c.convites_pendentes && <TextButton onClick={() => setAdminFor(c)}>Convidar admin</TextButton>}
+                </div>,
+              ])}
             />
           </Card>
         </Section>
       </PageBody>
-      {editing && <ClientModal client={editing} onClose={() => setEditing(null)} />}
-      {paying && <PaymentModal client={paying} onClose={() => setPaying(null)} />}
+      {creating && <NewClientModal onClose={() => setCreating(false)} onDone={reload} />}
+      {renaming && <RenameModal client={renaming} onClose={() => setRenaming(null)} onDone={reload} />}
+      {adminFor && <AdminModal client={adminFor} onClose={() => setAdminFor(null)} onDone={reload} />}
     </div>
   );
 }
 
-function ClientModal({ client, onClose }: { client: ClientRecord; onClose: () => void }) {
-  const patch = useStore((s) => s.patch);
-  const [status, setStatus] = useState<ClientStatus>(client.status);
-  const [vehicles, setVehicles] = useState(client.vehicles);
-  const [users, setUsers] = useState(client.users);
-
-  const save = () => {
-    patch((s: any) => {
-      const changes = [
-        ...(status !== client.status ? [{ f: 'status', from: client.status, to: status }] : []),
-        ...(vehicles !== client.vehicles ? [{ f: 'vehicles', from: String(client.vehicles), to: String(vehicles) }] : []),
-      ];
-      return {
-        platform: { ...s.platform, clients: s.platform.clients.map((x: ClientRecord) => (x.id === client.id ? { ...x, status, vehicles, users } : x)) },
-        ...(changes.length ? auditEntry(s, { coll: 'planos', refId: client.id, label: client.name, action: 'alterou', changes }) : {}),
-      };
-    });
-    toast('Cliente salvo.');
-    onClose();
-  };
-
+function AdminEmail({ email, setEmail }: { email: string; setEmail: (v: string) => void }) {
   return (
-    <Modal open onClose={onClose} title={`Editar · ${client.name}`} width="max-w-xl" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button onClick={save}>Salvar</Button></>}>
-      <FormGroup cols={2}>
-        <Field label="Situação"><Select value={status} onChange={(e) => setStatus(e.target.value as ClientStatus)} options={[{ value: 'implantacao', label: 'Em implantação' }, { value: 'ativo', label: 'Ativo' }, { value: 'suspenso', label: 'Suspenso' }]} /></Field>
-        <Field label="Veículos"><Input type="number" value={vehicles} onChange={(e) => setVehicles(+e.target.value)} /></Field>
-        <Field label="Usuários"><Input type="number" value={users} onChange={(e) => setUsers(+e.target.value)} /></Field>
-      </FormGroup>
-      <p className="text-caption text-ink-2">Mensalidade, franquia e funcionalidades contratadas são editadas em Contratos, não aqui.</p>
-      <p className="text-caption text-ink-2">Suspensão hoje é um único nível (bloqueia a operação) e suspende o acesso imediatamente. Suspensão gradual por etapas é item futuro, a definir com a operação.</p>
+    <FormGroup title="Administrador do cliente" description="Recebe por e-mail um link (válido por 48 h) para confirmar o endereço e criar a própria senha. Depois, cadastra os gestores e operadores da conta.">
+      <Field label="E-mail"><Input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+    </FormGroup>
+  );
+}
+
+function useSubmit<T>(run: () => Promise<T>, after: (r: T) => void, onDone: () => void, onClose: () => void) {
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    try { after(await run()); onDone(); onClose(); }
+    catch (e: any) { toast(e.message || String(e), { tone: 'crit' }); }
+    finally { setBusy(false); }
+  };
+  return { busy, submit };
+}
+
+const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+
+function NewClientModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const { busy, submit } = useSubmit(
+    () => adminApi.createClient({ name: name.trim(), admin: { email: email.trim() } }),
+    (r) => conviteToast(r.conviteEnviado, `Cliente cadastrado. Convite enviado para ${email.trim()}.`),
+    onDone, onClose,
+  );
+  return (
+    <Modal open onClose={onClose} title="Novo cliente" width="max-w-xl" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!name.trim() || !emailOk(email)} onClick={submit}>Cadastrar e convidar</Button></>}>
+      <Field label="Nome do cliente"><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <AdminEmail email={email} setEmail={setEmail} />
+      <p className="text-caption text-ink-2">Cliente e administrador são criados juntos: se o e-mail já estiver em uso, nada é cadastrado. O contrato é cadastrado em Contratos.</p>
     </Modal>
   );
 }
 
-export function PaymentModal({ client, onClose }: { client: ClientRecord; onClose: () => void }) {
-  const patch = useStore((s) => s.patch);
-  const [amount, setAmount] = useState(client.payment.overdue);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod] = useState('pix');
-  const [note, setNote] = useState('');
-
-  const save = () => {
-    const full = amount >= client.payment.overdue;
-    const record = { id: uid('pay'), date: new Date(date).getTime(), amount, method, note };
-    patch((s: any) => ({
-      platform: { ...s.platform, clients: s.platform.clients.map((x: ClientRecord) => (x.id === client.id ? { ...x, payment: full ? { status: 'em_dia', daysLate: 0, overdue: 0, history: [...(x.payment.history || []), record] } : { ...x.payment, status: 'parcial', overdue: Math.max(0, x.payment.overdue - amount), history: [...(x.payment.history || []), record] } } : x)) },
-      ...auditEntry(s, { coll: 'planos', refId: client.id, label: client.name, action: 'registrou pagamento', note: `${brl(amount)} via ${method}${note ? ` · ${note}` : ''}` }),
-    }));
-    toast(full ? 'Pagamento registrado. Cliente em dia.' : 'Pagamento parcial registrado.');
-    onClose();
-  };
-
+function AdminModal({ client, onClose, onDone }: { client: AdminClient; onClose: () => void; onDone: () => void }) {
+  const [email, setEmail] = useState('');
+  const { busy, submit } = useSubmit(
+    () => adminApi.createInitialAdmin(client.id, { email: email.trim() }),
+    (r) => conviteToast(r.conviteEnviado, `Convite enviado para ${email.trim()}.`),
+    onDone, onClose,
+  );
   return (
-    <Modal open onClose={onClose} title={`Registrar pagamento · ${client.name}`} width="max-w-md" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button onClick={save}>Registrar</Button></>}>
-      <p className="text-small text-ink-2">Em aberto: <span className="num font-semibold text-ink">{brl(client.payment.overdue)}</span>{client.payment.daysLate ? ` · ${client.payment.daysLate} dias de atraso` : ''}.</p>
-      <FormGroup cols={2}>
-        <Field label="Valor pago (R$)"><Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(+e.target.value)} /></Field>
-        <Field label="Data do pagamento"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-        <Field label="Forma de pagamento"><Select value={method} onChange={(e) => setMethod(e.target.value)} options={[{ value: 'pix', label: 'Pix' }, { value: 'boleto', label: 'Boleto' }, { value: 'cartao', label: 'Cartão' }, { value: 'transferencia', label: 'Transferência' }]} /></Field>
-      </FormGroup>
-      <Field label="Observação" hint="Opcional"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-      {(client.payment.history || []).length > 0 && (
-        <div className="flex flex-col gap-hair">
-          <span className="text-caption text-ink-2 font-medium">Pagamentos registrados nesta competência</span>
-          {client.payment.history.map((p) => (
-            <div key={p.id} className="flex justify-between text-small text-ink-2">
-              <span>{fmtDT(p.date)} · {p.method}{p.note ? ` · ${p.note}` : ''}</span>
-              <span className="num">{brl(p.amount)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+    <Modal open onClose={onClose} title={`Convidar admin · ${client.name}`} width="max-w-xl" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!emailOk(email)} onClick={submit}>Convidar</Button></>}>
+      <AdminEmail email={email} setEmail={setEmail} />
+    </Modal>
+  );
+}
+
+function RenameModal({ client, onClose, onDone }: { client: AdminClient; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState(client.name);
+  const { busy, submit } = useSubmit(() => adminApi.renameClient(client.id, name.trim()), () => toast('Cliente renomeado.'), onDone, onClose);
+  return (
+    <Modal open onClose={onClose} title={`Renomear · ${client.name}`} width="max-w-md" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!name.trim() || name.trim() === client.name} onClick={submit}>Salvar</Button></>}>
+      <Field label="Nome do cliente"><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
     </Modal>
   );
 }

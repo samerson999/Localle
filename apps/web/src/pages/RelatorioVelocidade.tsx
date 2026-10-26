@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
 import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
@@ -7,7 +8,7 @@ import { TILE, ATTR, Address } from '../components/MapBits';
 import { AssetName } from '../components/story';
 import { Icon } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
-import { speedLegs } from '../lib/speedStats';
+import { speedLegs } from '@localle/shared/speedStats';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
 import { resolveAddresses } from '../lib/geocode';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
@@ -37,8 +38,13 @@ export default function RelatorioVelocidade() {
   const scope = assets.filter((a: any) => (!grp || a.groupIds?.includes(grp)) && (!aid || a.id === aid));
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
-  const trechos = useMemo(() => scope.flatMap((a: any) => speedLegs(posOf(a), minSpeed).map((leg) => ({ a, leg })))
-    .sort((x: any, y: any) => y.leg.vmax - x.leg.vmax), [scope.map((a: any) => a.id).join(), history, f, t, minSpeed]);
+  // veículos reais: trechos calculados na API (mesma speedLegs, sobre as posições do banco); simulados: aqui
+  const api = useRelatorioApi<{ assetId: string; legs: any[] }>('velocidade', { from: new Date(f).toISOString(), to: new Date(t).toISOString(), minSpeed }, scope);
+  useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
+  const trechos = useMemo(() => [
+    ...scope.filter((a: any) => !isRealAsset(a)).flatMap((a: any) => speedLegs(posOf(a), minSpeed).map((leg) => ({ a, leg }))),
+    ...api.rows.flatMap((r) => r.legs.map((leg) => ({ a: r.a, leg }))),
+  ].sort((x: any, y: any) => y.leg.vmax - x.leg.vmax), [scope.map((a: any) => a.id).join(), history, f, t, minSpeed, api.rows]);
 
   const filtrados = busca.trim()
     ? trechos.filter(({ a }: any) => [a.name, a.plate].some((s) => (s || '').toLowerCase().includes(busca.trim().toLowerCase())))

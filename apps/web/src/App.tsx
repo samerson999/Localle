@@ -16,7 +16,9 @@ const RelatorioCercas = lazy(() => import('./pages/RelatorioCercas'));
 const RelatorioVelocidade = lazy(() => import('./pages/RelatorioVelocidade'));
 const RelatorioPosicoes = lazy(() => import('./pages/RelatorioPosicoes'));
 const RelatorioPassouPorAqui = lazy(() => import('./pages/RelatorioPassouPorAqui'));
+const RelatorioUso = lazy(() => import('./pages/RelatorioUso'));
 const Compartilhar = lazy(() => import('./pages/Compartilhar'));
+const Convite = lazy(() => import('./pages/Convite'));
 const Ativos = lazy(() => import('./pages/Ativos'));
 const Manutencao = lazy(() => import('./pages/Manutencao'));
 const Combustivel = lazy(() => import('./pages/Combustivel'));
@@ -82,6 +84,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/compartilhar/:token" element={<Compartilhar />} />
+        <Route path="/convite/:token" element={<Convite />} />
         <Route path="/portaria" element={<Guard m="viagens" portaria><PortariaApp /></Guard>} />
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
@@ -95,6 +98,7 @@ export default function App() {
           <Route path="/relatorios/velocidade" element={<Guard m="monitoramento"><RelatorioVelocidade /></Guard>} />
           <Route path="/relatorios/posicoes" element={<Guard m="monitoramento"><RelatorioPosicoes /></Guard>} />
           <Route path="/relatorios/passou-por-aqui" element={<Guard m="monitoramento"><RelatorioPassouPorAqui /></Guard>} />
+          <Route path="/relatorios/uso" element={<Guard m="monitoramento"><RelatorioUso /></Guard>} />
           <Route path="/ativos" element={<Guard m="ativos"><Ativos /></Guard>} />
           <Route path="/manutencao" element={<Guard m="manutencao"><Manutencao /></Guard>} />
           <Route path="/combustivel" element={<Guard m="combustivel"><Combustivel /></Guard>} />

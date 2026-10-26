@@ -1,4 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
+import { fetchLiveRoute } from '../lib/positionsSource';
+
+// Pontos (mapa e exportação linha a linha) dos veículos reais só até este tanto de veículos por vez;
+// acima disso o relatório mostra o resumo calculado na API e pede para filtrar.
+const MAX_VEICULOS_COM_PONTOS = 10;
 import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Polyline, CircleMarker } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
@@ -36,14 +42,29 @@ export default function RelatorioPosicoes() {
   const scope = assets.filter((a: any) => (!grp || a.groupIds?.includes(grp)) && (!aid || a.id === aid));
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
-  const porVeiculo = useMemo(() => scope.map((a: any) => ({ a, pts: posOf(a), stats: routeStats(posOf(a)) }))
-    .filter((x: any) => x.pts.length), [scope.map((a: any) => a.id).join(), history, f, t]);
+  // veículos reais: resumo (routeStats) calculado na API sobre o banco; simulados: aqui
+  const api = useRelatorioApi<{ assetId: string; posicoes: number; stats: any }>('percurso', { from: new Date(f).toISOString(), to: new Date(t).toISOString() }, scope);
+  useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
+  const [ptsReais, setPtsReais] = useState<Record<string, any[]>>({});
+  const comPontos = api.rows.length > 0 && api.rows.length <= MAX_VEICULOS_COM_PONTOS;
+  useEffect(() => {
+    if (!comPontos) { setPtsReais({}); return; }
+    let vivo = true;
+    Promise.all(api.rows.map((r) => fetchLiveRoute(r.a, f, t).then((p) => [r.a.id, p] as const)))
+      .then((e) => vivo && setPtsReais(Object.fromEntries(e)))
+      .catch((e) => vivo && toast('Não foi possível carregar as posições: ' + (e.message || e), { tone: 'crit' }));
+    return () => { vivo = false; };
+  }, [api.rows, f, t]);
+  const porVeiculo = useMemo(() => [
+    ...scope.filter((a: any) => !isRealAsset(a)).map((a: any) => ({ a, pts: posOf(a), n: posOf(a).length, stats: routeStats(posOf(a)) })),
+    ...api.rows.map((r) => ({ a: r.a, pts: ptsReais[r.a.id] || [], n: r.posicoes, stats: r.stats })),
+  ].filter((x: any) => x.n), [scope.map((a: any) => a.id).join(), history, f, t, api.rows, ptsReais]);
 
   const filtrados = busca.trim()
     ? porVeiculo.filter(({ a }: any) => [a.name, a.plate].some((s) => (s || '').toLowerCase().includes(busca.trim().toLowerCase())))
     : porVeiculo;
 
-  const totalPosicoes = porVeiculo.reduce((s: number, { pts }: any) => s + pts.length, 0);
+  const totalPosicoes = porVeiculo.reduce((s: number, { n }: any) => s + n, 0);
   const distTotal = porVeiculo.reduce((s: number, { stats }: any) => s + stats.dist, 0);
 
   const quick = (ms: number, label: string) => <Button variant="secondary" size="sm" onClick={() => { setFrom(toInputDT(ms)); setTo(toInputDT(Date.now())); }}>{label}</Button>;
@@ -58,7 +79,7 @@ export default function RelatorioPosicoes() {
 
   const resumoHead = ['Veículo', 'Placa', 'Posições', 'Distância', 'Vel. máxima'];
   const resumoRows = () => [
-    ...porVeiculo.map(({ a, pts, stats }: any) => [a.name, a.plate || '—', pts.length, `${Math.round(stats.dist)} km`, `${Math.round(stats.vmax)} km/h`]),
+    ...porVeiculo.map(({ a, n, stats }: any) => [a.name, a.plate || '—', n, `${Math.round(stats.dist)} km`, `${Math.round(stats.vmax)} km/h`]),
     ['Total', '', totalPosicoes, `${Math.round(distTotal)} km`, `${Math.round(porVeiculo.reduce((m: number, { stats }: any) => Math.max(m, stats.vmax), 0))} km/h`],
   ];
 
@@ -128,12 +149,13 @@ export default function RelatorioPosicoes() {
             ))}
             {porVeiculo.map(({ a, pts }: any, i: number) => {
               const last = pts[pts.length - 1];
+              if (!last) return null; // veículo real sem pontos carregados (escopo acima do limite de veículos com pontos)
               return <CircleMarker key={a.id} center={[last[1], last[2]]} radius={6} pathOptions={{ color: cores[i % cores.length], fillColor: cores[i % cores.length], fillOpacity: 1 }} />;
             })}
           </MapContainer>
         </Card>
 
-        <Card title="Posições registradas" subtitle="Lista detalhada das posições da frota no período, com velocidade e endereço."
+        <Card title="Posições registradas" subtitle={api.rows.length > MAX_VEICULOS_COM_PONTOS ? `A lista e o trajeto mostram até ${MAX_VEICULOS_COM_PONTOS} veículos por vez — filtre por grupo ou veículo para ver as posições. O resumo acima cobre a frota toda.` : 'Lista detalhada das posições da frota no período, com velocidade e endereço.'}
           actions={<div className="w-56"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por veículo ou placa…" /></div>}>
           <Table minWidth={760} pageSize={10} align={['left', 'left', 'right', 'left', 'left']}
             emptyState={<EmptyState icon="rota" layout="row" title="Nenhuma posição no período" detail="Troque o período ou os veículos." />}
@@ -150,7 +172,7 @@ export default function RelatorioPosicoes() {
           <Table minWidth={760} pageSize={10} align={['left', 'left', 'right', 'right', 'right']}
             emptyState={<EmptyState title="Nenhum veículo com posições no período" />}
             head={['Veículo', 'Placa', 'Posições', 'Distância', 'Vel. máxima']}
-            rows={porVeiculo.map(({ a, pts, stats }: any) => [<AssetName name={a.name} />, a.plate || '—', <span className="num">{pts.length}</span>, <span className="num">{Math.round(stats.dist)} km</span>, <span className="num">{Math.round(stats.vmax)} km/h</span>])} />
+            rows={porVeiculo.map(({ a, n, stats }: any) => [<AssetName name={a.name} />, a.plate || '—', <span className="num">{n}</span>, <span className="num">{Math.round(stats.dist)} km</span>, <span className="num">{Math.round(stats.vmax)} km/h</span>])} />
         </Card>
       </Stack>
 

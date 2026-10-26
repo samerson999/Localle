@@ -1,9 +1,18 @@
 // Veículo em estado crítico: enquanto houver evento ativo ou sem tratamento.
 //  - alerta de prioridade alta ainda não tratado (ler o alerta NÃO resolve; só "marcar como tratado");
 //  - bloqueio/desbloqueio enviado e ainda não confirmado pelo rastreador.
-// NO PRODUTO REAL esta regra vai para o backend, junto do registro de quem tratou e quando.
+// Alertas da API (id "al:lc:...") são tratados no backend (POST /alertas/:id/tratar), que registra quem tratou
+// e quando e avisa os outros usuários; a marca local abaixo é só a atualização imediata da tela.
 import { useMemo } from 'react';
+import { toast } from '../components/ui';
+import { tratarAlerta } from './localleApi';
 import { useStore } from './store';
+
+function tratarNaApi(alertIds: Iterable<string>, t: Treatment) {
+  for (const id of alertIds) {
+    tratarAlerta(id, t.reason, t.note?.trim()).catch((e) => toast('Não foi possível registrar o tratamento: ' + (e.message || e), { tone: 'crit' }));
+  }
+}
 
 export interface CritReason { key: string; kind: 'alerta' | 'comando'; title: string; detail: string; since: number; alertIds?: string[]; cmdId?: string }
 
@@ -58,12 +67,14 @@ export function resolveReasons(assetId: string, reasons: CritReason[], t: Treatm
     alerts: s.alerts.map((a: any) => (ids.has(a.id) ? { ...a, read: true, ...mark } : a)),
     commands: s.commands.map((c: any) => (cmds.has(c.id) ? { ...c, resolved: { ...(c.resolved || {}), [assetId]: { at: now, by, reason: t.reason, note: mark.resolvedNote } } } : c)),
   }));
+  tratarNaApi(ids, t);
 }
 
 export function resolveAlert(alertId: string, t: Treatment) {
   const st = useStore.getState();
   const by = st.session?.name || 'Operador';
   st.patch((s: any) => ({ alerts: s.alerts.map((a: any) => (a.id === alertId ? { ...a, read: true, resolvedAt: Date.now(), resolvedBy: by, resolvedReason: t.reason, resolvedNote: t.note?.trim() || '' } : a)) }));
+  tratarNaApi([alertId], t);
 }
 
 // tratamentos recentes de um ativo (para mostrar motivo, quem e quando)

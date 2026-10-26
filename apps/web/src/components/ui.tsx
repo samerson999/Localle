@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { fileToDataURL } from '@localle/shared/utils';
+import { fileToDataURL } from '../lib/fileData';
 import { Icon } from './icons';
 import { AssetSilhouette, silhouetteOf } from './assetArt';
 import { pngIconUrl } from '../lib/pngIcons';

@@ -1,4 +1,6 @@
 // Painel lateral "Precisa de você": críticos de qualquer tela + alertas recentes (antigo sino)
+import { marcarAlertasLidos } from '../lib/localleApi';
+import { toast } from '../components/ui';
 import { auditEntry } from '@localle/shared/audit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
@@ -46,7 +48,7 @@ export default function NeedsPanel({ open, onClose }: { open: boolean; onClose: 
           <section className="mt-8">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="flex items-center gap-2 text-small text-ink-2 mr-auto">Alertas recentes{unread > 0 && <span className="min-w-[20px] h-5 px-tight rounded-pill text-caption font-semibold flex items-center justify-center bg-[var(--counter-bg)] text-[var(--counter-ink)] num" aria-label={`${unread} não lidos`}>{unread}</span>}</h3>
-              {unread > 0 && <TextButton onClick={() => patch((s: any) => ({ alerts: s.alerts.map((a: any) => ({ ...a, read: true })), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Alertas recentes', action: `marcou ${unread} alertas como lidos em lote`, count: unread }) }))}>Marcar todos como lidos</TextButton>}
+              {unread > 0 && <TextButton onClick={() => { patch((s: any) => ({ alerts: s.alerts.map((a: any) => ({ ...a, read: true })), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Alertas recentes', action: `marcou ${unread} alertas como lidos em lote`, count: unread }) })); marcarAlertasLidos().catch((e) => toast('Não foi possível marcar como lidos: ' + (e.message || e), { tone: 'crit' })); }}>Marcar todos como lidos</TextButton>}
             </div>
             {recent.length === 0 && <EmptyState icon="ok" title="Nenhum alerta recente" />}
             <List>

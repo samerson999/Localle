@@ -6,6 +6,7 @@ import { cx, IconButton, Skeleton, confirmAction } from './ui';
 import { Icon } from './icons';
 import { OdometerAsk } from './RemoteBits';
 import { useRastreioSync } from '../lib/rastreioApi';
+import { logout, useLocalleSync } from '../lib/localleApi';
 import { useMaintJobs } from '../lib/maintJobs';
 import NeedsPanel from './NeedsPanel';
 import { canSeeFleet, endSupport, homeOf } from '../lib/support';
@@ -91,6 +92,7 @@ function LayoutBody() {
 
   useEffect(() => { const t = setInterval(() => useStore.getState().tick(2000), 2000); return () => clearInterval(t); }, []);
   useRastreioSync();
+  useLocalleSync();
   useEffect(() => { setOpenMobile(false); setHelp(false); window.scrollTo(0, 0); }, [loc.pathname]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmdk((x) => !x); } };
@@ -180,7 +182,7 @@ function LayoutBody() {
             <div className="flex items-center gap-stack mt-2 pt-3 pl-2 overflow-hidden border-t border-line">
               <div className="w-8 h-8 rounded-pill bg-avatar text-ink flex items-center justify-center font-semibold text-caption shrink-0" title={mini ? session.name : undefined}>{session.name.slice(0, 2).toUpperCase()}</div>
               <div className={cx('flex flex-col min-w-0 mr-auto', fade)}><span className="font-medium text-body truncate">{session.name}</span><span className="text-caption text-ink-2 truncate">{session.support ? 'Acesso de suporte' : session.role === 'locale' ? 'Administração Locale' : session.role === 'revenda' ? 'Admin da revenda' : 'Gestor da frota'}</span></div>
-              <IconButton aria-label="Sair" title="Sair" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.' })) { patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" size={18} /></IconButton>
+              <IconButton aria-label="Sair" title="Sair" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.' })) { logout(); patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" size={18} /></IconButton>
             </div>
           </div>
         </SidebarFooter>

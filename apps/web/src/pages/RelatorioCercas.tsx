@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
 import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
@@ -7,7 +8,7 @@ import { FenceShapes, TILE, ATTR, Address } from '../components/MapBits';
 import { AssetName, StatusDot } from '../components/story';
 import { Icon } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
-import { fencePassages, stayMs, GAP_MIN } from '../lib/fenceStats';
+import { fencePassages, stayMs, GAP_MIN } from '@localle/shared/fenceStats';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
 import { resolveAddresses } from '../lib/geocode';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
@@ -39,8 +40,13 @@ export default function RelatorioCercas() {
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
   const fenceScope = fenceId ? fences.filter((x: any) => x.id === fenceId) : fences;
-  const passagens = useMemo(() => scope.flatMap((a: any) => fenceScope.flatMap((fe: any) => fencePassages(posOf(a), fe, t).map((p) => ({ a, fe, p }))))
-    .sort((x: any, y: any) => y.p.enter - x.p.enter), [scope.map((a: any) => a.id).join(), fenceScope.map((x: any) => x.id).join(), history, f, t]);
+  // veículos reais: passagens calculadas na API sobre as cercas e posições do banco; simulados: aqui
+  const api = useRelatorioApi<{ assetId: string; passagens: any[] }>('cercas', { from: new Date(f).toISOString(), to: new Date(t).toISOString(), cercaId: fenceId || null }, scope);
+  useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
+  const passagens = useMemo(() => [
+    ...scope.filter((a: any) => !isRealAsset(a)).flatMap((a: any) => fenceScope.flatMap((fe: any) => fencePassages(posOf(a), fe, t).map((p) => ({ a, fe, p })))),
+    ...api.rows.flatMap((r) => r.passagens.map((p) => ({ a: r.a, fe: fences.find((x: any) => x.id === p.fenceId) || { id: p.fenceId, name: p.fenceName, type: p.fenceType }, p }))),
+  ].sort((x: any, y: any) => y.p.enter - x.p.enter), [scope.map((a: any) => a.id).join(), fenceScope.map((x: any) => x.id).join(), history, f, t, api.rows]);
 
   const filtradas = busca.trim()
     ? passagens.filter(({ a, fe }: any) => [a.name, a.plate, fe.name].some((s) => (s || '').toLowerCase().includes(busca.trim().toLowerCase())))

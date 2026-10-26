@@ -1,6 +1,8 @@
 // Central de alertas: tela dedicada para "Precisa de você", acessível pela sidebar.
 // Diferente do painel lateral (NeedsPanel, aberto pelo sino): aqui cabe mais contexto —
 // críticos agrupados por natureza do problema e o histórico completo de alertas com filtro e busca.
+import { marcarAlertasLidos } from '../lib/localleApi';
+import { toast } from '../components/ui';
 import { useMemo, useState } from 'react';
 import { auditEntry } from '@localle/shared/audit';
 import { useStore } from '../lib/store';
@@ -96,7 +98,7 @@ function AlertHistory() {
           <SearchInput value={q} onChange={setQ} placeholder="Buscar por ativo ou alerta" aria-label="Buscar alertas" className="w-52 max-w-full" />
           <Select className="w-40" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} />
           <Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} />
-          {unread > 0 && <TextButton onClick={() => patch((s: any) => ({ alerts: s.alerts.map((a: any) => ({ ...a, read: true })), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Alertas recentes', action: `marcou ${unread} alertas como lidos em lote`, count: unread }) }))}>Marcar todos como lidos</TextButton>}
+          {unread > 0 && <TextButton onClick={() => { patch((s: any) => ({ alerts: s.alerts.map((a: any) => ({ ...a, read: true })), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Alertas recentes', action: `marcou ${unread} alertas como lidos em lote`, count: unread }) })); marcarAlertasLidos().catch((e) => toast('Não foi possível marcar como lidos: ' + (e.message || e), { tone: 'crit' })); }}>Marcar todos como lidos</TextButton>}
         </Cluster>
       }>
       <Table
@@ -110,7 +112,7 @@ function AlertHistory() {
           <span className="text-small text-ink-2">{a.detail}</span>,
           a.priority === 'alta' && !a.resolvedAt
             ? <Button size="sm" variant="secondary" onClick={() => setTreat(a)}>Tratar</Button>
-            : a.read ? <span className="text-caption text-ink-2">Lido</span> : <TextButton onClick={() => patch((s: any) => ({ alerts: s.alerts.map((x: any) => (x.id === a.id ? { ...x, read: true } : x)) }))}>Marcar como lido</TextButton>,
+            : a.read ? <span className="text-caption text-ink-2">Lido</span> : <TextButton onClick={() => { patch((s: any) => ({ alerts: s.alerts.map((x: any) => (x.id === a.id ? { ...x, read: true } : x)) })); marcarAlertasLidos([a.id]).catch((e) => toast('Não foi possível marcar como lido: ' + (e.message || e), { tone: 'crit' })); }}>Marcar como lido</TextButton>,
         ])}
       />
       <TreatDialog subject={treat?.title || null} detail={treat ? [name(treat.assetId), treat.detail].filter(Boolean).join(' · ') : ''} onClose={() => setTreat(null)} onConfirm={(t) => treat && resolveAlert(treat.id, t)} />

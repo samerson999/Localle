@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { useRastreio, syncObjects, RASTREIO_ON } from '../lib/rastreioApi';
+import { useLocalle, syncFrota } from '../lib/localleApi';
 import { fmtDT } from '@localle/shared/utils';
 import { Icon } from './icons';
 import { cx, confirmAction, toast } from './ui';
@@ -36,6 +37,14 @@ function ApiChip() {
   return <button type="button" onClick={syncObjects} title={r.status === 'erro' ? r.error : r.ts ? `Atualizado ${fmtDT(r.ts)}. Clique para atualizar agora.` : ''} className="h-8 px-stack rounded-btn text-small text-ink-2 hover:text-ink hover:bg-card-2 flex items-center gap-2"><span aria-hidden="true" className={cx('w-2 h-2 rounded-pill', dot)} />{label}</button>;
 }
 
+function LocalleChip() {
+  const r = useLocalle();
+  if (r.status === 'off') return null;
+  const dot = r.status === 'ok' ? 'bg-ink' : r.status === 'erro' ? 'bg-crit' : 'bg-warn';
+  const label = r.status === 'ok' ? `Backend Localle · ${r.count} veículos` : r.status === 'erro' ? 'Backend Localle: sem conexão' : 'Backend Localle: conectando…';
+  return <button type="button" onClick={() => syncFrota().catch(() => {})} title={r.status === 'erro' ? r.error : r.ts ? `Atualizado ${fmtDT(r.ts)}. Clique para recarregar a frota.` : ''} className="h-8 px-stack rounded-btn text-small text-ink-2 hover:text-ink hover:bg-card-2 flex items-center gap-2"><span aria-hidden="true" className={cx('w-2 h-2 rounded-pill', dot)} />{label}</button>;
+}
+
 export default function SimDock() {
   const running = useStore((s) => s.simRunning);
   const speed = useStore((s) => s.simSpeed);
@@ -60,7 +69,7 @@ export default function SimDock() {
               {[1, 8, 30, 120].map((x) => <button key={x} type="button" aria-pressed={speed === x} onClick={() => patch(() => ({ simSpeed: x }))} className={cx('h-7 min-w-[38px] px-tight rounded-tight text-caption font-medium num', speed === x ? 'bg-card text-ink shadow-seg' : 'text-ink-2 hover:text-ink')}>{x}x</button>)}
             </div>
             <button type="button" className="h-8 px-stack rounded-btn flex items-center gap-tight text-small text-ink-2 hover:text-ink hover:bg-card-2 whitespace-nowrap" onClick={async () => { if (await confirmAction({ title: 'Reiniciar a simulação?', detail: 'Todos os dados lançados são apagados e a simulação recomeça do zero. Não dá para desfazer.', confirmLabel: 'Reiniciar' })) { useStore.getState().reset(); toast('Simulação reiniciada.'); } }}><Icon name="reiniciar" size={16} />Reiniciar</button>
-            <ApiChip />
+            <ApiChip /><LocalleChip />
           </>
         )}
       </div>

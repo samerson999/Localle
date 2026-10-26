@@ -17,6 +17,7 @@ const TIPOS: { icon: string; title: string; detail: string; img: string; webp: s
   { icon: 'velocimetro', title: 'Velocidade', detail: 'Identifique excessos de velocidade e analise os trechos mais críticos.', img: imgVelocidade, webp: imgVelocidadeWeb, path: '/relatorios/velocidade' },
   { icon: 'rota', title: 'Posições', detail: 'Consulte o histórico de posições detalhado da sua frota.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/posicoes' },
   { icon: 'alvo', title: 'Passou por aqui', detail: 'Verifique quais veículos passaram por um ponto específico no mapa.', img: imgPassouPorAqui, webp: imgPassouPorAquiWeb, path: '/relatorios/passou-por-aqui' },
+  { icon: 'odometro', title: 'Uso da frota', detail: 'Km rodado, motor ligado, ociosidade e paradas de cada veículo.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/uso' },
 ];
 
 export default function Relatorios() {

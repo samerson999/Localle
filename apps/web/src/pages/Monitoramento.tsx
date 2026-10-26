@@ -14,6 +14,7 @@ import { tv } from '../lib/tokens';
 import { useCriticalMap, resolveReasons, recentTreatments, type CritReason } from '../lib/critical';
 import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { TreatDialog, TreatedLine } from '../components/TreatDialog';
+import { criarLink, isRealAsset, listarLinks, revogarLink } from '../lib/localleApi';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { useSyntheticFleet } from '../lib/loadTest';
@@ -289,7 +290,13 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
 
 // link temporário só com a posição atual (lib/shares); lista os links do veículo para revogar
 function ShareModal({ asset, onClose }: { asset: any; onClose: () => void }) {
-  const shares = useStore((s) => (s.shares || []).filter((x: any) => x.assetId === asset?.id).sort((a: any, b: any) => b.createdAt - a.createdAt));
+  // veículo real: links no backend (token validado lá, abre em qualquer navegador, aberturas registradas)
+  const real = isRealAsset(asset);
+  const sharesLocal = useStore((s) => (s.shares || []).filter((x: any) => x.assetId === asset?.id).sort((a: any, b: any) => b.createdAt - a.createdAt));
+  const [sharesApi, setSharesApi] = useState<any[]>([]);
+  const recarregar = () => { if (real && asset) listarLinks(asset.id).then(setSharesApi).catch((e) => toast.error(e.message, 'Não foi possível carregar os links')); };
+  useEffect(() => { setSharesApi([]); recarregar(); }, [asset?.id]);
+  const shares = real ? sharesApi : sharesLocal;
   const [ms, setMs] = useState(String(SHARE_DURATIONS[1][0]));
   const [to, setTo] = useState('');
   const [made, setMade] = useState<any>(null);
@@ -299,7 +306,12 @@ function ShareModal({ asset, onClose }: { asset: any; onClose: () => void }) {
   const copy = (t: string) => { const p = navigator.clipboard?.writeText(shareUrl(t)); if (p) p.then(() => toast('Link copiado.'), () => toast.error('Selecione o link e copie à mão.', 'Não foi possível copiar')); else toast('Selecione o link e copie.', { tone: 'info' }); };
   return (
     <Modal open={!!asset} width="max-w-3xl" onClose={() => { setMade(null); onClose(); }} title={`Compartilhar localização · ${asset?.name || ''}`}
-      footer={<><Button variant="quiet" onClick={() => { setMade(null); onClose(); }}>Fechar</Button><Button onClick={() => { const sh = createShare(asset.id, +ms, to); setMade(sh); copy(sh.token); setTo(''); }}><Icon name="link" size={18} />Gerar link</Button></>}>
+      footer={<><Button variant="quiet" onClick={() => { setMade(null); onClose(); }}>Fechar</Button><Button onClick={async () => {
+        try {
+          const sh = real ? await criarLink(asset.id, +ms, to) : createShare(asset.id, +ms, to);
+          setMade(sh); copy(sh.token!); setTo(''); recarregar();
+        } catch (e: any) { toast.error(e.message || String(e), 'Não foi possível gerar o link'); }
+      }}><Icon name="link" size={18} />Gerar link</Button></>}>
       <p className="text-small text-ink-2">Quem abrir o link vê só a posição atual do veículo, sem login, até o prazo acabar. Motorista, histórico e comandos não aparecem.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-field">
         <Field label="Válido por"><Select value={ms} onChange={(e) => setMs(e.target.value)} options={SHARE_DURATIONS.map(([v, l]) => ({ value: String(v), label: l }))} /></Field>
@@ -312,8 +324,11 @@ function ShareModal({ asset, onClose }: { asset: any; onClose: () => void }) {
           const st = shareState(x);
           return [x.to || <span className="text-ink-3">—</span>, <time className="num">{fmtDT(x.createdAt)}</time>,
             <StatusDot kind={st === 'ativo' ? 'mov' : 'off'} label={st === 'ativo' ? `até ${fmtDT(x.expiresAt)}` : st === 'revogado' ? 'Desativado' : 'Expirado'} />,
-            x.by === me ? (opens[x.token]?.length ? <span className="flex flex-col text-small"><span className="num font-medium">{opens[x.token].length} {opens[x.token].length === 1 ? 'vez' : 'vezes'}</span><span className="text-caption text-ink-2 num" title={opens[x.token].map((t: number) => fmtDT(t)).join(', ')}>última {fmtDT(opens[x.token][opens[x.token].length - 1])}</span></span> : <span className="text-small text-ink-2">Ainda não aberto</span>) : <span className="text-small text-ink-2">Só quem criou vê</span>,
-            st === 'ativo' ? <span className="flex gap-stack"><TextButton onClick={() => copy(x.token)}>Copiar</TextButton><TextButton tone="danger" onClick={() => { revokeShare(x.token); toast('Link desativado.'); }}>Desativar</TextButton></span> : null];
+            x.by === me ? ((real ? x.opens : opens[x.token])?.length ? <span className="flex flex-col text-small"><span className="num font-medium">{(real ? x.opens : opens[x.token]).length} {(real ? x.opens : opens[x.token]).length === 1 ? 'vez' : 'vezes'}</span><span className="text-caption text-ink-2 num" title={(real ? x.opens : opens[x.token]).map((t: number) => fmtDT(t)).join(', ')}>última {fmtDT((real ? x.opens : opens[x.token]).at(-1))}</span></span> : <span className="text-small text-ink-2">Ainda não aberto</span>) : <span className="text-small text-ink-2">Só quem criou vê</span>,
+            st === 'ativo' ? <span className="flex gap-stack">{x.token && <TextButton onClick={() => copy(x.token)}>Copiar</TextButton>}<TextButton tone="danger" onClick={async () => {
+              try { if (real) { await revogarLink(x.id); recarregar(); } else revokeShare(x.token); toast('Link desativado.'); }
+              catch (e: any) { toast.error(e.message || String(e), 'Não foi possível desativar'); }
+            }}>Desativar</TextButton></span> : null];
         })} />
       </>}
     </Modal>

@@ -1,3 +1,4 @@
+import { removerRegra, salvarRegra } from '../lib/localleApi';
 import { useState } from 'react';
 import { useStore } from '../lib/store';
 import { Button, Card, Field, FormGroup, Input, Select, Table, Check, Badge, PageTabs, Modal, TextButton, TabPanel, confirmAction, toast, IconButton, EmptyState, Stack, Cluster } from '../components/ui';
@@ -49,18 +50,19 @@ function Rules() {
   const rules = useStore((s) => s.rules);
   const groups = useStore((s) => s.groups);
   const alerts = useStore((s) => s.alerts);
-  const { upsert, remove } = useStore.getState();
   const [r, setR] = useState<any>(null);
+  // regras ficam no backend e são avaliadas lá a cada posição, com a tela aberta ou não
+  const falhou = (e: any) => toast('Não foi possível salvar a regra: ' + (e?.message || e), { tone: 'crit' });
   const setCond = (i: number, k: string, v: string) => { const c = r.conditions.map((x: any, j: number) => (j === i ? { ...x, [k]: v, ...(k === 'field' ? { op: RULE_FIELDS[v].ops[0], value: RULE_FIELDS[v].values?.[0] || (v.includes('cerca') ? 'Cliente' : '') } : {}) } : x)); setR({ ...r, conditions: c }); };
   const describe = (rule: any) => rule.conditions.map((c: any) => `${RULE_FIELDS[c.field]?.label} ${c.op} ${c.value}`).join(' e ');
   return (
     <>
       <Card title="Regras ativas" icon="alerta" actions={<Button onClick={() => setR(blankRule())}><Icon name="mais" size={16} />Nova regra</Button>}>
         <p className="text-small text-ink-2 mb-card-head">As regras são avaliadas a cada posição recebida, cruzando dados do rastreador, sensores, cercas e regras da empresa (horário, dia).</p>
-        <Table head={['Regra', 'Condições', 'Escopo', 'Prioridade', 'Disparos', 'Ativa', '']} rows={rules.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="text-small">{describe(x)}</span>, groups.find((g: any) => g.id === x.groupId)?.name || 'Todos', <Prio p={x.priority} />, <span className="num">{alerts.filter((a: any) => a.ruleId === x.id).length}</span>,
-          <Check aria-label={`Regra ${x.name} ativa`} checked={x.active} onChange={(v) => { upsert('rules', { id: x.id, active: v }); toast(v ? `Regra "${x.name}" ativada.` : `Regra "${x.name}" desativada.`); }} />, <div className="flex gap-3"><TextButton onClick={() => setR(JSON.parse(JSON.stringify(x)))}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir a regra "${x.name}"?`, detail: 'Ela para de gerar alertas. Os alertas já gerados continuam no histórico.' })) { remove('rules', x.id); toast('Regra excluída.', { action: { label: 'Desfazer', onClick: () => upsert('rules', x) } }); } }}>Excluir</TextButton></div>])} />
+        <Table head={['Regra', 'Condições', 'Escopo', 'Prioridade', 'Disparos', 'Ativa', '']} rows={rules.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="text-small">{describe(x)}</span>, 'Todos', <Prio p={x.priority} />, <span className="num">{x.disparos30d ?? alerts.filter((a: any) => a.ruleId === x.id).length}</span>,
+          <Check aria-label={`Regra ${x.name} ativa`} checked={x.active} onChange={(v) => salvarRegra({ ...x, active: v }).then(() => toast(v ? `Regra "${x.name}" ativada.` : `Regra "${x.name}" desativada.`), falhou)} />, <div className="flex gap-3"><TextButton onClick={() => setR(JSON.parse(JSON.stringify(x)))}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir a regra "${x.name}"?`, detail: 'Ela para de gerar alertas. Os alertas já gerados continuam no histórico.' })) { removerRegra(x.id).then(() => toast('Regra excluída.', { action: { label: 'Desfazer', onClick: () => salvarRegra({ ...x, id: undefined }).catch(falhou) } }), falhou); } }}>Excluir</TextButton></div>])} />
       </Card>
-      <Modal open={!!r} onClose={() => setR(null)} title={r?.id ? 'Editar regra' : 'Nova regra de alerta'} width="max-w-3xl" footer={<><Button variant="quiet" onClick={() => setR(null)}>Cancelar</Button><Button disabled={!r?.name} onClick={() => { upsert('rules', { ...r, id: r.id || undefined }); setR(null); toast(r.id ? 'Regra salva.' : 'Regra incluída.'); }}>Salvar regra</Button></>}>
+      <Modal open={!!r} onClose={() => setR(null)} title={r?.id ? 'Editar regra' : 'Nova regra de alerta'} width="max-w-3xl" footer={<><Button variant="quiet" onClick={() => setR(null)}>Cancelar</Button><Button disabled={!r?.name} onClick={() => { salvarRegra(r).then(() => { setR(null); toast(r.id ? 'Regra salva.' : 'Regra incluída.'); }, falhou); }}>Salvar regra</Button></>}>
         {r && <Stack gap="group">
           <Field label="Nome da regra"><Input value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} placeholder="Ex.: Veículo só pode rodar até as 22h" /></Field>
           <FormGroup title="Condições (todas precisam ser verdadeiras)">
@@ -84,7 +86,7 @@ function Rules() {
           </Cluster>
           </FormGroup>
           <FormGroup cols={2}>
-            <Field label="Aplicar a"><Select value={r.groupId || ''} onChange={(e) => setR({ ...r, groupId: e.target.value })} options={[{ value: '', label: 'Todos os veículos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></Field>
+            <Field label="Aplicar a" hint="Escopo por grupo chega com o cadastro de grupos no servidor."><Select value="" disabled onChange={() => {}} options={[{ value: '', label: 'Todos os veículos' }]} /></Field>
             <Field label="Prioridade"><Select value={r.priority} onChange={(e) => setR({ ...r, priority: e.target.value })} options={['alta', 'media', 'baixa']} /></Field>
           </FormGroup>
         </Stack>}

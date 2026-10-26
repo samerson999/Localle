@@ -1,7 +1,7 @@
 // Área para soltar ou escolher um arquivo (imagem), com prévia, troca, remoção e erro no próprio lugar.
 // multiple: só adiciona (chama onChange uma vez por arquivo, sem prévia); a lista fica com a página.
 import { useId, useRef, useState } from 'react';
-import { fileToDataURL } from '@localle/shared/utils';
+import { fileToDataURL } from '../lib/fileData';
 import { Icon } from './icons';
 import { cx } from './ui';
 

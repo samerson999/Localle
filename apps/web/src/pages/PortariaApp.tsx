@@ -1,5 +1,6 @@
 // Perfil Portaria: só a tela de saída/entrada, pensada para o celular do porteiro (uma coluna, alvos grandes,
 // placa digitada ou tocada). O próximo registro (saída ou entrada) é decidido pela sequência do veículo.
+import { logout } from '../lib/localleApi';
 import { opAssets } from '../lib/assetLifecycle';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -41,7 +42,7 @@ export default function PortariaApp() {
     <div className="min-h-screen bg-canvas flex flex-col">
       <header className="sticky top-0 z-10 flex items-center gap-2 px-4 h-14 bg-canvas border-b border-line">
         <BrandMark size={30} /><div className="flex flex-col min-w-0 mr-auto"><span className="font-semibold text-body truncate">Portaria</span><span className="text-caption text-ink-2 truncate">{session.name}</span></div>
-        <IconButton aria-label="Sair" title="Sair" onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.' })) { s.patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" /></IconButton>
+        <IconButton aria-label="Sair" title="Sair" onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.' })) { logout(); s.patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" /></IconButton>
       </header>
       <main className="flex-1 w-full max-w-[560px] mx-auto px-4 pt-4 pb-28 anim-page">
         {!asset ? (
