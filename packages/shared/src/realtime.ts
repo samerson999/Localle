@@ -55,4 +55,34 @@ export interface RealtimeSnapshot {
   posicoes: RealtimePosicao[];
 }
 
-export type RealtimeMessage = RealtimePosicao | RealtimeEvento | RealtimeSnapshot | RealtimeAlerta;
+export type ComandoTipo = 'engineStop' | 'engineResume' | 'positionSingle';
+
+/**
+ * Estados auditáveis de um comando (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 4.6). `expirado` e
+ * `cancelado` são decisões do backend, não do aparelho: nunca apresentar como "veículo liberado".
+ */
+export type ComandoStatus = 'solicitado' | 'enviado' | 'aguardando' | 'confirmado' | 'falhou' | 'expirado' | 'cancelado';
+
+export interface Comando {
+  id: string;
+  assetId: string;
+  rastreadorId: string;
+  tipo: ComandoTipo;
+  status: ComandoStatus;
+  motivo: string | null;
+  /** E-mail de quem solicitou. */
+  solicitadoPor: string | null;
+  solicitadoEm: string;
+  enviadoEm: string | null;
+  resolvidoEm: string | null;
+  expiraEm: string;
+  resultado: Record<string, unknown> | null;
+}
+
+/** Mudança de estado de um comando: o front substitui pelo `id`. */
+export interface RealtimeComandoStatus {
+  kind: 'comando_status';
+  comando: Comando;
+}
+
+export type RealtimeMessage = RealtimePosicao | RealtimeEvento | RealtimeSnapshot | RealtimeAlerta | RealtimeComandoStatus;

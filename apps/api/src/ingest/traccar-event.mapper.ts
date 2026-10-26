@@ -26,7 +26,7 @@ export interface NormalizedEvent {
  * - `deviceOnline`/`deviceOffline`/`deviceUnknown`: diagnóstico de socket, não a regra "sem sinal" do
  *   produto (que é do backend, por cliente) — fica fora.
  * - `geofence*` e `deviceOverspeed`: cercas e limite do Traccar ficam desligados; a regra é do backend.
- * - `commandResult`: entra com o módulo de comandos (frente própria), não aqui.
+ * - `commandResult`: tratado pelo módulo de comandos (inbox.worker.ts desvia antes de chegar aqui).
  */
 const TIPOS_GRAVADOS = new Set(['ignitionOn', 'ignitionOff', 'deviceMoving', 'deviceStopped', 'maintenance']);
 

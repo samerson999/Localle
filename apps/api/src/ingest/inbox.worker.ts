@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
+import { ComandosService } from '../comandos/comandos.service';
 import { PositionsWorker } from '../queue/positions.worker';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { EventsIngestService } from './events-ingest.service';
@@ -31,6 +32,7 @@ export class InboxWorker implements OnModuleInit, OnModuleDestroy {
     private readonly positions: PositionsWorker,
     private readonly events: EventsIngestService,
     private readonly realtime: RealtimeHub,
+    private readonly comandos: ComandosService,
   ) {}
 
   onModuleInit(): void {
@@ -74,6 +76,12 @@ export class InboxWorker implements OnModuleInit, OnModuleDestroy {
     if (linha.tipo === 'posicao') {
       const { position } = linha.payload as { position: TraccarPositionPayload };
       await this.positions.process({ id: `inbox-${linha.id}`, data: position });
+      return;
+    }
+    const bruto = (linha.payload as TraccarEventForward).event;
+    if (bruto.type === 'commandResult') {
+      // resultado de comando (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.4): não vira linha em `eventos`
+      await this.comandos.receberResultado(bruto.deviceId, bruto.attributes ?? {}, new Date((bruto.eventTime ?? bruto.serverTime)!));
       return;
     }
     const evento = mapTraccarEvent(linha.payload as TraccarEventForward);

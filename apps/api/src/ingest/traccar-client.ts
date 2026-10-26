@@ -58,6 +58,22 @@ export class TraccarClient {
     return this.request<TraccarDevice>(config, 'POST', '/api/devices', device);
   }
 
+  /**
+   * `POST /api/commands/send` (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.4): 200 = entregue ao socket do
+   * aparelho agora; 202 = enfileirado no Traccar até o aparelho conectar. Nenhum dos dois é execução.
+   */
+  async sendCommand(config: TraccarConfig, command: { deviceId: number; type: string }): Promise<{ queued: boolean; id: number | null }> {
+    const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
+    const response = await fetch(`${config.url}/api/commands/send`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: command.deviceId, type: command.type, attributes: {} }),
+    });
+    if (!response.ok) throw new Error(`Traccar POST /api/commands/send falhou: ${response.status} ${response.statusText}`);
+    const body = (await response.json().catch(() => null)) as { id?: number } | null;
+    return { queued: response.status === 202, id: typeof body?.id === 'number' ? body.id : null };
+  }
+
   private async request<T>(config: TraccarConfig, method: string, path: string, body?: unknown): Promise<T> {
     const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
     const response = await fetch(`${config.url}${path}`, {

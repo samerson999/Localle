@@ -3,12 +3,18 @@ import { randomUUID } from 'node:crypto';
 import IORedis from 'ioredis';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { AuditLogRepository } from '../audit/audit-log.repository';
+import { ComandosRepository } from '../comandos/comandos.repository';
+import { ComandosService } from '../comandos/comandos.service';
 import { PositionsWorker } from '../queue/positions.worker';
+import { SettingsRepository } from '../settings/settings.repository';
+import { SettingsService } from '../settings/settings.service';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { EventsIngestService } from './events-ingest.service';
 import { InboxRepository } from './inbox.repository';
 import { InboxWorker } from './inbox.worker';
 import { PositionsIngestService } from './positions-ingest.service';
+import { TraccarClient } from './traccar-client';
 import { TraccarIngestController } from './traccar-ingest.controller';
 
 /**
@@ -23,7 +29,15 @@ describe('ingestão por Forwarding (inbox + lease)', () => {
   const inbox = new InboxRepository(pool);
   const controller = new TraccarIngestController(inbox);
   const positionsWorker = new PositionsWorker(redis, new PositionsIngestService(pool), hub);
-  const worker = new InboxWorker(inbox, positionsWorker, new EventsIngestService(pool), hub);
+  const comandos = new ComandosService(
+    new ComandosRepository(pool),
+    new TraccarClient(),
+    new SettingsService(new SettingsRepository(pool), pool),
+    new AuditLogRepository(pool),
+    hub,
+    pool,
+  );
+  const worker = new InboxWorker(inbox, positionsWorker, new EventsIngestService(pool), hub, comandos);
   const chave = `chave-${randomUUID()}`;
   const deviceId = 700_000 + Math.floor(Math.random() * 100_000);
 
