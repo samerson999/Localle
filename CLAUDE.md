@@ -9,7 +9,9 @@ diferente do que já está lá. Regras especializadas e executáveis ficam em `.
 
 ```
 apps/web/        front (Vite + React 18 + Zustand), hoje a maior parte do produto
-apps/api/        backend (NestJS + pg + node-pg-migrate), nascente — clients/assets/users/auth/health/ingest/queue/telemetria
+apps/api/        backend (NestJS + pg + node-pg-migrate) — auth/clients/users/assets/grupos/motoristas, ingest/queue/
+                 realtime/comandos, cercas/regras/alertas, settings, contratos, jornada/multas/combustivel/
+                 manutencao/checklist/pneus/ranking/viagens, reports/painel, retencao
 packages/shared/ tipos, contratos e motores de cálculo puros (sem React/DOM/Zustand), compartilhados
 infra/           infra/plataforma (Postgres+TimescaleDB+PostGIS) e infra/traccar (gateway de rastreadores)
 docs/            decisões de arquitetura e especificação — fonte de verdade de domínio

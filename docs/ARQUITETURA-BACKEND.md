@@ -100,6 +100,10 @@ A chave primária inclui `device_id` e `ts` (não só `id`) porque é por esse p
 
 ### 2.4 Retenção e compressão
 
+> **Estado em 26/10/2026**: compressão (7 dias) está na migration `1792970000000`; a retenção por plano é a rotina
+> `RetencaoService` (`apps/api/src/retencao/`), não policy do Timescale — ver `docs/ARQUITETURA-INTEGRACAO-TRACCAR.md`
+> § 4.7. Continuous aggregates e export Parquet ainda não existem.
+
 Dado de telemetria crua perde valor rápido; o que fica caro para sempre é o agregado.
 
 ```sql

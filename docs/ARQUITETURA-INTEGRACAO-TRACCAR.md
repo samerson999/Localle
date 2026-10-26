@@ -712,8 +712,23 @@ outro") — tentar inserir um segundo comando do mesmo tipo pendente para o mesm
 vez de depender só de uma checagem de aplicação antes do insert (condição de corrida entre duas requisições
 simultâneas de bloqueio, por exemplo).
 
-**Pendente de especificação própria (apontado em revisão de 23/10/2026, terceira passada) — comandos que alteram
-estado físico do veículo** (`engineStop`/bloqueio remoto, principalmente) precisam de regras mais específicas do que
+> **Decidido e implementado em 26/10/2026** (`apps/api/src/comandos/`, migration `1792960000000_create-comandos`),
+> fechando os cinco pontos abaixo: (1) autorização no envio — `POST /comandos/bloqueio` exige a permissão
+> `comandos.bloquear` (padrão só admin) checada na requisição pelo `PermissionsGuard`, e o `AuthGuard` já recusa
+> token de usuário desativado; (2) condições que impedem o bloqueio — `engineStop` é recusado (409) se a última
+> posição tem velocidade acima de `comandos.bloqueio_velocidade_max_kmh` (padrão 5) ou é mais velha que
+> `comandos.bloqueio_posicao_max_idade_min` (padrão 15), ou se não há posição; (3) execução tardia — `commandResult`
+> sem comando pendente é anexado ao último comando resolvido como `resultado.tardio = true` e logado em `warn`;
+> (4) precedência — pedir o oposto (`engineResume` com `engineStop` pendente, e vice-versa) marca o pendente como
+> `cancelado` (estado adicional ao da tabela acima; cancelamento só local, o Traccar não desenfileira) antes de
+> criar o novo; (5) timeout — job a cada minuto marca `expirado` quem passou de `expira_em`
+> (`comandos.timeout_min`, padrão 10), e o contrato do front (`ComandoStatus`) documenta que `expirado`/`cancelado`
+> não significam "veículo liberado". Tudo auditado em `audit_log` (`comando.solicitar`, `comando.cancelar`) e
+> publicado no tempo real como `comando_status`. Pendente: `GET /api/commands/types` por device (hoje o catálogo
+> é fixo: `engineStop`, `engineResume`, `positionSingle`).
+
+**Pontos que estavam pendentes de especificação própria (apontados em revisão de 23/10/2026, terceira passada) —
+comandos que alteram estado físico do veículo** (`engineStop`/bloqueio remoto, principalmente) precisam de regras mais específicas do que
 a tabela acima cobre sozinha, a detalhar quando o motor de regras do backend for especificado (fora do escopo deste
 documento de integração):
 
@@ -736,6 +751,13 @@ documento de integração):
   confirmação física).
 
 ### 4.7 Compressão e retenção
+
+> **Implementado em 26/10/2026**: compressão após 7 dias nas duas hypertables (migration
+> `1792970000000_compressao-posicoes-eventos`, segmentada por `rastreador_id`) e retenção por plano em
+> `apps/api/src/retencao/` (rotina diária: apaga por `client_id` o que passou de `contrato_versoes.historico_meses`
+> da versão vigente; eventos ficam no mínimo `retencao.eventos_minimo_meses` (Setup, só Locale, padrão 24); posição sem
+> cliente, `retencao.posicao_sem_cliente_meses` (padrão 13); cliente sem contrato não é tocado e vai para o log).
+> Export para Parquet continua pendente.
 
 - `posicoes`: igual à proposta já validada em `docs/ARQUITETURA-BACKEND.md` § 2.4 — compressão após 7 dias
   (`compress_segmentby = 'rastreador_id'`), retenção por plano do cliente via rotina própria (não
@@ -881,7 +903,13 @@ export interface TraccarEventPayload {
 
 ### 5.2 Tempo real (API → front)
 
-WebSocket próprio da API (não o WebSocket do Traccar — o front nunca fala com o Traccar, item 1 da proposta e
+> **Como foi implementado (26/10/2026)**: `GET /realtime/stream` em **SSE** (`apps/api/src/realtime/`), não
+> WebSocket — o fluxo é só API → front, SSE passa pelo mesmo `AuthGuard`/Bearer das outras rotas e dispensa
+> uma segunda camada de autenticação de socket. O protocolo abaixo (assinar antes do snapshot, buffer,
+> `since` para eventos) foi mantido tal qual; o canal Redis por tenant também. O contrato está em
+> `packages/shared/src/realtime.ts` e inclui `snapshot`, `alerta` e `comando_status` além de `posicao`/`evento`.
+
+Canal próprio da API (não o WebSocket do Traccar — o front nunca fala com o Traccar, item 1 da proposta e
 correção da seção 2.1 desta análise):
 
 ```ts

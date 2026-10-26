@@ -1,6 +1,13 @@
 # Plano — Setup de parâmetros de operação
 
-Status: **proposta para aprovação**, nada codado. Data: 17/10/2026.
+Status: **proposta para aprovação** (17/10/2026). **Estado no backend em 26/10/2026**: `apps/api/src/settings/`
+cobre a camada Cliente e a camada Grupo (tabelas `client_settings`, `group_settings`, `asset_groups`,
+`client_settings_history`), com o inventário da seção 3 registrado em `setting-definitions.ts` (número, liga/desliga
+e opção; piso legal só endurece; regras cruzadas; histórico com valor por data para as chaves "agora"). Fora do
+backend: camadas Revenda e Modelo de rastreador, Integração/Cobrança (só Locale), modelos por segmento (fase 3) e
+prévia de impacto (fase 4). Os módulos que leem o Setup já existem na API: monitoramento, relatórios, comandos,
+jornada, multas, combustível, manutenção, pneus, ranking, motoristas (`apps/api/src/<modulo>/`). As decisões
+pendentes da seção 8 continuam abertas (1 foi resolvida: `asset_groups` existe).
 
 ## 0. Onde o Setup entra na administração (decidido em 22/10/2026)
 
