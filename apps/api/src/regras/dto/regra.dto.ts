@@ -28,7 +28,7 @@ function erro(msg: string): never {
 function condicao(v: unknown, i: number): Condicao {
   const c = (v ?? {}) as Record<string, unknown>;
   // hasOwn: "constructor"/"__proto__" não podem resolver para o protótipo do catálogo
-  const campo = typeof c.field === 'string' && Object.hasOwn(CAMPOS, c.field) ? CAMPOS[c.field as CampoRegra] : undefined;
+  const campo = typeof c.field === 'string' && Object.prototype.hasOwnProperty.call(CAMPOS, c.field) ? CAMPOS[c.field as CampoRegra] : undefined;
   if (!campo) erro(`condicoes[${i}].field inválido`);
   if (typeof c.op !== 'string' || !campo.ops.includes(c.op)) erro(`condicoes[${i}].op precisa ser um de: ${campo.ops.join(', ')}`);
   if (typeof c.value !== 'string' || c.value.length === 0 || c.value.length > 40) erro(`condicoes[${i}].value inválido`);
