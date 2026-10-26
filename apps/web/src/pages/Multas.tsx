@@ -2,6 +2,7 @@ import { RetiredToggle } from '../components/RetiredToggle';
 import { opAssets } from '../lib/assetLifecycle';
 import { useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
+import { indicarCondutor, salvarMulta } from '../lib/localleApi';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, TabPanel, TextButton, Progress, DateInput, Callout, cx, toast, Panel, SearchInput, EmptyState, Stack, Grid } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, StatusDot, NeedsList, Num, AssetName, IdChip, type StatusKind } from '../components/story';
@@ -55,8 +56,9 @@ const toForm = (f: any) => ({ ...f, ts: toInputDT(f.ts), notifiedAt: notifiedEst
 function indicate(f: any) {
   const s = useStore.getState();
   if (!f.driverId) return toast('Escolha o condutor antes de indicar.', { tone: 'crit' });
-  s.upsert('fines', { id: f.id, status: 'condutor_indicado', indicatedAt: Date.now() });
-  toast(`Condutor indicado: ${s.drivers.find((d: any) => d.id === f.driverId)?.name}.`, { detail: `Auto ${f.auto}` });
+  indicarCondutor(f.id, f.driverId)
+    .then(() => toast(`Condutor indicado: ${s.drivers.find((d: any) => d.id === f.driverId)?.name}.`, { detail: `Auto ${f.auto}` }))
+    .catch((e: any) => toast('Não foi possível indicar: ' + (e.message || e), { tone: 'crit' }));
 }
 
 // ---------------------------------------------------------------- visão geral (BI)
@@ -178,12 +180,13 @@ function FineForm({ f, setF }: { f: any; setF: (f: any) => void }) {
   const withHint = (next: any) => { const t = next.ts ? new Date(next.ts).getTime() : NaN; const h = isFinite(t) && next.assetId ? driverAt(s, next.assetId, t) : null; return !next.driverId && h ? { ...next, driverId: h.driverId } : next; };
   const est = !f.notifiedAt && f.estimatedNotice;
   const due = f.notifiedAt ? new Date(f.notifiedAt + 'T12:00').getTime() + FINE_PARAMS.indicationDays * DAY : est ? f.estimatedNotice + FINE_PARAMS.indicationDays * DAY : null;
-  const save = () => {
+  const save = async () => {
     setTried(true);
     if (!V.ok) return toast('Confira os campos destacados antes de salvar.', { tone: 'crit' });
     const a = s.assets.find((x: any) => x.id === f.assetId);
     const { estimatedNotice: _e, ...row } = f;
-    s.upsert('fines', { ...row, auto: f.auto.trim().toUpperCase(), ts, notifiedAt: f.notifiedAt ? new Date(f.notifiedAt + 'T12:00').getTime() : undefined, dueDate: new Date(f.dueDate + 'T12:00').getTime(), operationId: a?.operationId, value: +f.value, points: +f.points });
+    try { await salvarMulta({ ...row, auto: f.auto.trim().toUpperCase(), ts, notifiedAt: f.notifiedAt ? new Date(f.notifiedAt + 'T12:00').getTime() : undefined, dueDate: new Date(f.dueDate + 'T12:00').getTime(), operationId: a?.operationId, value: +f.value, points: +f.points }); }
+    catch (e: any) { return toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); }
     toast(f.id ? 'Multa atualizada.' : 'Multa lançada.', { detail: Object.keys(V.warns).length ? `${Object.keys(V.warns).length} ${Object.keys(V.warns).length === 1 ? 'aviso ficou' : 'avisos ficaram'} para conferir` : undefined });
     setF(null);
   };

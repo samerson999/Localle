@@ -92,7 +92,7 @@ export function planImport(rows: any[][], s: any): ImportPlan {
 // grava as linhas válidas; grupos e operações novos são criados antes. Devolve [criados, atualizados].
 export function applyImport(plan: ImportPlan, blank: (kind?: string) => any): [number, number] {
   const s = useStore.getState();
-  plan.newGroups.forEach((name) => s.upsert('groups', { name }));
+  plan.newGroups.forEach((name) => s.upsert('groups', { name })); // importação em lote continua local; grupos reais são criados na tela de Grupos
   plan.newOperations.forEach((name) => s.upsert('operations', { name }));
   const { groups, operations: ops } = useStore.getState() as any;
   let c = 0, u = 0;

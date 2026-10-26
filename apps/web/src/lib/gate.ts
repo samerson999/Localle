@@ -2,6 +2,8 @@
 // A portaria abre e fecha a viagem de pátio. NO PRODUTO REAL isto vira uma chamada ao backend.
 import { useStore, assetKm } from './store';
 import { registerOdometer } from './odometer';
+import { criarViagemPatio, etapaViagem, isRealAsset } from './localleApi';
+import { toast } from '../components/ui';
 import { gateError } from '@localle/shared/trips';
 import { uid, DAY } from '@localle/shared/utils';
 
@@ -20,7 +22,14 @@ export function registerGate(f: GateInput): string {
   s.upsert('gateLog', { id: uid('gt'), ts: now, assetId: f.assetId, driverId: f.driverId, kind: f.kind, km: f.km || 0, photo: f.photo || '', by: f.by, baseId: base?.id, ...(returnBy ? { returnBy } : {}) });
   if (f.km) registerOdometer(f.assetId, f.km, 'portaria', f.by);
   const open = s.trips.find((t: any) => t.assetId === f.assetId && t.status === 'em_andamento');
-  if (f.kind === 'saida' && !open) s.upsert('trips', { type: 'patio', assetId: f.assetId, driverId: f.driverId, originFenceId: base?.id, status: 'em_andamento', startedAt: now, startSource: 'porteiro', stops: [], visited: [] });
-  if (f.kind === 'entrada' && open?.type === 'patio') s.upsert('trips', { id: open.id, status: 'concluida', endedAt: now, endFenceId: base?.id });
+  // ativo real: a viagem de pátio nasce e termina no backend (aguardando → iniciada → encerrada); simulado continua local
+  if (isRealAsset({ id: f.assetId })) {
+    const erro = (e: any) => toast('Viagem de pátio não registrada: ' + (e.message || e), { tone: 'crit' });
+    if (f.kind === 'saida' && !open) criarViagemPatio({ type: 'patio', assetId: f.assetId, driverId: f.driverId, originFenceId: base?.id }, 'portaria').catch(erro);
+    if (f.kind === 'entrada' && open?.type === 'patio') etapaViagem(open.id, 'encerrada', 'portaria').catch(erro);
+  } else {
+    if (f.kind === 'saida' && !open) s.upsert('trips', { type: 'patio', assetId: f.assetId, driverId: f.driverId, originFenceId: base?.id, status: 'em_andamento', startedAt: now, startSource: 'porteiro', stops: [], visited: [] });
+    if (f.kind === 'entrada' && open?.type === 'patio') s.upsert('trips', { id: open.id, status: 'concluida', endedAt: now, endFenceId: base?.id });
+  }
   return '';
 }

@@ -3,6 +3,7 @@ import { opAssets } from '../lib/assetLifecycle';
 import { auditEntry } from '@localle/shared/audit';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
+import { salvarOs } from '../lib/localleApi';
 import { assetKm } from '@localle/shared/km';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, FilePick, EmptyState, ErrorState, Skeleton, Check, Textarea, cx, TextButton, Callout, Panel, IconButton, FilterChip, DescList, DescRow, confirmAction, toast, Grid, Stack } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
@@ -89,8 +90,7 @@ function BI({ period }: { period: PeriodValue }) {
   // OS corretiva a partir de uma resposta não conforme, com o veículo e o item preenchidos
   const osFrom = (key: string) => s.workOrders.find((w: any) => w.fromChecklist === key);
   const openOs = (key: string, q: any, r: any, value: string) => {
-    const num = Math.max(1000, ...s.workOrders.map((w: any) => w.num || 0)) + 1;
-    s.upsert('workOrders', { id: uid('os'), num, type: 'corretiva', assetId: r.assetId, services: [], items: [{ id: uid('it'), label: `${q.label}: ${value}`, est: null, real: null, done: false }], title: `${q.label}: ${value}`, description: `Não conformidade apontada no checklist "${q.template}" em ${fmtDT(r.finishedAt)}.`, status: 'aberta', unplanned: false, openedAt: Date.now(), odometerAt: 0, quotes: [], evidences: r.answers?.[q.question_id]?.photo ? [{ id: uid('ev'), kind: 'foto', data: r.answers[q.question_id].photo, name: 'Foto do checklist' }] : [], comments: [], nf: { chave: '', numero: '', valor: 0, erp: 'nenhum' }, fromChecklist: key });
+    salvarOs({ type: 'corretiva', assetId: r.assetId, services: [], items: [{ id: uid('it'), label: `${q.label}: ${value}`, est: null, real: null, done: false }], title: `${q.label}: ${value}`, description: `Não conformidade apontada no checklist "${q.template}" em ${fmtDT(r.finishedAt)}.`, status: 'aberta', unplanned: false, openedAt: Date.now(), odometerAt: 0, quotes: [], evidences: r.answers?.[q.question_id]?.photo ? [{ id: uid('ev'), kind: 'foto', data: r.answers[q.question_id].photo, name: 'Foto do checklist' }] : [], comments: [], nf: { chave: '', numero: '', valor: 0, erp: 'nenhum' }, fromChecklist: key }).catch((e: any) => toast('Não foi possível abrir a OS: ' + (e.message || e), { tone: 'crit' }));
   };
   useEffect(() => {
     let alive = true;

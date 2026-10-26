@@ -3,6 +3,7 @@ import { opAssets, operatedIn } from '../lib/assetLifecycle';
 import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Tooltip as LTooltip } from 'react-leaflet';
 import { useStore, assetKm, useStoreData } from '../lib/store';
+import { salvarAbastecimento } from '../lib/localleApi';
 import { registerOdometer } from '../lib/odometer';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
@@ -80,9 +81,10 @@ function FuelForm({ onClose }: any) {
   const overBudget = asset?.fuelBudget && spent > asset.fuelBudget;
   const ok = !err && odo && +f.liters > 0 && +f.total > 0;
   const st = STATIONS.find((p) => p.id === f.stationId)!;
-  const save = () => {
+  const save = async () => {
     const { fromTracker, ...rest } = f;
-    s.upsert('fuelings', { ...rest, id: uid('fu'), ts: new Date(f.ts).getTime(), odometer: odo, liters: +f.liters, total: +f.total, pricePerL: +price.toFixed(3), station: st.name });
+    try { await salvarAbastecimento({ ...rest, ts: new Date(f.ts).getTime(), odometer: odo, liters: +f.liters, total: +f.total, pricePerL: +price.toFixed(3), station: st.name, stationCnpj: st.cnpj }); }
+    catch (e: any) { return toast('Não foi possível lançar: ' + (e.message || e), { tone: 'crit' }); }
     registerOdometer(f.assetId, odo, 'abastecimento', s.drivers.find((d: any) => d.id === f.driverId)?.name);
     toast('Abastecimento lançado.', overBudget ? { detail: `O veículo passou do teto mensal indicativo (${brl(asset.fuelBudget)}).` } : {});
     onClose();
@@ -204,7 +206,7 @@ function NotaModal({ f, ocrOn, onClose }: any) {
     } catch (e: any) { setMsg('Erro: não foi possível ler a foto. ' + (e?.message || '')); }
     setBusy(false);
   };
-  const save = () => { s.upsert('fuelings', { id: f.id, nf: preview.nf }); toast(div.length ? 'Nota salva com divergência.' : 'Nota conferida.', div.length ? { tone: 'crit', detail: div.map((d) => d.detail).join('; ') } : {}); onClose(); };
+  const save = async () => { try { await salvarAbastecimento({ ...f, nf: preview.nf }); } catch (e: any) { return toast('Não foi possível salvar a nota: ' + (e.message || e), { tone: 'crit' }); } toast(div.length ? 'Nota salva com divergência.' : 'Nota conferida.', div.length ? { tone: 'crit', detail: div.map((d) => d.detail).join('; ') } : {}); onClose(); };
   return (
     <Modal open onClose={onClose} title="Nota fiscal do abastecimento" width="max-w-4xl" footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button disabled={!keyOk || (n.total === '' && n.liters === '')} onClick={save}>Salvar nota</Button></>}>
       <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-group">

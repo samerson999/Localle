@@ -14,7 +14,7 @@ import { tv } from '../lib/tokens';
 import { useCriticalMap, resolveReasons, recentTreatments, type CritReason } from '../lib/critical';
 import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { TreatDialog, TreatedLine } from '../components/TreatDialog';
-import { criarLink, isRealAsset, listarLinks, revogarLink } from '../lib/localleApi';
+import { criarLink, enviarComandoLocalle, isRealAsset, listarLinks, revogarLink } from '../lib/localleApi';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { useSyntheticFleet } from '../lib/loadTest';
@@ -412,7 +412,11 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
     const cmdId = useStore.getState().sendCommand({ defId, name: def.name, payload: def.payload, kind: def.kind, target, assetIds: ids, message: def.kind === 'alerta' ? msg : undefined });
     trackCommand(`${def.name} · ${target === 'veiculo' ? name(assetId) : `${ids.length} veículos`}`);
     // veículo real: quem confirma é o próprio rastreador (sendRealCommand faz o envio e a conferência de verdade)
-    for (const aid of ids) { const a = assets.find((x: any) => x.id === aid); if (a?.tracker?.live) sendRealCommand(cmdId, aid, a.tracker.imei, def.name, def.payload, def.kind); }
+    for (const aid of ids) {
+      const a = assets.find((x: any) => x.id === aid);
+      if (a?.tracker?.source === 'localle') enviarComandoLocalle(cmdId, aid, def.kind, def.payload, def.name).catch((e: any) => toast('Comando recusado: ' + (e.message || e), { tone: 'crit' }));
+      else if (a?.tracker?.live) sendRealCommand(cmdId, aid, a.tracker.imei, def.name, def.payload, def.kind);
+    }
     setPwd(''); setErr('');
   };
   return (
@@ -438,8 +442,8 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
         <h3 className="text-body font-semibold mb-tight">Últimos comandos</h3>
         {commands.length === 0 ? <EmptyState icon="comando" title="Nenhum comando enviado" detail="Os comandos aparecem aqui com a confirmação do rastreador." />
           : <Table minWidth={560} head={['Quando', 'Comando', 'Destino', 'Status']} rows={commands.slice(0, 6).map((c: any) => {
-            const vals = Object.values(c.status); const ok = vals.filter((x) => x === 'confirmado').length; const pend = vals.filter((x) => x === 'pendente').length;
-            return [<time className="num">{fmtDT(c.ts)}</time>, c.name + (c.message ? ` · "${c.message}"` : ''), c.target === 'grupo' ? `${c.assetIds.length} veículos` : <AssetName name={name(c.assetIds[0])} />, <Badge tone={ok === vals.length ? 'green' : 'orange'}>{ok === vals.length ? 'Confirmado pelo rastreador' : pend ? `${pend} sem comunicação` : `${ok}/${vals.length} confirmados`}</Badge>];
+            const vals = Object.values(c.status); const ok = vals.filter((x) => x === 'confirmado').length; const pend = vals.filter((x) => x === 'pendente').length; const ruim = vals.filter((x) => ['falhou', 'expirado', 'cancelado', 'nao_suportado'].includes(x as string)).length;
+            return [<time className="num">{fmtDT(c.ts)}</time>, c.name + (c.message ? ` · "${c.message}"` : ''), c.target === 'grupo' ? `${c.assetIds.length} veículos` : <AssetName name={name(c.assetIds[0])} />, <Badge tone={ok === vals.length ? 'green' : ruim ? 'red' : 'orange'}>{ok === vals.length ? 'Confirmado pelo rastreador' : ruim ? ({ falhou: 'Falhou no envio', expirado: 'Sem confirmação no prazo', cancelado: 'Substituído por outro comando', nao_suportado: 'Não disponível para este rastreador' } as any)[vals.find((x) => ['falhou', 'expirado', 'cancelado', 'nao_suportado'].includes(x as string)) as string] : pend ? `${pend} aguardando o rastreador` : `${ok}/${vals.length} confirmados`}</Badge>];
           })} />}
       </div>
     </Modal>

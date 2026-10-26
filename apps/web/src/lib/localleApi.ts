@@ -5,6 +5,7 @@ import type { BillingType, ContractStatus, ContractTerms, ContractVersion } from
 import { inFence } from '@localle/shared/utils';
 import { alertaIdOf, alertaToAlert, alertIdFor, applyPosicao, assetIdFor, backendIdOf, cercaToFence, createSseParser, fenceToCercaBody, regraToRule, ruleToRegraBody, eventoToReplay, type EventoApi, type RegraApi, toAsset, toVehicle, type CercaApi, type CurrentRow } from './localleMap';
 import { useStore } from './store';
+import * as M from './localleModulos';
 import { LIVE_GROUP } from './rastreioApi';
 
 // Integração com o NOSSO backend (apps/api): login (sempre real, não há mais login de simulação) e frota
@@ -256,6 +257,7 @@ function applyMessage(m: RealtimeMessage) {
     if (m.kind === 'posicao') { push(m); return { vehicles, history }; }
     // alerta novo ou atualizado (lido/tratado por outro usuário): quem cria e decide é o backend
     if (m.kind === 'alerta') return { alerts: upsertAlertas(s, [m.alerta]) };
+    if (m.kind === 'comando_status') return aplicarComandoStatus(s, m.comando);
     return {}; // evento cru: já está persistido; o que precisava de alerta chega como kind 'alerta'
   });
 }
@@ -359,6 +361,7 @@ export function useLocalleSync() {
     if (!email || role !== 'gestor') { purgeLocalleData(); return; }
     const ctrl = new AbortController();
     Promise.all([syncFrota(), syncCercas(), syncAlertas(), syncRegras()])
+      .then(() => syncModulos())
       .then(() => runStream(ctrl.signal))
       .catch((e) => useLocalle.setState({ status: 'erro', ts: Date.now(), error: e.message || String(e) }));
     return () => ctrl.abort();
@@ -428,3 +431,208 @@ export async function abrirLinkPublico(token: string, abertura: boolean): Promis
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
+
+
+// ---------- módulos de cadastro/operação que saíram do navegador (apps/api/src/<modulo>) ----------
+// Mesmo desenho de cercas/regras: a coleção do store é a leitura (as telas continuam iguais), toda
+// escrita vai à API e recarrega a coleção. Mapeamento em localleModulos.ts. Veículos simulados (id sem
+// "lc_") não existem no backend: a API recusa com 400 e a tela mostra a mensagem.
+const DIA = 86_400_000;
+const desde = (dias: number) => `de=${new Date(Date.now() - dias * DIA).toISOString()}`;
+const patch = (fn: (s: any) => any) => useStore.getState().patch(fn);
+
+export async function syncMotoristas() {
+  const [motoristas, assets] = await Promise.all([apiGet<any[]>('/motoristas?incluirInativos=true'), apiGet<any[]>('/assets?incluirInativos=true')]);
+  const driverOf = new Map(assets.map((a) => [assetIdFor(a.id), a.motorista_id || '']));
+  patch((s) => ({
+    drivers: motoristas.map(M.motoristaToDriver).filter((d) => d.active),
+    assets: s.assets.map((a: any) => (driverOf.has(a.id) ? { ...a, driverId: driverOf.get(a.id) } : a)),
+  }));
+}
+export async function salvarMotorista(d: any) {
+  const salvo = await apiSend<any>(d.id ? 'PATCH' : 'POST', d.id ? `/motoristas/${d.id}` : '/motoristas', M.driverToMotoristaBody(d));
+  await syncMotoristas();
+  return M.motoristaToDriver(salvo);
+}
+export async function desativarMotorista(id: string) { await apiSend('POST', `/motoristas/${id}/desativar`); await syncMotoristas(); }
+/** Motorista do cadastro do veículo (origem "escala"): grava no ativo real; os vínculos por origem continuam locais. */
+export async function definirMotoristaDoAtivo(assetId: string, driverId: string) {
+  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { motoristaId: driverId || null });
+  await syncMotoristas();
+}
+
+export async function syncGrupos() {
+  const grupos = (await apiGet<any[]>('/grupos')).map(M.grupoToGroup);
+  const porAtivo = M.groupIdsByAsset(grupos);
+  patch((s) => ({
+    groups: [...grupos, ...s.groups.filter((g: any) => g.id === LIVE_GROUP.id)],
+    assets: s.assets.map((a: any) => (isRealAsset(a) ? { ...a, groupIds: [...(porAtivo[a.id] || []), ...(a.groupIds?.includes(LIVE_GROUP.id) ? [LIVE_GROUP.id] : [])] } : a)),
+  }));
+}
+export async function salvarGrupo(g: { id?: string; name: string }) {
+  await apiSend(g.id ? 'PUT' : 'POST', g.id ? `/grupos/${g.id}` : '/grupos', { name: g.name });
+  await syncGrupos();
+}
+export async function removerGrupo(id: string) { await apiSend('DELETE', `/grupos/${id}`); await syncGrupos(); }
+export async function definirAtivosDoGrupo(id: string, assetIds: string[]) {
+  await apiSend('PUT', `/grupos/${id}/ativos`, { assetIds: assetIds.filter((a) => isRealAsset({ id: a })).map(backendIdOf) });
+  await syncGrupos();
+}
+
+export async function syncJornada() {
+  const marcacoes = await apiGet<any[]>(`/jornada/marcacoes?${desde(90)}`);
+  patch(() => ({ journey: marcacoes.map(M.marcacaoToMark) }));
+}
+export async function registrarMarcacao(m: any) { await apiSend('POST', '/jornada/marcacoes', M.markToMarcacaoBody(m)); await syncJornada(); }
+export async function removerMarcacao(id: string) { await apiSend('DELETE', `/jornada/marcacoes/${id}`); await syncJornada(); }
+
+export async function syncMultas() {
+  const multas = await apiGet<any[]>('/multas');
+  patch(() => ({ fines: multas.map(M.multaToFine) }));
+}
+export async function salvarMulta(f: any) {
+  await apiSend(f.id ? 'PUT' : 'POST', f.id ? `/multas/${f.id}` : '/multas', M.fineToMultaBody(f));
+  await syncMultas();
+}
+export async function indicarCondutor(id: string, driverId: string) { await apiSend('POST', `/multas/${id}/indicar`, { motoristaId: driverId }); await syncMultas(); }
+
+export async function syncAbastecimentos() {
+  const rows = await apiGet<any[]>(`/abastecimentos?${desde(2 * 366)}`);
+  patch(() => ({ fuelings: rows.map(M.abastecimentoToFueling) }));
+}
+export async function salvarAbastecimento(f: any) {
+  await apiSend(f.id ? 'PUT' : 'POST', f.id ? `/abastecimentos/${f.id}` : '/abastecimentos', M.fuelingToAbastecimentoBody(f));
+  await syncAbastecimentos();
+}
+export async function removerAbastecimento(id: string) { await apiSend('DELETE', `/abastecimentos/${id}`); await syncAbastecimentos(); }
+
+export async function syncManutencao() {
+  const [planos, os] = await Promise.all([apiGet<any[]>('/manutencao/planos'), apiGet<any[]>('/manutencao/os')]);
+  patch(() => ({ plans: planos.map(M.planoToPlan), workOrders: os.map(M.osToWorkOrder) }));
+}
+export async function salvarPlano(p: any) {
+  await apiSend(p.id ? 'PUT' : 'POST', p.id ? `/manutencao/planos/${p.id}` : '/manutencao/planos', M.planToPlanoBody(p));
+  await syncManutencao();
+}
+export async function removerPlano(id: string) { await apiSend('DELETE', `/manutencao/planos/${id}`); await syncManutencao(); }
+/** Devolve a OS no formato da tela (com o id/número gerados pelo backend quando é nova). */
+export async function salvarOs(w: any) {
+  const salvo = await apiSend<any>(w.id ? 'PUT' : 'POST', w.id ? `/manutencao/os/${w.id}` : '/manutencao/os', M.workOrderToOsBody(w));
+  await syncManutencao();
+  return M.osToWorkOrder(salvo);
+}
+
+export async function syncChecklist() {
+  const [modelos, respostas] = await Promise.all([apiGet<any[]>('/checklist/modelos'), apiGet<any[]>(`/checklist/respostas?${desde(180)}`)]);
+  patch(() => ({ checklistTemplates: modelos.map(M.modeloToTemplate), checklistResponses: respostas.map(M.respostaToResponse) }));
+}
+export async function salvarModeloChecklist(t: any) {
+  await apiSend(t.id ? 'PUT' : 'POST', t.id ? `/checklist/modelos/${t.id}` : '/checklist/modelos', M.templateToModeloBody(t));
+  await syncChecklist();
+}
+export async function removerModeloChecklist(id: string) { await apiSend('DELETE', `/checklist/modelos/${id}`); await syncChecklist(); }
+export async function responderChecklist(r: any) {
+  const motoristas = new Set<string>(useStore.getState().drivers.map((d: any) => d.id));
+  await apiSend('POST', '/checklist/respostas', M.responseToRespostaBody(r, motoristas));
+  await syncChecklist();
+}
+
+export async function syncRanking() {
+  const [tipos, eventos, settings] = await Promise.all([apiGet<any[]>('/ranking/matriz'), apiGet<any[]>(`/ranking/eventos?${desde(366)}`), apiGet<any[]>('/settings')]);
+  const v = (k: string) => settings.find((x) => x.key === k)?.value;
+  patch(() => ({ events: eventos.map(M.eventoRankingToEvent), rankCfg: M.tiposToRankCfg(tipos, Number(v('ranking.limite_pontos') ?? 100), String(v('ranking.periodo_limite') ?? 'mes')), customEventTypes: [] }));
+}
+export async function salvarMatrizRanking(tipos: any[], limit: number, limitPeriod: string) {
+  for (const t of tipos) await apiSend('PUT', `/ranking/matriz/${t.code}`, M.tipoToMatrizBody(t));
+  await apiSend('PUT', '/settings/ranking.limite_pontos', { value: limit });
+  await apiSend('PUT', '/settings/ranking.periodo_limite', { value: limitPeriod });
+  await syncRanking();
+}
+export async function lancarEventoRanking(e: any) { await apiSend('POST', '/ranking/eventos', M.eventToEventoRankingBody(e)); await syncRanking(); }
+
+export async function syncViagens() {
+  const [matrizes, viagens] = await Promise.all([apiGet<any[]>('/viagens/matrizes'), apiGet<any[]>('/viagens')]);
+  patch(() => ({ matrices: matrizes.map(M.matrizToMatrix), trips: viagens.map(M.viagemToTrip) }));
+}
+export async function salvarMatrizViagem(m: any) {
+  await apiSend(m.id ? 'PUT' : 'POST', m.id ? `/viagens/matrizes/${m.id}` : '/viagens/matrizes', M.matrixToMatrizBody(m));
+  await syncViagens();
+}
+export async function removerMatrizViagem(id: string) { await apiSend('DELETE', `/viagens/matrizes/${id}`); await syncViagens(); }
+export async function criarViagem(t: any) { await apiSend('POST', '/viagens', M.tripToViagemBody(t)); await syncViagens(); }
+/** Portaria: viagem de pátio criada e já iniciada (o backend exige a etapa `iniciada` para ficar em andamento). */
+export async function criarViagemPatio(t: any, origem: string) {
+  const v = await apiSend<any>('POST', '/viagens', M.tripToViagemBody({ ...t, type: 'patio' }));
+  await apiSend('POST', `/viagens/${v.id}/etapa`, { etapa: 'iniciada', origem });
+  await syncViagens();
+}
+export async function etapaViagem(id: string, etapa: 'iniciada' | 'carregada' | 'descarregada' | 'encerrada', origem?: string) {
+  await apiSend('POST', `/viagens/${id}/etapa`, { etapa, origem });
+  await syncViagens();
+}
+export async function cancelarViagem(id: string) { await apiSend('POST', `/viagens/${id}/cancelar`); await syncViagens(); }
+
+/** Carga inicial de todos os módulos depois do login (cada um independente: um erro não derruba os outros). */
+export async function syncModulos() {
+  const partes = [syncMotoristas, syncGrupos, syncJornada, syncMultas, syncAbastecimentos, syncManutencao, syncChecklist, syncRanking, syncViagens];
+  const r = await Promise.allSettled(partes.map((f) => f()));
+  const falhas = r.filter((x): x is PromiseRejectedResult => x.status === 'rejected');
+  if (falhas.length) useLocalle.setState({ status: 'erro', ts: Date.now(), error: falhas.map((f) => f.reason?.message || String(f.reason)).join('; ') });
+}
+
+
+// ---------- comandos ao rastreador (apps/api/src/comandos): bloqueio, desbloqueio e pedido de posição ----------
+// O modal de comandos continua com o modelo da simulação (`commands` no store, status por veículo). Para o
+// veículo real do nosso backend, o envio vai a POST /comandos[/bloqueio]; o estado final chega pelo tempo
+// real (`comando_status`) — `expirado`/`cancelado` nunca viram "veículo liberado" (§ 4.6 da integração).
+const TIPO_POR_KIND: Record<string, 'engineStop' | 'engineResume' | 'positionSingle'> = { bloqueio: 'engineStop', desbloqueio: 'engineResume', posicao: 'positionSingle' };
+// vocabulário do modal: 'enviado' = ainda aguardando o rastreador (o toast segue esperando); 'pendente' = sem comunicação
+const STATUS_TELA: Record<string, string> = { solicitado: 'enviado', enviado: 'enviado', aguardando: 'enviado', confirmado: 'confirmado', falhou: 'falhou', expirado: 'expirado', cancelado: 'cancelado' };
+/** comandoId (backend) → entrada do modal, para o tempo real atualizar a linha certa. */
+const comandoParaCmd = new Map<string, { cmdId: string; assetId: string }>();
+
+function aplicarComandoStatus(s: any, c: { id: string; assetId: string; tipo: string; status: string }) {
+  const ref = comandoParaCmd.get(c.id);
+  const assetId = ref?.assetId ?? assetIdFor(c.assetId);
+  const vehicles = { ...s.vehicles };
+  // só a confirmação do aparelho muda o estado mostrado; e mesmo ela é "confirmado segundo o protocolo", não prova física
+  if (c.status === 'confirmado' && vehicles[assetId] && (c.tipo === 'engineStop' || c.tipo === 'engineResume')) {
+    vehicles[assetId] = { ...vehicles[assetId], blocked: c.tipo === 'engineStop' };
+  }
+  const commands = ref ? s.commands.map((x: any) => (x.id === ref.cmdId ? { ...x, status: { ...x.status, [assetId]: STATUS_TELA[c.status] || c.status } } : x)) : s.commands;
+  return { vehicles, commands };
+}
+
+/** Kind do catálogo da tela → tipo do backend; `null` = comando que o Traccar ainda não cobre por aqui. */
+export const tipoComandoLocalle = (kind: string, payload?: string) => TIPO_POR_KIND[kind] ?? (payload === 'WHERE#' ? 'positionSingle' : null);
+
+export async function enviarComandoLocalle(cmdId: string, assetId: string, kind: string, payload: string, motivo: string) {
+  const setStatus = (status: string) => useStore.getState().patch((s: any) => ({ commands: s.commands.map((c: any) => (c.id === cmdId ? { ...c, status: { ...c.status, [assetId]: status } } : c)) }));
+  const tipo = tipoComandoLocalle(kind, payload);
+  if (!tipo) { setStatus('nao_suportado'); return; }
+  try {
+    const fisico = tipo === 'engineStop' || tipo === 'engineResume';
+    const c = await apiSend<{ id: string; status: string; tipo: string; assetId: string }>('POST', fisico ? '/comandos/bloqueio' : '/comandos', { assetId: backendIdOf(assetId), tipo, motivo });
+    comandoParaCmd.set(c.id, { cmdId, assetId });
+    setStatus(STATUS_TELA[c.status] || c.status);
+  } catch (e: any) {
+    setStatus('falhou');
+    throw e;
+  }
+}
+
+
+// ---------- Setup (GET/PUT/DELETE /settings): registro central de parâmetros da API ----------
+export interface SetupParametro {
+  key: string; modulo: string; label: string; type: 'number' | 'boolean' | 'option'; options?: string[]; min: number; max: number;
+  porGrupo: boolean; legal?: { limite: number; endurece: 'up' | 'down'; ref: string }; aplicacao: 'agora' | 'recalcula'; somenteLocale: boolean;
+  value: number | string; origin: 'grupo' | 'cliente' | 'padrao';
+}
+export interface SetupHistorico { id: string; key: string; old_value: number | string | null; new_value: number | string | null; changed_by_email: string | null; reason: string | null; changed_at: string }
+const grupoQs = (groupId: string | null) => (groupId ? `?groupId=${groupId}` : '');
+export const setupApi = {
+  listar: (groupId: string | null) => apiGet<SetupParametro[]>(`/settings${grupoQs(groupId)}`),
+  set: (key: string, value: number | string, groupId: string | null, reason: string) => apiSend<SetupParametro>('PUT', `/settings/${key}`, { value, groupId: groupId || undefined, reason: reason || undefined }),
+  restaurar: (key: string, groupId: string | null) => apiSend<SetupParametro>('DELETE', `/settings/${key}${grupoQs(groupId)}`),
+  historico: (key: string, groupId: string | null) => apiGet<SetupHistorico[]>(`/settings/${key}/historico${grupoQs(groupId)}`),
+};

@@ -3,6 +3,7 @@ import { opAssets } from '../lib/assetLifecycle';
 import { useMemo, useState } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import { useStore, assetKm } from '../lib/store';
+import { cancelarViagem, criarViagem, removerMatrizViagem, salvarMatrizViagem } from '../lib/localleApi';
 import { registerGate } from '../lib/gate';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, EmptyState, Progress, TabPanel, toast, Check, DescList, DescRow, confirmAction, Grid, Stack } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
@@ -213,7 +214,7 @@ function Externas() {
         <Table minWidth={1180} emptyState={<EmptyState illustration="ilu-viagens" layout="row" title="Nenhuma viagem nesta lista" detail="Troque o filtro ou cadastre uma nova viagem." />} head={['Viagem', 'Veículo', 'Carga', 'Etapas', 'Situação', 'Duração', '']} rows={list.slice(0, more).map((x: any) => [
           <span className="font-medium">{x.name || '—'}</span>, <Plate name={N.a(x.assetId)} />, <span className="text-small">{x.cargo || '—'}{x.status === 'em_andamento' && <span className="block text-caption text-ink-2">{isLoaded(x) ? 'com carga' : x.unloadedAt ? 'descarregado' : 'sem carga'}</span>}</span>, <Stepper t={x} />,
           <StatusDot kind={TRIP_DOT[x.status].kind} label={TRIP_DOT[x.status].label} />, x.startedAt ? <span className="num">{hm((x.endedAt || Date.now()) - x.startedAt)}</span> : '—',
-          ['aguardando', 'em_andamento'].includes(x.status) ? <TextButton tone="danger" className="whitespace-nowrap" onClick={() => { s.upsert('trips', { id: x.id, status: 'cancelada' }); toast('Viagem cancelada.'); }}>Cancelar</TextButton> : null])} />
+          ['aguardando', 'em_andamento'].includes(x.status) ? <TextButton tone="danger" className="whitespace-nowrap" onClick={async () => { try { await cancelarViagem(x.id); toast('Viagem cancelada.'); } catch (e: any) { toast('Não foi possível cancelar: ' + (e.message || e), { tone: 'crit' }); } }}>Cancelar</TextButton> : null])} />
         {list.length > more && <div className="mt-3 flex items-center gap-3"><Button variant="ghost" size="sm" onClick={() => setMore(more + 50)}>Mostrar mais</Button><span className="text-caption text-ink-2 num">{more} de {list.length}</span></div>}
       </Card>
       {t && <TripForm t={t} setT={setT} />}
@@ -224,7 +225,7 @@ function TripForm({ t, setT }: any) {
   const s = useStore();
   const fences = [{ value: '', label: 'Escolha a cerca' }, ...s.fences.map((f: any) => ({ value: f.id, label: `${f.name} (${f.type})` }))];
   const ok = t.assetId && t.originFenceId && t.loadFenceId && t.unloadFenceId && t.destFenceId;
-  const save = () => { s.upsert('trips', { ...t, type: 'externo', status: 'aguardando', driverId: t.driverId || s.assets.find((a: any) => a.id === t.assetId)?.driverId }); toast('Viagem criada. Ela começa quando o veículo sair da origem.'); setT(null); };
+  const save = async () => { try { await criarViagem({ ...t, type: 'externo', driverId: t.driverId || s.assets.find((a: any) => a.id === t.assetId)?.driverId }); toast('Viagem criada. Ela começa quando o veículo sair da origem.'); setT(null); } catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); } };
   return (
     <Modal open onClose={() => setT(null)} title="Nova viagem externa" width="max-w-3xl" footer={<><Button variant="ghost" onClick={() => setT(null)}>Cancelar</Button><Button disabled={!ok} onClick={save}>Salvar viagem</Button></>}>
       <div className="grid md:grid-cols-2 gap-field">
@@ -251,7 +252,7 @@ function Recorrentes() {
       <div className="flex flex-wrap items-center gap-2"><p className="text-small text-ink-2 mr-auto max-w-[80ch]">Viagens que se repetem na semana: paradas com horário previsto e onde o veículo dorme. O cumprimento compara o planejado com as cercas em que o veículo entrou (tolerância de ±{TRIP_PARAMS.tolMin} min).</p><Button onClick={() => setEdit({ name: '', assetId: '', driverId: '', days: [1, 2, 3, 4, 5], stops: [{ fenceId: '', time: '08:00' }], sleep: {} })}><Icon name="mais" size={16} />Nova viagem recorrente</Button></div>
       <Grid cols={2} wide equal>
         {s.matrices.map((m: any) => (
-          <Card key={m.id} title={m.name} icon="rota" actions={<div className="flex gap-3"><TextButton onClick={() => setEdit(JSON.parse(JSON.stringify(m)))}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir a viagem recorrente "${m.name}"?`, detail: 'Ela deixa de gerar viagens novas. As viagens já criadas continuam.' })) { s.remove('matrices', m.id); toast('Viagem recorrente excluída.', { action: { label: 'Desfazer', onClick: () => s.upsert('matrices', m) } }); } }}>Excluir</TextButton></div>}>
+          <Card key={m.id} title={m.name} icon="rota" actions={<div className="flex gap-3"><TextButton onClick={() => setEdit(JSON.parse(JSON.stringify(m)))}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir a viagem recorrente "${m.name}"?`, detail: 'Ela deixa de gerar viagens novas. As viagens já criadas continuam.' })) { try { await removerMatrizViagem(m.id); toast('Viagem recorrente excluída.'); } catch (e: any) { toast('Não foi possível excluir: ' + (e.message || e), { tone: 'crit' }); } } }}>Excluir</TextButton></div>}>
             <DescList className="mb-4">
               <DescRow label="Veículo"><Plate name={N.a(m.assetId)} />{m.driverId && <span className="text-ink-2"> · {N.d(m.driverId)}</span>}</DescRow>
               <DescRow label="Dias">{m.days.map((d: number) => WEEKDAYS[d]).join(', ')}</DescRow>
@@ -290,7 +291,7 @@ function MatrixForm({ m, setM }: any) {
   const fences = [{ value: '', label: 'Escolha a cerca' }, ...s.fences.map((f: any) => ({ value: f.id, label: f.name }))];
   const ok = m.name && m.assetId && m.days.length && m.stops.length && m.stops.every((x: any) => x.fenceId && x.time);
   return (
-    <Modal open onClose={() => setM(null)} title={m.id ? 'Editar viagem recorrente' : 'Nova viagem recorrente'} width="max-w-3xl" footer={<><Button variant="ghost" onClick={() => setM(null)}>Cancelar</Button><Button disabled={!ok} onClick={() => { s.upsert('matrices', m); toast('Viagem recorrente salva.'); setM(null); }}>Salvar</Button></>}>
+    <Modal open onClose={() => setM(null)} title={m.id ? 'Editar viagem recorrente' : 'Nova viagem recorrente'} width="max-w-3xl" footer={<><Button variant="ghost" onClick={() => setM(null)}>Cancelar</Button><Button disabled={!ok} onClick={async () => { try { await salvarMatrizViagem(m); toast('Viagem recorrente salva.'); setM(null); } catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); } }}>Salvar</Button></>}>
       <div className="grid md:grid-cols-3 gap-field">
         <Field label="Nome"><Input value={m.name} onChange={(e) => setM({ ...m, name: e.target.value })} placeholder="Ex.: Entregas Recife" /></Field>
         <Field label="Veículo"><SearchSelect value={m.assetId} onChange={(v) => setM({ ...m, assetId: v, driverId: s.assets.find((a: any) => a.id === v)?.driverId || m.driverId })} placeholder="Escolha" options={s.assets.filter((a: any) => a.tracker && a.kind === 'veiculo').map((a: any) => ({ value: a.id, label: a.name }))} /></Field>

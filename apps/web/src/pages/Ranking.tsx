@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
+import { lancarEventoRanking, salvarMatrizRanking } from '../lib/localleApi';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, DeltaChip, StatusDot, Num } from '../components/story';
@@ -21,7 +22,7 @@ function useMatrix() {
   const cfg = s.rankCfg || { types: {}, custom: [], limit: 100, limitPeriod: 'mes' };
   return {
     types: localTypes(s), limit: cfg.limit ?? 100, limitPeriod: cfg.limitPeriod || 'mes', ready: true,
-    save: async (types: EvType[], limit: number, limitPeriod: string) => s.patch((st: any) => ({ rankCfg: { ...cfg, limit, limitPeriod, types: Object.fromEntries(types.filter((t) => !t.custom).map((t) => [t.code, { weight: t.weight, tiers: t.tiers, active: t.active }])), custom: types.filter((t) => t.custom).map((t) => ({ code: t.code, label: t.label, weight: t.weight, tiers: t.tiers, active: t.active, category: 'empresa' })) }, customEventTypes: [] })),
+    save: async (types: EvType[], limit: number, limitPeriod: string) => salvarMatrizRanking(types, limit, limitPeriod),
   };
 }
 
@@ -181,7 +182,7 @@ function RegisterEvent({ types }: { types: EvType[] }) {
         <Field label="Motorista"><SearchSelect className="w-48" value={e.driverId} onChange={(v) => setE({ ...e, driverId: v })} options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
         <Field label="Evento"><Select className="w-64" value={e.type} onChange={(x) => setE({ ...e, type: x.target.value })} options={types.filter((x) => x.active).map((x) => ({ value: x.code, label: x.label }))} /></Field>
         {t?.unit && <Field label={`Valor (${t.unit})`}><Input className="w-28" type="number" value={e.value} onChange={(x) => setE({ ...e, value: x.target.value })} /></Field>}
-        <Button variant="dark" onClick={() => { s.upsert('events', { driverId: e.driverId, type: e.type, ts: Date.now(), assetId: s.assets.find((a: any) => a.driverId === e.driverId)?.id, value: e.value ? +e.value : null, source: 'manual', pos: [-8.1, -34.92] }); toast('Evento lançado.'); setE({ ...e, value: '' }); }}>Lançar</Button>
+        <Button variant="dark" onClick={async () => { try { await lancarEventoRanking({ driverId: e.driverId, type: e.type, ts: Date.now(), assetId: s.assets.find((a: any) => a.driverId === e.driverId)?.id, value: e.value ? +e.value : null, source: 'manual' }); toast('Evento lançado.'); setE({ ...e, value: '' }); } catch (er: any) { toast('Não foi possível lançar: ' + (er.message || er), { tone: 'crit' }); } }}>Lançar</Button>
       </div>
     </Card>
   );
