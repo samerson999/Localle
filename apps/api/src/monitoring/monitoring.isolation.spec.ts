@@ -52,6 +52,17 @@ describe('monitoramento — frota atual e histórico', () => {
       [rastreadorId, assetComPosicao, clientA],
     );
 
+    await pool.query(
+      `insert into rastreador_comunicacao (rastreador_id, asset_id, client_id, ultimo_pacote_em, ultima_posicao_valida_em)
+       values ($1, $2, $3, '2026-01-01T12:00:00Z', '2026-01-01T12:00:00Z')`,
+      [rastreadorId, assetComPosicao, clientA],
+    );
+    await pool.query(
+      `insert into eventos (rastreador_id, client_id, asset_id, origem, tipo, ts, posicao_id)
+       values ($1, $2, $3, 'aparelho', 'sos', '2026-01-01T12:00:00Z', null)`,
+      [rastreadorId, clientA, assetComPosicao],
+    );
+
     // histórico: duas posições no período
     await pool.query(
       `insert into posicoes
@@ -65,6 +76,8 @@ describe('monitoramento — frota atual e histórico', () => {
 
   afterAll(async () => {
     await pool.query('delete from posicoes where rastreador_id = $1', [rastreadorId]);
+    await pool.query('delete from eventos where rastreador_id = $1', [rastreadorId]);
+    await pool.query('delete from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
     await pool.query('delete from ultima_posicao where rastreador_id = $1', [rastreadorId]);
     await pool.query('delete from instalacoes where rastreador_id = $1', [rastreadorId]);
     await pool.query('delete from rastreadores where id = $1', [rastreadorId]);
@@ -85,6 +98,16 @@ describe('monitoramento — frota atual e histórico', () => {
     expect(aguardando?.latitude).toBeNull();
   });
 
+  it('frotaAtual deixa de fora ativo vendido/baixado', async () => {
+    await pool.query("update assets set status = 'baixado' where id = $1", [assetAguardando]);
+    try {
+      const rows = await repo.frotaAtual(clientA);
+      expect(rows.map((r) => r.asset_id)).toEqual([assetComPosicao]);
+    } finally {
+      await pool.query("update assets set status = 'ativo' where id = $1", [assetAguardando]);
+    }
+  });
+
   it('frotaAtual não traz ativo de outro cliente', async () => {
     const rows = await repo.frotaAtual(clientB);
     expect(rows).toHaveLength(0);
@@ -100,6 +123,8 @@ describe('monitoramento — frota atual e histórico', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].fix_time.toISOString()).toBe('2026-01-01T08:00:00.000Z');
     expect(rows[1].fix_time.toISOString()).toBe('2026-01-01T12:00:00.000Z');
+    // regressão: o Replay e o relatório de motor precisam da ignição de cada ponto (antes não vinha)
+    expect(rows[0]).toHaveProperty('ignition');
   });
 
   it('historicoDoAtivo não retorna nada para outro cliente', async () => {
@@ -110,5 +135,29 @@ describe('monitoramento — frota atual e histórico', () => {
       new Date('2026-01-02T00:00:00Z'),
     );
     expect(rows).toHaveLength(0);
+  });
+
+  it("frotaAtual traz rastreador e último pacote da instalação vigente; ativo sem instalação vem null", async () => {
+    const rows = await repo.frotaAtual(clientA);
+    const comPosicao = rows.find((r) => r.asset_id === assetComPosicao);
+    expect(comPosicao?.rastreador_id).toBe(rastreadorId);
+    expect(comPosicao?.ultimo_pacote_em?.toISOString()).toBe("2026-01-01T12:00:00.000Z");
+    const aguardando = rows.find((r) => r.asset_id === assetAguardando);
+    expect(aguardando?.rastreador_id).toBeNull();
+    expect(aguardando?.ultimo_pacote_em).toBeNull();
+  });
+
+  it("eventos traz os eventos do cliente no período, com placa, e filtra por ativo", async () => {
+    const periodo = [new Date("2026-01-01T00:00:00Z"), new Date("2026-01-02T00:00:00Z")] as const;
+    const todos = await repo.eventos(clientA, ...periodo, null);
+    expect(todos).toHaveLength(1);
+    expect(todos[0]).toMatchObject({ tipo: "sos", plate: "MON1A22", asset_id: assetComPosicao });
+    expect(await repo.eventos(clientA, ...periodo, assetAguardando)).toHaveLength(0);
+  });
+
+  it("eventos não retorna nada para outro cliente, nem filtrando pelo ativo do primeiro", async () => {
+    const periodo = [new Date("2026-01-01T00:00:00Z"), new Date("2026-01-02T00:00:00Z")] as const;
+    expect(await repo.eventos(clientB, ...periodo, null)).toHaveLength(0);
+    expect(await repo.eventos(clientB, ...periodo, assetComPosicao)).toHaveLength(0);
   });
 });

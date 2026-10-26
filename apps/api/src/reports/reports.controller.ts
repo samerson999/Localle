@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
 import { parseDate } from '../common/parse-date';
+import { parseUuid } from '../common/parse-uuid';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { SettingsService } from '../settings/settings.service';
@@ -75,10 +76,10 @@ export class ReportsController {
   }
 
   private parsePeriod(query: AssetPeriodQueryDto): { assetId: string; from: Date; to: Date } {
-    if (!query.assetId) throw new BadRequestException('Parâmetro "assetId" é obrigatório');
+    const assetId = parseUuid('assetId', query.assetId);
     const from = parseDate('from', query.from);
     const to = parseDate('to', query.to);
     if (from > to) throw new BadRequestException('"from" não pode ser depois de "to"');
-    return { assetId: query.assetId, from, to };
+    return { assetId, from, to };
   }
 }
