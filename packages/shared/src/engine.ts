@@ -165,7 +165,15 @@ export function processTick(s: any, now: number, dt: number) {
   for (const id of Object.keys(vehicles)) {
     const prev = vehicles[id];
     const asset = assetsById[id];
-    if (!asset || prev.noSignal) continue;
+    if (!asset) continue;
+    // Veículo real: entrada/saída de cerca, alertas e regras são calculados no backend sobre cada posição
+    // (apps/api/src/cercas/cerca-detector.ts) — aqui só o "dentro de quais cercas" para exibir no mapa.
+    if (prev.live) {
+      const inside = s.fences.filter((f: any) => inFence(prev.pos, f)).map((f: any) => f.id);
+      if (inside.join() !== (prev.inside || []).join()) vehicles[id] = { ...prev, inside };
+      continue;
+    }
+    if (prev.noSignal) continue;
     const { v, events: evs } = stepVehicle(prev, dt, now);
     // cercas
     const { inside, entered, left } = fenceCrossing(v.pos, prev.inside, s.fences);

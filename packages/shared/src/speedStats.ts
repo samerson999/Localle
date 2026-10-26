@@ -1,9 +1,8 @@
 // Relatório de velocidade: trechos contínuos acima de uma velocidade mínima (filtro opcional) e com
 // duração mínima (para ignorar picos isolados). Cada trecho mostra velocidade máxima e média.
-// NO PRODUTO REAL essa regra roda no backend sobre a série de posições do TimescaleDB (window function
-// por veículo/tempo), não no front. Este arquivo é a especificação do comportamento — os testes
-// (speedStats.test.ts) valem como casos de aceite.
-import type { Point } from './positionsSource';
+// Implementação única: a API (GET /reports/velocidade) aplica esta função sobre as posições do banco, e
+// o front sobre a simulação — os testes (speedStats.test.ts) são os casos de aceite dos dois.
+import type { Point } from './points';
 
 export type SpeedLeg = { start: number; end: number; startPos: [number, number]; endPos: [number, number]; vmax: number; vavg: number; maxPos: [number, number] };
 

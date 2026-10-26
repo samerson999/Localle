@@ -1,12 +1,11 @@
 // Relatório de cercas: passagens de um veículo por uma cerca (entrada, saída, permanência).
 // Entrada = primeira posição dentro da cerca; saída = primeira posição fora dela (ou o fim do período,
 // se o veículo ainda estiver dentro). Permanência = saída menos entrada.
-// NO PRODUTO REAL essa regra roda no backend (PostGIS: ST_Contains/ST_DWithin sobre as posições do
-// TimescaleDB), disparando o evento de entrada/saída no momento em que ele acontece, em vez de varrer o
-// histórico depois. Este arquivo é a especificação do comportamento — os testes (fenceStats.test.ts)
-// valem como casos de aceite para a implementação em PostGIS.
-import { inFence } from '@localle/shared/utils';
-import type { Point } from './positionsSource';
+// Implementação única: a API (GET /reports/cercas) aplica esta função sobre as posições do banco, e o
+// front sobre a simulação. Os alertas de entrada/saída em tempo real são outro caminho (cerca-detector
+// na ingestão). Testes: fenceStats.test.ts.
+import { inFence } from './utils';
+import type { Point } from './points';
 
 export const GAP_MIN = 30; // minutos sem posição dentro da cerca: sinaliza perda de sinal
 

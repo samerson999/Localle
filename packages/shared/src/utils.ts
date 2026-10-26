@@ -30,7 +30,6 @@ export function inFence(p: [number, number], f: any) {
   if (f.shape === 'circle') return haversine(p, f.center) <= f.radius;
   return f.points?.length > 2 && pointInPolygon(p, f.points);
 }
-export const fileToDataURL = (file: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(file); });
 
 export type PeriodKind = 'mes' | 'trimestre' | 'semestre' | 'ano' | 'custom';
 export interface Period { kind: PeriodKind; year: number; idx: number; from?: string; to?: string }

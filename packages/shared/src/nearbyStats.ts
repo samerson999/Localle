@@ -2,11 +2,10 @@
 // Uma passagem = sequência contínua de posições dentro do raio; passagens do mesmo veículo separadas
 // por mais de GAP_MIN minutos contam como passagens diferentes (mesmo que o raio não tenha uma saída
 // e reentrada registrada no meio — ex.: o veículo ficou longas horas fora e voltou).
-// NO PRODUTO REAL essa regra roda no backend (PostGIS: ST_DWithin contra um ponto, sobre o TimescaleDB),
-// não varrendo o histórico no front. Este arquivo é a especificação do comportamento — os testes
-// (nearbyStats.test.ts) valem como casos de aceite.
-import { haversine } from '@localle/shared/utils';
-import type { Point } from './positionsSource';
+// Implementação única: a API (GET /reports/passou-por-aqui) pré-filtra no PostGIS (ST_DWithin) e aplica
+// esta função sobre as posições do banco; o front, sobre a simulação. Testes: nearbyStats.test.ts.
+import { haversine } from './utils';
+import type { Point } from './points';
 
 export const GAP_MIN = 5;
 
