@@ -1,0 +1,12 @@
+name: localle-mail
+
+# Só desenvolvimento: servidor SMTP falso com caixa de entrada web (http://localhost:8025). A API envia por
+# SMTP_HOST=localhost/SMTP_PORT=1025 e nada sai para a internet. Os testes de integração do convite leem a
+# mensagem pela API do Mailpit. Em produção, SMTP_* aponta para o provedor real — este serviço não sobe lá.
+services:
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # caixa de entrada web + API

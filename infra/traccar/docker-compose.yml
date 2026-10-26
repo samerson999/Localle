@@ -25,6 +25,9 @@ services:
         condition: service_healthy
     environment:
       TZ: ${TZ:-America/Recife}
+    # Forwarding para a API no host (INGEST_URL padrão): no Linux, host.docker.internal só existe com isto.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     volumes:
       - ./conf/traccar.xml:/opt/traccar/conf/traccar.xml:ro
       - traccar-data:/opt/traccar/data

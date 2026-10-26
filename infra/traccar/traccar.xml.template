@@ -12,4 +12,19 @@
     <!-- depois da primeira criação, troque para false e reaplique com "docker compose restart traccar". -->
     <entry key='web.enable'>true</entry>
     <entry key='web.port'>8082</entry>
+
+    <!-- Cadastro primeiro (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.5): IMEI desconhecido não vira device. -->
+    <!-- O device nasce no Traccar quando o rastreador é cadastrado na plataforma (RastreadoresService). -->
+    <entry key='database.registerUnknown'>false</entry>
+
+    <!-- Forwarding para a API (§ 1.1 e § 5.1): cada posição/evento gravado é enviado ao inbox da API. -->
+    <!-- A chave tem de ser a mesma de TRACCAR_INGEST_KEY no apps/api/.env. Nomes das chaves conferidos -->
+    <!-- na § 1.1; event.forward.header ainda precisa ser confirmado na POC (§ 7.5). -->
+    <entry key='forward.url'>__INGEST_URL__/ingest/traccar/positions</entry>
+    <entry key='forward.type'>json</entry>
+    <entry key='forward.header'>X-Traccar-Ingest-Key: __INGEST_KEY__</entry>
+    <entry key='forward.retry.enable'>true</entry>
+    <entry key='event.forward.url'>__INGEST_URL__/ingest/traccar/events</entry>
+    <entry key='event.forward.type'>json</entry>
+    <entry key='event.forward.header'>X-Traccar-Ingest-Key: __INGEST_KEY__</entry>
 </properties>

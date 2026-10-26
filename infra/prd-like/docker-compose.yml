@@ -1,0 +1,31 @@
+name: localle-prd-like
+
+# Simulação local de produção: as MESMAS imagens que o Coolify builda (apps/api/Dockerfile e
+# apps/web/Dockerfile, nginx com o bundle estático), contra o banco/fila/Traccar locais de infra/.
+# Uso exclusivo local — homologação e produção usam só os Dockerfiles, nunca este compose
+# (docs/DEPLOY-COOLIFY.md). Migrations não rodam a partir da imagem da API: `make migrate` antes.
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    image: localle-api:prd-like
+    env_file: ../../apps/api/.env
+    # mesmo ajuste localhost -> host.docker.internal do ambiente de dev (infra/dev/entrypoint.sh)
+    entrypoint: ['sh', '/dev-entrypoint.sh']
+    command: ['node', 'dist/apps/api/src/main.js']
+    volumes:
+      - ../dev/entrypoint.sh:/dev-entrypoint.sh:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - '3001:3000'
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    image: localle-web:prd-like
+    ports:
+      - '8080:80'

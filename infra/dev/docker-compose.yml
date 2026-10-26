@@ -1,0 +1,63 @@
+name: localle-dev
+
+# Desenvolvimento 100% em container: dependências instaladas pelo serviço `install` em volumes nomeados,
+# web (Vite) e api (nest --watch) com hot reload sobre o repositório montado. Banco, fila e Traccar
+# continuam nas stacks de infra/plataforma, infra/fila e infra/traccar (independentes), alcançadas
+# via host.docker.internal. Ver infra/README.md.
+
+x-node: &node
+  build: .
+  image: localle-dev-node
+  working_dir: /repo
+  volumes:
+    - ../..:/repo
+    - node_modules:/repo/node_modules
+    - web_node_modules:/repo/apps/web/node_modules
+    - api_node_modules:/repo/apps/api/node_modules
+    - shared_node_modules:/repo/packages/shared/node_modules
+    - pnpm_store:/pnpm-store
+  environment:
+    npm_config_store_dir: /pnpm-store
+    # bind mount do Windows não propaga eventos de arquivo: watchers precisam de polling
+    CHOKIDAR_USEPOLLING: 'true'
+    TSC_WATCHFILE: DynamicPriorityPolling
+    TSC_WATCHDIRECTORY: DynamicPriorityPolling
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+services:
+  install:
+    <<: *node
+    command: pnpm install --frozen-lockfile
+
+  web:
+    <<: *node
+    command: pnpm --filter web dev --host 0.0.0.0
+    environment:
+      npm_config_store_dir: /pnpm-store
+      CHOKIDAR_USEPOLLING: 'true'
+      BROWSER: none   # vite.config tem open: true; no container não há navegador para abrir
+      # proxy /api-localle do Vite: de dentro do container, a API é o serviço "api", não localhost
+      LOCALLE_API_URL: http://api:3000
+    ports:
+      - '5173:5173'
+    depends_on:
+      install:
+        condition: service_completed_successfully
+
+  api:
+    <<: *node
+    command: pnpm --filter api dev
+    env_file: ../../apps/api/.env
+    ports:
+      - '3000:3000'
+    depends_on:
+      install:
+        condition: service_completed_successfully
+
+volumes:
+  node_modules:
+  web_node_modules:
+  api_node_modules:
+  shared_node_modules:
+  pnpm_store:
