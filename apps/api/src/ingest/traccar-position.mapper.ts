@@ -10,6 +10,8 @@ export interface TraccarPositionPayload {
   speed?: number; // nós
   course?: number;
   altitude?: number;
+  /** Protocolo com que o Traccar decodificou a posição (ex.: "gt06", "suntech") — definido pela porta. */
+  protocol?: string;
   attributes?: Record<string, unknown>;
 }
 
@@ -26,10 +28,28 @@ export interface NormalizedPosition {
   altitude: number | null;
   odometerM: number | null;
   ignition: boolean | null;
+  /** Alarmes do aparelho (`attributes.alarm`), já validados — viram linhas em `eventos`. */
+  alarms: string[];
+  /** null quando o Traccar não informa. */
+  protocol?: string | null;
   attributes: Record<string, unknown>;
 }
 
 const KNOTS_TO_KMH = 1.852;
+
+// docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.3: o Traccar padroniza `attributes.alarm` em identificadores
+// camelCase (`sos`, `powerCut`, `lowBattery`...) e alguns protocolos mandam mais de um separado por
+// vírgula. Payload externo é fronteira de confiança: só passa o formato do catálogo, o resto é descartado.
+const ALARM_PATTERN = /^[a-zA-Z]{1,40}$/;
+
+export function parseAlarms(raw: unknown): string[] {
+  if (typeof raw !== 'string') return [];
+  const alarms = raw
+    .split(',')
+    .map((a) => a.trim())
+    .filter((a) => ALARM_PATTERN.test(a));
+  return [...new Set(alarms)];
+}
 
 /**
  * docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.2: `speed` do Traccar vem em nós, convertido aqui para
@@ -51,6 +71,8 @@ export function mapTraccarPosition(raw: TraccarPositionPayload): NormalizedPosit
     altitude: raw.altitude ?? null,
     odometerM: typeof attributes.odometer === 'number' ? (attributes.odometer as number) : null,
     ignition: typeof attributes.ignition === 'boolean' ? (attributes.ignition as boolean) : null,
+    alarms: parseAlarms(attributes.alarm),
+    protocol: typeof raw.protocol === 'string' && raw.protocol.trim() ? raw.protocol.trim().slice(0, 64) : null,
     attributes,
   };
 }

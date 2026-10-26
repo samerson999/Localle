@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PositionsIngestService } from '../ingest/positions-ingest.service';
 import type { TraccarPositionPayload } from '../ingest/traccar-position.mapper';
+import { RealtimeHub } from '../realtime/realtime.hub';
 import { PositionsQueue } from './positions.queue';
 import { PositionsWorker } from './positions.worker';
 
@@ -14,11 +15,14 @@ import { PositionsWorker } from './positions.worker';
  * espera o worker processar (BullMQ real, não mock) — é a lógica de `PositionsIngestService` que já tem
  * teste próprio; aqui o que está sob teste é a fiação queue → worker.
  */
+// Fila própria desta execução: ver `positionsQueueName()`.
+process.env.POSITIONS_QUEUE_NAME = `positions-ingest-teste-${randomUUID()}`;
+
 describe('fila de posições (BullMQ + Redis real)', () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', { maxRetriesPerRequest: null });
   const queue = new PositionsQueue(connection);
-  const worker = new PositionsWorker(connection, new PositionsIngestService(pool));
+  const worker = new PositionsWorker(connection, new PositionsIngestService(pool), new RealtimeHub(connection));
 
   let clientId: string;
   let assetId: string;
@@ -52,6 +56,7 @@ describe('fila de posições (BullMQ + Redis real)', () => {
       const id = rastreadoresCriados.pop()!;
       await pool.query('delete from rastreador_comunicacao where rastreador_id = $1', [id]);
       await pool.query('delete from ultima_posicao where rastreador_id = $1', [id]);
+      await pool.query('delete from eventos where rastreador_id = $1', [id]);
       await pool.query('delete from posicoes where rastreador_id = $1', [id]);
       await pool.query('delete from ingest_posicoes_recebidas where rastreador_id = $1', [id]);
       await pool.query('delete from instalacoes where rastreador_id = $1', [id]);

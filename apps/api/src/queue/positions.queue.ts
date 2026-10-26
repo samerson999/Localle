@@ -4,7 +4,13 @@ import type IORedis from 'ioredis';
 import { REDIS_CONNECTION } from './redis.provider';
 import type { TraccarPositionPayload } from '../ingest/traccar-position.mapper';
 
-export const POSITIONS_QUEUE_NAME = 'positions-ingest';
+/**
+ * Sobrescrevível por ambiente para o teste da fila usar uma fila só dele — sem isso, qualquer outro worker
+ * ligado ao mesmo Redis (ex.: a API do infra/dev) consome os jobs do teste.
+ */
+export function positionsQueueName(): string {
+  return process.env.POSITIONS_QUEUE_NAME || 'positions-ingest';
+}
 
 /**
  * Fila entre a ingestão (poller do Traccar) e a gravação (worker → PositionsIngestService) —
@@ -16,7 +22,7 @@ export class PositionsQueue {
   readonly queue: Queue<TraccarPositionPayload>;
 
   constructor(@Inject(REDIS_CONNECTION) connection: IORedis) {
-    this.queue = new Queue<TraccarPositionPayload>(POSITIONS_QUEUE_NAME, { connection });
+    this.queue = new Queue<TraccarPositionPayload>(positionsQueueName(), { connection });
   }
 
   async enqueue(position: TraccarPositionPayload): Promise<void> {

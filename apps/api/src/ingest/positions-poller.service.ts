@@ -20,6 +20,12 @@ export class PositionsPollerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (process.env.TRACCAR_POLL_ENABLED === 'false') {
+      // Forwarding (POST /ingest/traccar/*) ligado: o polling seria redundante (o dedup aguentaria, mas é
+      // carga à toa no Traccar e no banco).
+      this.logger.log('Polling do Traccar desligado por TRACCAR_POLL_ENABLED=false.');
+      return;
+    }
     const config = readTraccarConfig();
     if (!config) {
       this.logger.log('TRACCAR_URL não configurado — polling de posições desligado.');

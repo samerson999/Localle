@@ -36,6 +36,7 @@ describe('PositionsIngestService', () => {
       const id = rastreadoresCriados.pop()!;
       await pool.query('delete from rastreador_comunicacao where rastreador_id = $1', [id]);
       await pool.query('delete from ultima_posicao where rastreador_id = $1', [id]);
+      await pool.query('delete from eventos where rastreador_id = $1', [id]);
       await pool.query('delete from posicoes where rastreador_id = $1', [id]);
       await pool.query('delete from ingest_posicoes_recebidas where rastreador_id = $1', [id]);
       await pool.query('delete from instalacoes where rastreador_id = $1', [id]);
@@ -75,6 +76,7 @@ describe('PositionsIngestService', () => {
       altitude: 10,
       odometerM: 1000,
       ignition: true,
+      alarms: [],
       attributes: { foo: 'bar' },
       ...overrides,
     };
@@ -147,6 +149,38 @@ describe('PositionsIngestService', () => {
     expect(Number(rows[0].speed_kmh)).toBe(50);
   });
 
+  it('alarme do aparelho vira evento resolvido para o cliente, e o reenvio da posição não duplica o evento', async () => {
+    const rastreadorId = await criarRastreador(1007);
+    await instalar(rastreadorId, '2026-01-01T00:00:00Z');
+    const p = position({ traccarDeviceId: 1007, traccarPositionId: 7, alarms: ['sos', 'powerCut'] });
+
+    const result = await service.ingest(p);
+    expect(result.status).toBe('gravada');
+    if (result.status !== 'gravada') return;
+    expect(result.eventos.map((e) => e.tipo).sort()).toEqual(['powerCut', 'sos']);
+
+    await service.ingest(p);
+    const { rows } = await pool.query(
+      'select tipo, origem, client_id, asset_id from eventos where rastreador_id = $1 order by tipo',
+      [rastreadorId],
+    );
+    expect(rows).toEqual([
+      { tipo: 'powerCut', origem: 'aparelho', client_id: clientId, asset_id: assetId },
+      { tipo: 'sos', origem: 'aparelho', client_id: clientId, asset_id: assetId },
+    ]);
+  });
+
+  it('pacote válido atrasado não regride ultima_posicao_valida_em', async () => {
+    const rastreadorId = await criarRastreador(1008);
+    await service.ingest(position({ traccarDeviceId: 1008, traccarPositionId: 1, fixTime: new Date('2026-01-02T12:00:00Z') }));
+    await service.ingest(position({ traccarDeviceId: 1008, traccarPositionId: 2, fixTime: new Date('2026-01-01T12:00:00Z') }));
+    const { rows } = await pool.query(
+      'select ultima_posicao_valida_em from rastreador_comunicacao where rastreador_id = $1',
+      [rastreadorId],
+    );
+    expect(rows[0].ultima_posicao_valida_em.toISOString()).toBe('2026-01-02T12:00:00.000Z');
+  });
+
   it('posição inválida (sem fix de GPS) não atualiza ultima_posicao, mas atualiza rastreador_comunicacao', async () => {
     const rastreadorId = await criarRastreador(1006);
 
@@ -163,5 +197,17 @@ describe('PositionsIngestService', () => {
     );
     expect(comunicacao.rows[0].ultimo_pacote_em).not.toBeNull();
     expect(comunicacao.rows[0].ultima_posicao_valida_em).toBeNull();
+  });
+
+  it('grava o protocolo informado pelo Traccar no rastreador, e atualiza se mudar', async () => {
+    const rastreadorId = await criarRastreador(1099);
+    const protocolo = async () => (await pool.query('select protocolo from rastreadores where id = $1', [rastreadorId])).rows[0].protocolo;
+
+    await service.ingest(position({ traccarDeviceId: 1099, traccarPositionId: 1 }));
+    expect(await protocolo()).toBeNull(); // sem protocolo na posição, não mexe
+    await service.ingest(position({ traccarDeviceId: 1099, traccarPositionId: 2, protocol: 'gt06' }));
+    expect(await protocolo()).toBe('gt06');
+    await service.ingest(position({ traccarDeviceId: 1099, traccarPositionId: 3, protocol: 'suntech' }));
+    expect(await protocolo()).toBe('suntech');
   });
 });

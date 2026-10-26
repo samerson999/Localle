@@ -53,4 +53,24 @@ describe('mapTraccarPosition', () => {
     expect(result.latitude).toBe(-8.05);
     expect(result.longitude).toBe(-34.88);
   });
+
+  it('extrai alarmes de attributes.alarm (um ou vários separados por vírgula, sem repetição)', () => {
+    expect(mapTraccarPosition({ ...base, attributes: { alarm: 'sos' } }).alarms).toEqual(['sos']);
+    expect(mapTraccarPosition({ ...base, attributes: { alarm: 'powerCut, sos,sos' } }).alarms).toEqual([
+      'powerCut',
+      'sos',
+    ]);
+  });
+
+  it('descarta alarme fora do formato do catálogo e alarm que não é string', () => {
+    expect(mapTraccarPosition({ ...base, attributes: { alarm: "x'; drop table--" } }).alarms).toEqual([]);
+    expect(mapTraccarPosition({ ...base, attributes: { alarm: 42 } }).alarms).toEqual([]);
+    expect(mapTraccarPosition({ ...base }).alarms).toEqual([]);
+  });
+
+  it('lê o protocolo da posição; ausente ou vazio vira null', () => {
+    expect(mapTraccarPosition({ ...base, protocol: 'gt06' }).protocol).toBe('gt06');
+    expect(mapTraccarPosition({ ...base, protocol: '  ' }).protocol).toBeNull();
+    expect(mapTraccarPosition(base).protocol).toBeNull();
+  });
 });
