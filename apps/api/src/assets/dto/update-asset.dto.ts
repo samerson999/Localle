@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { parseUuid } from '../../common/parse-uuid';
 import type { AssetStatus } from '../asset.entity';
 
 const STATUSES: AssetStatus[] = ['ativo', 'vendido', 'baixado'];
@@ -6,10 +7,12 @@ const STATUSES: AssetStatus[] = ['ativo', 'vendido', 'baixado'];
 export class UpdateAssetDto {
   plate?: string;
   status?: AssetStatus;
+  /** Motorista do cadastro do veículo; `null` limpa o vínculo. */
+  motoristaId?: string | null;
 }
 
 /** Sem class-validator no projeto: a validação de entrada é explícita, antes de chegar no repository. */
-export function parseUpdateAsset(body: unknown): { plate: string | null; status: AssetStatus | null } {
+export function parseUpdateAsset(body: unknown): { plate: string | null; status: AssetStatus | null; motoristaId?: string | null } {
   const dto = (body ?? {}) as Record<string, unknown>;
   const plate = dto.plate === undefined ? null : parsePlate(dto.plate);
   let status: AssetStatus | null = null;
@@ -19,8 +22,10 @@ export function parseUpdateAsset(body: unknown): { plate: string | null; status:
     }
     status = dto.status as AssetStatus;
   }
-  if (plate === null && status === null) throw new BadRequestException('Nada para atualizar');
-  return { plate, status };
+  let motoristaId: string | null | undefined;
+  if (dto.motoristaId !== undefined) motoristaId = dto.motoristaId === null || dto.motoristaId === '' ? null : parseUuid('motoristaId', dto.motoristaId);
+  if (plate === null && status === null && motoristaId === undefined) throw new BadRequestException('Nada para atualizar');
+  return { plate, status, motoristaId };
 }
 
 export function parsePlate(value: unknown): string {

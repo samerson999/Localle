@@ -6,6 +6,7 @@ export interface AssetEntity {
   plate: string;
   status: AssetStatus;
   status_desde: Date;
+  motorista_id: string | null;
   created_at: Date;
   updated_at: Date;
 }

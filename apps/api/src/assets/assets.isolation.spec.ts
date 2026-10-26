@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { AssetEntity } from './asset.entity';
 import { AssetsRepository } from './assets.repository';
 
 /**
@@ -76,13 +77,19 @@ describe('isolamento por client_id (assets)', () => {
   it('atualizar pelo dono muda o status e só move status_desde quando o status muda de fato', async () => {
     const outro = await repo.insert(clientA, { plate: 'CIC1L00' });
 
-    const mesmoStatus = await repo.atualizar(clientA, outro.id, { plate: null, status: 'ativo' });
-    expect(mesmoStatus?.status_desde.getTime()).toBe(outro.status_desde.getTime());
+    const mesmoStatus = (await repo.atualizar(clientA, outro.id, { plate: null, status: 'ativo' })) as AssetEntity;
+    expect(mesmoStatus.status_desde.getTime()).toBe(outro.status_desde.getTime());
 
-    const vendido = await repo.atualizar(clientA, outro.id, { plate: null, status: 'vendido' });
-    expect(vendido?.status).toBe('vendido');
-    expect(vendido?.plate).toBe('CIC1L00');
-    expect(vendido!.status_desde.getTime()).toBeGreaterThan(outro.status_desde.getTime());
+    const vendido = (await repo.atualizar(clientA, outro.id, { plate: null, status: 'vendido' })) as AssetEntity;
+    expect(vendido.status).toBe('vendido');
+    expect(vendido.plate).toBe('CIC1L00');
+    expect(vendido.status_desde.getTime()).toBeGreaterThan(outro.status_desde.getTime());
+
+    // motorista de outro cliente (ou inexistente) não entra; do próprio, entra e `null` limpa
+    expect(await repo.atualizar(clientA, outro.id, { plate: null, status: null, motoristaId: randomUUID() })).toBe('motorista_invalido');
+    const motorista = (await pool.query<{ id: string }>("insert into motoristas (client_id, nome) values ($1, 'M') returning id", [clientA])).rows[0].id;
+    expect(((await repo.atualizar(clientA, outro.id, { plate: null, status: null, motoristaId: motorista })) as AssetEntity).motorista_id).toBe(motorista);
+    expect(((await repo.atualizar(clientA, outro.id, { plate: null, status: null, motoristaId: null })) as AssetEntity).motorista_id).toBeNull();
 
     const ativos = await repo.findMany(clientA, { status: 'ativo' });
     expect(ativos.find((r) => r.id === outro.id)).toBeUndefined();
