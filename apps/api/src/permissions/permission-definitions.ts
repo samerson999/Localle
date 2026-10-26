@@ -45,6 +45,30 @@ export const PERMISSION_DEFINITIONS: Record<string, PermissionDefinition> = {
     defaultByRole: { admin: true, gestor: true, operador: true },
     editableByClient: true,
   },
+  'alertas.tratar': {
+    key: 'alertas.tratar',
+    label: 'Tratar alertas do monitoramento',
+    defaultByRole: { admin: true, gestor: true, operador: true },
+    editableByClient: true,
+  },
+  'localizacao.compartilhar': {
+    key: 'localizacao.compartilhar',
+    label: 'Gerar e desativar links temporários de localização',
+    defaultByRole: { admin: true, gestor: true, operador: true },
+    editableByClient: true,
+  },
+  'regras.editar': {
+    key: 'regras.editar',
+    label: 'Criar/editar regras de alerta',
+    defaultByRole: { admin: true, gestor: true, operador: false },
+    editableByClient: true,
+  },
+  'cercas.editar': {
+    key: 'cercas.editar',
+    label: 'Criar/editar/remover cercas',
+    defaultByRole: { admin: true, gestor: true, operador: false },
+    editableByClient: true,
+  },
   'relatorios.ver': {
     key: 'relatorios.ver',
     label: 'Ver relatórios',

@@ -1,18 +1,24 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { AuditLogRepository } from '../audit/audit-log.repository';
 import { Public } from '../auth/public.decorator';
 import { SuperadminGuard } from '../auth/superadmin.guard';
 import { CurrentUserId } from '../clients/current-role.decorator';
-import type { CreateClientDto } from '../clients/dto/create-client.dto';
-import type { CreateInitialAdminDto } from './dto/create-initial-admin.dto';
+import type { UserEntity } from '../users/user.entity';
+import { parseConvidado, parseLimite, parseNovoCliente } from './dto/parse-superadmin-input';
 import type { SuperadminLoginDto } from './dto/superadmin-login.dto';
 import { SuperadminAuthService } from './superadmin-auth.service';
 import { SuperadminClientsService } from './superadmin-clients.service';
+import { SuperadminRepository } from './superadmin.repository';
+
+const safeUser = (user: UserEntity) => ({ id: user.id, email: user.email, role: user.role, clientId: user.client_id });
 
 @Controller('superadmin')
 export class SuperadminController {
   constructor(
     private readonly auth: SuperadminAuthService,
     private readonly clients: SuperadminClientsService,
+    private readonly superadmins: SuperadminRepository,
+    private readonly audit: AuditLogRepository,
   ) {}
 
   @Post('login')
@@ -21,10 +27,12 @@ export class SuperadminController {
     return this.auth.login(dto.email, dto.password);
   }
 
+  /** Corpo: `{ name, revendaId?, admin?: { email } }` — com `admin`, cliente e admin (convidado) nascem juntos. */
   @Post('clients')
   @UseGuards(SuperadminGuard)
-  createClient(@CurrentUserId() superadminId: string, @Body() dto: CreateClientDto) {
-    return this.clients.createClient(superadminId, { name: dto.name, revendaId: dto.revendaId });
+  async createClient(@CurrentUserId() superadminId: string, @Body() body: unknown) {
+    const { client, admin, conviteEnviado } = await this.clients.createClient(superadminId, parseNovoCliente(body));
+    return { client, admin: admin ? safeUser(admin) : null, conviteEnviado };
   }
 
   // `clientId` explícito no path — nunca inferido de token, porque o token de superadmin não tem um
@@ -33,10 +41,32 @@ export class SuperadminController {
   @UseGuards(SuperadminGuard)
   async createInitialAdmin(
     @CurrentUserId() superadminId: string,
-    @Param('clientId') clientId: string,
-    @Body() dto: CreateInitialAdminDto,
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Body() body: unknown,
   ) {
-    const user = await this.clients.createInitialAdmin(superadminId, clientId, dto);
-    return { id: user.id, email: user.email, role: user.role, clientId: user.client_id };
+    const { user, conviteEnviado } = await this.clients.createInitialAdmin(superadminId, clientId, parseConvidado(body));
+    return { ...safeUser(user), conviteEnviado };
+  }
+
+  @Post('clients/:clientId/admin-users/:userId/convite')
+  @UseGuards(SuperadminGuard)
+  reenviarConvite(
+    @CurrentUserId() superadminId: string,
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ) {
+    return this.clients.reenviarConvite(superadminId, clientId, userId);
+  }
+
+  @Get('equipe')
+  @UseGuards(SuperadminGuard)
+  equipe() {
+    return this.superadmins.findAll();
+  }
+
+  @Get('auditoria')
+  @UseGuards(SuperadminGuard)
+  auditoria(@Query('limit') limit?: string) {
+    return this.audit.findRecent(parseLimite(limit, 100, 500));
   }
 }

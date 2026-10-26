@@ -18,8 +18,8 @@ export class InstalacoesRepository extends BaseRepository<InstalacaoEntity> {
     super(pool);
   }
 
-  async findAtivaPorRastreador(rastreadorId: string): Promise<InstalacaoEntity | null> {
-    const { rows } = await this.pool.query<InstalacaoEntity>(
+  async findAtivaPorRastreador(rastreadorId: string, executor: Queryable = this.pool): Promise<InstalacaoEntity | null> {
+    const { rows } = await executor.query<InstalacaoEntity>(
       `select * from instalacoes where rastreador_id = $1 and desinstalado_em is null limit 1`,
       [rastreadorId],
     );

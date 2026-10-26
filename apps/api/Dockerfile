@@ -33,7 +33,8 @@ COPY --from=build /repo/apps/api/dist apps/api/dist
 
 WORKDIR /app/apps/api
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+# dist/apps/api/src: a API importa tipos de packages/shared, então o rootDir do tsc é a raiz do monorepo.
+CMD ["node", "dist/apps/api/src/main.js"]
 
 # Migrações não rodam a partir desta imagem (sem node-pg-migrate/ts-node, que são devDependencies —
 # propositalmente fora da imagem de runtime). O CI/CD roda `pnpm --filter api migrate:up` a partir do

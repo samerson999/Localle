@@ -27,8 +27,22 @@ export class UsersRepository {
     return rows;
   }
 
+  /** `clientId` no where: um admin nunca alcança usuário de outro cliente. */
+  async findOneByClient(clientId: string, id: string, executor: Queryable = this.pool): Promise<UserEntity | null> {
+    const { rows } = await executor.query<UserEntity>('select * from users where client_id = $1 and id = $2', [clientId, id]);
+    return rows[0] ?? null;
+  }
+
+  async setDesativadoEm(clientId: string, id: string, desativadoEm: Date | null, executor: Queryable = this.pool): Promise<UserEntity | null> {
+    const { rows } = await executor.query<UserEntity>(
+      'update users set desativado_em = $3, updated_at = now() where client_id = $1 and id = $2 returning *',
+      [clientId, id, desativadoEm],
+    );
+    return rows[0] ?? null;
+  }
+
   async create(
-    data: { clientId: string; email: string; passwordHash: string; role: Role },
+    data: { clientId: string; email: string; passwordHash: string | null; role: Role },
     executor: Queryable = this.pool,
   ): Promise<UserEntity> {
     const { rows } = await executor.query<UserEntity>(

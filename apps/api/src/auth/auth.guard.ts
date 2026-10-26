@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ActiveUserRepository } from './active-user.repository';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { verifyAuthToken, type Role } from './jwt';
 
@@ -26,9 +27,12 @@ export interface AuthenticatedRequest extends Request {
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly activeUsers: ActiveUserRepository,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -40,15 +44,25 @@ export class AuthGuard implements CanActivate {
     const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : null;
     if (!token) throw new UnauthorizedException('Token ausente');
 
+    let payload: ReturnType<typeof verifyAuthToken>;
     try {
-      const payload = verifyAuthToken(token);
-      request.auth =
-        payload.role === 'superadmin'
-          ? { userId: payload.sub, clientId: null, role: 'superadmin' as const }
-          : { userId: payload.sub, clientId: payload.clientId, role: payload.role };
-      return true;
+      payload = verifyAuthToken(token);
     } catch {
       throw new UnauthorizedException('Token inválido ou expirado');
     }
+    // Token válido de usuário desativado (ou apagado) depois da emissão: o JWT não carrega esse estado,
+    // então a checagem é no banco. Mesma mensagem genérica — não revela o motivo.
+    const ativo =
+      payload.role === 'superadmin'
+        ? await this.activeUsers.isSuperadmin(payload.sub)
+        : await this.activeUsers.isActive(payload.sub);
+    if (!ativo) {
+      throw new UnauthorizedException('Token inválido ou expirado');
+    }
+    request.auth =
+      payload.role === 'superadmin'
+        ? { userId: payload.sub, clientId: null, role: 'superadmin' as const }
+        : { userId: payload.sub, clientId: payload.clientId, role: payload.role };
+    return true;
   }
 }

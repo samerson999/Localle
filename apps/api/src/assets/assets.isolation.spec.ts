@@ -65,6 +65,29 @@ describe('isolamento por client_id (assets)', () => {
     expect(stillThere).not.toBeNull();
   });
 
+  it('atualizar (placa/status) não alcança ativo de outro cliente', async () => {
+    const updated = await repo.atualizar(clientB, assetOfA, { plate: 'ZZZ9Z99', status: 'baixado' });
+    expect(updated).toBeNull();
+
+    const stillOriginal = await repo.findOne(clientA, { id: assetOfA });
+    expect(stillOriginal?.status).toBe('ativo');
+  });
+
+  it('atualizar pelo dono muda o status e só move status_desde quando o status muda de fato', async () => {
+    const outro = await repo.insert(clientA, { plate: 'CIC1L00' });
+
+    const mesmoStatus = await repo.atualizar(clientA, outro.id, { plate: null, status: 'ativo' });
+    expect(mesmoStatus?.status_desde.getTime()).toBe(outro.status_desde.getTime());
+
+    const vendido = await repo.atualizar(clientA, outro.id, { plate: null, status: 'vendido' });
+    expect(vendido?.status).toBe('vendido');
+    expect(vendido?.plate).toBe('CIC1L00');
+    expect(vendido!.status_desde.getTime()).toBeGreaterThan(outro.status_desde.getTime());
+
+    const ativos = await repo.findMany(clientA, { status: 'ativo' });
+    expect(ativos.find((r) => r.id === outro.id)).toBeUndefined();
+  });
+
   it('o próprio dono enxerga e consegue alterar o ativo', async () => {
     const found = await repo.findOne(clientA, { id: assetOfA });
     expect(found?.id).toBe(assetOfA);

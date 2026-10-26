@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AssetsRepository } from '../assets/assets.repository';
 import { AuditLogRepository } from '../audit/audit-log.repository';
+import { TraccarClient, type TraccarConfig, type TraccarDevice } from '../ingest/traccar-client';
 import { InstalacoesRepository } from './instalacoes.repository';
 import { RastreadoresRepository } from './rastreadores.repository';
 import { RastreadoresService } from './rastreadores.service';
@@ -15,6 +16,27 @@ import { SimCardsRepository } from './sim-cards.repository';
  * verdade (infra/plataforma) — o que está sob teste inclui a exclusion constraint de `instalacoes` sendo
  * de fato respeitada sob concorrência real, não só sequencialmente.
  */
+/** Só a fronteira HTTP com o Traccar é falsa; banco, transação e auditoria são reais. */
+class FakeTraccar extends TraccarClient {
+  cfg: TraccarConfig | null = null;
+  falhar = false;
+  devices = new Map<string, TraccarDevice>();
+  private nextId = 900_000_000 + Math.floor(Math.random() * 1_000_000);
+
+  config() {
+    return this.cfg;
+  }
+  async findDeviceByUniqueId(_: TraccarConfig, uniqueId: string) {
+    if (this.falhar) throw new Error('Traccar fora do ar');
+    return this.devices.get(uniqueId) ?? null;
+  }
+  async createDevice(_: TraccarConfig, device: { name: string; uniqueId: string }) {
+    const criado = { id: this.nextId++, ...device };
+    this.devices.set(device.uniqueId, criado);
+    return criado;
+  }
+}
+
 describe('RastreadoresService', () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const rastreadoresRepo = new RastreadoresRepository(pool);
@@ -22,7 +44,8 @@ describe('RastreadoresService', () => {
   const instalacoesRepo = new InstalacoesRepository(pool);
   const assetsRepo = new AssetsRepository(pool);
   const audit = new AuditLogRepository(pool);
-  const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, assetsRepo, audit, pool);
+  const traccar = new FakeTraccar();
+  const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, assetsRepo, audit, pool, traccar);
 
   const superadminId = randomUUID();
   let clientA: string;
@@ -183,5 +206,102 @@ describe('RastreadoresService', () => {
     const desvinculado = await service.desvincularSimCard(superadminId, chip.id);
     expect(desvinculado.rastreador_id).toBeNull();
     expect(desvinculado.status).toBe('inativo');
+  });
+
+  describe('provisionamento no Traccar (cadastro-primeiro)', () => {
+    const cfg = { url: 'http://traccar.teste', user: 'u', password: 'p' };
+
+    it('sem Traccar configurado, cadastra sem traccar_device_id', async () => {
+      traccar.cfg = null;
+      const criado = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+      rastreadoresCriados.push(criado.id);
+      expect(criado.traccar_device_id).toBeNull();
+    });
+
+    it('cria o device no Traccar e grava o id; um device já existente com o mesmo IMEI é reaproveitado', async () => {
+      traccar.cfg = cfg;
+      const imei = novoImei();
+      const criado = await service.cadastrarRastreador(superadminId, { imei });
+      rastreadoresCriados.push(criado.id);
+      expect(criado.traccar_device_id).toBe(String(traccar.devices.get(imei)!.id));
+
+      const imeiExistente = novoImei();
+      traccar.devices.set(imeiExistente, { id: 123_456_789 + Math.floor(Math.random() * 1000), uniqueId: imeiExistente, name: 'x' });
+      const reaproveitado = await service.cadastrarRastreador(superadminId, { imei: imeiExistente });
+      rastreadoresCriados.push(reaproveitado.id);
+      expect(reaproveitado.traccar_device_id).toBe(String(traccar.devices.get(imeiExistente)!.id));
+      traccar.cfg = null;
+    });
+
+    it('Traccar fora do ar desfaz o cadastro inteiro (nenhuma linha, nenhuma auditoria)', async () => {
+      traccar.cfg = cfg;
+      traccar.falhar = true;
+      const imei = novoImei();
+      try {
+        await expect(service.cadastrarRastreador(superadminId, { imei })).rejects.toThrow(/Traccar/);
+      } finally {
+        traccar.cfg = null;
+        traccar.falhar = false;
+      }
+      const { rowCount } = await pool.query('select 1 from rastreadores where imei = $1', [imei]);
+      expect(rowCount).toBe(0);
+    });
+  });
+
+  it('atualiza modelo/protocolo e audita o antes e o depois', async () => {
+    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei(), modelo: 'GT06' });
+    rastreadoresCriados.push(rastreador.id);
+    const atualizado = await service.atualizar(superadminId, rastreador.id, { protocolo: 'gt06' });
+    expect(atualizado).toMatchObject({ modelo: 'GT06', protocolo: 'gt06' });
+
+    const { rows } = await pool.query(
+      "select before, after from audit_log where action = 'rastreador.atualizar' and target = $1",
+      [rastreador.id],
+    );
+    expect(rows[0]).toEqual({ before: { modelo: 'GT06', protocolo: null }, after: { modelo: 'GT06', protocolo: 'gt06' } });
+  });
+
+  it('não desativa rastreador com instalação vigente; desinstalado, desativa e libera o IMEI para recadastro', async () => {
+    const imei = novoImei();
+    const rastreador = await service.cadastrarRastreador(superadminId, { imei });
+    rastreadoresCriados.push(rastreador.id);
+    const instalacao = await service.instalar(superadminId, clientA, rastreador.id, {
+      assetId: await novoAsset(clientA),
+      tecnico: 'teste',
+    });
+
+    await expect(service.desativar(superadminId, rastreador.id)).rejects.toThrow(/instalação vigente/);
+
+    await service.desinstalar(superadminId, instalacao.id);
+    const desativado = await service.desativar(superadminId, rastreador.id);
+    expect(desativado.status).toBe('desativado');
+
+    const recadastrado = await service.cadastrarRastreador(superadminId, { imei });
+    rastreadoresCriados.push(recadastrado.id);
+    expect(recadastrado.id).not.toBe(rastreador.id);
+  });
+
+  it('findAllPainel traz instalação vigente, chip e cliente; sem instalação vigente, campos nulos', async () => {
+    const instalado = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const livre = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    rastreadoresCriados.push(instalado.id, livre.id);
+    const assetId = await novoAsset(clientA);
+    const instalacao = await service.instalar(superadminId, clientA, instalado.id, { assetId, tecnico: 'teste' });
+    const chip = await simCardsRepo.create({ iccid: `8955${randomUUID().replace(/-/g, '').slice(0, 15)}`, operadora: 'Vivo' });
+    simCardsCriados.push(chip.id);
+    await simCardsRepo.vincular(chip.id, instalado.id);
+
+    const painel = await rastreadoresRepo.findAllPainel();
+    const a = painel.find((r) => r.id === instalado.id);
+    const b = painel.find((r) => r.id === livre.id);
+    expect(a).toMatchObject({ instalacao_id: instalacao.id, client_id: clientA, asset_id: assetId, sim_card_id: chip.id, operadora: 'Vivo' });
+    expect(a?.client_name).toMatch(/^teste-rastreadores-a-/);
+    expect(b).toMatchObject({ instalacao_id: null, client_id: null, sim_card_id: null });
+
+    // desinstalado: sai do cliente, continua no inventário (uma linha só, sem duplicar pelo histórico)
+    await service.desinstalar(superadminId, instalacao.id);
+    const depois = (await rastreadoresRepo.findAllPainel()).filter((r) => r.id === instalado.id);
+    expect(depois).toHaveLength(1);
+    expect(depois[0].client_id).toBeNull();
   });
 });

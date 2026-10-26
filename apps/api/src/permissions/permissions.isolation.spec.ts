@@ -204,7 +204,10 @@ describe('PermissionsService — resolução, isolamento, proteção contra esca
 
     const { rows } = await pool.query(
       `select before, after from audit_log where client_id = $1 and action = 'permission.set'
-       and target = 'operador:ativos.editar' order by created_at asc`,
+       and target = 'operador:ativos.editar' order by id asc`,
+      // `id` (identity) é atribuído no insert, dentro do advisory lock — reflete a ordem real de
+      // serialização. `created_at` é `now()`, o início da transação: três transações concorrentes começam
+      // quase juntas e o lock as serializa em outra ordem, o que tornava este teste intermitente.
       [clientA],
     );
     // nenhuma escrita foi perdida: uma linha de auditoria por chamada, nessa ordem exata de commit

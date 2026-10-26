@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import bcrypt from 'bcryptjs';
 import type { Pool } from 'pg';
 import { AuditLogRepository } from '../audit/audit-log.repository';
@@ -50,6 +50,34 @@ export class UsersService {
         client,
       );
       return user;
+    });
+  }
+
+  /**
+   * Mesma política da criação: o Admin só desativa/reativa Gestor e Operador do próprio cliente — nunca a
+   * si mesmo (ficaria sem admin) nem outro Admin (isso é da Locale). Mutação + auditoria na mesma transação.
+   */
+  async setAtivo(clientId: string, actingAdminId: string, userId: string, ativo: boolean) {
+    if (userId === actingAdminId) throw new BadRequestException('Você não pode alterar o próprio acesso');
+    return withTransaction(this.pool, async (client) => {
+      const alvo = await this.repo.findOneByClient(clientId, userId, client);
+      if (!alvo) throw new NotFoundException('Usuário não encontrado');
+      if (alvo.role === 'admin') throw new ForbiddenException('Admin só é desativado pela Locale');
+      if ((alvo.desativado_em === null) === ativo) return alvo;
+      const atualizado = (await this.repo.setDesativadoEm(clientId, userId, ativo ? null : new Date(), client))!;
+      await this.audit.record(
+        {
+          actorType: 'user',
+          actorId: actingAdminId,
+          clientId,
+          action: ativo ? 'user.reativar' : 'user.desativar',
+          target: userId,
+          before: { ativo: !ativo },
+          after: { ativo },
+        },
+        client,
+      );
+      return atualizado;
     });
   }
 }

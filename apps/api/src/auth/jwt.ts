@@ -26,5 +26,5 @@ export function signAuthToken(payload: AuthTokenPayload): string {
 }
 
 export function verifyAuthToken(token: string): AuthTokenPayload {
-  return jwt.verify(token, secret()) as AuthTokenPayload;
+  return jwt.verify(token, secret(), { algorithms: ['HS256'] }) as AuthTokenPayload;
 }

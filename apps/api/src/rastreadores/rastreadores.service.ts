@@ -1,9 +1,17 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { Pool } from 'pg';
 import { AssetsRepository } from '../assets/assets.repository';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { PG_POOL } from '../db/pg-pool.provider';
 import { withTransaction } from '../db/with-transaction';
+import { TraccarClient } from '../ingest/traccar-client';
 import type { InstalacaoEntity } from './instalacao.entity';
 import { InstalacoesRepository } from './instalacoes.repository';
 import type { RastreadorEntity } from './rastreador.entity';
@@ -22,6 +30,8 @@ const PG_UNIQUE_VIOLATION = '23505';
  */
 @Injectable()
 export class RastreadoresService {
+  private readonly logger = new Logger(RastreadoresService.name);
+
   constructor(
     private readonly rastreadores: RastreadoresRepository,
     private readonly simCards: SimCardsRepository,
@@ -29,17 +39,28 @@ export class RastreadoresService {
     private readonly assets: AssetsRepository,
     private readonly audit: AuditLogRepository,
     @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly traccar: TraccarClient,
   ) {}
 
+  /**
+   * Cadastro-primeiro (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.5): sem `traccarDeviceId` informado, o
+   * device é criado no Traccar aqui, dentro da transação — se o Traccar falhar, o cadastro não é
+   * gravado (um rastreador sem device no Traccar nunca receberia posição). Reaproveita device já
+   * existente com o mesmo IMEI, então repetir o cadastro depois de uma falha é seguro.
+   */
   async cadastrarRastreador(
     superadminId: string,
     data: { imei: string; traccarDeviceId?: string; modelo?: string; protocolo?: string },
   ): Promise<RastreadorEntity> {
     return withTransaction(this.pool, async (client) => {
-      const criado = await this.rastreadores.create(
+      let criado = await this.rastreadores.create(
         { imei: data.imei, traccarDeviceId: data.traccarDeviceId, modelo: data.modelo, protocolo: data.protocolo },
         client,
       );
+      if (!data.traccarDeviceId) {
+        const deviceId = await this.provisionarNoTraccar(criado.imei);
+        if (deviceId !== null) criado = await this.rastreadores.setTraccarDeviceId(criado.id, deviceId, client);
+      }
       await this.audit.record(
         {
           actorType: 'superadmin',
@@ -200,6 +221,77 @@ export class RastreadoresService {
       );
       return desvinculado;
     });
+  }
+
+  async atualizar(
+    superadminId: string,
+    rastreadorId: string,
+    data: { modelo?: string | null; protocolo?: string | null },
+  ): Promise<RastreadorEntity> {
+    return withTransaction(this.pool, async (client) => {
+      const antes = await this.rastreadores.findById(rastreadorId, client);
+      if (!antes) throw new NotFoundException('Rastreador não encontrado');
+      const depois = await this.rastreadores.updateDados(rastreadorId, data, client);
+      await this.audit.record(
+        {
+          actorType: 'superadmin',
+          actorId: superadminId,
+          clientId: null,
+          action: 'rastreador.atualizar',
+          target: rastreadorId,
+          before: { modelo: antes.modelo, protocolo: antes.protocolo },
+          after: { modelo: depois.modelo, protocolo: depois.protocolo },
+        },
+        client,
+      );
+      return depois;
+    });
+  }
+
+  /**
+   * Baixa do inventário (equipamento perdido, defeituoso, devolvido). Só sem instalação vigente — senão o
+   * ativo do cliente perderia o rastreamento sem que ninguém tenha desinstalado. O índice único de IMEI
+   * ignora `desativado`, então o mesmo IMEI pode ser recadastrado depois.
+   */
+  async desativar(superadminId: string, rastreadorId: string): Promise<RastreadorEntity> {
+    return withTransaction(this.pool, async (client) => {
+      const rastreador = await this.rastreadores.findById(rastreadorId, client);
+      if (!rastreador) throw new NotFoundException('Rastreador não encontrado');
+      if (await this.instalacoes.findAtivaPorRastreador(rastreadorId, client)) {
+        throw new ConflictException('Rastreador tem instalação vigente — desinstale antes de desativar');
+      }
+      const desativado = (await this.rastreadores.updateStatus(rastreadorId, 'desativado', client))!;
+      await this.audit.record(
+        {
+          actorType: 'superadmin',
+          actorId: superadminId,
+          clientId: null,
+          action: 'rastreador.desativar',
+          target: rastreadorId,
+          before: { status: rastreador.status },
+        },
+        client,
+      );
+      return desativado;
+    });
+  }
+
+  private async provisionarNoTraccar(imei: string): Promise<string | null> {
+    const config = this.traccar.config();
+    if (!config) {
+      this.logger.warn(`TRACCAR_URL não configurado — rastreador IMEI ${imei} cadastrado sem device no Traccar`);
+      return null;
+    }
+    try {
+      const device =
+        (await this.traccar.findDeviceByUniqueId(config, imei)) ??
+        (await this.traccar.createDevice(config, { name: imei, uniqueId: imei }));
+      this.logger.log(`Rastreador IMEI ${imei} provisionado no Traccar (device ${device.id})`);
+      return String(device.id);
+    } catch (err) {
+      this.logger.error(`Falha ao provisionar IMEI ${imei} no Traccar: ${(err as Error).message}`);
+      throw new ServiceUnavailableException('Não foi possível registrar o rastreador no Traccar; tente novamente');
+    }
   }
 
   async historicoInstalacoes(rastreadorId: string): Promise<InstalacaoEntity[]> {

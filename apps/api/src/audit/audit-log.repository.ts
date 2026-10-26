@@ -13,10 +13,24 @@ export interface AuditEntry {
   after?: unknown;
 }
 
+export interface AuditLogRow {
+  id: string;
+  actor_type: 'user' | 'superadmin';
+  actor_id: string;
+  actor_email: string | null;
+  client_id: string | null;
+  client_name: string | null;
+  action: string;
+  target: string | null;
+  before: unknown;
+  after: unknown;
+  created_at: Date;
+}
+
 /**
  * Tabela única de auditoria (`audit_log`) para as duas origens que precisam dela hoje: mudança de
- * permissão e ação de superadmin sobre um cliente. Escrita (nunca lida por regra de negócio) — não
- * estende `BaseRepository`.
+ * permissão e ação de superadmin sobre um cliente. Nunca lida por regra de negócio — só exibida no Painel
+ * da Locale (`findRecent`, rota de superadmin). Não estende `BaseRepository`.
  */
 @Injectable()
 export class AuditLogRepository {
@@ -43,5 +57,20 @@ export class AuditLogRepository {
         entry.after === undefined ? null : JSON.stringify(entry.after),
       ],
     );
+  }
+
+  async findRecent(limit: number): Promise<AuditLogRow[]> {
+    const { rows } = await this.pool.query<AuditLogRow>(
+      `select a.id::text, a.actor_type, a.actor_id, coalesce(s.email, u.email) as actor_email,
+              a.client_id, c.name as client_name, a.action, a.target, a.before, a.after, a.created_at
+         from audit_log a
+         left join clients c on c.id = a.client_id
+         left join superadmins s on a.actor_type = 'superadmin' and s.id = a.actor_id
+         left join users u on a.actor_type = 'user' and u.id = a.actor_id
+        order by a.created_at desc, a.id desc
+        limit $1`,
+      [limit],
+    );
+    return rows;
   }
 }

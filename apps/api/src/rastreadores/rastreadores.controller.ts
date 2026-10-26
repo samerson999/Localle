@@ -1,9 +1,12 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { parseDate } from '../common/parse-date';
+import { parseUuid } from '../common/parse-uuid';
 import { SuperadminGuard } from '../auth/superadmin.guard';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { CreateRastreadorDto } from './dto/create-rastreador.dto';
 import { CreateSimCardDto } from './dto/create-sim-card.dto';
 import { InstalarRastreadorDto } from './dto/instalar-rastreador.dto';
+import { parseUpdateRastreador, type UpdateRastreadorDto } from './dto/update-rastreador.dto';
 import { RastreadoresRepository } from './rastreadores.repository';
 import { RastreadoresService } from './rastreadores.service';
 import { SimCardsRepository } from './sim-cards.repository';
@@ -24,18 +27,18 @@ export class RastreadoresController {
 
   @Get()
   findAll() {
-    return this.rastreadores.findAll();
+    return this.rastreadores.findAllPainel();
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const rastreador = await this.rastreadores.findById(id);
     if (!rastreador) throw new NotFoundException('Rastreador não encontrado');
     return rastreador;
   }
 
   @Get(':id/instalacoes')
-  historico(@Param('id') id: string) {
+  historico(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.historicoInstalacoes(id);
   }
 
@@ -44,25 +47,39 @@ export class RastreadoresController {
     return this.service.cadastrarRastreador(superadminId, dto);
   }
 
+  @Patch(':id')
+  atualizar(
+    @CurrentUserId() superadminId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateRastreadorDto,
+  ) {
+    return this.service.atualizar(superadminId, id, parseUpdateRastreador(dto));
+  }
+
+  @Post(':id/desativar')
+  desativar(@CurrentUserId() superadminId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.desativar(superadminId, id);
+  }
+
   @Post(':id/instalar/:clientId')
   instalar(
     @CurrentUserId() superadminId: string,
-    @Param('clientId') clientId: string,
-    @Param('id') id: string,
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: InstalarRastreadorDto,
   ) {
     return this.service.instalar(superadminId, clientId, id, {
-      assetId: dto.assetId,
+      assetId: parseUuid('assetId', dto?.assetId),
       tecnico: dto.tecnico,
       papel: dto.papel,
-      instaladoEm: dto.instaladoEm ? new Date(dto.instaladoEm) : undefined,
+      instaladoEm: dto.instaladoEm ? parseDate('instaladoEm', dto.instaladoEm) : undefined,
       kmInicial: dto.kmInicial,
       foto: dto.foto,
     });
   }
 
   @Post('instalacoes/:instalacaoId/desinstalar')
-  desinstalar(@CurrentUserId() superadminId: string, @Param('instalacaoId') instalacaoId: string) {
+  desinstalar(@CurrentUserId() superadminId: string, @Param('instalacaoId', ParseUUIDPipe) instalacaoId: string) {
     return this.service.desinstalar(superadminId, instalacaoId);
   }
 
@@ -79,14 +96,14 @@ export class RastreadoresController {
   @Post('sim-cards/:simCardId/vincular/:rastreadorId')
   vincularSimCard(
     @CurrentUserId() superadminId: string,
-    @Param('simCardId') simCardId: string,
-    @Param('rastreadorId') rastreadorId: string,
+    @Param('simCardId', ParseUUIDPipe) simCardId: string,
+    @Param('rastreadorId', ParseUUIDPipe) rastreadorId: string,
   ) {
     return this.service.vincularSimCard(superadminId, simCardId, rastreadorId);
   }
 
   @Post('sim-cards/:simCardId/desvincular')
-  desvincularSimCard(@CurrentUserId() superadminId: string, @Param('simCardId') simCardId: string) {
+  desvincularSimCard(@CurrentUserId() superadminId: string, @Param('simCardId', ParseUUIDPipe) simCardId: string) {
     return this.service.desvincularSimCard(superadminId, simCardId);
   }
 }
