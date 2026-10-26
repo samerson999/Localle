@@ -1,5 +1,6 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
+import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { dataOpcional, dicionario, erro, instante, numero, opcao, periodo, texto, textoOpcional, uuid, uuidOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
@@ -83,7 +84,7 @@ export class MultasController {
     try {
       return tratar(await this.repo.criar(clientId, parseMulta(body)));
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ConflictException('Já existe uma multa com este auto e este órgão');
+      if (violouUnique(err, UNIQUE.multaAutoOrgao)) throw new ConflictException('Já existe uma multa com este auto e este órgão');
       throw err;
     }
   }
@@ -94,7 +95,7 @@ export class MultasController {
     try {
       return tratar(await this.repo.atualizar(clientId, id, parseMulta(body)));
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ConflictException('Já existe uma multa com este auto e este órgão');
+      if (violouUnique(err, UNIQUE.multaAutoOrgao)) throw new ConflictException('Já existe uma multa com este auto e este órgão');
       throw err;
     }
   }

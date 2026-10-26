@@ -1,6 +1,7 @@
 import { Body, Controller, ConflictException, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
 import { listaUuids, texto } from '../common/validar';
+import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { GruposRepository } from './grupos.repository';
@@ -23,7 +24,7 @@ export class GruposController {
     try {
       return await this.repo.criar(clientId, texto(body?.name, 'name', 80));
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ConflictException('Já existe um grupo com esse nome');
+      if (violouUnique(err, UNIQUE.grupoNome)) throw new ConflictException('Já existe um grupo com esse nome');
       throw err;
     }
   }
@@ -35,7 +36,7 @@ export class GruposController {
     try {
       g = await this.repo.renomear(clientId, id, texto(body?.name, 'name', 80));
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ConflictException('Já existe um grupo com esse nome');
+      if (violouUnique(err, UNIQUE.grupoNome)) throw new ConflictException('Já existe um grupo com esse nome');
       throw err;
     }
     if (!g) throw new NotFoundException('Grupo não encontrado');

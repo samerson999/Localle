@@ -1,5 +1,6 @@
 import { Body, ConflictException, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
+import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { dicionario, instante, numero, numeroOpcional, opcao, texto, textoOpcional, uuidOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
@@ -61,7 +62,7 @@ export class PneusController {
     try {
       return await this.repo.criar(clientId, parsePneu(body), b.ts === undefined ? new Date() : instante(b.ts, 'ts'), userId);
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ConflictException('Já existe um pneu com esse número de fogo');
+      if (violouUnique(err, UNIQUE.pneuNumeroFogo)) throw new ConflictException('Já existe um pneu com esse número de fogo');
       throw err;
     }
   }

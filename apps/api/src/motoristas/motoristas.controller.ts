@@ -1,5 +1,6 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
+import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { booleano, dataOpcional, dicionario, opcao, texto, textoOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
@@ -86,7 +87,7 @@ export class MotoristasController {
     try {
       return await this.repo.criar(clientId, parseMotorista(body));
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ConflictException('Já existe um motorista ativo com essa CNH');
+      if (violouUnique(err, UNIQUE.motoristaCnh)) throw new ConflictException('Já existe um motorista ativo com essa CNH');
       throw err;
     }
   }
@@ -98,7 +99,7 @@ export class MotoristasController {
     try {
       m = await this.repo.atualizar(clientId, id, parseMotorista(body));
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ConflictException('Já existe um motorista ativo com essa CNH');
+      if (violouUnique(err, UNIQUE.motoristaCnh)) throw new ConflictException('Já existe um motorista ativo com essa CNH');
       throw err;
     }
     if (!m) throw new NotFoundException('Motorista não encontrado');

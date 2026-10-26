@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Pool } from 'pg';
+import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { ClientsRepository } from '../clients/clients.repository';
 import type { ClientEntity } from '../clients/client.entity';
@@ -10,7 +11,6 @@ import { withTransaction } from '../db/with-transaction';
 import { UsersRepository } from '../users/users.repository';
 import type { UserEntity } from '../users/user.entity';
 
-const PG_UNIQUE_VIOLATION = '23505';
 
 /**
  * Ações de superadmin sobre um cliente — sempre com `client_id` explícito (nunca implícito de um token,
@@ -100,7 +100,7 @@ export class SuperadminClientsService {
     try {
       return await fn();
     } catch (err) {
-      if ((err as { code?: string }).code === PG_UNIQUE_VIOLATION) throw new ConflictException('E-mail já cadastrado');
+      if (violouUnique(err, UNIQUE.usuarioEmail)) throw new ConflictException('E-mail já cadastrado');
       throw err;
     }
   }

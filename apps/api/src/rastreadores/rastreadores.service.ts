@@ -18,9 +18,8 @@ import type { RastreadorEntity } from './rastreador.entity';
 import { RastreadoresRepository } from './rastreadores.repository';
 import type { SimCardEntity } from './sim-card.entity';
 import { SimCardsRepository } from './sim-cards.repository';
+import { isPgError, PG_EXCLUSION_VIOLATION, UNIQUE, violouUnique } from '../db/pg-errors';
 
-const PG_EXCLUSION_VIOLATION = '23P01';
-const PG_UNIQUE_VIOLATION = '23505';
 
 /**
  * Orquestra o domínio de rastreadores/SIM cards (inventário da Locale, cedido em comodato) e o vínculo
@@ -198,7 +197,7 @@ export class RastreadoresService {
         return vinculado;
       });
     } catch (err) {
-      if (isPgError(err, PG_UNIQUE_VIOLATION)) {
+      if (violouUnique(err, UNIQUE.chipPorRastreador)) {
         throw new ConflictException('Rastreador já tem um chip vinculado');
       }
       throw err;
@@ -301,8 +300,4 @@ export class RastreadoresService {
     );
     return rows;
   }
-}
-
-function isPgError(err: unknown, code: string): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === code;
 }

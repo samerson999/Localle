@@ -1,6 +1,7 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { Comando } from '@localle/shared/realtime';
 import type { Pool } from 'pg';
+import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { PG_POOL } from '../db/pg-pool.provider';
 import type { Queryable } from '../db/queryable';
@@ -89,7 +90,7 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
           expiraEm: new Date(Date.now() + timeoutMin * 60_000),
         });
       } catch (err) {
-        if ((err as { code?: string }).code === '23505') throw new ConflictException('Já há um comando igual pendente para este rastreador');
+        if (violouUnique(err, UNIQUE.comandoPendente)) throw new ConflictException('Já há um comando igual pendente para este rastreador');
         throw err;
       }
       for (const c of cancelados) {

@@ -1,5 +1,6 @@
 import { Body, ConflictException, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
+import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { instante, opcao, periodo, uuid, uuidOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
@@ -44,7 +45,7 @@ export class JornadaController {
       if (!m) throw new NotFoundException('Motorista não encontrado');
       return m;
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') throw new ConflictException('Já existe essa marcação nesse instante');
+      if (violouUnique(err, UNIQUE.marcacaoJornada)) throw new ConflictException('Já existe essa marcação nesse instante');
       throw err;
     }
   }

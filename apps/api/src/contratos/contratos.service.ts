@@ -1,5 +1,6 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Pool } from 'pg';
+import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { changedCommercial } from '@localle/shared/contratos';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { ClientsRepository } from '../clients/clients.repository';
@@ -8,7 +9,6 @@ import { withTransaction } from '../db/with-transaction';
 import { ContratosRepository, type ContratoRow } from './contratos.repository';
 import type { ContratoInput } from './dto/parse-contrato';
 
-const PG_UNIQUE_VIOLATION = '23505';
 
 /** Contrato do cliente: mutação + auditoria na mesma transação, como as demais ações de superadmin. */
 @Injectable()
@@ -37,7 +37,7 @@ export class ContratosService {
       this.logger.log(`contrato criado contrato_id=${contrato.id} client_id=${clientId} status=${input.status}`);
       return contrato;
     } catch (err) {
-      if ((err as { code?: string }).code === PG_UNIQUE_VIOLATION) throw new ConflictException('Cliente já tem contrato');
+      if (violouUnique(err, UNIQUE.contratoPorCliente)) throw new ConflictException('Cliente já tem contrato');
       throw err;
     }
   }
