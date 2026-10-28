@@ -12,7 +12,11 @@ import { SettingsService } from '../settings/settings.service';
 import { ComandosRepository, type ComandoRow, toComando } from './comandos.repository';
 import { type ComandoInput, OPOSTO, TIPOS } from './dto/parse-comando';
 
-const EXPIRACAO_MS = 60_000;
+const CICLO_MS = 15_000;
+/** Espera antes de conciliar: o Forwarding costuma entregar o `commandResult` em segundos. */
+const CONCILIAR_APOS_SEG = 10;
+/** Folga de relógio entre o envio registrado aqui e o horário do evento no Traccar. */
+const FOLGA_RELOGIO_MS = 10_000;
 
 /**
  * Comandos ao rastreador via Traccar (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.4 e § 4.6). Regras de
@@ -26,6 +30,12 @@ const EXPIRACAO_MS = 60_000;
  *   recente vence. O cancelamento é só local (o Traccar não desenfileira), por isso o `commandResult` que
  *   chegar depois fica registrado como tardio em `resultado`, nunca silenciado.
  * - timeout ≠ cancelamento: `expirado` registra só que paramos de esperar.
+ *
+ * Confirmação (sprint de monitoramento, 28/10/2026): o `commandResult` chega pelo Forwarding, mas o caminho
+ * pode falhar (polling sem eventos, envio perdido) e o comando expirava com o relé já acionado. Por isso o
+ * ciclo também concilia: para comando enviado e ainda sem resultado, consulta os `commandResult` gravados no
+ * próprio Traccar. O id do evento fica em `resultado.traccarEventId` — o mesmo evento nunca é contado duas
+ * vezes, venha por qual caminho vier.
  */
 @Injectable()
 export class ComandosService implements OnModuleInit, OnModuleDestroy {
@@ -43,7 +53,7 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (process.env.COMANDOS_EXPIRER_ENABLED === 'false') return;
-    this.timer = setInterval(() => void this.expirarVencidos(), EXPIRACAO_MS);
+    this.timer = setInterval(() => void this.ciclo(), CICLO_MS);
   }
 
   onModuleDestroy(): void {
@@ -161,24 +171,37 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
    * confirmou segundo o protocolo dele", não prova de estado físico. Sem pendente, é execução tardia de um
    * comando já expirado/cancelado: fica em `resultado` e no log, nunca silenciado.
    */
-  async receberResultado(traccarDeviceId: number, attributes: Record<string, unknown>, ts: Date): Promise<void> {
+  async receberResultado(
+    traccarDeviceId: number,
+    attributes: Record<string, unknown>,
+    ts: Date,
+    traccarEventId?: number,
+    origem: 'forwarding' | 'conciliacao' = 'forwarding',
+  ): Promise<'confirmado' | 'tardio' | 'ignorado'> {
     const { rows } = await this.pool.query<{ id: string }>('select id from rastreadores where traccar_device_id = $1', [traccarDeviceId]);
     if (!rows[0]) {
       this.logger.warn(`commandResult descartado: traccar_device_id ${traccarDeviceId} não cadastrado`);
-      return;
+      return 'ignorado';
     }
     const rastreadorId = rows[0].id;
-    // `attributes` vem do Forwarding sem validação de conteúdo: só o `result` entra, como string curta
+    if (traccarEventId && (await this.repo.resultadoRegistrado(rastreadorId, traccarEventId))) return 'ignorado'; // já veio pelo outro caminho
+    // `attributes` vem do Traccar sem validação de conteúdo: só o `result` entra, como string curta
     const result = attributes.result === undefined || attributes.result === null ? null : String(attributes.result).slice(0, 500);
-    const resultado = { result, recebidoEm: ts.toISOString() };
+    const resultado = { result, recebidoEm: ts.toISOString(), ...(traccarEventId ? { traccarEventId } : {}) };
     const [pendente] = await this.repo.pendentesPorRastreador(rastreadorId, TIPOS);
     if (pendente) {
       const c = await this.repo.transicionar(pendente.id, 'confirmado', { resultado, resolvido: true });
       if (c) {
-        this.logger.log(`Comando ${c.id} (${c.tipo}) confirmado pelo aparelho — rastreador ${rastreadorId}`);
+        if (origem === 'conciliacao') {
+          // o Forwarding deveria ter entregado: confirmar por aqui funciona, mas indica o caminho principal falhando
+          this.logger.warn(`Comando ${c.id} (${c.tipo}) confirmado pela conciliação com o Traccar (evento ${traccarEventId}), não pelo Forwarding — rastreador ${rastreadorId}`);
+        } else {
+          this.logger.log(`Comando ${c.id} (${c.tipo}) confirmado pelo aparelho — rastreador ${rastreadorId}`);
+        }
         await this.publicar(c);
+        return 'confirmado';
       }
-      return;
+      return 'ignorado';
     }
     const tardio = await this.repo.ultimoResolvidoPorRastreador(rastreadorId);
     if (tardio) {
@@ -189,6 +212,38 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
     } else {
       this.logger.warn(`commandResult sem comando correspondente — rastreador ${rastreadorId}: ${JSON.stringify(resultado)}`);
     }
+    return 'tardio';
+  }
+
+  private async ciclo() {
+    await this.conciliar();
+    await this.expirarVencidos();
+  }
+
+  /** Busca no Traccar os `commandResult` de comandos enviados que ainda esperam resultado. Devolve quantos confirmou. */
+  async conciliar(): Promise<number> {
+    const config = this.traccar.config();
+    if (!config) return 0;
+    let confirmados = 0;
+    try {
+      for (const r of await this.repo.enviadosSemResultado(CONCILIAR_APOS_SEG)) {
+        try {
+          const eventos = await this.traccar.commandResults(config, Number(r.traccar_device_id), new Date(r.desde.getTime() - FOLGA_RELOGIO_MS), new Date());
+          for (const e of [...eventos].sort((a, b) => a.eventTime.localeCompare(b.eventTime) || a.id - b.id)) {
+            if (e.type !== 'commandResult' || !Number.isSafeInteger(e.id) || e.id <= 0) continue;
+            // sem pendente, evento que sobrou não vira "tardio" por aqui: a conciliação só confirma
+            if (!(await this.repo.pendentesPorRastreador(r.rastreador_id, TIPOS)).length) break;
+            const res = await this.receberResultado(Number(r.traccar_device_id), e.attributes ?? {}, new Date(e.eventTime), e.id, 'conciliacao');
+            if (res === 'confirmado') confirmados++;
+          }
+        } catch (err) {
+          this.logger.warn(`Conciliação de comandos falhou para o rastreador ${r.rastreador_id} (traccar_device_id ${r.traccar_device_id}): ${(err as Error).message}`);
+        }
+      }
+    } catch (err) {
+      this.logger.error(`Falha ao conciliar comandos com o Traccar: ${(err as Error).message}`);
+    }
+    return confirmados;
   }
 
   async expirarVencidos(): Promise<number> {

@@ -385,7 +385,7 @@ function runStream(signal: AbortSignal) {
   const connect = async () => {
     while (!signal.aborted) {
       try {
-        if (attempt > 0) await syncAlertas(); // reconexão: o que mudou enquanto caído vem da API, não do pub/sub
+        if (attempt > 0) await Promise.all([syncAlertas(), syncComandos()]); // reconexão: o que mudou enquanto caído vem da API, não do pub/sub
         const qs = since ? `?since=${encodeURIComponent(since)}` : '';
         const r = await fetchOuErro(`${BASE}/monitoring/stream${qs}`, { headers: { Authorization: `Bearer ${getToken()}` }, signal });
         if (r.status === 401) { encerrarSessao(); throw new Error(MSG_SESSAO); }
@@ -438,6 +438,8 @@ export function purgeLocalleData() {
   });
 }
 
+const COMANDOS_SYNC_MS = 15_000;
+
 export function useLocalleSync() {
   const email = useStore((s) => s.session?.email);
   const role = useStore((s) => s.session?.role);
@@ -451,7 +453,10 @@ export function useLocalleSync() {
       .then(() => syncModulos())
       .then(() => runStream(ctrl.signal))
       .catch((e) => useLocalle.setState({ status: 'erro', ts: Date.now(), error: mensagemDeErro(e) }));
-    return () => ctrl.abort();
+    // enquanto houver comando aguardando o rastreador, confere no backend (só consulta se houver pendente)
+    const conferir = setInterval(() => void syncComandos().catch(() => { /* próxima volta tenta de novo */ }), COMANDOS_SYNC_MS);
+    void syncComandos().catch(() => {});
+    return () => { ctrl.abort(); clearInterval(conferir); };
   }, [email, role]);
 }
 
@@ -679,19 +684,32 @@ export async function syncModulos() {
 const TIPO_POR_KIND: Record<string, 'engineStop' | 'engineResume' | 'positionSingle'> = { bloqueio: 'engineStop', desbloqueio: 'engineResume', posicao: 'positionSingle' };
 // vocabulário do modal: 'enviado' = ainda aguardando o rastreador (o toast segue esperando); 'pendente' = sem comunicação
 const STATUS_TELA: Record<string, string> = { solicitado: 'enviado', enviado: 'enviado', aguardando: 'enviado', confirmado: 'confirmado', falhou: 'falhou', expirado: 'expirado', cancelado: 'cancelado' };
-/** comandoId (backend) → entrada do modal, para o tempo real atualizar a linha certa. */
-const comandoParaCmd = new Map<string, { cmdId: string; assetId: string }>();
 
+// O id do comando no backend fica na própria entrada do modal (`backend[assetId]`), que é persistida: recarregar a
+// página ou perder uma mensagem do tempo real não deixa mais o comando preso em "aguardando" (sprint 28/10/2026, bug 1).
 function aplicarComandoStatus(s: any, c: { id: string; assetId: string; tipo: string; status: string }) {
-  const ref = comandoParaCmd.get(c.id);
-  const assetId = ref?.assetId ?? assetIdFor(c.assetId);
+  const cmd = s.commands.find((x: any) => x.backend && Object.values(x.backend).includes(c.id));
+  const assetId = cmd ? Object.keys(cmd.backend).find((k) => cmd.backend[k] === c.id)! : assetIdFor(c.assetId);
   const vehicles = { ...s.vehicles };
   // só a confirmação do aparelho muda o estado mostrado; e mesmo ela é "confirmado segundo o protocolo", não prova física
   if (c.status === 'confirmado' && vehicles[assetId] && (c.tipo === 'engineStop' || c.tipo === 'engineResume')) {
     vehicles[assetId] = { ...vehicles[assetId], blocked: c.tipo === 'engineStop' };
   }
-  const commands = ref ? s.commands.map((x: any) => (x.id === ref.cmdId ? { ...x, status: { ...x.status, [assetId]: STATUS_TELA[c.status] || c.status } } : x)) : s.commands;
+  const commands = cmd ? s.commands.map((x: any) => (x.id === cmd.id ? { ...x, status: { ...x.status, [assetId]: STATUS_TELA[c.status] || c.status } } : x)) : s.commands;
   return { vehicles, commands };
+}
+
+const aguardandoNoBackend = (s: any) => s.commands.some((c: any) => c.backend && Object.keys(c.backend).some((aid) => c.status?.[aid] === 'enviado'));
+
+/** Estado atual dos comandos no backend: cobre a confirmação que chegou antes da resposta do envio ou com o tempo real caído. */
+export async function syncComandos() {
+  if (!aguardandoNoBackend(useStore.getState())) return;
+  const lista = await apiGet<{ id: string; assetId: string; tipo: string; status: string }[]>('/comandos');
+  useStore.getState().patch((s: any) => {
+    const conhecidos = new Set(s.commands.flatMap((c: any) => Object.values(c.backend || {})));
+    // a API devolve do mais novo para o mais antigo; aplica na ordem em que aconteceram (o último bloqueio/desbloqueio vence)
+    return lista.filter((c) => conhecidos.has(c.id)).reverse().reduce((acc: any, c) => ({ ...acc, ...aplicarComandoStatus({ ...s, ...acc }, c) }), {});
+  });
 }
 
 /** Kind do catálogo da tela → tipo do backend; `null` = comando que o Traccar ainda não cobre por aqui. */
@@ -704,7 +722,7 @@ export async function enviarComandoLocalle(cmdId: string, assetId: string, kind:
   try {
     const fisico = tipo === 'engineStop' || tipo === 'engineResume';
     const c = await apiSend<{ id: string; status: string; tipo: string; assetId: string }>('POST', fisico ? '/comandos/bloqueio' : '/comandos', { assetId: backendIdOf(assetId), tipo, motivo });
-    comandoParaCmd.set(c.id, { cmdId, assetId });
+    useStore.getState().patch((s: any) => ({ commands: s.commands.map((x: any) => (x.id === cmdId ? { ...x, backend: { ...x.backend, [assetId]: c.id } } : x)) }));
     setStatus(STATUS_TELA[c.status] || c.status);
   } catch (e: any) {
     setStatus('falhou');

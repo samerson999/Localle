@@ -94,6 +94,31 @@ export class ComandosRepository extends BaseRepository<ComandoRow> {
     return rows;
   }
 
+  /**
+   * Para a conciliação: rastreadores com comando já entregue ao Traccar e ainda sem resultado há mais de
+   * `idadeMinSeg` (dá tempo de o Forwarding entregar primeiro), com o envio mais antigo de cada um.
+   */
+  async enviadosSemResultado(idadeMinSeg: number, executor: Queryable = this.pool) {
+    const { rows } = await executor.query<{ rastreador_id: string; traccar_device_id: string; desde: Date }>(
+      `select c.rastreador_id, r.traccar_device_id, min(c.enviado_em) as desde
+       from comandos c join rastreadores r on r.id = c.rastreador_id
+       where c.status = any($1) and c.enviado_em is not null and c.enviado_em < now() - make_interval(secs => $2)
+         and r.traccar_device_id is not null
+       group by c.rastreador_id, r.traccar_device_id`,
+      [['enviado', 'aguardando'], idadeMinSeg],
+    );
+    return rows;
+  }
+
+  /** O `commandResult` (id do evento no Traccar) já foi registrado em algum comando do rastreador? */
+  async resultadoRegistrado(rastreadorId: string, traccarEventId: number, executor: Queryable = this.pool): Promise<boolean> {
+    const { rowCount } = await executor.query(
+      `select 1 from comandos where rastreador_id = $1 and resultado->>'traccarEventId' = $2 limit 1`,
+      [rastreadorId, String(traccarEventId)],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
   /** Último comando do rastreador já resolvido (para registrar um `commandResult` tardio). */
   async ultimoResolvidoPorRastreador(rastreadorId: string, executor: Queryable = this.pool): Promise<ComandoRow | null> {
     const { rows } = await executor.query<ComandoRow>(

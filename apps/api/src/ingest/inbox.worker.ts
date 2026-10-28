@@ -81,7 +81,7 @@ export class InboxWorker implements OnModuleInit, OnModuleDestroy {
     const bruto = (linha.payload as TraccarEventForward).event;
     if (bruto.type === 'commandResult') {
       // resultado de comando (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.4): não vira linha em `eventos`
-      await this.comandos.receberResultado(bruto.deviceId, bruto.attributes ?? {}, new Date((bruto.eventTime ?? bruto.serverTime)!));
+      await this.comandos.receberResultado(bruto.deviceId, bruto.attributes ?? {}, new Date((bruto.eventTime ?? bruto.serverTime)!), bruto.id);
       return;
     }
     const evento = mapTraccarEvent(linha.payload as TraccarEventForward);

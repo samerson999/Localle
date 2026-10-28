@@ -5,7 +5,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RealtimeMessage } from '@localle/shared/realtime';
 import { AuditLogRepository } from '../audit/audit-log.repository';
-import { TraccarClient, type TraccarConfig } from '../ingest/traccar-client';
+import { TraccarClient, type TraccarConfig, type TraccarEventoComando } from '../ingest/traccar-client';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { SettingsRepository } from '../settings/settings.repository';
 import { SettingsService } from '../settings/settings.service';
@@ -25,6 +25,13 @@ class TraccarFake extends TraccarClient {
     if (this.falhar) throw new Error('Traccar POST /api/commands/send falhou: 503 Service Unavailable');
     this.enviados.push(command);
     return { queued: this.queued, id: 100 + this.enviados.length };
+  }
+  /** `commandResult` gravados "no Traccar", para a conciliação. */
+  eventos: TraccarEventoComando[] = [];
+  consultas = 0;
+  override async commandResults(_c: TraccarConfig, deviceId: number) {
+    this.consultas++;
+    return this.eventos.filter((e) => e.deviceId === deviceId);
   }
 }
 
@@ -187,6 +194,40 @@ describe('comandos ao rastreador', () => {
     traccar.configurado = true;
     expect(d.status).toBe('falhou');
     expect(d.resultado).toEqual({ erro: 'traccar_nao_configurado' });
+  });
+
+  it('conciliação: commandResult que não veio pelo Forwarding é buscado no Traccar; o mesmo evento nunca conta duas vezes', async () => {
+    await limpar();
+    const evento = (id: number): TraccarEventoComando => ({ id, deviceId, type: 'commandResult', eventTime: agora(), attributes: { result: 'RELAY OK' } });
+    const c = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'positionSingle', motivo: null });
+    traccar.eventos = [evento(7001)];
+    // recém-enviado: espera o Forwarding antes de consultar o Traccar
+    traccar.consultas = 0;
+    expect(await service.conciliar()).toBe(0);
+    expect(traccar.consultas).toBe(0);
+
+    await pool.query("update comandos set enviado_em = now() - interval '30 seconds' where id = $1", [c.id]);
+    expect(await service.conciliar()).toBe(1);
+    const [confirmado] = (await service.listar(clientA, assetA)).filter((x) => x.id === c.id);
+    expect(confirmado.status).toBe('confirmado');
+    expect(confirmado.resultado).toMatchObject({ result: 'RELAY OK', traccarEventId: 7001 });
+
+    // o Forwarding entrega o mesmo evento depois: ignorado, não vira "tardio"
+    expect(await service.receberResultado(deviceId, { result: 'RELAY OK' }, new Date(), 7001)).toBe('ignorado');
+    const [igual] = (await service.listar(clientA, assetA)).filter((x) => x.id === c.id);
+    expect(igual.resultado).not.toHaveProperty('tardio');
+
+    // ao contrário: chegou pelo Forwarding, a conciliação não reaproveita o evento para outro comando pendente
+    const d = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'positionSingle', motivo: null });
+    expect(await service.receberResultado(deviceId, { result: 'OK' }, new Date(), 7002)).toBe('confirmado');
+    const e = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'positionSingle', motivo: null });
+    await pool.query("update comandos set enviado_em = now() - interval '30 seconds' where id = $1", [e.id]);
+    traccar.eventos = [evento(7001), evento(7002)];
+    expect(await service.conciliar()).toBe(0);
+    const lista = await service.listar(clientA, assetA);
+    expect(lista.find((x) => x.id === d.id)!.status).toBe('confirmado');
+    expect(lista.find((x) => x.id === e.id)!.status).toBe('enviado');
+    traccar.eventos = [];
   });
 
   it('ativo sem rastreador → 404; outro cliente não comanda nem lista o ativo alheio', async () => {
