@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import { useSearchParams } from 'react-router-dom';
 import { useStore, useStoreData } from '../lib/store';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, TextButton, Slider, Tabs, EmptyState, ErrorState, Spinner, DescList, DescRow, Stack, Grid, cx, toast } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, TextButton, Slider, Tabs, EmptyState, ErrorState, Spinner, DescList, DescRow, Stack, Grid, IconButton, cx, toast } from '../components/ui';
 import { KpiTile, Num, StatusDot, numSizeClass } from '../components/story';
 import { Icon } from '../components/icons';
 import { MonitorHeader } from '../components/MonitorTabs';
@@ -143,6 +143,21 @@ export default function Replay() {
             {cur && <GlideMarker key={asset?.id} category={categoryOf(asset)} position={snap(idx, cur)} plate={asset?.name || ''} note={`${cur[3]} km/h`} kind={cur[3] > 3 ? 'mov' : cur[4] ? 'parado' : 'off'} heading={idx > 0 ? bearing([pts[idx - 1][1], pts[idx - 1][2]], [cur[1], cur[2]]) : 0} selected />}
             <Fit pts={line} follow={follow && playing} cur={cur ? snap(idx, cur) : null} />
           </MapContainer>
+          {/* controles de reprodução sobre o mapa (sprint 28/10/2026, melhoria 3): antes ficavam num card abaixo e era
+              preciso rolar a tela para dar play. Acima da atribuição do mapa (bottom-6), que precisa ficar visível. */}
+          {pts.length > 0 && (
+            <div role="group" aria-label="Reprodução do percurso" className="no-print absolute inset-x-3 bottom-6 z-[450] bg-card border border-line rounded-panel shadow-panel px-3 py-2 flex flex-col gap-hair">
+              <div className="flex items-center gap-tight">
+                <Button size="sm" className="min-w-[112px]" onClick={() => { if (idx >= pts.length - 1) setIdx(0); setPlaying(!playing); }}><Icon name={playing ? 'pause' : 'play'} size={16} />{playing ? 'Pausar' : 'Reproduzir'}</Button>
+                <IconButton size="sm" aria-label="Reiniciar" title="Reiniciar" onClick={() => { setPlaying(false); setIdx(0); }}><Icon name="reiniciar" size={16} /></IconButton>
+                <IconButton size="sm" aria-label="Voltar um trecho" title="Voltar um trecho" onClick={() => setIdx(Math.max(0, idx - 20))}><Icon name="voltar" size={16} /></IconButton>
+                <IconButton size="sm" aria-label="Avançar um trecho" title="Avançar um trecho" onClick={() => setIdx(Math.min(pts.length - 1, idx + 20))}><Icon name="chevron" size={16} /></IconButton>
+                {cur && <span className="ml-auto num text-small text-ink-2 whitespace-nowrap">{fmtT(cur[0])} de {fmtT(pts[pts.length - 1][0])}</span>}
+                <Tabs size="sm" className="max-md:hidden" value={String(mult)} onChange={(k) => setMult(+k)} tabs={[1, 4, 10, 25].map((m) => ({ key: String(m), label: `${m}x` }))} />
+              </div>
+              <Slider aria-label="Posição no percurso" min={0} max={Math.max(0, pts.length - 1)} value={idx} onChange={(e) => setIdx(+e.target.value)} />
+            </div>
+          )}
           {pts.length === 0 && <div className="absolute inset-0 z-[400] flex items-center justify-center bg-[color-mix(in_srgb,var(--card)_80%,transparent)] p-4">
             <div className="bg-card border border-line rounded-panel shadow-panel max-w-[520px] w-full">
               {remote?.loading ? <p role="status" className="flex items-center justify-center gap-icon py-8 text-body text-ink-2"><Spinner />Buscando percurso no rastreador…</p>
@@ -171,21 +186,12 @@ export default function Replay() {
         title="Replay do percurso"
         subtitle={pts.length ? `${asset?.name || '—'} · ${fmtD(pts[0][0])} · ${fmtT(pts[0][0])}–${fmtT(pts[pts.length - 1][0])}` : (asset?.name || '—')}
         actions={<Num value={pts.length ? Math.round((idx / Math.max(1, pts.length - 1)) * 100) : 0} unit="%" size="lg" />}>
-        <div className="flex flex-wrap gap-tight items-center">
-          <Button className="min-w-[132px]" onClick={() => { if (idx >= pts.length - 1) setIdx(0); setPlaying(!playing); }} disabled={!pts.length}><Icon name={playing ? 'pause' : 'play'} size={18} />{playing ? 'Pausar' : 'Reproduzir'}</Button>
-          <Button variant="quiet" disabled={!pts.length} onClick={() => { setPlaying(false); setIdx(0); }}><Icon name="reiniciar" size={18} />Reiniciar</Button>
-          <Button variant="quiet" disabled={!pts.length} onClick={() => setIdx(Math.max(0, idx - 20))}><Icon name="voltar" size={18} />Anterior</Button>
-          <Button variant="quiet" disabled={!pts.length} onClick={() => setIdx(Math.min(pts.length - 1, idx + 20))}>Próximo<Icon name="chevron" size={18} /></Button>
-          <span className="w-px self-stretch bg-line mx-tight" aria-hidden="true" />
-          <span className="text-small font-medium text-ink-2">Velocidade</span>
-          <Tabs size="sm" value={String(mult)} onChange={(k) => setMult(+k)} tabs={[1, 4, 10, 25].map((m) => ({ key: String(m), label: `${m}x` }))} />
-          {pts.length > 0 && cur && <span className="ml-auto num text-small text-ink-2">{fmtT(cur[0])} de {fmtT(pts[pts.length - 1][0])}</span>}
-        </div>
-        <Slider aria-label="Posição no percurso" min={0} max={Math.max(0, pts.length - 1)} value={idx} onChange={(e) => setIdx(+e.target.value)} className="mt-card-head" />
-        {pts.length > 1 && <div className="flex justify-between mt-hair text-caption text-ink-3 num">
+        {/* reproduzir, reiniciar, barra de tempo e velocidade ficam sobre o mapa; aqui, as opções de exibição */}
+        {pts.length > 1 && <div className="flex justify-between text-caption text-ink-3 num">
           {[0, 0.25, 0.5, 0.75, 1].map((f) => <span key={f}>{fmtT(pts[Math.round(f * (pts.length - 1))][0])}</span>)}
         </div>}
         <div className="flex flex-wrap items-center gap-x-grid gap-y-stack mt-stack">
+          <Tabs size="sm" className="md:hidden" value={String(mult)} onChange={(k) => setMult(+k)} tabs={[1, 4, 10, 25].map((m) => ({ key: String(m), label: `${m}x` }))} />
           <Check label="Seguir veículo" checked={follow} onChange={setFollow} /><Check label="Mostrar eventos" checked={showEv} onChange={setShowEv} /><Check label="Mostrar cercas" checked={showF} onChange={setShowF} />
           <span className="ml-auto text-caption text-ink-3">Arraste o marcador para navegar pelo percurso</span>
         </div>
