@@ -9,7 +9,7 @@ import { AssetName, StatusDot } from '../components/story';
 import { Icon } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { fencePassages, stayMs, GAP_MIN } from '@localle/shared/fenceStats';
-import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
+import { csv, xlsx, pdf, pdfFileName, fmtCoord } from '../lib/reportExport';
 import { resolveAddresses } from '../lib/geocode';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
 
@@ -74,7 +74,7 @@ export default function RelatorioCercas() {
   const head = ['Veículo', 'Cerca', 'Entrada', 'Saída', 'Permanência (min)', 'Endereço', 'Latitude entrada', 'Longitude entrada'];
   const linhas = async () => {
     const enderecos = await resolveAddresses(filtradas.map(({ p }: any) => p.enterPos as [number, number]));
-    return filtradas.map(({ a, fe, p }: any, i: number) => [a.name, fe.name, fmtDT(p.enter), p.exit ? fmtDT(p.exit) : 'Ainda na cerca', Math.round(stayMs(p, t) / 60000), enderecos[i], p.enterPos[0], p.enterPos[1]]);
+    return filtradas.map(({ a, fe, p }: any, i: number) => [a.name, fe.name, fmtDT(p.enter), p.exit ? fmtDT(p.exit) : 'Ainda na cerca', Math.round(stayMs(p, t) / 60000), enderecos[i], fmtCoord(p.enterPos[0]), fmtCoord(p.enterPos[1])]);
   };
 
   const resumoHead = ['Veículo', 'Placa', 'Passagens', 'Tempo total'];

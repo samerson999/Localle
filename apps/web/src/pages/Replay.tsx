@@ -9,7 +9,7 @@ import { KpiTile, Num, StatusDot, numSizeClass } from '../components/story';
 import { Icon } from '../components/icons';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
-import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
+import { csv, xlsx, pdf, pdfFileName, fmtCoord } from '../lib/reportExport';
 import { cachedAddress, resolveAddresses } from '../lib/geocode';
 import { categoryOf } from '../components/assetArt';
 import { GlideMarker, bearing, FenceShapes, Address, TILE, ATTR } from '../components/MapBits';
@@ -205,7 +205,7 @@ export default function Replay() {
           const nomeArq = (ext: string) => `replay-${asset?.plate || asset?.id || 'veiculo'}-${new Date(pts[0][0]).toISOString().slice(0, 10)}.${ext}`;
           // posições: endereço só o que a tela já resolveu (cache), sem travar a exportação num histórico grande
           const head = ['Data/hora', 'Velocidade (km/h)', 'Ignição', 'Endereço', 'Latitude', 'Longitude'];
-          const rows = pts.map((p: any) => [fmtDT(p[0]), Math.round(p[3]), p[4] ? 'Ligada' : 'Desligada', cachedAddress(p[1], p[2]), p[1], p[2]]);
+          const rows = pts.map((p: any) => [fmtDT(p[0]), Math.round(p[3]), p[4] ? 'Ligada' : 'Desligada', cachedAddress(p[1], p[2]), fmtCoord(p[1]), fmtCoord(p[2])]);
           // eventos e paradas: lista curta, busca o endereço de verdade (com cache) para cada um
           const evPontos = [...evs.map((e: any) => e.pos as [number, number]), ...stats.stops.map((s: any) => s.pos as [number, number])];
           const evEnderecos = await resolveAddresses(evPontos);

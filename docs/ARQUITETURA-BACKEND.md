@@ -134,6 +134,23 @@ Isso resolve o mesmo problema que a função `fn_can_report` resolve hoje em PL/
 - **BI (manutenção, combustível, ranking):** ler de continuous aggregates ou de tabelas de resumo já fechadas por dia/mês, nunca recalcular do dado cru na hora do clique.
 - **Paginação:** por `(ts, id)` com keyset pagination (`where (ts, id) < (last_ts, last_id)`), não `offset` — `offset` em tabela grande lê e descarta as linhas anteriores.
 
+### 2.6 Endereço das posições (geocodificação reversa) — pendência aberta
+
+**Estado em 28/10/2026:** o endereço por extenso é resolvido **no navegador** (`apps/web/src/lib/geocode.ts`), no
+Nominatim público (OpenStreetMap), limitado a 1 consulta por segundo, com cache por ponto arredondado (~11 m) no
+`localStorage` de cada usuário. A tela resolve só as linhas visíveis; as exportações usam só o que já está em cache
+(Posições, Replay) ou resolvem poucos pontos (Velocidade, Cercas, "Passou por aqui").
+
+**Gap (sprint de monitoramento, bug 5):** o critério "todas as posições com GPS válido mostram endereço" **não é
+atendido**. Um relatório de posições exportado sai com a maioria das linhas sem endereço — resolver 1.000 pontos a
+1/s levaria ~17 min, e o uso do Nominatim público em volume fere a política de uso dele. Paliativo entregue: posição
+sem endereço mostra as coordenadas (`fmtCoord`, 6 casas) no lugar, na tela e nas exportações.
+
+**Solução prevista (aguarda decisão de provedor/custo):** a API resolve o endereço — serviço próprio (Nominatim
+self-hosted com o extrato do Brasil) ou contratado — com cache em tabela no banco por ponto arredondado,
+compartilhado entre todos os clientes; os relatórios saem da API já com o endereço. O front deixa de chamar
+serviço externo. Até lá, não prometer endereço em 100% das linhas exportadas.
+
 ---
 
 ## 3. Pool de conexões e concorrência

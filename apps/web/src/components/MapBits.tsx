@@ -10,7 +10,7 @@ import { StatusDot, Plate, Num } from './story';
 import { IconButton, cx, Menu, type MenuItem } from './ui';
 import { Icon } from './icons';
 type Glyph = Category | 'reboque';
-import { useAddress } from '../lib/geocode';
+import { fmtCoord, useAddress } from '../lib/geocode';
 
 // Cercas na paleta de zonas (--zone-1..4), nunca nas cores de status: no mapa, verde, laranja e vermelho são dos veículos.
 // O tipo da cerca define a zona: 1 empresa, 2 risco, 3 clientes e fornecedores, 4 serviços e outros.
@@ -159,7 +159,7 @@ export function ClusteredVehicles({ items, selected, grouped = true }: { items: 
 export function Address({ pos, className = '' }: { pos?: [number, number] | null; className?: string }) {
   const addr = useAddress(pos);
   if (!pos) return null;
-  return addr ? <span className={className}>{addr}</span> : <span className={`font-mono text-caption text-ink-2 ${className}`}>{pos[0].toFixed(5)}, {pos[1].toFixed(5)}</span>;
+  return addr ? <span className={className}>{addr}</span> : <span className={`font-mono text-caption text-ink-2 ${className}`}>{fmtCoord(pos[0])}, {fmtCoord(pos[1])}</span>;
 }
 
 // Card do veículo selecionado (popup sobre o mapa ou painel lateral): status, silhueta da categoria, placa,

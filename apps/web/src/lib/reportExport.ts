@@ -5,6 +5,8 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+export { fmtCoord } from './geocode';
+
 export type ReportMeta = { empresa: string; periodo: string; filtros: string; emitidoEm: string };
 
 export function csv(name: string, head: string[], rows: (string | number)[][]) {

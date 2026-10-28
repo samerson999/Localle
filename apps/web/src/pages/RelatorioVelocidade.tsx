@@ -9,7 +9,7 @@ import { AssetName } from '../components/story';
 import { Icon } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { speedLegs } from '@localle/shared/speedStats';
-import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
+import { csv, xlsx, pdf, pdfFileName, fmtCoord } from '../lib/reportExport';
 import { resolveAddresses } from '../lib/geocode';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
 
@@ -72,7 +72,7 @@ export default function RelatorioVelocidade() {
   const head = ['Veículo', 'Início', 'Fim', 'Vel. máxima (km/h)', 'Vel. média (km/h)', 'Endereço', 'Latitude', 'Longitude'];
   const linhas = async () => {
     const enderecos = await resolveAddresses(filtrados.map(({ leg }: any) => leg.maxPos as [number, number]));
-    return filtrados.map(({ a, leg }: any, i: number) => [a.name, fmtDT(leg.start), fmtDT(leg.end), Math.round(leg.vmax), Math.round(leg.vavg), enderecos[i], leg.maxPos[0], leg.maxPos[1]]);
+    return filtrados.map(({ a, leg }: any, i: number) => [a.name, fmtDT(leg.start), fmtDT(leg.end), Math.round(leg.vmax), Math.round(leg.vavg), enderecos[i], fmtCoord(leg.maxPos[0]), fmtCoord(leg.maxPos[1])]);
   };
 
   const resumoHead = ['Veículo', 'Placa', 'Trechos', 'Vel. máxima'];

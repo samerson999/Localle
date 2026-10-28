@@ -3,6 +3,11 @@
 // NO PRODUTO REAL isto vai para o backend (serviço próprio ou contratado, com cache no banco): o front só recebe o texto.
 import { useEffect, useState } from 'react';
 
+// Coordenada exportada: graus decimais com 6 casas fixas (~11 cm) e ponto decimal, como texto. Número cru saía com
+// casas variáveis no PDF e, no CSV com ';' aberto no Excel em português, o ponto virava separador de milhar.
+export const fmtCoord = (n: number | string | null | undefined) => (n === null || n === undefined || n === '' || !Number.isFinite(+n) ? '' : (+n).toFixed(6));
+const coords = (lat: number, lng: number) => `${fmtCoord(lat)}, ${fmtCoord(lng)}`;
+
 const KEY = 'geo-cache-v1', MAX = 3000;
 const cache: Record<string, string> = (() => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } })();
 const save = () => { try { const k = Object.keys(cache); if (k.length > MAX) k.slice(0, k.length - MAX).forEach((x) => delete cache[x]); localStorage.setItem(KEY, JSON.stringify(cache)); } catch { /* sem armazenamento: só memória */ } };
@@ -59,16 +64,17 @@ export async function searchAddress(query: string): Promise<[number, number] | n
 }
 
 // endereço já resolvido (sem disparar nova consulta): usado para preencher relatórios com o que a tela já
-// carregou, sem travar a exportação esperando a fila de 1 consulta/segundo em listas grandes
+// carregou, sem travar a exportação esperando a fila de 1 consulta/segundo em listas grandes. Sem endereço em
+// cache, devolve as coordenadas — a linha nunca sai em branco (gap documentado em docs/ARQUITETURA-BACKEND.md § 2.6).
 export function cachedAddress(lat: number, lng: number): string {
-  return cache[keyOf(lat, lng)] || '';
+  return cache[keyOf(lat, lng)] || coords(lat, lng);
 }
 
 // endereços de vários pontos, para relatórios exportados: usa o cache quando já tem (preenchido ao navegar
 // pelas telas) e busca o restante respeitando a mesma fila/limite de 1 consulta por segundo. Indicado só para
 // listas pequenas (eventos, paradas, entradas em cerca) — não para o histórico de posições inteiro.
 export async function resolveAddresses(points: [number, number][]): Promise<string[]> {
-  return Promise.all(points.map((p) => reverseGeocode(p[0], p[1])));
+  return Promise.all(points.map((p) => reverseGeocode(p[0], p[1]).then((x) => x || coords(p[0], p[1]))));
 }
 
 export function useAddress(pos?: [number, number] | null) {
