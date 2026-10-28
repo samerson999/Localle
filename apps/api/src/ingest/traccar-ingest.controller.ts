@@ -12,6 +12,7 @@ import {
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { Public } from '../auth/public.decorator';
 import { validarEventoForward, validarPosicaoForward } from './dto/traccar-forward.dto';
+import { ReenvioPedidoException } from '../common/reenvio-pedido.exception';
 import { InboxRepository, type InboxTipo } from './inbox.repository';
 
 /**
@@ -68,7 +69,7 @@ export class TraccarIngestController {
       );
       this.semId = { desde: agora, total: 0, devices: new Set() };
     }
-    throw new ServiceUnavailableException('Ainda sem id no Traccar; reenviar');
+    throw new ReenvioPedidoException('Ainda sem id no Traccar; reenviar');
   }
 
   // Recusa por formato é descarte de dado (o Traccar reenvia e acaba desistindo): sempre loga o motivo e o

@@ -43,6 +43,15 @@ describe('HttpExceptionFilter', () => {
     expect(String(error.mock.calls[0][0])).toContain('sem auth');
   });
 
+  it('503 de reenvio pedido ao Traccar (id 0 no Forwarding) responde 503 sem logar como erro', async () => {
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { ReenvioPedidoException } = await import('./reenvio-pedido.exception');
+    const { res, host: h } = host({ method: 'POST', originalUrl: '/ingest/traccar/positions' });
+    new HttpExceptionFilter().catch(new ReenvioPedidoException('Ainda sem id no Traccar; reenviar'), h);
+    expect(res.status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it('não tenta responder quando a resposta já começou (stream)', () => {
     vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const { res, host: h } = host({ method: 'GET', originalUrl: '/realtime' });

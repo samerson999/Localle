@@ -1,4 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { ReenvioPedidoException } from './reenvio-pedido.exception';
 import type { Request, Response } from 'express';
 import type { RequestAuth } from '../auth/auth.guard';
 
@@ -21,7 +22,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status = esperada ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const corpo = esperada ? exception.getResponse() : null;
 
-    if (status >= 500) {
+    // 503 de reenvio pedido ao Traccar (id 0 no Forwarding) é fluxo normal, resumido pelo próprio controller
+    if (status >= 500 && !(exception instanceof ReenvioPedidoException)) {
       const err = exception as Error;
       this.logger.error(`${status} ${req.method} ${req.originalUrl ?? req.url} — ${contexto(req.auth)}: ${err?.message ?? String(exception)}`, err?.stack);
     }
