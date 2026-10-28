@@ -95,7 +95,9 @@ export function pdf(opts: { file: string; titulo: string; cliente: string; usuar
   };
 
   sections.forEach((s, i) => {
-    const startY = i === 0 ? metaBox(62) : (doc as any).lastAutoTable.finalY + 24;
+    let startY = i === 0 ? metaBox(62) : (doc as any).lastAutoTable.finalY + 24;
+    // título sem espaço para ao menos o cabeçalho e uma linha da tabela: começa a seção na página seguinte
+    if (startY > H - 110) { doc.addPage(); startY = 78; }
     doc.setTextColor(20); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text(clean(s.title), M, startY);
     autoTable(doc, {

@@ -15,7 +15,7 @@ import { Icon } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { routeStats } from '@localle/shared/routeStats';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
-import { cachedAddress } from '../lib/geocode';
+import { blocosPorVeiculo, planilhaLinhas, PLANILHA_HEAD, rotuloVeiculo, secoesPdf, type BlocoVeiculo } from '../lib/relatorioPosicoes';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
 
 // Relatório de Posições: histórico de posições detalhado da frota, com percurso no mapa e resumo
@@ -55,10 +55,11 @@ export default function RelatorioPosicoes() {
       .catch((e) => vivo && toast('Não foi possível carregar as posições: ' + (e.message || e), { tone: 'crit' }));
     return () => { vivo = false; };
   }, [api.rows, f, t]);
-  const porVeiculo = useMemo(() => [
+  // um bloco por veículo (ordem de placa), pontos em ordem cronológica — ver lib/relatorioPosicoes.ts
+  const porVeiculo: BlocoVeiculo[] = useMemo(() => blocosPorVeiculo([
     ...scope.filter((a: any) => !isRealAsset(a)).map((a: any) => ({ a, pts: posOf(a), n: posOf(a).length, stats: routeStats(posOf(a)) })),
     ...api.rows.map((r) => ({ a: r.a, pts: ptsReais[r.a.id] || [], n: r.posicoes, stats: r.stats })),
-  ].filter((x: any) => x.n), [scope.map((a: any) => a.id).join(), history, f, t, api.rows, ptsReais]);
+  ].filter((x: any) => x.n)), [scope.map((a: any) => a.id).join(), history, f, t, api.rows, ptsReais]);
 
   const filtrados = busca.trim()
     ? porVeiculo.filter(({ a }: any) => [a.name, a.plate].some((s) => (s || '').toLowerCase().includes(busca.trim().toLowerCase())))
@@ -73,9 +74,8 @@ export default function RelatorioPosicoes() {
   const periodoLabel = `${fmtDT(f)} → ${fmtDT(t)}`;
   const filtrosTxt = `Grupo: ${groups.find((g: any) => g.id === grp)?.name || 'todos'} · Veículo: ${assets.find((a: any) => a.id === aid)?.name || 'todos'}`;
   const nomeArq = (ext: string) => `posicoes-${from.slice(0, 10)}-a-${to.slice(0, 10)}.${ext}`;
-  const head = ['Veículo', 'Data/hora', 'Velocidade (km/h)', 'Ignição', 'Endereço', 'Latitude', 'Longitude'];
-  // endereço só o que a tela já resolveu (cache), sem travar a exportação com um histórico grande de posições
-  const linhas = () => filtrados.flatMap(({ a, pts }: any) => pts.map((p: any) => [a.name, fmtDT(p[0]), Math.round(p[3]), p[4] ? 'Ligada' : 'Desligada', cachedAddress(p[1], p[2]), p[1], p[2]]));
+  // endereço só o que a tela já resolveu (cache; sem ele, as coordenadas), sem travar a exportação com um histórico grande
+  const linhas = () => planilhaLinhas(filtrados);
 
   const resumoHead = ['Veículo', 'Placa', 'Posições', 'Distância', 'Vel. máxima'];
   const resumoRows = () => [
@@ -87,8 +87,8 @@ export default function RelatorioPosicoes() {
     const rows = linhas();
     if (!rows.length) return toast('Nada para exportar neste período.', { tone: 'crit' });
     const meta = { empresa: `${revenda.clientName} — Posições`, periodo: `Período: ${periodoLabel}`, filtros: filtrosTxt, emitidoEm: fmtDT(Date.now()) };
-    if (formato === 'csv') csv(nomeArq('csv'), head, rows);
-    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, head, rows);
+    if (formato === 'csv') csv(nomeArq('csv'), PLANILHA_HEAD, rows);
+    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, PLANILHA_HEAD, rows);
     else pdf({
       file: pdfFileName('Posições', f, t, aid ? assets.find((a: any) => a.id === aid)?.plate : undefined),
       titulo: 'Relatório de Posições', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',
@@ -97,11 +97,9 @@ export default function RelatorioPosicoes() {
         { label: 'Veículo', value: assets.find((a: any) => a.id === aid)?.name || 'Todos' },
         { label: 'Grupo', value: groups.find((g: any) => g.id === grp)?.name || 'Todos' },
       ],
-      sections: [
-        { title: 'Posições recebidas', head, rows },
-        { title: 'Resumo por veículo', head: resumoHead, rows: resumoRows() },
-      ],
-      nota: 'Cada linha é uma posição enviada pelo rastreador, em ordem cronológica.',
+      // um bloco por veículo (resumo, paradas, posições) e, no fim, o resumo da frota
+      sections: [...secoesPdf(filtrados), { title: 'Resumo da frota', head: resumoHead, rows: resumoRows() }],
+      nota: 'Um bloco por veículo, em ordem de placa; dentro do bloco, cada linha é uma posição enviada pelo rastreador, em ordem cronológica. Parada = mais de 5 min a até 3 km/h.',
     });
     toast(`Relatório de posições gerado com ${rows.length} ${rows.length === 1 ? 'linha' : 'linhas'}.`);
   };
@@ -155,17 +153,11 @@ export default function RelatorioPosicoes() {
           </MapContainer>
         </Card>
 
-        <Card title="Posições registradas" subtitle={api.rows.length > MAX_VEICULOS_COM_PONTOS ? `A lista e o trajeto mostram até ${MAX_VEICULOS_COM_PONTOS} veículos por vez — filtre por grupo ou veículo para ver as posições. O resumo acima cobre a frota toda.` : 'Lista detalhada das posições da frota no período, com velocidade e endereço.'}
+        <Card title="Posições por veículo" subtitle={api.rows.length > MAX_VEICULOS_COM_PONTOS ? `As posições e o trajeto aparecem para até ${MAX_VEICULOS_COM_PONTOS} veículos por vez — filtre por grupo ou veículo para ver a lista. O resumo de cada veículo cobre a frota toda.` : 'Um bloco por veículo, com o resumo de movimento, as paradas e as posições em ordem cronológica.'}
           actions={<div className="w-56"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por veículo ou placa…" /></div>}>
-          <Table minWidth={760} pageSize={10} align={['left', 'left', 'right', 'left', 'left']}
-            emptyState={<EmptyState icon="rota" layout="row" title="Nenhuma posição no período" detail="Troque o período ou os veículos." />}
-            head={['Veículo', 'Data/hora', 'Velocidade', 'Ignição', 'Endereço']}
-            rows={filtrados.flatMap(({ a, pts }: any) => pts.slice(-50).reverse().map((p: any) => [
-              <AssetName name={a.name} />, <time className="num">{fmtDT(p[0])}</time>,
-              <span className="num">{Math.round(p[3])} km/h</span>,
-              p[4] ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>,
-              <Address pos={[p[1], p[2]]} className="text-small" />,
-            ]))} />
+          {filtrados.length ? (
+            <Stack gap="grid">{filtrados.map((b) => <BlocoPosicoes key={b.a.id} b={b} />)}</Stack>
+          ) : <EmptyState icon="rota" layout="row" title="Nenhuma posição no período" detail="Troque o período ou os veículos." />}
         </Card>
 
         <Card title="Resumo por veículo" subtitle="Distância percorrida e velocidade máxima de cada veículo no período.">
@@ -181,6 +173,40 @@ export default function RelatorioPosicoes() {
         itens={['Filtros aplicados', 'Histórico detalhado de posições', 'Resumo por veículo', 'Cabeçalho com nome da empresa e data de emissão']}
         onExport={exportar} />
     </div>
+  );
+}
+
+// Bloco de um veículo: identificação, resumo (movimento e paradas), lista de paradas e posições do período.
+function BlocoPosicoes({ b }: { b: BlocoVeiculo }) {
+  const { a, pts, n, stats } = b;
+  const kpis: [string, React.ReactNode][] = [
+    ['Posições', n], ['Distância', `${Math.round(stats.dist)} km`], ['Vel. máxima', `${Math.round(stats.vmax)} km/h`],
+    ['Em movimento', hm(stats.moving)], ['Parado com ignição', hm(stats.idle)], ['Paradas (> 5 min)', stats.stops.length],
+  ];
+  return (
+    <section aria-label={`Posições de ${rotuloVeiculo(a)}`} className="border border-line rounded-card p-card-sm">
+      <header className="flex flex-wrap items-baseline gap-x-stack gap-y-tight mb-3">
+        <AssetName name={a.plate || a.name} />
+        {a.plate && a.plate !== a.name && <span className="text-small text-ink-2">{a.name}</span>}
+      </header>
+      <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-field mb-4">
+        {kpis.map(([k, v]) => <div key={k} className="min-w-0"><dt className="text-caption text-ink-2">{k}</dt><dd className="num font-medium">{v}</dd></div>)}
+      </dl>
+      {stats.stops.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-small font-medium text-ink-2 mb-2">Paradas</h4>
+          <Table minWidth={640} pageSize={5} align={['left', 'left', 'right', 'left', 'left']} head={['Início', 'Fim', 'Duração', 'Ignição', 'Endereço']}
+            rows={stats.stops.map((s) => [<time className="num">{fmtDT(s.ts)}</time>, <time className="num">{fmtDT(s.end)}</time>, <span className="num">{hm(s.end - s.ts)}</span>,
+              s.ignition ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>, <Address pos={s.pos} className="text-small" />])} />
+        </div>
+      )}
+      <h4 className="text-small font-medium text-ink-2 mb-2">Posições</h4>
+      {pts.length ? (
+        <Table minWidth={640} pageSize={10} align={['left', 'right', 'left', 'left']} head={['Data/hora', 'Velocidade', 'Ignição', 'Endereço']}
+          rows={pts.map((p) => [<time className="num">{fmtDT(p[0])}</time>, <span className="num">{Math.round(p[3])} km/h</span>,
+            p[4] ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>, <Address pos={[p[1], p[2]]} className="text-small" />])} />
+      ) : <p className="text-small text-ink-2">Lista de posições não carregada: filtre por grupo ou veículo para ver as posições deste veículo.</p>}
+    </section>
   );
 }
 
