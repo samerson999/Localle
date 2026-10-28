@@ -122,6 +122,15 @@ describe('ingestão por Forwarding (inbox + lease)', () => {
     await expect(controller.events(chave, { event: { id: 1, deviceId } })).rejects.toMatchObject({ status: 400 });
   });
 
+  it('posição/evento com id 0 (Traccar 6 envia antes de gravar) volta 503 para reenvio, sem entrar no inbox', async () => {
+    await expect(controller.positions(chave, posicao(0))).rejects.toMatchObject({ status: 503 });
+    await expect(controller.events(chave, evento(0, 'ignitionOn'))).rejects.toMatchObject({ status: 503 });
+    // sem chave continua 401: a autenticação vem antes
+    await expect(controller.positions(undefined, posicao(0))).rejects.toMatchObject({ status: 401 });
+    const { rowCount } = await pool.query("select 1 from ingest_inbox where payload::text like '%' || $1 || '%'", [String(deviceId)]);
+    expect(rowCount).toBe(0);
+  });
+
   it('posição aceita vai para o inbox (só o objeto position) e o worker grava em posicoes; reenvio não duplica', async () => {
     await controller.positions(chave, posicao(11));
     await controller.positions(chave, posicao(11)); // retry do Traccar
