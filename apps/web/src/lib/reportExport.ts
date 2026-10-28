@@ -75,7 +75,7 @@ export function pdf(opts: { file: string; titulo: string; cliente: string; usuar
     doc.setDrawColor(224); doc.setLineWidth(0.5);
     doc.line(M, H - 28, W - M, H - 28);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(130);
-    doc.text(clean(`Gerado por Plataforma Localle · Usuário: ${usuario} (${ROLE_LABEL[role] || role}) · Horários em America/Recife (UTC-3) · Dados de exemplo`), M, H - 16);
+    doc.text(clean(`Gerado por Plataforma Localle · Usuário: ${usuario} (${ROLE_LABEL[role] || role}) · Horários em America/Recife (UTC-3)`), M, H - 16);
     doc.text(`Página ${n}`, W - M, H - 16, { align: 'right' });
   };
 
