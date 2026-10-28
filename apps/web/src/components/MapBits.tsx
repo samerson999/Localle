@@ -64,8 +64,10 @@ export function vehIcon({ plate, kind, heading = 0, selected = false, note }: { 
 // fora da área visível, ou animate=false (ex.: marcador agrupado num cluster, se um dia houver).
 const JUMP_M = 3000;
 const glideMs = () => parseFloat(tv('--t-glide')) || 800;
-export function GlideMarker({ position, heading = 0, kind, category, plate, selected, note, title, onClick, animate = true }: {
+export function GlideMarker({ position, heading = 0, kind, category, plate, selected, note, title, onClick, onContextMenu, animate = true }: {
   position: [number, number]; heading?: number; kind: StatusKind; category?: Glyph; pic?: string; plate: string; selected?: boolean; note?: string; title?: string; onClick?: () => void; animate?: boolean;
+  /** botão direito (toque longo no celular) no veículo; recebe o ponto no contêiner do mapa */
+  onContextMenu?: (pt: { x: number; y: number }) => void;
 }) {
   const map = useMap();
   const ref = useRef<L.Marker>(null);
@@ -96,7 +98,11 @@ export function GlideMarker({ position, heading = 0, kind, category, plate, sele
     raf.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf.current); // nova posição no meio do caminho: recomeça de onde está
   }, [position[0], position[1], heading, animate]);
-  return <Marker ref={ref} position={initial} icon={icon} title={title} eventHandlers={onClick ? { click: onClick } : undefined} />;
+  const handlers: L.LeafletEventHandlerFnMap = {};
+  if (onClick) handlers.click = onClick;
+  // o menu do veículo substitui o do mapa ("Passou por aqui…"): o evento não segue para o mapa
+  if (onContextMenu) handlers.contextmenu = (e: any) => { L.DomEvent.stopPropagation(e); e.originalEvent?.preventDefault?.(); onContextMenu({ x: e.containerPoint.x, y: e.containerPoint.y }); };
+  return <Marker ref={ref} position={initial} icon={icon} title={title} eventHandlers={handlers} />;
 }
 
 // rumo (graus, 0 = norte) entre dois pontos, para quando o rastreador não manda o heading

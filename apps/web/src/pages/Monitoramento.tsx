@@ -53,7 +53,11 @@ export default function Monitoramento() {
   const [sp] = useSearchParams();
   const [sel, setSel] = useState<string | null>(sp.get('ativo'));
   const [showF, setShowF] = useState(true);
-  const [cmd, setCmd] = useState<null | { target: 'veiculo' | 'grupo'; assetId?: string }>(null);
+  const [cmd, setCmd] = useState<null | { target: 'veiculo' | 'grupo'; assetId?: string; defId?: string }>(null);
+  // comando direto no veículo (sprint 28/10/2026, melhoria 2): abre o envio já com veículo e comando escolhidos; a senha
+  // continua obrigatória no modal
+  const comandar = (assetId: string, defId?: string) => setCmd({ target: 'veiculo', assetId, defId });
+  const [vctx, setVctx] = useState<null | { x: number; y: number; id: string }>(null);
   // Esc fecha o painel do veículo, a menos que haja um diálogo aberto por cima (ele fecha primeiro)
   useEffect(() => {
     if (!sel) return;
@@ -137,7 +141,7 @@ export default function Monitoramento() {
   // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
   useEffect(() => {
     if (!full) return;
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !sel && !cmd && !document.querySelector('[aria-modal="true"]')) sairTelaCheia(); };
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !sel && !cmd && !document.querySelector('[aria-modal="true"], [role="menu"]')) sairTelaCheia(); };
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
   }, [full, cmd, sel]);
@@ -205,7 +209,8 @@ export default function Monitoramento() {
                   <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
                     model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
                     speed={v && !v.noSignal ? Math.round(v.speed) : null} time={v ? fmtT(v.lastUpdate) : ''}
-                    menu={[{ icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }, { icon: 'comando', label: 'Comandos', onClick: () => setCmd({ target: 'veiculo', assetId: a.id }) }]} />
+                    menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
+                      { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
                 </li>
               ))}
               {shown.length > limit && <MoreOnScroll onMore={() => setLimit((l) => l + BATCH)} />}
@@ -221,10 +226,10 @@ export default function Monitoramento() {
           <MapContainer ref={setMap} center={[-8.1, -34.92]} zoom={12} className="w-full h-full" zoomControl={false}>
             <TileLayer key={`${tileKey}-${mapStyle}`} url={MAP_STYLES[mapStyle].url} attribution={MAP_STYLES[mapStyle].attribution} keepBuffer={6} updateWhenZooming={false} eventHandlers={{ tileerror: () => setTileErr((n) => n + 1) }} />
             {showF && <FenceShapes fences={fences} />}
-            <ClusteredVehicles selected={sel} grouped={grouped} items={list.filter((x: any) => x.v).map(({ a, v, k }: any) => ({ id: a.id, pos: v.pos, kind: k, node: () => <GlideMarker category={glyphOf(a)} position={v.pos} title={`${a.name} · ${STATUS_LABEL[k as StatusKind]}`} plate={a.name} kind={k} heading={v.heading} selected={sel === a.id} onClick={() => setSel(a.id)} /> }))} />
+            <ClusteredVehicles selected={sel} grouped={grouped} items={list.filter((x: any) => x.v).map(({ a, v, k }: any) => ({ id: a.id, pos: v.pos, kind: k, node: () => <GlideMarker category={glyphOf(a)} position={v.pos} title={`${a.name} · ${STATUS_LABEL[k as StatusKind]}`} plate={a.name} kind={k} heading={v.heading} selected={sel === a.id} onClick={() => setSel(a.id)} onContextMenu={(pt) => { setCtx(null); setVctx({ ...pt, id: a.id }); }} /> }))} />
             {pass && <Circle center={[pass.lat, pass.lng]} radius={pass.radius} pathOptions={{ color: tv('--graphite'), weight: 1.5, dashArray: '5 5', fillColor: tv('--graphite'), fillOpacity: 0.06 }} />}
             <FlyTo pos={cur?.v?.pos} />
-            <Ctx onCtx={setCtx} />
+            <Ctx onCtx={(p) => { setCtx(p); setVctx(null); }} />
           </MapContainer>
 
           <div className="absolute top-3 left-3 right-3 z-[400] flex flex-col items-start gap-tight pointer-events-none [&>*]:pointer-events-auto">
@@ -269,7 +274,21 @@ export default function Monitoramento() {
               { label: 'Copiar coordenadas', icon: 'duplicar', onClick: () => { const p = navigator.clipboard?.writeText(`${ctx.lat.toFixed(6)}, ${ctx.lng.toFixed(6)}`); p ? p.then(() => toast('Coordenadas copiadas.'), () => toast.error('Selecione e copie à mão.', 'Não foi possível copiar')) : toast.error('Selecione e copie à mão.', 'Não foi possível copiar'); } },
             ]} />
           )}
-          {vp.mounted && lastCur.current && <VehiclePanel closing={vp.closing} x={lastCur.current} reasons={crit.get(lastCur.current.a.id) || []} onClose={() => setSel(null)} onCmd={() => setCmd({ target: 'veiculo', assetId: lastCur.current.a.id })} onShare={() => setShareA(lastCur.current.a)} />}
+          {vctx && (() => {
+            const va = list.find((x: any) => x.a.id === vctx.id);
+            if (!va) return null;
+            return (
+              <ContextMenu x={Math.max(8, Math.min(vctx.x, (mapSectionRef.current?.clientWidth ?? 600) - 264))} y={Math.max(8, Math.min(vctx.y, (mapSectionRef.current?.clientHeight ?? 600) - 220))} onClose={() => setVctx(null)}
+                header={<span className="font-medium">{va.a.name}</span>} items={[
+                  { label: 'Bloquear', icon: 'cadeado', onClick: () => comandar(va.a.id, 'c_bloq') },
+                  { label: 'Desbloquear', icon: 'cadeado', onClick: () => comandar(va.a.id, 'c_desb') },
+                  { label: 'Outros comandos…', icon: 'comando', onClick: () => comandar(va.a.id) },
+                  { label: 'Ver detalhes', icon: 'ativos', onClick: () => setSel(va.a.id) },
+                  { label: 'Percurso', icon: 'rota', to: `/monitoramento/replay?a=${va.a.id}` },
+                ]} />
+            );
+          })()}
+          {vp.mounted && lastCur.current && <VehiclePanel closing={vp.closing} x={lastCur.current} reasons={crit.get(lastCur.current.a.id) || []} onClose={() => setSel(null)} onCmd={(defId?: string) => comandar(lastCur.current.a.id, defId)} onShare={() => setShareA(lastCur.current.a)} />}
           {pp.mounted && lastPass.current && <PassPanel closing={pp.closing} pass={lastPass.current} setPass={setPass} />}
         </section>
         {full && visao.tabela && (
@@ -324,7 +343,10 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
         <Link to={`/monitoramento/replay?a=${a.id}`} className={buttonClass('secondary', 'sm')}><Icon name="rota" size={16} />Percurso</Link>
         <FilePick accept="image/*" onFile={(data) => setPhoto(data)} className={buttonClass('secondary', 'sm')}><Icon name="camera" size={16} />{a.photo ? 'Trocar foto' : 'Enviar foto'}</FilePick>
         <Button variant="secondary" size="sm" onClick={onShare}><Icon name="compartilhar" size={16} />Compartilhar</Button>
-        <Button size="sm" className="ml-auto" onClick={onCmd}><Icon name="comando" size={16} />Comandos</Button>
+        <Button variant="secondary" size="sm" className="ml-auto" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>
+        {v?.blocked
+          ? <Button size="sm" onClick={() => onCmd('c_desb')}><Icon name="cadeado" size={16} />Desbloquear</Button>
+          : <Button variant="danger" size="sm" onClick={() => onCmd('c_bloq')}><Icon name="cadeado" size={16} />Bloquear</Button>}
       </>}>
       <div className="flex items-center gap-grid">
         <AssetThumb asset={a} className="w-28 h-16" />
@@ -462,7 +484,7 @@ function trackCommand(label: string) {
   });
 }
 
-export function CommandModal({ state, onClose }: { state: null | { target: 'veiculo' | 'grupo'; assetId?: string }; onClose: () => void }) {
+export function CommandModal({ state, onClose }: { state: null | { target: 'veiculo' | 'grupo'; assetId?: string; defId?: string }; onClose: () => void }) {
   const defs = useStore((s) => s.commandDefs);
   const assets = useStore((s) => s.assets.filter((a: any) => a.tracker));
   const groups = useStore((s) => s.groups);
@@ -475,7 +497,7 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
   const [msg, setMsg] = useState('Reduza a velocidade — área escolar');
   const [pwd, setPwd] = useState('');
   const [err, setErr] = useState('');
-  useEffect(() => { if (state) { setTarget(state.target); setAssetId(state.assetId || assets[0]?.id); setPwd(''); setErr(''); } }, [state]);
+  useEffect(() => { if (state) { setTarget(state.target); if (state.defId) setDefId(state.defId); setAssetId(state.assetId || assets[0]?.id); setPwd(''); setErr(''); } }, [state]);
   // sintaxe técnica e comando livre só para a equipe Localle/revenda (lib/support.ts)
   const tecnico = veSintaxeComando(useStore((s) => s.session));
   const def = defId === 'livre' ? { id: 'livre', name: 'Comando livre', payload: free, kind: 'livre' } : defs.find((d: any) => d.id === defId);
