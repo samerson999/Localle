@@ -68,6 +68,22 @@ export class RastreadoresRepository {
     return rows[0];
   }
 
+  /**
+   * Outro rastreador já ligado a este device do Traccar. Desativado: o device é solto dele (recadastro do mesmo IMEI
+   * depois de desativar — o histórico de posições fica no rastreador antigo). Ativo: devolvido para o chamador recusar.
+   */
+  async liberarDevice(traccarDeviceId: string, exceto: string, executor: Queryable = this.pool) {
+    const { rows } = await executor.query<{ id: string; imei: string; status: RastreadorEntity['status'] }>(
+      'select id, imei, status from rastreadores where traccar_device_id = $1 and id <> $2 for update',
+      [traccarDeviceId, exceto],
+    );
+    const dono = rows[0];
+    if (!dono) return { liberadoDe: null, ocupadoPor: null };
+    if (dono.status !== 'desativado') return { liberadoDe: null, ocupadoPor: dono };
+    await executor.query('update rastreadores set traccar_device_id = null, atualizado_em = now() where id = $1', [dono.id]);
+    return { liberadoDe: dono.id, ocupadoPor: null };
+  }
+
   async setTraccarDeviceId(id: string, traccarDeviceId: string, executor: Queryable = this.pool): Promise<RastreadorEntity> {
     const { rows } = await executor.query<RastreadorEntity>(
       `update rastreadores set traccar_device_id = $1, atualizado_em = now() where id = $2 returning *`,

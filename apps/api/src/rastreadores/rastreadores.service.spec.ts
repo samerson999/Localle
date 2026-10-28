@@ -413,6 +413,32 @@ describe('RastreadoresService', () => {
       expect(rowCount).toBe(0);
     });
 
+    // HML, 28/10/2026: recadastrar o JR12 depois de desativar dava 500 (device do Traccar preso ao rastreador desativado)
+    it('recadastro do mesmo IMEI depois de desativar reaproveita o device do Traccar; IMEI ou device de rastreador ativo: 409', async () => {
+      traccar.cfg = { url: 'http://traccar.fake', user: 'u', password: 'p' };
+      const imei = digitos(15);
+      const primeiro = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei });
+      rastreadoresCriados.push(primeiro.id);
+      await expect(service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei })).rejects.toMatchObject({ status: 409 });
+
+      await service.desativar(superadminId, primeiro.id);
+      const segundo = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei });
+      rastreadoresCriados.push(segundo.id);
+      traccar.cfg = null;
+      expect(segundo.traccar_device_id).toBe(primeiro.traccar_device_id);
+      const antigo = await rastreadoresRepo.findById(primeiro.id);
+      expect(antigo).toMatchObject({ status: 'desativado', traccar_device_id: null });
+      const { rows } = await pool.query("select after from audit_log where action = 'rastreador.cadastrar' and target = $1", [segundo.id]);
+      expect(rows[0].after).toMatchObject({ deviceDoRastreadorDesativado: primeiro.id });
+
+      // device informado explicitamente, já ligado a um rastreador ativo: recusa sem gravar
+      const outro = digitos(15);
+      await expect(service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: outro, traccarDeviceId: segundo.traccar_device_id! }))
+        .rejects.toThrow(/já está ligado ao rastreador/);
+      const { rowCount } = await pool.query('select 1 from rastreadores where imei = $1', [outro]);
+      expect(rowCount).toBe(0);
+    });
+
     it('catálogo: fabricante + nome únicos (sem diferenciar maiúsculas), alteração auditada', async () => {
       await expect(modelos.criar(superadminId, { fabricante: `TESTE ${sufixo}`, nome: 'imei', protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei' }))
         .rejects.toMatchObject({ status: 409 });

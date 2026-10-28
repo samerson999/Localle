@@ -74,13 +74,24 @@ export class RastreadoresService {
     if (invalido) throw new BadRequestException(invalido);
     const nomeModelo = `${modelo.fabricante} ${modelo.nome}`;
     return withTransaction(this.pool, async (client) => {
-      let criado = await this.rastreadores.create(
-        { imei, traccarDeviceId: data.traccarDeviceId, modelo: nomeModelo, modeloId: modelo.id },
-        client,
-      );
-      if (!data.traccarDeviceId) {
-        const deviceId = await this.provisionarNoTraccar(criado.imei, nomeModelo);
-        if (deviceId !== null) criado = await this.rastreadores.setTraccarDeviceId(criado.id, deviceId, client);
+      let criado: RastreadorEntity;
+      try {
+        criado = await this.rastreadores.create({ imei, modelo: nomeModelo, modeloId: modelo.id }, client);
+      } catch (err) {
+        if (violouUnique(err, UNIQUE.rastreadorImeiAtivo)) throw new ConflictException(`Já existe um rastreador ativo com o identificador ${imei}`);
+        throw err;
+      }
+      const deviceId = data.traccarDeviceId ?? (await this.provisionarNoTraccar(criado.imei, nomeModelo));
+      let deviceLiberadoDe: string | null = null;
+      if (deviceId !== null) {
+        // recadastro do mesmo IMEI depois de desativar: o device do Traccar ainda estava no rastreador desativado
+        const { liberadoDe, ocupadoPor } = await this.rastreadores.liberarDevice(deviceId, criado.id, client);
+        if (ocupadoPor) throw new ConflictException(`O device ${deviceId} do Traccar já está ligado ao rastreador ${ocupadoPor.imei}, ainda ativo na plataforma`);
+        if (liberadoDe) {
+          deviceLiberadoDe = liberadoDe;
+          this.logger.log(`Device ${deviceId} do Traccar passou do rastreador desativado ${liberadoDe} para o novo ${criado.id} (IMEI ${imei})`);
+        }
+        criado = await this.rastreadores.setTraccarDeviceId(criado.id, deviceId, client);
       }
       await this.audit.record(
         {
@@ -89,7 +100,7 @@ export class RastreadoresService {
           clientId: null,
           action: 'rastreador.cadastrar',
           target: criado.id,
-          after: { imei: criado.imei, modeloId: modelo.id, modelo: nomeModelo },
+          after: { imei: criado.imei, modeloId: modelo.id, modelo: nomeModelo, ...(deviceLiberadoDe ? { deviceDoRastreadorDesativado: deviceLiberadoDe } : {}) },
         },
         client,
       );

@@ -20,6 +20,8 @@ export const UNIQUE = {
   superadminEmail: 'superadmins_email_key',
   chipPorRastreador: 'sim_cards_rastreador_id_uidx',
   modeloRastreador: 'rastreador_modelos_fabricante_nome_uidx',
+  rastreadorImeiAtivo: 'rastreadores_imei_ativo_uidx',
+  rastreadorDevice: 'rastreadores_traccar_device_id_key',
 } as const;
 
 interface PgError { code?: string; constraint?: string }
