@@ -1,7 +1,6 @@
 import { RetiredToggle } from '../components/RetiredToggle';
 import { opAssets, operatedIn } from '../lib/assetLifecycle';
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Tooltip as LTooltip } from 'react-leaflet';
 import { useStore, assetKm, useStoreData } from '../lib/store';
 import { salvarAbastecimento } from '../lib/localleApi';
 import { registerOdometer } from '../lib/odometer';
@@ -10,9 +9,8 @@ import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, DeltaChip, StatusDot, Num, AssetName } from '../components/story';
 import { CompareBars, ColumnChart, TipItem } from '../components/charts';
-import { TILE, ATTR } from '../components/MapBits';
 import { Icon } from '../components/icons';
-import { FUEL_PARAMS, STATIONS, stationOf, nfCheck, nfStatus, reliability, kmDiff, validKey, parseNfeXml, goalFor, monthSpend, withKml, DIV_LABEL } from '@localle/shared/fuel';
+import { FUEL_PARAMS, nfCheck, nfStatus, reliability, kmDiff, validKey, parseNfeXml, goalFor, monthSpend, withKml, DIV_LABEL } from '@localle/shared/fuel';
 import { brl, fmtD, fmtDT, num, pct, monthKey, monthLabel, sum, toInputDT, uid, groupBy, abbr } from '@localle/shared/utils';
 
 const FUELS = ['Diesel S10', 'Diesel S500', 'Gasolina', 'Etanol', 'GNV', 'Arla 32'];
@@ -66,7 +64,7 @@ function FuelForm({ onClose }: any) {
   const s = useStoreData();
   const vehs = opAssets(s).filter((a: any) => a.kind === 'veiculo');
   const lastOf = (assetId: string) => s.fuelings.filter((x: any) => x.assetId === assetId).reduce((m: any, x: any) => (!m || x.odometer > m.odometer ? x : m), null);
-  const init = (assetId: string) => { const a = vehs.find((x: any) => x.id === assetId); const l = lastOf(assetId); const trk = a?.tracker && s.vehicles[assetId] ? Math.round(assetKm(s, assetId)) : ''; return { assetId, driverId: a?.driverId || '', ts: toInputDT(Date.now()), odometer: trk ? String(trk) : '', fromTracker: !!trk, kmTracker: trk || null, liters: '', total: '', fuel: l?.fuel || 'Diesel S10', stationId: l?.stationId || STATIONS[0].id, photos: [] }; };
+  const init = (assetId: string) => { const a = vehs.find((x: any) => x.id === assetId); const l = lastOf(assetId); const trk = a?.tracker && s.vehicles[assetId] ? Math.round(assetKm(s, assetId)) : ''; return { assetId, driverId: a?.driverId || '', ts: toInputDT(Date.now()), odometer: trk ? String(trk) : '', fromTracker: !!trk, kmTracker: trk || null, liters: '', total: '', fuel: l?.fuel || 'Diesel S10', station: l?.station || '', stationCnpj: l?.stationCnpj || '', photos: [] }; };
   const [f, setF] = useState<any>(() => init(vehs[0]?.id));
   const last = useMemo(() => lastOf(f.assetId), [f.assetId]);
   const asset = vehs.find((a: any) => a.id === f.assetId);
@@ -80,10 +78,9 @@ function FuelForm({ onClose }: any) {
   const spent = monthSpend(s, (x) => x.assetId === f.assetId) + (+f.total || 0);
   const overBudget = asset?.fuelBudget && spent > asset.fuelBudget;
   const ok = !err && odo && +f.liters > 0 && +f.total > 0;
-  const st = STATIONS.find((p) => p.id === f.stationId)!;
   const save = async () => {
     const { fromTracker, ...rest } = f;
-    try { await salvarAbastecimento({ ...rest, ts: new Date(f.ts).getTime(), odometer: odo, liters: +f.liters, total: +f.total, pricePerL: +price.toFixed(3), station: st.name, stationCnpj: st.cnpj }); }
+    try { await salvarAbastecimento({ ...rest, ts: new Date(f.ts).getTime(), odometer: odo, liters: +f.liters, total: +f.total, pricePerL: +price.toFixed(3), station: f.station.trim(), stationCnpj: f.stationCnpj.trim() }); }
     catch (e: any) { return toast('Não foi possível lançar: ' + (e.message || e), { tone: 'crit' }); }
     registerOdometer(f.assetId, odo, 'abastecimento', s.drivers.find((d: any) => d.id === f.driverId)?.name);
     toast('Abastecimento lançado.', overBudget ? { detail: `O veículo passou do teto mensal indicativo (${brl(asset.fuelBudget)}).` } : {});
@@ -97,7 +94,8 @@ function FuelForm({ onClose }: any) {
         <Field label="Valor total (R$)"><Input type="number" step="0.01" inputMode="decimal" value={f.total} onChange={(e) => setF({ ...f, total: e.target.value })} /></Field>
         <Field label="Km atual" hint={f.kmTracker != null ? (corr ? `Rastreador marcava ${num(f.kmTracker)} km; correção de ${corr > 0 ? '+' : ''}${num(corr)} km fica registrada` : 'Lido do rastreador agora; corrija se o painel mostrar outro valor') : last ? `Último: ${num(last.odometer)} km` : 'Primeiro lançamento'}><Input type="number" value={f.odometer} aria-invalid={!!err} className={err ? '!border-crit' : ''} onChange={(e) => setF({ ...f, odometer: e.target.value, fromTracker: false })} /></Field>
         <Field label="Combustível"><Select value={f.fuel} onChange={(e) => setF({ ...f, fuel: e.target.value })} options={FUELS} /></Field>
-        <Field label="Posto"><Select value={f.stationId} onChange={(e) => setF({ ...f, stationId: e.target.value })} options={STATIONS.map((p) => ({ value: p.id, label: `${p.name} · ${p.city}` }))} /></Field>
+        <Field label="Posto"><Input value={f.station} placeholder="Nome do posto" onChange={(e) => setF({ ...f, station: e.target.value })} /></Field>
+        <Field label="CNPJ do posto" hint="Opcional; usado para conferir a nota"><Input value={f.stationCnpj} inputMode="numeric" placeholder="00.000.000/0000-00" onChange={(e) => setF({ ...f, stationCnpj: e.target.value })} /></Field>
         <Field label="Motorista"><SearchSelect value={f.driverId} onChange={(v) => setF({ ...f, driverId: v })} placeholder="—" options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
         <Field label="Data e hora"><Input type="datetime-local" value={f.ts} onChange={(e) => setF({ ...f, ts: e.target.value })} /></Field>
       </div>
@@ -177,7 +175,6 @@ function Notas() {
 
 function NotaModal({ f, ocrOn, onClose }: any) {
   const s = useStoreData();
-  const st = stationOf(f);
   const [n, setN] = useState<any>(() => ({ chave: '', liters: '', total: '', cnpj: '', source: 'manual', ...(f.nf || {}), dateIso: f.nf?.date, date: f.nf?.date ? f.nf.date.slice(0, 10) : '' }));
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
@@ -211,7 +208,7 @@ function NotaModal({ f, ocrOn, onClose }: any) {
     <Modal open onClose={onClose} title="Nota fiscal do abastecimento" width="max-w-4xl" footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button disabled={!keyOk || (n.total === '' && n.liters === '')} onClick={save}>Salvar nota</Button></>}>
       <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-group">
         <div className="flex flex-col gap-3">
-          <p className="text-small text-ink-2">Lançado: <span className="font-semibold text-ink num">{num(f.liters, 2)} L · {brl(f.total)}</span> em <span className="num">{fmtDT(f.ts)}</span> · {st?.name}{st ? <> (CNPJ <span className="num">{st.cnpj}</span>)</> : ''}</p>
+          <p className="text-small text-ink-2">Lançado: <span className="font-semibold text-ink num">{num(f.liters, 2)} L · {brl(f.total)}</span> em <span className="num">{fmtDT(f.ts)}</span> · {f.station || 'posto não informado'}{f.stationCnpj ? <> (CNPJ <span className="num">{f.stationCnpj}</span>)</> : ''}</p>
           {nota ? <img src={nota.data} alt="Foto da nota fiscal" className="w-full max-h-80 object-contain rounded-ctl border border-line" /> : <p className="text-small text-ink-2">Nenhuma foto marcada como nota fiscal neste lançamento.</p>}
           {nota && ocrOn && <Button variant="secondary" loading={busy} onClick={ocr}>{busy ? 'Lendo a foto…' : 'Ler a foto (OCR)'}</Button>}
         </div>
@@ -238,7 +235,6 @@ function BI() {
   const s = useStoreData();
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[2], 'anterior'));
   const [flt, setFlt] = useState({ grp: '', op: '', brand: '', model: '' });
-  const [reg, setReg] = useState('cidade');
   const { a, b } = periodRanges(period);
   // BI: vendidos/baixados contam nos períodos em que operaram
   const vehs = s.assets.filter((x: any) => x.kind === 'veiculo' && operatedIn(x, Math.min(a[0], b?.[0] ?? a[0])));
@@ -264,16 +260,6 @@ function BI() {
   const vk = A.perVeh.filter((v) => v.kml).sort((x, y) => (x.kml! / (x.goal?.kml || x.kml!)) - (y.kml! / (y.goal?.kml || y.kml!)));
   const below = vk.filter((v) => v.goal && v.kml! < v.goal.kml);
   const kmlSentence = !vk.length ? 'Sem consumo calculado no período.' : below.length ? `${below.length} de ${vk.length} veículos abaixo da meta; ${below[0].name} está ${num((1 - below[0].kml! / below[0].goal!.kml) * 100, 0)}% abaixo (${num(below[0].kml!, 2)} contra ${num(below[0].goal!.kml, 1)} km/L).` : `Todos os ${vk.length} veículos com consumo calculado estão na meta.`;
-  // preço e consumo por região, a partir das notas e dos postos
-  const regKey = (st: any) => (reg === 'uf' ? st.uf : reg === 'cidade' ? `${st.city}/${st.uf}` : `${st.bairro}, ${st.city}/${st.uf}`);
-  const byReg = Object.entries(groupBy(A.rows.filter((f: any) => stationOf(f)), (f: any) => regKey(stationOf(f)))).map(([k, rr]: any) => {
-    const l = sum(rr.map((x: any) => x.liters)), t = sum(rr.map((x: any) => x.total)); const lk = sum(rr.filter((x: any) => x.km > 0).map((x: any) => x.liters));
-    return { k, liters: l, price: l ? t / l : 0, kml: lk ? sum(rr.map((x: any) => x.km)) / lk : null, n: rr.length };
-  }).sort((x, y) => x.price - y.price);
-  const bySt = STATIONS.map((p) => { const rr = A.rows.filter((f: any) => stationOf(f)?.id === p.id); const l = sum(rr.map((x: any) => x.liters)); return { p, liters: l, price: l ? sum(rr.map((x: any) => x.total)) / l : 0 }; }).filter((x) => x.liters);
-  const pMin = Math.min(...bySt.map((x) => x.price)), pMax = Math.max(...bySt.map((x) => x.price));
-  const maxL = Math.max(1, ...bySt.map((x) => x.liters));
-  const regSentence = byReg.length > 1 ? `O litro mais barato saiu em ${byReg[0].k} (${brl(byReg[0].price)}) e o mais caro em ${byReg[byReg.length - 1].k} (${brl(byReg[byReg.length - 1].price)}), uma diferença de ${pct(byReg[byReg.length - 1].price / byReg[0].price - 1, 1)}.` : 'Abastecimentos de uma região só no período.';
   return (
     <Stack gap="grid">
       <div className="flex flex-wrap items-center gap-2">
@@ -309,24 +295,6 @@ function BI() {
           <p className="text-caption text-ink-2 mt-3 flex flex-wrap items-center gap-x-4 gap-y-1"><span className="inline-flex items-center gap-tight"><span aria-hidden="true" className="w-0.5 h-3 rounded-pill bg-ink" />Meta (do veículo, da operação, do grupo ou da empresa)</span><span className="inline-flex items-center gap-tight"><span aria-hidden="true" className="w-3 h-3 rounded-chip fill-loss" />Abaixo da meta</span></p>
         </ChartCard>
       </Grid>
-      <ChartCard title="Preço e consumo por região" icon="rota" sentence={regSentence} state={bySt.length ? 'ready' : 'empty'} empty={{ title: 'Sem abastecimentos com posto identificado' }}>
-        <Grid split="7/5" wide>
-          <div className="h-[360px] rounded-ctl overflow-hidden border border-line">
-            <MapContainer center={[-8.1, -35.1]} zoom={8} className="h-full w-full" scrollWheelZoom={false}>
-              <TileLayer url={TILE} attribution={ATTR} keepBuffer={6} updateWhenZooming={false} />
-              {bySt.map(({ p, liters, price }) => { const k = pMax > pMin ? (price - pMin) / (pMax - pMin) : 0; return (
-                <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={6 + 14 * Math.sqrt(liters / maxL)} pathOptions={{ color: 'var(--card)', weight: 1.5, fillOpacity: 0.85, fillColor: `color-mix(in srgb, var(--loss) ${Math.round(k * 100)}%, var(--real))` }}>
-                  <LTooltip>{p.name} · {p.city}/{p.uf}<br />{brl(price)} por litro · {num(liters)} L</LTooltip>
-                </CircleMarker>); })}
-            </MapContainer>
-          </div>
-          <div className="flex flex-col gap-3 min-w-0">
-            <div className="flex flex-wrap items-center gap-3"><Tabs value={reg} onChange={setReg} tabs={[{ key: 'uf', label: 'Estado' }, { key: 'cidade', label: 'Cidade' }, { key: 'bairro', label: 'Bairro' }]} /></div>
-            <p className="text-caption text-ink-2">Círculo maior = mais litros. Cor do azul (mais barato) ao rosa (mais caro).</p>
-            <Table minWidth={420} dense align={['left', 'right', 'right', 'right']} head={['Região', 'R$/L', 'Litros', 'km/L']} rows={byReg.map((r) => [<span className="text-small">{r.k}</span>, <Num value={r.price} digits={2} size="body" />, <Num value={r.liters} size="body" />, r.kml ? <Num value={r.kml} digits={2} size="body" /> : '—'])} />
-          </div>
-        </Grid>
-      </ChartCard>
       <Card title="Desempenho por veículo" icon="combustivel">
         <Table minWidth={860} align={['left', 'left', 'right', 'right', 'right', 'right', 'left', ...(B ? ['right' as const] : [])]} head={['Veículo', 'Modelo', 'Km rodado', 'Litros', 'Gasto (R$)', 'km/L', 'Meta', ...(B ? ['Variação do km/L'] : [])]} rows={A.perVeh.map((v) => { const vb = B?.perVeh.find((x) => x.id === v.id); return [<AssetName name={v.name} />, v.model, <Num value={v.km} size="body" />, <Num value={v.liters} size="body" />, <Num value={v.total} digits={2} size="body" />, v.kml ? <Num value={v.kml} digits={2} size="body" /> : '—', v.goal ? <span className="num">{num(v.goal.kml, 1)} <span className="text-ink-2">({v.goal.from})</span></span> : '—', ...(B ? [v.kml && vb?.kml ? <DeltaChip value={rel(v.kml, vb.kml)} unit="%" digits={1} good="up" size="sm" /> : '—'] : [])]; })} />
       </Card>

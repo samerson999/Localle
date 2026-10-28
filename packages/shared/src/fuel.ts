@@ -1,23 +1,10 @@
-// Combustível: postos, conferência nota × lançamento, índice de confiabilidade do motorista, metas e leitura do XML da NF-e.
+// Combustível: conferência nota × lançamento, índice de confiabilidade do motorista, metas e leitura do XML da NF-e.
 // NO PRODUTO REAL a conferência roda no backend; a busca da nota pela chave virá da SEFAZ ou de um fornecedor (custo em avaliação).
 import { DAY, groupBy, sum } from './utils';
 
 // Parâmetros do Setup (docs/PLANO-SETUP-ADMIN.md 3.2): salto de km e tolerâncias da conferência.
 // tolKm: correção do km lido do rastreador acima disso entra no índice de confiabilidade.
 export const FUEL_PARAMS = { kmJumpMax: 10000, tolLitersPct: 2, tolValue: 1.0, tolDays: 1, requireSameStation: true, tolKm: 50 };
-
-// Postos da simulação, com localização para o mapa de preço por região (UF › cidade › bairro).
-export const STATIONS = [
-  { id: 'p1', name: 'Posto BR-101 Prazeres', cnpj: '11.222.333/0001-01', uf: 'PE', city: 'Jaboatão dos Guararapes', bairro: 'Prazeres', lat: -8.1662, lng: -34.9223, bias: 0.99 },
-  { id: 'p2', name: 'Posto Ipiranga Boa Viagem', cnpj: '22.333.444/0001-02', uf: 'PE', city: 'Recife', bairro: 'Boa Viagem', lat: -8.1188, lng: -34.9012, bias: 1.03 },
-  { id: 'p3', name: 'Posto Shell Imbiribeira', cnpj: '33.444.555/0001-03', uf: 'PE', city: 'Recife', bairro: 'Imbiribeira', lat: -8.1067, lng: -34.9149, bias: 1.0 },
-  { id: 'p4', name: 'Posto Petrobras Olinda', cnpj: '44.555.666/0001-04', uf: 'PE', city: 'Olinda', bairro: 'Peixinhos', lat: -8.0111, lng: -34.8768, bias: 0.98 },
-  { id: 'p5', name: 'Posto Ale Casa Amarela', cnpj: '55.666.777/0001-05', uf: 'PE', city: 'Recife', bairro: 'Casa Amarela', lat: -8.0283, lng: -34.9179, bias: 1.06 },
-  { id: 'p6', name: 'Posto Suape Cabo', cnpj: '66.777.888/0001-06', uf: 'PE', city: 'Cabo de Santo Agostinho', bairro: 'Suape', lat: -8.3735, lng: -34.9547, bias: 0.96 },
-  { id: 'p7', name: 'Posto Caruaru BR-232', cnpj: '77.888.999/0001-07', uf: 'PE', city: 'Caruaru', bairro: 'Indianópolis', lat: -8.2760, lng: -35.9819, bias: 0.97 },
-  { id: 'p8', name: 'Posto João Pessoa BR-230', cnpj: '88.999.000/0001-08', uf: 'PB', city: 'João Pessoa', bairro: 'Cristo Redentor', lat: -7.1564, lng: -34.8840, bias: 1.01 },
-];
-export const stationOf = (f: any) => STATIONS.find((p) => p.id === f.stationId) || STATIONS.find((p) => p.name === f.station);
 
 // ---------- conferência nota × lançamento ----------
 export type DivKind = 'litros' | 'valor' | 'data' | 'posto' | 'km';
@@ -28,8 +15,8 @@ export function nfCheck(f: any, p = FUEL_PARAMS): { kind: DivKind; detail: strin
   if (n.liters != null && Math.abs(n.liters - f.liters) > (f.liters * p.tolLitersPct) / 100) out.push({ kind: 'litros', detail: `nota ${n.liters.toFixed(2)} L × lançado ${f.liters.toFixed(2)} L` });
   if (n.total != null && Math.abs(n.total - f.total) > p.tolValue) out.push({ kind: 'valor', detail: `nota R$ ${n.total.toFixed(2)} × lançado R$ ${f.total.toFixed(2)}` });
   if (n.date && Math.abs(new Date(n.date).getTime() - f.ts) > p.tolDays * DAY) out.push({ kind: 'data', detail: `nota ${new Date(n.date).toLocaleDateString('pt-BR')} × lançado ${new Date(f.ts).toLocaleDateString('pt-BR')}` });
-  const st = stationOf(f);
-  if (p.requireSameStation && n.cnpj && st && n.cnpj.replace(/\D/g, '') !== st.cnpj.replace(/\D/g, '')) out.push({ kind: 'posto', detail: `CNPJ da nota ${n.cnpj} × posto lançado ${st.name}` });
+  // posto digitado pelo cliente no lançamento (nome e CNPJ); sem CNPJ lançado não há o que comparar
+  if (p.requireSameStation && n.cnpj && f.stationCnpj && n.cnpj.replace(/\D/g, '') !== f.stationCnpj.replace(/\D/g, '')) out.push({ kind: 'posto', detail: `CNPJ da nota ${n.cnpj} × posto lançado ${f.station || f.stationCnpj}` });
   return out;
 }
 export const nfStatus = (f: any) => (!f.nf ? 'sem_nota' : nfCheck(f).length ? 'divergente' : 'conferida');
