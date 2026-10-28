@@ -165,7 +165,7 @@ function Matriz() {
           );
         })}
         <div className="flex gap-2 items-end mt-2 max-w-xl"><Field label="Novo evento da empresa" className="flex-1"><Input value={n.label} onChange={(e) => setN({ ...n, label: e.target.value })} placeholder="Ex.: Atraso na entrega" /></Field><Field label="Peso"><Input className="w-20" type="number" value={n.weight} onChange={(e) => setN({ ...n, weight: +e.target.value })} /></Field><Button variant="secondary" disabled={!n.label} onClick={() => { setTypes([...types, { code: 'custom_' + Date.now(), label: n.label, category: 'empresa', weight: n.weight, tiers: [], active: true, custom: true }]); setN({ label: '', weight: 2 }); }}>Adicionar</Button></div>
-        <p className="text-caption text-ink-2 mt-2">Eventos de telemetria (RPM excessivo, banguela) só chegam de veículos com leitura CAN — marque em Gestão de ativos. Na simulação, KOZ5H91 e PEW1A33 têm CAN.</p>
+        <p className="text-caption text-ink-2 mt-2">Eventos de telemetria (RPM excessivo, banguela) só chegam de veículos com leitura CAN — marque em Gestão de ativos.</p>
       </Card>
       <RegisterEvent types={types} />
     </Stack>

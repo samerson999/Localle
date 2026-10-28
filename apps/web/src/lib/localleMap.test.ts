@@ -72,7 +72,7 @@ describe('alertas: API → store', () => {
   it('aberto e não lido; detalhe cai para a placa', () => {
     expect(alertaToAlert(base, 'ABC1D23')).toEqual({ id: 'al:lc:x1', ts: Date.parse(base.ts), assetId: 'lc_a1', title: 'Entrada em Pátio', detail: 'ABC1D23', priority: 'alta', read: false, source: 'cerca' });
     expect(alertaIdOf('al:lc:x1')).toBe('x1');
-    expect(alertaIdOf('al_simulado')).toBeNull();
+    expect(alertaIdOf('al_local')).toBeNull();
   });
 
   it('tratado leva quem, quando, motivo e observação', () => {

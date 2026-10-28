@@ -851,7 +851,7 @@ export function FilePick({ accept, onFile, children, multiple, className = '', m
       <input ref={r} type="file" accept={accept} multiple={multiple} className="hidden" onChange={async (e) => {
         const files = Array.from(e.target.files || []);
         for (const f of files) {
-          if (f.size > maxMB * 1024 * 1024) { toast.error(`Na simulação os arquivos ficam no navegador; envie um arquivo de até ${maxMB} MB.`, `"${f.name}" passa de ${maxMB} MB`); continue; }
+          if (f.size > maxMB * 1024 * 1024) { toast.error(`Os arquivos ficam guardados no navegador; envie um arquivo de até ${maxMB} MB.`, `"${f.name}" passa de ${maxMB} MB`); continue; }
           onFile(raw ? '' : await fileToDataURL(f), f);
         }
         e.target.value = '';

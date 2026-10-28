@@ -89,7 +89,7 @@ function Painel({ goDocs, period }: { goDocs: () => void; period: PeriodValue })
           <div className="flex items-center gap-2 min-w-[140px]"><Progress className="h-2 flex-1" value={A.length ? r.n / A.length : 0} color="var(--warn)" label={`${pct(A.length ? r.n / A.length : 0, 0)} dos descumprimentos`} /><span className="num w-10 text-right">{pct(A.length ? r.n / A.length : 0, 0)}</span></div>])} />
       </Card>
       <Card title="Jornada de hoje" icon="relogio">
-        {now.length === 0 ? <EmptyState illustration="ilu-jornada" layout="row" title="Ninguém iniciou jornada hoje" detail="Com o simulador rodando, as marcações chegam pelo teclado embarcado ou pelo app." /> : (
+        {now.length === 0 ? <EmptyState illustration="ilu-jornada" layout="row" title="Ninguém iniciou jornada hoje" detail="As marcações chegam pelo teclado embarcado ou pelo app do motorista." /> : (
           <Table minWidth={900} align={['left', 'right', 'left', 'right', 'right', 'right', 'right', 'right', 'left']} head={['Motorista', 'Início', 'Situação', 'Trabalhado', 'Direção', 'Maior direção contínua', 'Refeição', 'Espera', 'Descumprimentos']} rows={now.map(({ d, t }: any) => [<span className="font-medium">{d.name}</span>, <span className="num">{fmtT(t.start)}</span>, t.open ? <StatusDot kind="mov" label="Em jornada" /> : <StatusDot kind="off" label={`Encerrada ${fmtT(t.end)}`} />, <span className="num">{hm(t.worked)}</span>, <span className="num">{hm(t.driving)}</span>, <span className={cx('num', t.maxCont > (d.regime === 'passageiros' ? L.contPassageiros : L.contCargas) && 'text-warn-ink font-medium')}>{hm(t.maxCont)}</span>, <span className="num">{hm(t.meal)}</span>, <span className="num">{hm(t.wait)}</span>, t.violations.length ? <StatusDot kind="parado" label={String(t.violations.length)} /> : <span className="text-ink-3">0</span>])} />
         )}
       </Card>
@@ -111,7 +111,7 @@ function Marcacoes() {
   return (
     <Stack gap="grid">
       <Card title="Registrar marcação" icon="mais">
-        <p className="text-small text-ink-2 mb-3">As marcações chegam do teclado de jornada instalado no veículo ou do app do motorista. Use este formulário para simular uma marcação ou fazer um ajuste.</p>
+        <p className="text-small text-ink-2 mb-3">As marcações chegam do teclado de jornada instalado no veículo ou do app do motorista. Use este formulário para lançar uma marcação manual ou fazer um ajuste.</p>
         <div className="flex flex-wrap gap-3 items-end">
           <Field label="Motorista"><SearchSelect className="w-52" value={d} onChange={setD} options={s.drivers.map((x: any) => ({ value: x.id, label: x.name }))} /></Field>
           <Field label="Marcação"><Select className="w-52" value={type} onChange={(e) => setType(e.target.value)} options={Object.entries(JOURNEY_TYPES).map(([k, l]) => ({ value: k, label: l }))} /></Field>

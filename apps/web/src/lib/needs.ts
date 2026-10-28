@@ -1,6 +1,6 @@
 // "Precisa de você" da sidebar: só itens CRÍTICOS de toda a plataforma (veículos, manutenção, pneus).
 // NO PRODUTO REAL estas regras vão para o backend (referência: v_critical_alerts em docs/especificacao-sql/);
-// o cálculo local abaixo existe só para a simulação no navegador.
+// o cálculo local abaixo é o fallback no navegador.
 import { opAssets, isOut } from '@localle/shared/assetStatus';
 import { useMemo } from 'react';
 import { useStoreData } from './store';

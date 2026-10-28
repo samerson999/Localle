@@ -26,7 +26,3 @@ export function invoice(links: Link[], cfg: BillingCfg, ym: string) {
 }
 export const otherModel = (cfg: BillingCfg): BillingCfg => ({ ...cfg, model: cfg.model === 'por_rastreador' ? 'pacote_minimo' : 'por_rastreador' });
 
-// Cobrança da revenda da simulação com a Locale (acesso de suporte, Painel da revenda)
-export function seedPlatform(now = Date.now()) {
-  return { demoBilling: { ...DEFAULT_BILLING } };
-}

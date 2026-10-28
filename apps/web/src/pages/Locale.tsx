@@ -101,7 +101,7 @@ export default function Locale() {
             <p className="text-caption text-ink-2 mt-stack">Custo por chip e de infraestrutura são valores fixos de estimativa, ainda sem cadastro próprio.</p>
           </Card>
         </Section>
-        <Section title="Cliente da simulação e acesso de suporte"><SupportAccess /></Section>
+        <Section title="Acesso de suporte"><SupportAccess /></Section>
       </PageBody>
     </div>
   );

@@ -40,7 +40,7 @@ export default function RelatorioCercas() {
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
   const fenceScope = fenceId ? fences.filter((x: any) => x.id === fenceId) : fences;
-  // veículos reais: passagens calculadas na API sobre as cercas e posições do banco; simulados: aqui
+  // veículos reais: passagens calculadas na API sobre as cercas e posições do banco; demais: aqui
   const api = useRelatorioApi<{ assetId: string; passagens: any[] }>('cercas', { from: new Date(f).toISOString(), to: new Date(t).toISOString(), cercaId: fenceId || null }, scope);
   useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
   const passagens = useMemo(() => [

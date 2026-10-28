@@ -36,7 +36,7 @@ export function planStatus(s: any, plan: any, assetId: string) {
   const useKm = plan.trigger !== 'tempo' && plan.kmInterval > 0;
   const useTime = plan.trigger !== 'km' && plan.daysInterval > 0;
   const nextKm = useKm ? lastKm + plan.kmInterval : null;
-  const nextDate = useTime ? (last?.releasedAt || s.seededAt) + plan.daysInterval * DAY : null;
+  const nextDate = useTime ? (last?.releasedAt || Date.now()) + plan.daysInterval * DAY : null;
   const leftKm = nextKm !== null ? nextKm - cur : null;
   const leftDays = nextDate !== null ? Math.round((nextDate - Date.now()) / DAY) : null;
   const overdue = (leftKm !== null && leftKm <= 0) || (leftDays !== null && leftDays <= 0);

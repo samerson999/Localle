@@ -1,5 +1,5 @@
 // BI de manutenção: visão do dono (custo) e visão do gestor (confiabilidade), cada uma contando sua história.
-// Os números vêm de fetchKpis (Supabase quando ligado; senão, o mesmo cálculo sobre a simulação).
+// Os números vêm de fetchKpis (Supabase quando ligado; senão, o mesmo cálculo sobre os dados do navegador).
 import { hadTracker } from '@localle/shared/assetStatus';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';

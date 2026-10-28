@@ -27,7 +27,7 @@ const SWATCH_GROUPS: [string, string, [string, string][]][] = [
 const TYPE_SCALE: [string, string, string][] = [['display', 'Número principal da tela', '48.320'], ['kpi', 'Número do card de KPI', '96,2%'], ['title', 'Título de página', 'Visão geral'], ['h2', 'Título de seção', 'Custos do mês'], ['h3', 'Título de card', 'Custo com combustível'], ['body', 'Texto corrido e célula de tabela', 'No ritmo atual, o mês fecha em R$ 50.900.'], ['small', 'Texto secundário e rótulo', 'vs. mês anterior'], ['caption', 'Legenda e microtexto', 'Atualizado em 31/10 às 14:32']];
 // classes escritas por extenso para o Tailwind encontrá-las
 const TYPE_CLASS: Record<string, string> = { display: 'text-display', kpi: 'text-kpi', title: 'text-title', h2: 'text-h2', h3: 'text-h3', body: 'text-body', small: 'text-small', caption: 'text-caption' };
-// cores de revenda simuladas (dados de teste escolhidos pelo cliente, não identidade da plataforma)
+// cores de revenda de exemplo (dados de teste escolhidos pelo cliente, não identidade da plataforma)
 // as que pintam primeiro; depois as que caem no grafite, cada uma por um motivo diferente
 const REVENDAS = [
   { key: 'atual', label: 'Atual' }, { key: '#0F766E', label: 'Verde-petróleo' }, { key: '#7C3AED', label: 'Roxo' }, { key: '#1E3A8A', label: 'Azul-marinho' }, { key: '#166534', label: 'Verde-escuro' },
@@ -98,7 +98,7 @@ export default function Design() {
 
   return (
     <div style={vars as any} className="max-w-[1240px]">
-      <PageHeader icon="design" title="Padrões visuais" subtitle="Tokens, ícones e componentes da plataforma, com os dados reais da simulação."
+      <PageHeader icon="design" title="Padrões visuais" subtitle="Tokens, ícones e componentes da plataforma, com os dados carregados."
         period={<PeriodButton label={rangeLabel(d.from, now)} compare={rangeLabel(d.pFrom, d.from)}>{(close) => <div className="flex flex-col gap-1 text-small">{['Últimos 30 dias', 'Últimas 12 semanas', 'Este ano'].map((x) => <button key={x} type="button" onClick={close} className="text-left px-3 py-2 rounded-btn hover:bg-card-2">{x}</button>)}<p className="text-caption text-ink-3 px-3 pt-2">Comparando com o período anterior equivalente</p></div>}</PeriodButton>}>
         <Button variant="ghost"><Icon name="filtro" size={18} />Filtros</Button>
         <Button variant="ghost"><Icon name="exportar" size={18} />Exportar</Button>
@@ -113,7 +113,7 @@ export default function Design() {
 
       <PageBody>
       <Section id="marca" title="Cor da revenda" note="A cor da revenda pinta só o botão principal, os controles de seleção (checkbox, radio, toggle, segmentado, aba ativa, paginação), o link, o halo do veículo selecionado e o card de dica (um por tela). Quando falha no contraste (3:1 componente, 4,5:1 texto) ou é vermelha ou laranja, tudo isso vira grafite. Status e dado nunca mudam.">
-        <div role="radiogroup" aria-label="Revenda simulada" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-tight">
+        <div role="radiogroup" aria-label="Revenda de exemplo" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-tight">
           {REVENDAS.map((r) => {
             const c = r.key === 'atual' ? s.revenda.branding.color : r.key, fb = brandFallback(c), on = rev === r.key;
             return (

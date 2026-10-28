@@ -1,5 +1,5 @@
 // /design · vitrine dos componentes da Fase B, com todos os estados. Cada componente novo entra aqui.
-// Os números dos gráficos de exemplo seguem as referências visuais (docs/referencias/); placas e posições vêm da simulação.
+// Os números dos gráficos de exemplo seguem as referências visuais (docs/referencias/); placas e posições vêm dos dados carregados.
 import { Fragment, useState, type ReactNode } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import { useStore, vehicleStatus } from '../lib/store';

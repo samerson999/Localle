@@ -13,7 +13,7 @@ import { abrirLinkPublico, type LinkPublico } from '../lib/localleApi';
 
 // Página pública do link de localização (sem login): só o veículo do link, sem motorista, histórico nem comandos.
 // Link do backend (token "lc.…"): validado na API pública, que devolve só placa e posição atual enquanto o
-// link vale e registra a abertura. Links antigos da simulação ("lk…") seguem abrindo só neste navegador.
+// link vale e registra a abertura. Links locais ("lk…") abrem só neste navegador.
 function Follow({ pos }: { pos?: [number, number] }) { const m = useMap(); useEffect(() => { if (pos) m.panTo(pos, { animate: true }); }, [pos?.[0], pos?.[1]]); return null; }
 
 export default function Compartilhar() {
@@ -41,7 +41,7 @@ export default function Compartilhar() {
   const brand = useStore((s) => s.revenda.branding);
   const [, tick] = useState(0);
   useEffect(() => { const i = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(i); }, []); // expira sozinho na tela
-  // a simulação roda na aba do gestor: acompanha a posição que ela grava no navegador
+  // link local: acompanha a posição que a aba do gestor grava no navegador
   useEffect(() => { if (real) return; const f = () => (useStore as any).persist?.rehydrate(); window.addEventListener('storage', f); return () => window.removeEventListener('storage', f); }, []);
   const st = real ? (!pub ? 'carregando' : 'motivo' in pub ? pub.motivo : Date.now() > (expiresAt || 0) ? 'expirado' : 'ativo') : share ? shareState(share) : 'invalido';
   // uma abertura por carregamento da página, só enquanto o link vale

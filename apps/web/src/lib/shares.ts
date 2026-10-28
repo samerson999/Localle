@@ -18,7 +18,7 @@ export function createShare(assetId: string, ms: number, to: string) {
 export const revokeShare = (token: string) => useStore.getState().patch((st: any) => ({ shares: (st.shares || []).map((x: any) => (x.token === token ? { ...x, revokedAt: Date.now() } : x)) }));
 
 // Aberturas do link: { token: [ts, ...] } numa chave própria do navegador, porque a página pública roda em outra aba
-// e a aba do gestor regrava o estado inteiro a cada passo da simulação (apagaria o registro). Só quem criou o link vê.
+// e a aba do gestor regrava o estado inteiro a cada mudança (apagaria o registro). Só quem criou o link vê.
 // NO PRODUTO REAL cada abertura é gravada no backend (data, hora e IP aproximado) quando o token é validado.
 const OPENS = 'share-opens-v1';
 const readOpens = (): Record<string, number[]> => { try { return JSON.parse(localStorage.getItem(OPENS) || '{}'); } catch { return {}; } };

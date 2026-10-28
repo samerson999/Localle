@@ -1,7 +1,7 @@
 // Camada de acesso a posições: isola de onde vêm os pontos [ts, lat, lng, km/h, ignição] de 0 a 1.
-// Duas implementações: simulação local (histórico gravado no navegador) e API real (sob demanda, como o Replay).
+// Duas implementações: histórico gravado no navegador e API real (sob demanda, como o Replay).
 // NO PRODUTO REAL isto é uma única chamada ao nosso backend (lê o nosso banco, nunca a API do Traccar nem a
-// API antiga "user" diretamente): o front não precisa saber se o veículo é real ou simulado.
+// API antiga "user" diretamente): o front não precisa saber de onde o veículo vem.
 import { fetchRoute } from './rastreioApi';
 import { fetchRoute as fetchLocalleRoute } from './localleApi';
 

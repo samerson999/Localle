@@ -14,10 +14,9 @@ import { tv } from '../lib/tokens';
 import { useCriticalMap, resolveReasons, recentTreatments, type CritReason } from '../lib/critical';
 import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { TreatDialog, TreatedLine } from '../components/TreatDialog';
-import { criarLink, enviarComandoLocalle, isRealAsset, listarLinks, revogarLink } from '../lib/localleApi';
+import { confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, listarLinks, revogarLink } from '../lib/localleApi';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
-import { useSyntheticFleet } from '../lib/loadTest';
 import { sendRealCommand } from '../lib/rastreioApi';
 
 // Lista ao vivo em lotes: com 600–2.000 veículos, montar todas as linhas de uma vez trava a rolagem. Mostra 80
@@ -73,11 +72,8 @@ export default function Monitoramento() {
   const [fullscreen, toggleFullscreen] = useFullscreen(mapSectionRef);
   useEffect(() => { const id = sp.get('ativo'); if (id) setSel(id); }, [sp]); // busca (⌘K) pode trocar o veículo sem remontar a tela
 
-  const carga = Math.min(5000, Math.max(0, +(sp.get('carga') || 0))); // teste de carga do mapa (lib/loadTest)
-  const synth = useSyntheticFleet(carga);
   const list = [
     ...assets.map((a: any) => { const v = vehicles[a.id]; return { a, v, s: vehicleStatus(v), k: kindOf(a.id, v), d: drivers.find((d: any) => d.id === a.driverId) }; }),
-    ...synth.map(({ a, v }) => { const s = vehicleStatus(v); return { a, v, s, k: statusKind(s.key), d: undefined }; }),
   ];
   const [limit, setLimit] = useState(BATCH);
   useEffect(() => setLimit(BATCH), [q, st, grp]);
@@ -406,9 +402,10 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
   const def = defId === 'livre' ? { id: 'livre', name: 'Comando livre', payload: free, kind: 'livre' } : defs.find((d: any) => d.id === defId);
   const ids = target === 'veiculo' ? [assetId] : assets.filter((a: any) => a.groupIds?.includes(groupId)).map((a: any) => a.id);
   const name = (id: string) => assets.find((a: any) => a.id === id)?.name;
-  const send = () => {
-    if (pwd !== 'demo') return setErr('Confirme com a senha do operador (na simulação: demo).');
+  const send = async () => {
     if (defId === 'livre' && !free.trim()) return setErr('Escreva o comando livre.');
+    const ok = await confirmarSenha(useStore.getState().session?.email || '', pwd).catch(() => false);
+    if (!ok) return setErr('Senha incorreta. Confirme com a sua senha de acesso.');
     const cmdId = useStore.getState().sendCommand({ defId, name: def.name, payload: def.payload, kind: def.kind, target, assetIds: ids, message: def.kind === 'alerta' ? msg : undefined });
     trackCommand(`${def.name} · ${target === 'veiculo' ? name(assetId) : `${ids.length} veículos`}`);
     // veículo real: quem confirma é o próprio rastreador (sendRealCommand faz o envio e a conferência de verdade)
@@ -434,7 +431,7 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
       {defId === 'livre' && <Field label="Comando livre (sintaxe do rastreador)"><Textarea rows={2} className="font-mono" placeholder="Ex.: RELAY,1#" value={free} onChange={(e) => setFree(e.target.value)} /></Field>}
       {def?.kind === 'alerta' && <Field label="Mensagem exibida no teclado / app do motorista"><Input value={msg} onChange={(e) => setMsg(e.target.value)} /></Field>}
       <div className="flex flex-wrap gap-field items-end">
-        <Field label="Confirme com sua senha" className="flex-1 min-w-[200px]"><Input type="password" value={pwd} invalid={!!err && pwd !== 'demo'} onChange={(e) => setPwd(e.target.value)} placeholder="Senha do operador" /></Field>
+        <Field label="Confirme com sua senha" className="flex-1 min-w-[200px]"><Input type="password" value={pwd} invalid={!!err} onChange={(e) => setPwd(e.target.value)} placeholder="Sua senha de acesso" /></Field>
         <Button variant={def?.kind === 'bloqueio' ? 'danger' : 'primary'} onClick={send} disabled={!ids.length}><Icon name="enviar" size={18} />Enviar {def?.name?.toLowerCase()} para {ids.length} {ids.length === 1 ? 'veículo' : 'veículos'}</Button>
       </div>
       {err && <Callout tone="crit">{err}</Callout>}

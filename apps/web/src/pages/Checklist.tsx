@@ -85,7 +85,7 @@ function BI({ period }: { period: PeriodValue }) {
   const s = useStoreData();
   const [sent, setSent] = useState<Record<string, number>>({});
   const { a, b } = periodRanges(period);
-  // lembrete simulado (na demo fica registrado; em produção vai por notificação do app ou WhatsApp)
+  // lembrete só registrado (envio por notificação do app ou WhatsApp ainda não existe)
   const remind = (persons: string[]) => { const now = Date.now(); s.patch((st: any) => ({ reminders: [...persons.map((p) => ({ id: uid('lb'), ts: now, person: p, origin: 'checklist' })), ...(st.reminders || [])].slice(0, 300), ...(persons.length > 1 ? auditEntry(st, { coll: 'checklist', refId: '', label: 'Lembrete de checklist', action: `enviou lembrete a ${persons.length} pessoas em lote`, count: persons.length }) : {}) })); setSent((x) => ({ ...x, ...Object.fromEntries(persons.map((p) => [p, now])) })); };
   // OS corretiva a partir de uma resposta não conforme, com o veículo e o item preenchidos
   const osFrom = (key: string) => s.workOrders.find((w: any) => w.fromChecklist === key);
@@ -100,7 +100,7 @@ function BI({ period }: { period: PeriodValue }) {
   const { A, B } = d;
   const adh = (k?: ChecklistBi) => (k && k.expected ? k.done / k.expected : null);
   const avar = (k?: ChecklistBi) => (k && k.assets_checked ? k.assets_flagged / k.assets_checked : null);
-  const toolbar = <p className="text-small text-ink-2">{R.remote ? 'Calculado no Supabase' : 'Calculado sobre os dados da simulação'}</p>;
+  const toolbar = <p className="text-small text-ink-2">{R.remote ? 'Calculado no Supabase' : 'Calculado no navegador'}</p>;
   if (d.err) return <Stack gap="grid">{toolbar}<Card><ErrorState illustration="ilu-erro" layout="row" title="Não foi possível calcular o BI" detail={d.err} /></Card></Stack>;
   if (!A) return <Stack gap="grid">{toolbar}<Card><div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-64" /></div></Card></Stack>;
 
@@ -218,7 +218,7 @@ function BI({ period }: { period: PeriodValue }) {
       <Card title="Quem não lançou" icon="usuario" actions={miss.length ? <Button variant="ghost" size="sm" onClick={() => remind([...new Set(miss.map((m) => m.person))])}>Enviar lembrete para todos</Button> : undefined}>
         <Table minWidth={680} head={['Pessoa', 'Checklist', 'Não lançados', 'Último previsto', '']} rows={miss.slice(0, 20).map((m) => [<span className="font-medium">{m.person}</span>, m.template, <span className="num">{m.n}</span>, <span className="num">{fmtD(m.last)}</span>,
           sent[m.person] ? <span className="text-caption text-ink-2 whitespace-nowrap">Lembrete enviado às <span className="num">{fmtDT(sent[m.person]).slice(-5)}</span></span> : <TextButton onClick={() => remind([m.person])}>Enviar lembrete</TextButton>])} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Todos os checklists previstos foram preenchidos" />} align={['left', 'left', 'right', 'left', 'right']} />
-        {Object.keys(sent).length > 0 && <p className="text-caption text-ink-2 mt-3">Na demonstração o lembrete fica registrado e não é enviado. Em produção, vai por notificação do app do motorista.</p>}
+        {Object.keys(sent).length > 0 && <p className="text-caption text-ink-2 mt-3">O lembrete fica registrado; o envio por notificação do app do motorista ainda não está disponível.</p>}
         {miss.length > 20 && <p className="text-caption text-ink-2 mt-3">Mostrando 20 de {miss.length} combinações de pessoa e checklist.</p>}
       </Card>
     </Stack>
@@ -346,7 +346,7 @@ function Preencher({ onDone }: any) {
   };
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-4">
-      <Card title="Simulação do app">
+      <Card title="Responder checklist">
         <Field label="Quem está usando o app"><Select value={person?.id || ''} onChange={(e) => { setPid(e.target.value); setTid(null); }} options={R.people.map((p: any) => ({ value: p.id, label: `${p.name} · ${ROLES[p.role] || p.role}` }))} /></Field>
         {!tpl && <div className="flex flex-col gap-2 mt-4">
           <span className="text-body font-semibold">Checklists de {person?.name}</span>

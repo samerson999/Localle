@@ -116,7 +116,7 @@ const EVENTS_POLL_MS = 2 * 60000;
 const KEEP_DAYS = 30;
 const DAY_MS = 86400000;
 // Pânico e violação de alimentação não geram alerta aqui: viram um pulso em v.panic/v.powerCut e é a Regra
-// (r7/r8 em seed.ts, com suas próprias ações — bloqueio, WhatsApp etc.) que decide o alerta, igual à simulação.
+// (r7/r8, com suas próprias ações — bloqueio, WhatsApp etc.) que decide o alerta.
 function classify(type: string, desc: string): { rank?: string; alert?: 'alta' | 'media' | 'baixa'; flag?: 'panic' | 'powerCut' } | null {
   if (/igni[cç][aã]o (ligada|desligada)/i.test(desc)) return null;
   if (type === 'overspeed') return { rank: 'excesso_velocidade', alert: 'alta' };
@@ -224,7 +224,7 @@ export async function sendRealCommand(cmdId: string, assetId: string, imei: stri
   setStatus('pendente'); // nunca saiu da fila (ou nunca foi vista nela) dentro do prazo — não presumir sucesso
 }
 
-// Remove do navegador tudo que veio da API (veículos rt_, motoristas rd_, eventos/alertas rt:), sem tocar na simulação.
+// Remove do navegador tudo que veio da API (veículos rt_, motoristas rd_, eventos/alertas rt:), sem tocar no que é local.
 export function purgeApiData() {
   const fromApi = (id: any) => /^(rt_|rd_)/.test(String(id || ''));
   useStore.getState().patch((s: any) => {

@@ -12,7 +12,7 @@ import { ExportReportModal, type ExportFormat } from '../components/ExportReport
 
 // Uso da frota: km rodado, tempo em movimento, motor ligado, parado com motor ligado (ocioso) e paradas,
 // por veículo. Veículos reais: calculado na API (GET /reports/percurso, routeStats sobre as posições do
-// banco); simulados: routeStats aqui sobre o histórico local — a mesma função nos dois casos.
+// banco); demais: routeStats aqui sobre o histórico local — a mesma função nos dois casos.
 export default function RelatorioUso() {
   const all = useStore((s) => s.assets);
   const accessLog = useStore((s) => s.accessLog);

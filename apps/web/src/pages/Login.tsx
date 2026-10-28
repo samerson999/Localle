@@ -13,7 +13,7 @@ export default function Login() {
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  // Autenticação sempre na API (não há mais login de simulação): usuário de cliente entra como gestor da
+  // Autenticação sempre na API: usuário de cliente entra como gestor da
   // frota, superadmin da Locale no Painel da Locale. Permissões de cada papel são decididas pela API.
   const enter = async () => {
     setBusy(true); setErr('');

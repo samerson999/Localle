@@ -1,4 +1,4 @@
-// Endereço por extenso a partir da posição (geocodificação reversa). Na simulação usa o Nominatim (OpenStreetMap),
+// Endereço por extenso a partir da posição (geocodificação reversa). Usa o Nominatim (OpenStreetMap),
 // respeitando o limite de 1 consulta por segundo, com cache por ponto arredondado (~11 m) guardado no navegador.
 // NO PRODUTO REAL isto vai para o backend (serviço próprio ou contratado, com cache no banco): o front só recebe o texto.
 import { useEffect, useState } from 'react';

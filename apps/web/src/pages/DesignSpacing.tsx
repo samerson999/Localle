@@ -14,7 +14,7 @@ const TOKENS: [string, string, string][] = [
   ['--page-head', 'mb-page-head', 'cabeçalho da página → conteúdo'],
   ['--gap-section', 'PageBody · Stack gap="section"', 'entre seções'],
   ['--gap-grid', 'Grid · Stack gap="grid"', 'entre cards'],
-  ['--page-end', 'pb-page-end', 'fim da página: respiro para o simulador e os avisos'],
+  ['--page-end', 'pb-page-end', 'fim da página: respiro para os avisos'],
   ['--pad-card', 'Card', 'padding do card'],
   ['--pad-card-sm', 'Card dense', 'padding do card compacto'],
   ['--card-head', 'CardHeader', 'cabeçalho do card → conteúdo'],

@@ -22,7 +22,7 @@ export function registerGate(f: GateInput): string {
   s.upsert('gateLog', { id: uid('gt'), ts: now, assetId: f.assetId, driverId: f.driverId, kind: f.kind, km: f.km || 0, photo: f.photo || '', by: f.by, baseId: base?.id, ...(returnBy ? { returnBy } : {}) });
   if (f.km) registerOdometer(f.assetId, f.km, 'portaria', f.by);
   const open = s.trips.find((t: any) => t.assetId === f.assetId && t.status === 'em_andamento');
-  // ativo real: a viagem de pátio nasce e termina no backend (aguardando → iniciada → encerrada); simulado continua local
+  // ativo real: a viagem de pátio nasce e termina no backend (aguardando → iniciada → encerrada); os demais continuam locais
   if (isRealAsset({ id: f.assetId })) {
     const erro = (e: any) => toast('Viagem de pátio não registrada: ' + (e.message || e), { tone: 'crit' });
     if (f.kind === 'saida' && !open) criarViagemPatio({ type: 'patio', assetId: f.assetId, driverId: f.driverId, originFenceId: base?.id }, 'portaria').catch(erro);

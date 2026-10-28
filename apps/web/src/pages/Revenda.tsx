@@ -41,7 +41,7 @@ function Marca() {
           <Field label="Nome exibido"><Input value={b.name} onChange={(e) => set('name', e.target.value)} /></Field>
           <Field label="Frase da tela de login"><Input value={b.tagline} onChange={(e) => set('tagline', e.target.value)} /></Field>
           <Field label="Telefone de suporte"><Input value={b.supportPhone} onChange={(e) => set('supportPhone', e.target.value)} /></Field>
-          <Field label="Nome do cliente (frotista) nesta simulação"><Input value={s.revenda.clientName} onChange={(e) => setRev('clientName', e.target.value)} /></Field>
+          <Field label="Nome do cliente (frotista)"><Input value={s.revenda.clientName} onChange={(e) => setRev('clientName', e.target.value)} /></Field>
           <div role="group" aria-label="Cor principal" className="flex flex-col gap-tight">
             <span className="text-small font-medium text-ink-2">Cor principal</span>
             {/* amostras: são o próprio conteúdo escolhido (a cor da revenda), não decoração da interface */}

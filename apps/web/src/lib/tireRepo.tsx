@@ -1,4 +1,4 @@
-// Fonte de dados do módulo de pneus (simulação no navegador). A tela usa sempre esta interface; no produto real
+// Fonte de dados do módulo de pneus (guardados no navegador). A tela usa sempre esta interface; no produto real
 // as mesmas operações são funções do backend: fn_mount_tire, fn_rotate_tires… em docs/especificacao-sql/20261016120100_pneus.sql.
 import { auditEntry } from '@localle/shared/audit';
 import React, { createContext, useContext } from 'react';

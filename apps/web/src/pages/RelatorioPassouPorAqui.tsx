@@ -44,7 +44,7 @@ export default function RelatorioPassouPorAqui() {
   const scope = assets.filter((a: any) => (!grp || a.groupIds?.includes(grp)) && (!aid || a.id === aid));
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
-  // veículos reais: passagens calculadas na API (PostGIS + nearbyPasses); simulados: aqui
+  // veículos reais: passagens calculadas na API (PostGIS + nearbyPasses); demais: aqui
   const api = useRelatorioApi<{ assetId: string; passagens: any[] }>('passou-por-aqui', { from: new Date(f).toISOString(), to: new Date(t).toISOString(), lat: centro?.[0], lon: centro?.[1], raio }, scope, !!centro);
   useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
   const passagens = useMemo(() => !centro ? [] : [

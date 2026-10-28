@@ -101,35 +101,3 @@ export function withKml(fuelings: any[]) {
   return out;
 }
 
-// Simulação: posto com localização e nota fiscal em parte dos abastecimentos (algumas com divergência).
-// Usado no seed e, uma vez, nos dados já salvos no navegador.
-export function enrichFuelings(fuelings: any[], rnd = Math.random) {
-  const pick = <T,>(a: T[]) => a[Math.floor(rnd() * a.length)];
-  const now = Date.now();
-  return fuelings.map((f) => withTrackerKm(f, rnd)).map((f) => {
-    if (f.stationId) return f;
-    const st = pick(STATIONS.slice(0, 6).concat(f.assetId === 'a1' || f.assetId === 'a2' ? [STATIONS[6], STATIONS[7]] : []));
-    const price = +(f.pricePerL * st.bias).toFixed(3); const total = +(f.liters * price).toFixed(2);
-    const g: any = { ...f, stationId: st.id, station: st.name, pricePerL: price, total };
-    if (f.ts < now - 2 * DAY && rnd() < 0.72) {
-      const r = rnd() / ({ d5: 3, d3: 1.6 } as Record<string, number>)[f.driverId] || rnd() * 1.6; // divergências concentradas em poucos motoristas
-      const nf: any = { chave: '', liters: g.liters, total: g.total, date: new Date(g.ts).toISOString(), cnpj: st.cnpj, source: 'manual' };
-      // ~8% com divergência: litros a mais no lançamento, valor arredondado, data ou outro posto
-      if (r < 0.03) nf.liters = +(g.liters * 0.9).toFixed(2), nf.total = +(nf.liters * price).toFixed(2);
-      else if (r < 0.05) nf.total = +(g.total - 12 - rnd() * 30).toFixed(2);
-      else if (r < 0.065) nf.date = new Date(g.ts - 3 * DAY).toISOString();
-      else if (r < 0.08) nf.cnpj = STATIONS[(STATIONS.indexOf(st) + 1) % STATIONS.length].cnpj;
-      g.nf = nf;
-    }
-    return g;
-  });
-}
-
-// Simulação: km que o rastreador marcava no lançamento. Quase sempre igual ou com poucos km de diferença;
-// d5 e d3 corrigem o km com frequência (entra como divergência no índice).
-export function withTrackerKm(f: any, rnd = Math.random) {
-  if (f.kmTracker !== undefined) return f;
-  const heavy = ({ d5: 0.25, d3: 0.12 } as Record<string, number>)[f.driverId] ?? 0.02;
-  const diff = rnd() < heavy ? Math.round((rnd() < 0.5 ? -1 : 1) * (80 + rnd() * 400)) : Math.round((rnd() - 0.5) * 20);
-  return { ...f, kmTracker: Math.max(0, f.odometer - diff) };
-}

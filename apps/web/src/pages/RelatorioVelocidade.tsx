@@ -38,7 +38,7 @@ export default function RelatorioVelocidade() {
   const scope = assets.filter((a: any) => (!grp || a.groupIds?.includes(grp)) && (!aid || a.id === aid));
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
-  // veículos reais: trechos calculados na API (mesma speedLegs, sobre as posições do banco); simulados: aqui
+  // veículos reais: trechos calculados na API (mesma speedLegs, sobre as posições do banco); demais: aqui
   const api = useRelatorioApi<{ assetId: string; legs: any[] }>('velocidade', { from: new Date(f).toISOString(), to: new Date(t).toISOString(), minSpeed }, scope);
   useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
   const trechos = useMemo(() => [

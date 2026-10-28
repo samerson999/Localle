@@ -9,7 +9,7 @@ import { Icon } from '../components/icons';
 import { Dropzone } from '../components/Dropzone';
 import { CATEGORIES, categoryOf, categoryLabel, AssetSilhouette } from '../components/assetArt';
 import { PNG_ICON_IDS, PNG_ICON_SUGGESTION, pngIconUrl, pngIconLabel } from '../lib/pngIcons';
-import { PLATE_DB, SPECS_DB, MODEL_BRAND } from '@localle/shared/catalog';
+import { SPECS_DB, MODEL_BRAND } from '@localle/shared/catalog';
 import { num, fmtD, fmtDT, isPlate } from '@localle/shared/utils';
 import { linkTrackerWithInstall } from '../lib/odometer';
 import { downloadAssets, readSheet, planImport, applyImport, type ImportPlan } from '../lib/assetSheet';
@@ -180,10 +180,9 @@ function AssetForm({ a, setA }: any) {
   const set = (k: string, v: any) => setA({ ...a, [k]: v });
   const lookup = () => {
     const p = a.plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const r = PLATE_DB[p];
-    if (r) { setA({ ...a, plate: p, name: a.name || p, ...r, specs: SPECS_DB[r.model] || {} }); setMsg(`Placa ${p} encontrada: ${r.brand} ${r.model} ${r.year}. Ficha técnica preenchida — revise antes de salvar.`); }
-    else if (SPECS_DB[a.model]) { setA({ ...a, plate: p, specs: SPECS_DB[a.model], brand: a.brand || MODEL_BRAND[a.model] }); setMsg('Ficha técnica preenchida pelo modelo.'); }
-    else setMsg('Placa não encontrada na base simulada. Escolha o modelo na lista para preencher a ficha, ou preencha manualmente. Placas de teste: ' + Object.keys(PLATE_DB).join(', '));
+    // sem consulta de placa ligada a uma base real: a ficha técnica vem do modelo escolhido na lista
+    if (SPECS_DB[a.model]) { setA({ ...a, plate: p, specs: SPECS_DB[a.model], brand: a.brand || MODEL_BRAND[a.model] }); setMsg('Ficha técnica preenchida pelo modelo.'); }
+    else setMsg('Escolha o modelo na lista para preencher a ficha técnica, ou preencha manualmente.');
   };
   const save = () => {
     const orig = s.assets.find((x: any) => x.id === a.id);

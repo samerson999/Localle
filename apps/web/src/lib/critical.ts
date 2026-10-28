@@ -82,7 +82,7 @@ export function recentTreatments(s: any, assetId: string, since = Date.now() - 2
   const seen = new Set<string>();
   const out: { key: string; title: string; at: number; by: string; reason?: string; note?: string }[] = [];
   for (const a of [...(s.alerts || [])].reverse()) {
-    if (a.assetId !== assetId || !a.resolvedAt || a.resolvedAt < since || a.resolvedBy === 'Central (simulação)') continue;
+    if (a.assetId !== assetId || !a.resolvedAt || a.resolvedAt < since) continue;
     const k = `${a.title}|${a.resolvedAt}`; if (seen.has(k)) continue; seen.add(k);
     out.push({ key: a.id, title: a.title, at: a.resolvedAt, by: a.resolvedBy, reason: a.resolvedReason, note: a.resolvedNote });
   }

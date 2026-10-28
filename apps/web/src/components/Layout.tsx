@@ -11,7 +11,6 @@ import { useMaintJobs } from '../lib/maintJobs';
 import NeedsPanel from './NeedsPanel';
 import { canSeeFleet, endSupport, homeOf } from '../lib/support';
 import { fmtT } from '@localle/shared/utils';
-import SimDock from './SimDock';
 import CommandPalette, { isMac } from './CommandPalette';
 import { SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON, Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarProvider, useSidebar } from './Sidebar';
 
@@ -88,7 +87,7 @@ function LayoutBody() {
   const patch = useStore((s) => s.patch);
   const needs = useNeedsYou();
   const { state, openMobile, setOpenMobile } = useSidebar();
-  useMaintJobs(); // leitura diária do rastreador e escalonamento por e-mail (demo)
+  useMaintJobs(); // leitura diária do rastreador e escalonamento por e-mail (fila local)
   // pulso no contador só quando entra um item crítico novo (não quando sai um, nem a cada atualização)
   const seen = useRef<Set<string> | null>(null);
   const [pulse, setPulse] = useState(0);
@@ -115,7 +114,6 @@ function LayoutBody() {
   const navRef = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
 
-  useEffect(() => { const t = setInterval(() => useStore.getState().tick(2000), 2000); return () => clearInterval(t); }, []);
   useRastreioSync();
   useLocalleSync();
   useEffect(() => { setOpenMobile(false); setHelp(false); window.scrollTo(0, 0); }, [loc.pathname]);
@@ -247,7 +245,6 @@ function LayoutBody() {
       </SidebarInset>
       <NeedsPanel open={panel} onClose={() => setPanel(false)} />
       <CommandPalette open={cmdk} onClose={() => setCmdk(false)} modules={mods} />
-      <SimDock />
     </div>
   );
 }

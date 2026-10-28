@@ -21,7 +21,7 @@ const OPCAO: Record<string, string> = {
 };
 
 export default function Setup() {
-  // só grupos do backend (uuid): os da simulação e o grupo "Frota real" não existem na API
+  // só grupos do backend (uuid): os locais e o grupo "Frota real" não existem na API
   const groups = useStore((s) => s.groups.filter((g: any) => /^[0-9a-f-]{36}$/i.test(g.id)));
   const [camada, setCamada] = useState('empresa'); // 'empresa' | id do grupo
   const [tab, setTab] = useState('monitoramento');

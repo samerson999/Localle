@@ -23,14 +23,6 @@ export const ASSET_KINDS = [
 
 export const FENCE_TYPES = ['Matriz', 'Filial', 'Cliente', 'Fornecedor', 'Oficina', 'Posto', 'Pátio', 'Área de risco', 'Outro'];
 
-// "Placa → veículo" (simula consulta por placa)
-export const PLATE_DB: Record<string, { brand: string; model: string; year: string }> = {
-  RZM9I22: { brand: 'Volkswagen', model: 'Delivery Express 4.150', year: '2023/2024' },
-  ABC1D23: { brand: 'Fiat', model: 'Strada Freedom 1.3', year: '2024/2024' },
-  SOY0E58: { brand: 'Mercedes-Benz', model: 'Accelo 1016', year: '2022/2022' },
-  UHT2G34: { brand: 'Renault', model: 'Master Furgão 2.3', year: '2023/2023' },
-  QWE4R56: { brand: 'Toyota', model: 'Hilux SRV 2.8', year: '2024/2025' },
-};
 
 // Ficha técnica por modelo (simula base de dados veicular)
 export const SPECS_DB: Record<string, Record<string, string>> = {

@@ -26,7 +26,7 @@ function Fit({ pts, follow, cur }: any) { const m = useMap(); useEffect(() => { 
 export default function Replay() {
   const [sp] = useSearchParams();
   // com "Incluir inativos", vendidos/baixados que tiveram rastreador aparecem para rever o percurso antigo
-  // estado sem os passos do simulador: o percurso só é lido ao carregar, não precisa redesenhar a cada 2 s
+  // estado sem as chaves ao vivo: o percurso só é lido ao carregar, não precisa redesenhar a cada 2 s
   const sd = useStoreData(60000);
   const assets = useMemo(() => opAssets(sd).filter((a: any) => hadTracker(sd, a)), [sd.assets, sd.accessLog, sd.includeRetired]);
   const history = sd.history;
@@ -47,7 +47,7 @@ export default function Replay() {
   const [exportOpen, setExportOpen] = useState(false);
   const asset = assets.find((a: any) => a.id === loaded.aid);
 
-  // veículo real: percurso vem da API; simulado: do histórico local
+  // veículo real: percurso vem da API; demais: do histórico local
   const [remote, setRemote] = useState<{ pts: any[]; loading: boolean; error: string } | null>(null);
   useEffect(() => {
     if (!asset?.tracker?.live) { setRemote(null); return; }
@@ -63,7 +63,7 @@ export default function Replay() {
     const f = new Date(loaded.from).getTime(), t = new Date(loaded.to).getTime();
     return (history[loaded.aid] || []).filter((p: any) => p[0] >= f && p[0] <= t);
   }, [loaded, remote]);
-  // veículo real: eventos do período vêm do backend (alarmes, cercas, regras); simulado: do store
+  // veículo real: eventos do período vêm do backend (alarmes, cercas, regras); demais: do store
   const [evsReais, setEvsReais] = useState<any[] | null>(null);
   useEffect(() => {
     if (!asset?.tracker?.live || asset?.tracker?.source !== 'localle') { setEvsReais(null); return; }
@@ -119,7 +119,6 @@ export default function Replay() {
           <Field label="Até"><Input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
           <Button variant="dark" loading={!!remote?.loading} onClick={() => setLoaded({ aid, from, to, n: loaded.n + 1 })}>Carregar percurso</Button>
           <Button variant="primary" disabled={!pts.length} onClick={() => setExportOpen(true)}><Icon name="play" size={16} />Gerar relatório</Button>
-          <span className="text-caption text-ink-2">A simulação guarda as últimas ~2.000 posições por veículo.</span>
           {matching && <span className="text-caption text-ink-2 inline-flex items-center gap-tight"><Spinner size={14} />Ajustando o traçado às ruas…</span>}
         </div>
       </Card>

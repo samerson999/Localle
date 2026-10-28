@@ -9,7 +9,7 @@ import * as M from './localleModulos';
 import { LIVE_GROUP } from './rastreioApi';
 import { erroHttp, fetchOuErro, mensagemDeErro, MSG_SESSAO } from './apiErro';
 
-// Integração com o NOSSO backend (apps/api): login (sempre real, não há mais login de simulação) e frota
+// Integração com o NOSSO backend (apps/api): login e frota
 // ao vivo. As chamadas passam pelo proxy do Vite (/api-localle → LOCALLE_API_URL).
 // Carga inicial por GET /monitoring/current; depois o stream SSE /monitoring/stream mantém posições e
 // eventos ao vivo (contrato em packages/shared/src/realtime.ts). Veículos daqui têm id "lc_<assetId>".
@@ -75,6 +75,12 @@ export async function login(email: string, password: string): Promise<'gestor' |
 }
 
 export function logout() { setToken(null); }
+
+/** Confere a senha do usuário logado (confirmação de comando ao rastreador), sem trocar a sessão. */
+export async function confirmarSenha(email: string, password: string): Promise<boolean> {
+  if (!email || !password) return false;
+  return !!(await postLogin('/auth/login', email, password));
+}
 
 async function apiGet<T>(path: string): Promise<T> {
   const r = await fetchOuErro(BASE + path, { headers: { Authorization: `Bearer ${getToken()}` } });
@@ -278,7 +284,7 @@ export async function syncAlertas() {
   }));
 }
 
-/** `ids` do store; sem ids, marca todos. Alertas da simulação (sem id da API) só mudam localmente. */
+/** `ids` do store; sem ids, marca todos. Alertas sem id da API só mudam localmente. */
 export async function marcarAlertasLidos(ids?: string[]) {
   const daApi = ids?.map(alertaIdOf).filter((x): x is string => !!x);
   if (ids && !daApi?.length) return;
@@ -337,7 +343,7 @@ export async function fetchRoute(assetId: string, from: number, to: number) {
   return rows.filter((p) => p.valid).map((p) => [Date.parse(p.fixTime), +p.latitude, +p.longitude, Math.round(+p.speedKmh || 0), p.ignition ? 1 : 0]);
 }
 
-// Remove do navegador tudo que veio do backend (veículos lc_, alertas al:lc:), sem tocar na simulação.
+// Remove do navegador tudo que veio do backend (veículos lc_, alertas al:lc:), sem tocar no que é local.
 export function purgeLocalleData() {
   const fromApi = (id: any) => String(id || '').startsWith('lc_');
   useStore.getState().patch((s: any) => {
@@ -382,7 +388,7 @@ const MAX_IDS_NA_URL = 200; // acima disso pede a frota toda e filtra aqui (URL 
 
 /**
  * Busca `/reports/<rota>` para os veículos reais do escopo e devolve cada linha com o ativo do store em `a`.
- * Veículos simulados ficam de fora — a tela continua calculando esses localmente.
+ * Veículos fora do backend ficam de fora — a tela continua calculando esses localmente.
  */
 export function useRelatorioApi<T extends { assetId: string }>(rota: string, params: Record<string, string | number | null | undefined>, scope: any[], enabled = true) {
   const reais = scope.filter(isRealAsset);
@@ -436,7 +442,7 @@ export async function abrirLinkPublico(token: string, abertura: boolean): Promis
 
 // ---------- módulos de cadastro/operação que saíram do navegador (apps/api/src/<modulo>) ----------
 // Mesmo desenho de cercas/regras: a coleção do store é a leitura (as telas continuam iguais), toda
-// escrita vai à API e recarrega a coleção. Mapeamento em localleModulos.ts. Veículos simulados (id sem
+// escrita vai à API e recarrega a coleção. Mapeamento em localleModulos.ts. Veículos fora do backend (id sem
 // "lc_") não existem no backend: a API recusa com 400 e a tela mostra a mensagem.
 const DIA = 86_400_000;
 const desde = (dias: number) => `de=${new Date(Date.now() - dias * DIA).toISOString()}`;
@@ -587,7 +593,7 @@ export async function syncModulos() {
 
 
 // ---------- comandos ao rastreador (apps/api/src/comandos): bloqueio, desbloqueio e pedido de posição ----------
-// O modal de comandos continua com o modelo da simulação (`commands` no store, status por veículo). Para o
+// O modal de comandos usa o modelo local (`commands` no store, status por veículo). Para o
 // veículo real do nosso backend, o envio vai a POST /comandos[/bloqueio]; o estado final chega pelo tempo
 // real (`comando_status`) — `expirado`/`cancelado` nunca viram "veículo liberado" (§ 4.6 da integração).
 const TIPO_POR_KIND: Record<string, 'engineStop' | 'engineResume' | 'positionSingle'> = { bloqueio: 'engineStop', desbloqueio: 'engineResume', posicao: 'positionSingle' };

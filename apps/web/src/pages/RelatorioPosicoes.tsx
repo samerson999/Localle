@@ -42,7 +42,7 @@ export default function RelatorioPosicoes() {
   const scope = assets.filter((a: any) => (!grp || a.groupIds?.includes(grp)) && (!aid || a.id === aid));
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
-  // veículos reais: resumo (routeStats) calculado na API sobre o banco; simulados: aqui
+  // veículos reais: resumo (routeStats) calculado na API sobre o banco; demais: aqui
   const api = useRelatorioApi<{ assetId: string; posicoes: number; stats: any }>('percurso', { from: new Date(f).toISOString(), to: new Date(t).toISOString() }, scope);
   useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
   const [ptsReais, setPtsReais] = useState<Record<string, any[]>>({});

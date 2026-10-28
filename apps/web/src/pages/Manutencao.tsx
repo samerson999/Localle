@@ -341,7 +341,7 @@ function OsModal({ init, onClose }: any) {
             <Field label="Chave de acesso"><Input className="font-mono" value={w.nf.chave} onChange={(e) => set('nf', { ...w.nf, chave: e.target.value.replace(/\D/g, '').slice(0, 44) })} placeholder="44 dígitos" /></Field>
             <Field label="Valor da nota (R$)"><Input type="number" value={w.nf.valor || ''} onChange={(e) => set('nf', { ...w.nf, valor: +e.target.value })} /></Field>
             <Field label="Integração com ERP"><Select value={w.nf.erp} onChange={(e) => set('nf', { ...w.nf, erp: e.target.value })} options={[{ value: 'nenhum', label: 'Não enviar' }, { value: 'proprio', label: 'ERP próprio da plataforma' }, { value: 'omie', label: 'Omie' }, { value: 'bling', label: 'Bling' }, { value: 'webhook', label: 'Webhook / API genérica' }]} /></Field>
-            {w.nf.erp !== 'nenhum' && <Button size="sm" variant="ghost" onClick={() => set('nf', { ...w.nf, synced: Date.now() })}>{w.nf.synced ? `Enviado em ${fmtDT(w.nf.synced)} (simulado)` : 'Enviar ao ERP'}</Button>}
+            {w.nf.erp !== 'nenhum' && <Button size="sm" variant="ghost" onClick={() => set('nf', { ...w.nf, synced: Date.now() })}>{w.nf.synced ? `Marcada como enviada em ${fmtDT(w.nf.synced)}` : 'Marcar como enviada ao ERP'}</Button>}
           </Panel>
         </aside>
       </div>
@@ -385,7 +385,7 @@ function Planos() {
   );
 }
 
-// ---------------------------------------------------------------- alertas e e-mails (escalonamento; fila simulada)
+// ---------------------------------------------------------------- alertas e e-mails (escalonamento; fila local, envio ainda não ligado)
 const ESC_DOT: Record<EscLevel, 'crit' | 'parado'> = { alerta: 'parado', crit: 'crit', sem_acao: 'crit' };
 function Escalonamento() {
   const recipients: Recipient[] = useStore((s) => s.maintRecipients) || [];
@@ -417,12 +417,12 @@ function Escalonamento() {
           <TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir ${x.name}?`, detail: 'A pessoa deixa de receber os avisos de manutenção.' })) { remove('maintRecipients', x.id); toast('Destinatário excluído.', { action: { label: 'Desfazer', onClick: () => upsert('maintRecipients', x) } }); } }}>Excluir</TextButton>])} />
       </Card>
       <Card title="Caixa de saída">
-        <p className="text-small text-ink-2 mb-4 max-w-[80ch]">Na demonstração os e-mails ficam na fila e não são enviados. Em produção, um serviço lê esta fila e envia pelo provedor de e-mail.</p>
+        <p className="text-small text-ink-2 mb-4 max-w-[80ch]">Os e-mails ficam nesta fila; o envio pelo provedor de e-mail ainda não está ligado.</p>
         <Table minWidth={860} empty="Nenhum e-mail gerado ainda." head={['Quando', 'Nível', 'Para', 'Assunto', 'Ativo', 'Situação']} rows={outbox.slice(0, 100).map((o) => [
           <span className="num whitespace-nowrap">{fmtDT(o.ts)}</span>, <StatusDot kind={ESC_DOT[o.level]} label={ESC_LEVELS[o.level]} />,
           <span><span className="font-medium">{o.to}</span><span className="block text-caption text-ink-2">{o.email}</span></span>,
           <span><span>{o.title}</span><span className="block text-caption text-ink-2">{o.detail}</span></span>,
-          <AssetName name={assetName(o.assetId)} />, <span className="text-ink-2">Na fila (simulação)</span>])} />
+          <AssetName name={assetName(o.assetId)} />, <span className="text-ink-2">Na fila</span>])} />
       </Card>
     </Stack>
   );
