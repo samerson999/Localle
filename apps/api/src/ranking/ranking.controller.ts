@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
-import { booleano, erro, instante, numeroOpcional, opcao, periodo, texto, textoOpcional, uuid, uuidOpcional } from '../common/validar';
+import { booleano, erro, instante, numeroOpcional, opcao, periodo, SEM_LIMITE, texto, textoOpcional, uuid, uuidOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type EventoInput, type MatrizInput, ORIGENS_EVENTO, RankingRepository } from './ranking.repository';
@@ -50,7 +50,7 @@ export class RankingController {
 
   @Get()
   calcular(@ClientId() clientId: string, @Query('de') de?: string, @Query('ate') ate?: string) {
-    const [inicio, fim] = periodo(de, ate, 30, 366);
+    const [inicio, fim] = periodo(de, ate, 30, SEM_LIMITE);
     return this.service.calcular(clientId, inicio, fim);
   }
 
@@ -74,7 +74,7 @@ export class RankingController {
 
   @Get('eventos')
   eventos(@ClientId() clientId: string, @Query('de') de?: string, @Query('ate') ate?: string) {
-    const [inicio, fim] = periodo(de, ate, 30, 366);
+    const [inicio, fim] = periodo(de, ate, 30, SEM_LIMITE);
     return this.repo.eventos(clientId, inicio, fim);
   }
 

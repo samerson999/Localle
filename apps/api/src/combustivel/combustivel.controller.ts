@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
-import { dataOpcional, dicionario, erro, instante, numero, numeroOpcional, periodo, texto, textoOpcional, uuid, uuidOpcional } from '../common/validar';
+import { dataOpcional, dicionario, erro, instante, numero, numeroOpcional, periodo, SEM_LIMITE, texto, textoOpcional, uuid, uuidOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type AbastecimentoInput, type AbastecimentoRow, AbastecimentosRepository, type NotaFiscal } from './abastecimentos.repository';
@@ -57,7 +57,7 @@ export class CombustivelController {
 
   @Get()
   listar(@ClientId() clientId: string, @Query('de') de?: string, @Query('ate') ate?: string, @Query('assetId') assetId?: string) {
-    const [inicio, fim] = periodo(de, ate, 90, 2 * 366);
+    const [inicio, fim] = periodo(de, ate, 90, SEM_LIMITE);
     return this.service.listar(clientId, inicio, fim, uuidOpcional(assetId, 'assetId'));
   }
 

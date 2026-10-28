@@ -96,6 +96,9 @@ export function dicionario(v: unknown, campo: string, maxChaves = 50): Record<st
 
 const DIA = 86_400_000;
 
+/** Para `periodo`: listagem sem teto de período (combustível e ranking — sprint de monitoramento, 28/10/2026). */
+export const SEM_LIMITE = Infinity;
+
 /** Período de consulta `?de=&ate=` (ISO): padrão últimos `padraoDias`; no máximo `maxDias`. */
 export function periodo(de: unknown, ate: unknown, padraoDias = 30, maxDias = 93): [Date, Date] {
   const fim = ate ? parseDate('ate', ate) : new Date();
