@@ -18,6 +18,7 @@ import { confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, listarLin
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { sendRealCommand } from '../lib/rastreioApi';
+import { rectUi } from '../lib/uiZoom';
 
 // Lista ao vivo em lotes: com 600–2.000 veículos, montar todas as linhas de uma vez trava a rolagem. Mostra 80
 // e acrescenta mais 80 quando o fim da lista aparece (IntersectionObserver), sem biblioteca de virtualização.
@@ -146,7 +147,7 @@ export default function Monitoramento() {
       </Grid>
       <Tabs className="md:hidden" value={view} onChange={(k) => setView(k as 'mapa' | 'lista')} tabs={[{ key: 'mapa', label: 'Mapa' }, { key: 'lista', label: 'Lista', count: shown.length }]} />
       <div className="flex flex-wrap items-start gap-grid">
-        <Card dense className={cx('flex-[1_1_340px] md:max-w-[420px] h-[70vh] max-md:supports-[height:100dvh]:h-[70dvh] min-h-[360px] md:h-[calc(100vh-128px)] md:min-h-[560px]', view === 'mapa' && 'max-md:hidden')}>
+        <Card dense className={cx('flex-[1_1_340px] md:max-w-[420px] h-[70vh] max-md:supports-[height:100dvh]:h-[70dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', view === 'mapa' && 'max-md:hidden')}>
           <section aria-label="Veículos" className="flex flex-col gap-stack h-full min-h-0">
             <SearchInput value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
             <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />
@@ -165,7 +166,7 @@ export default function Monitoramento() {
           </section>
         </Card>
 
-        <section ref={mapSectionRef} aria-label="Mapa" className={cx('flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line h-[62vh] max-md:supports-[height:100dvh]:h-[62dvh] min-h-[360px] md:h-[calc(100vh-128px)] md:min-h-[560px]', fullscreen && 'bg-ink', view === 'lista' && 'max-md:hidden')}>
+        <section ref={mapSectionRef} aria-label="Mapa" className={cx('flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line h-[62vh] max-md:supports-[height:100dvh]:h-[62dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', fullscreen && 'bg-ink', view === 'lista' && 'max-md:hidden')}>
           <MapContainer ref={setMap} center={[-8.1, -34.92]} zoom={12} className="w-full h-full" zoomControl={false}>
             <TileLayer key={`${tileKey}-${mapStyle}`} url={MAP_STYLES[mapStyle].url} attribution={MAP_STYLES[mapStyle].attribution} keepBuffer={6} updateWhenZooming={false} eventHandlers={{ tileerror: () => setTileErr((n) => n + 1) }} />
             {showF && <FenceShapes fences={fences} />}
@@ -183,7 +184,7 @@ export default function Monitoramento() {
             <span ref={styleBtnRef}>
               <MapButton icon="camadas" label="Estilo do mapa" title="Trocar o estilo do mapa"
                 onClick={() => {
-                  const r = styleBtnRef.current?.getBoundingClientRect(), sec = mapSectionRef.current?.getBoundingClientRect();
+                  const r = styleBtnRef.current && rectUi(styleBtnRef.current), sec = mapSectionRef.current && rectUi(mapSectionRef.current);
                   if (r && sec) setStyleMenu(styleMenu ? null : { x: r.left - sec.left, y: r.bottom - sec.top + 6 });
                 }} />
             </span>

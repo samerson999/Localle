@@ -4,6 +4,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* escala da interface (styles/base.css): 100vh dentro do zoom encolhe junto — compensa nos utilitários de altura */
+.h-screen { height: calc(100vh / var(--ui-zoom)); }
+.min-h-screen { min-height: calc(100vh / var(--ui-zoom)); }
 html, body, #root { height: 100%; }
 html, body { overflow-x: clip; }
 body { @apply bg-canvas text-ink font-sans antialiased; }

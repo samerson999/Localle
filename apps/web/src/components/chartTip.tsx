@@ -3,6 +3,7 @@
 // quando não cabe; nunca sai da tela. Mouse: segue o hover. Toque: abre com um toque e fecha ao tocar fora.
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { paraUi, uiZoom, viewportUi } from '../lib/uiZoom';
 
 export type TipAnchor = { x: number; y: number }; // coordenadas da janela (clientX/clientY) do ponto lido
 type TipState = { at: TipAnchor; content: React.ReactNode; key: string | number; pinned: boolean } | null;
@@ -37,8 +38,9 @@ export function useChartTip() {
 
 /** ponto de ancoragem: x/y locais (px do SVG) somados à posição do elemento que contém o SVG */
 export const anchorIn = (box: HTMLElement | null, x: number, y: number): TipAnchor => {
-  const r = box?.getBoundingClientRect();
-  return { x: (r?.left ?? 0) + x, y: (r?.top ?? 0) + y };
+  // x/y são px do SVG (página); a âncora é de tela: passa pela escala da interface
+  const r = box?.getBoundingClientRect(), z = uiZoom();
+  return { x: (r?.left ?? 0) + x * z, y: (r?.top ?? 0) + y * z };
 };
 /** topo-centro de um elemento (barra HTML, fatia, segmento) */
 export const anchorTop = (el: Element): TipAnchor => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top }; };
@@ -48,10 +50,11 @@ function ChartTip({ at, children }: { at: TipAnchor; children: React.ReactNode }
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
     const el = ref.current; if (!el) return;
-    const w = el.offsetWidth, h = el.offsetHeight, gap = 12, m = 8;
-    const left = Math.max(m, Math.min(window.innerWidth - w - m, at.x - w / 2));
-    const above = at.y - h - gap;
-    const top = above >= m ? above : Math.min(window.innerHeight - h - m, at.y + gap + 8);
+    // âncora vem em coordenadas de tela; posição do tooltip em px da página (escala da interface, lib/uiZoom.ts)
+    const w = el.offsetWidth, h = el.offsetHeight, gap = 12, m = 8, { w: vw, h: vh } = viewportUi(), ax = paraUi(at.x), ay = paraUi(at.y);
+    const left = Math.max(m, Math.min(vw - w - m, ax - w / 2));
+    const above = ay - h - gap;
+    const top = above >= m ? above : Math.min(vh - h - m, ay + gap + 8);
     setPos({ left, top });
   }, [at.x, at.y, children]);
   return createPortal(

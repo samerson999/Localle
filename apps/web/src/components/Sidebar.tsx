@@ -12,7 +12,9 @@ export const SIDEBAR_WIDTH = 248;
 const SIDEBAR_WIDTH_MOBILE = 280;
 export const SIDEBAR_WIDTH_ICON = 72;
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b';
-const SIDEBAR_STORAGE_KEY = 'ui.sidebar.collapsed';
+// v2: a barra passou a iniciar recolhida (sprint 28/10/2026, bug 7); chave nova para todos começarem assim uma vez,
+// depois vale a escolha de cada usuário
+const SIDEBAR_STORAGE_KEY = 'ui.sidebar.collapsed.v2';
 
 type SidebarContextValue = {
   state: 'expanded' | 'collapsed';
@@ -43,7 +45,7 @@ function useIsMobile(breakpoint = 768) {
   return isMobile;
 }
 
-const readStoredOpen = () => { try { return localStorage.getItem(SIDEBAR_STORAGE_KEY) !== '1'; } catch { return true; } };
+const readStoredOpen = () => { try { return localStorage.getItem(SIDEBAR_STORAGE_KEY) === '0'; } catch { return false; } };
 
 export function SidebarProvider({ children, defaultOpen, style, className = '' }: { children: ReactNode; defaultOpen?: boolean; style?: CSSProperties; className?: string }) {
   const isMobile = useIsMobile();

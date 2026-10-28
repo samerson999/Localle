@@ -1,5 +1,18 @@
 /* Regras globais da plataforma. Só usam tokens (styles/tokens.css); nenhum valor literal de cor, fonte, raio ou sombra. */
 
+/* ---------- escala da interface ---------- */
+/* Notebook e monitor abrem a 90% (sprint de monitoramento 28/10/2026, bug 7): em 100% a tela ficava grande demais;
+   a sprint pedia ~80%, que ficou distante demais na conferência — ajustado para 90%.
+   `zoom` reduz tudo por igual (tokens em px, utilitários em rem, ícones); celular fica em 100%. Efeitos colaterais
+   tratados: unidades de viewport também encolhem — h-screen/min-h-screen (index.css, depois dos utilitários) e os
+   calc(100vh…) dividem por --ui-zoom — e quem posiciona algo pela tela (menus, tooltips, gráficos) converte por
+   lib/uiZoom.ts. Só na tela: impressão e PDF ficam em 100%. */
+:root { --ui-zoom: 1; }
+@media screen and (min-width: 1024px) {
+  :root { --ui-zoom: 0.9; }
+  html { zoom: var(--ui-zoom); }
+}
+
 /* ---------- superfícies do navegador ---------- */
 ::selection { background: var(--selection); color: var(--ink); }
 html { caret-color: var(--ink); scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }

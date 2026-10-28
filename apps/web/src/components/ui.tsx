@@ -7,6 +7,7 @@ import { AssetSilhouette, silhouetteOf } from './assetArt';
 import { pngIconUrl } from '../lib/pngIcons';
 import { useCountUp } from '../lib/motion';
 import { Heading, HeadingLevel, useHeadingLevel } from './primitives';
+import { rectUi, viewportUi } from '../lib/uiZoom';
 export * from './primitives';
 
 export const cx = (...a: any[]) => a.filter(Boolean).join(' ');
@@ -305,9 +306,9 @@ export function Select({ className = '', options, value, onChange, disabled, id,
   const list = useRef<HTMLUListElement>(null);
   const lid = useId();
   const show = () => {
-    const r = btn.current!.getBoundingClientRect();
-    const up = r.bottom + 296 > window.innerHeight && r.top > window.innerHeight - r.bottom;
-    setPos(up ? { left: r.left, bottom: window.innerHeight - r.top + 4, width: r.width } : { left: r.left, top: r.bottom + 4, width: r.width });
+    const r = rectUi(btn.current!), vh = viewportUi().h;
+    const up = r.bottom + 296 > vh && r.top > vh - r.bottom;
+    setPos(up ? { left: r.left, bottom: vh - r.top + 4, width: r.width } : { left: r.left, top: r.bottom + 4, width: r.width });
     setAct(Math.max(0, sel)); setOpen(true);
   };
   const pick = (i: number) => { setOpen(false); btn.current?.focus(); if (opts[i] && i !== sel) onChange?.({ target: { value: opts[i].value } }); };
@@ -392,7 +393,7 @@ export function SearchSelect({ options, value, onChange, onQuery, placeholder = 
     return () => clearTimeout(t);
   }, [query, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const place = () => { const r = box.current!.getBoundingClientRect(); const up = r.bottom + 296 > window.innerHeight && r.top > window.innerHeight - r.bottom; setPos(up ? { left: r.left, bottom: window.innerHeight - r.top + 4, width: r.width } : { left: r.left, top: r.bottom + 4, width: r.width }); };
+  const place = () => { const r = rectUi(box.current!), vh = viewportUi().h; const up = r.bottom + 296 > vh && r.top > vh - r.bottom; setPos(up ? { left: r.left, bottom: vh - r.top + 4, width: r.width } : { left: r.left, top: r.bottom + 4, width: r.width }); };
   const show = () => { place(); setOpen(true); };
   const pick = (o: SearchSelectOption | null) => { setOpen(false); onChange(o?.value ?? ''); setQuery(o?.label ?? ''); input.current?.focus(); };
   useEffect(() => {
@@ -855,9 +856,9 @@ export function Menu({ items, label = 'Mais opções', trigger }: { items: MenuI
   const list = useRef<HTMLDivElement>(null);
   const toggle = () => {
     if (open) { setOpen(false); return; }
-    const r = btn.current!.getBoundingClientRect();
-    const up = r.bottom + 48 * items.length + 16 > window.innerHeight;
-    setPos(up ? { right: window.innerWidth - r.right, bottom: window.innerHeight - r.top + 4 } : { right: window.innerWidth - r.right, top: r.bottom + 4 });
+    const r = rectUi(btn.current!), { w: vw, h: vh } = viewportUi();
+    const up = r.bottom + 48 * items.length + 16 > vh;
+    setPos(up ? { right: vw - r.right, bottom: vh - r.top + 4 } : { right: vw - r.right, top: r.bottom + 4 });
     setOpen(true);
   };
   useEffect(() => {
@@ -1024,10 +1025,10 @@ export function DateInput({ type, value, defaultValue, onChange, min, max, disab
   const lo = min?.slice(0, cut), hi = max?.slice(0, cut);
   const ok = (s: string) => (!lo || s >= lo) && (!hi || s <= hi);
   const show = () => {
-    const r = btn.current!.getBoundingClientRect(), h = type === 'datetime-local' ? 420 : 370;
-    const up = r.bottom + h > window.innerHeight && r.top > window.innerHeight - r.bottom;
-    const left = Math.min(r.left, window.innerWidth - 300);
-    setPos(up ? { left, bottom: window.innerHeight - r.top + 4 } : { left, top: r.bottom + 4 });
+    const r = rectUi(btn.current!), h = type === 'datetime-local' ? 420 : 370, { w: vw, h: vh } = viewportUi();
+    const up = r.bottom + h > vh && r.top > vh - r.bottom;
+    const left = Math.min(r.left, vw - 300);
+    setPos(up ? { left, bottom: vh - r.top + 4 } : { left, top: r.bottom + 4 });
     setFocus(cur || new Date()); setOpen(true);
   };
   const close = () => { setOpen(false); btn.current?.focus(); };

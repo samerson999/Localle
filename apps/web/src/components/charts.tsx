@@ -8,6 +8,7 @@ import { Num, StatusGlyph, type StatusKind } from './story';
 import { chartTokens } from '../lib/tokens';
 import { isPlate } from '@localle/shared/utils';
 import { useChartTip, anchorIn, anchorTop, TipBody, Swatch, DeltaText, type TipRow } from './chartTip';
+import { uiZoom } from '../lib/uiZoom';
 export { Swatch } from './chartTip';
 
 // Padrões de hachura para SVG: use fill={`url(#${p}hatch-real)`}, com um prefixo único por gráfico (useId).
@@ -229,7 +230,7 @@ function useWidth<T extends HTMLElement>() {
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    setW(el.getBoundingClientRect().width);
+    setW(el.clientWidth); // px da página (getBoundingClientRect viria na escala da tela, lib/uiZoom.ts)
     const ro = new ResizeObserver(([e]) => setW(e.contentRect.width));
     ro.observe(el);
     return () => ro.disconnect();
@@ -463,7 +464,7 @@ export function Bar100({ parts, format = (v: number) => `${Math.round(v)}%` }: {
 // Índice do ponto mais perto do ponteiro, num eixo x de n pontos entre left e W - right
 const nearest = (clientX: number, box: HTMLElement | null, left: number, inner: number, n: number) => {
   const r = box?.getBoundingClientRect(); if (!r || n < 1) return 0;
-  return Math.max(0, Math.min(n - 1, Math.round(((clientX - r.left - left) / (inner || 1)) * (n - 1))));
+  return Math.max(0, Math.min(n - 1, Math.round((((clientX - r.left) / uiZoom() - left) / (inner || 1)) * (n - 1))));
 };
 
 // ---------- linhas: atual em azul (com área e ponto final), anterior tracejado neutro; meta tracejada ----------
@@ -634,7 +635,7 @@ export function Donut({ parts, center, centerLabel, size = 168, thickness = 20 }
   const pct = (v: number) => `${Math.round((v / t) * 100)}%`;
   const box = useRef<HTMLDivElement>(null);
   const partAt = (e: React.PointerEvent | React.MouseEvent) => {
-    const b = box.current!.getBoundingClientRect(); const dx = e.clientX - b.left - size / 2, dy = e.clientY - b.top - size / 2;
+    const b = box.current!.getBoundingClientRect(), z = uiZoom(); const dx = (e.clientX - b.left) / z - size / 2, dy = (e.clientY - b.top) / z - size / 2;
     const dist = Math.hypot(dx, dy); if (dist < r - thickness / 2 - 4 || dist > r + thickness / 2 + 4) return -1;
     const ang = ((Math.atan2(dy, dx) * 180) / Math.PI + 90 + 360) % 360; // 0° no topo, sentido horário
     let a = 0; for (let i = 0; i < parts.length; i++) { a += (parts[i].value / t) * 360; if (ang <= a) return i; } return parts.length - 1;
