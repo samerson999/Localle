@@ -10,6 +10,15 @@ export const SUPPORT_PARAMS = { requireConsent: false, minReason: 10 };
 
 export const canSeeFleet = (session: any) => !!session && (session.role === 'gestor' || !!session.support);
 export const isAdminRole = (session: any) => session?.role === 'revenda' || session?.role === 'locale';
+// Sintaxe técnica dos comandos (RELAY,1#…) só para a equipe Localle/revenda — inclusive no acesso de suporte, que
+// mantém o papel original. O cliente (gestor, portaria) vê só o nome do comando (sprint 28/10/2026, melhoria 4).
+export const veSintaxeComando = (session: any) => isAdminRole(session);
+
+/** Status de um comando por veículo, no texto da tela (modal de envio e histórico usam o mesmo). */
+export const STATUS_COMANDO: Record<string, string> = {
+  enviado: 'aguardando o rastreador', confirmado: 'confirmado pelo rastreador', pendente: 'sem comunicação', falhou: 'falhou no envio',
+  expirado: 'sem confirmação no prazo', cancelado: 'substituído por outro comando', nao_suportado: 'não disponível para este rastreador',
+};
 export const homeOf = (session: any) => (session?.role === 'portaria' ? '/portaria' : canSeeFleet(session) ? '/monitoramento' : session?.role === 'locale' ? '/locale' : '/revenda');
 
 export function supportBlock(s: any): string {

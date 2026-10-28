@@ -20,6 +20,7 @@ import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useSha
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { sendRealCommand } from '../lib/rastreioApi';
 import { rectUi } from '../lib/uiZoom';
+import { veSintaxeComando } from '../lib/support';
 
 // Lista ao vivo em lotes: com 600–2.000 veículos, montar todas as linhas de uma vez trava a rolagem. Mostra 80
 // e acrescenta mais 80 quando o fim da lista aparece (IntersectionObserver), sem biblioteca de virtualização.
@@ -475,6 +476,8 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
   const [pwd, setPwd] = useState('');
   const [err, setErr] = useState('');
   useEffect(() => { if (state) { setTarget(state.target); setAssetId(state.assetId || assets[0]?.id); setPwd(''); setErr(''); } }, [state]);
+  // sintaxe técnica e comando livre só para a equipe Localle/revenda (lib/support.ts)
+  const tecnico = veSintaxeComando(useStore((s) => s.session));
   const def = defId === 'livre' ? { id: 'livre', name: 'Comando livre', payload: free, kind: 'livre' } : defs.find((d: any) => d.id === defId);
   const ids = target === 'veiculo' ? [assetId] : assets.filter((a: any) => a.groupIds?.includes(groupId)).map((a: any) => a.id);
   const name = (id: string) => assets.find((a: any) => a.id === id)?.name;
@@ -500,11 +503,11 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
           : <Select aria-label="Grupo" className="w-64" value={groupId} onChange={(e) => setGroupId(e.target.value)} options={groups.map((g: any) => ({ value: g.id, label: `${g.name} (${assets.filter((a: any) => a.groupIds?.includes(g.id)).length})` }))} />}
       </div>
       <div role="radiogroup" aria-label="Comando" className="grid grid-cols-2 md:grid-cols-3 gap-tight">
-        {[...defs, { id: 'livre', name: 'Comando livre', desc: 'Texto direto ao equipamento' }].map((d: any) => (
-          <ChoiceCard key={d.id} checked={defId === d.id} onSelect={() => setDefId(d.id)} title={d.name} description={d.desc} meta={d.payload} tone={d.kind === 'bloqueio' ? 'danger' : undefined} />
+        {[...defs, ...(tecnico ? [{ id: 'livre', name: 'Comando livre', desc: 'Texto direto ao equipamento' }] : [])].map((d: any) => (
+          <ChoiceCard key={d.id} checked={defId === d.id} onSelect={() => setDefId(d.id)} title={d.name} description={d.desc} meta={tecnico ? d.payload : undefined} tone={d.kind === 'bloqueio' ? 'danger' : undefined} />
         ))}
       </div>
-      {defId === 'livre' && <Field label="Comando livre (sintaxe do rastreador)"><Textarea rows={2} className="font-mono" placeholder="Ex.: RELAY,1#" value={free} onChange={(e) => setFree(e.target.value)} /></Field>}
+      {tecnico && defId === 'livre' && <Field label="Comando livre (sintaxe do rastreador)"><Textarea rows={2} className="font-mono" placeholder="Ex.: RELAY,1#" value={free} onChange={(e) => setFree(e.target.value)} /></Field>}
       {def?.kind === 'alerta' && <Field label="Mensagem exibida no teclado / app do motorista"><Input value={msg} onChange={(e) => setMsg(e.target.value)} /></Field>}
       <div className="flex flex-wrap gap-field items-end">
         <Field label="Confirme com sua senha" className="flex-1 min-w-[200px]"><Input type="password" value={pwd} invalid={!!err} onChange={(e) => setPwd(e.target.value)} placeholder="Sua senha de acesso" /></Field>

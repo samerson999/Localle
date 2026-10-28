@@ -8,6 +8,7 @@ import { MonitorHeader } from '../components/MonitorTabs';
 import { RULE_FIELDS } from '@localle/shared/engine';
 import { FENCE_TYPES } from '@localle/shared/catalog';
 import { fmtDT } from '@localle/shared/utils';
+import { STATUS_COMANDO, veSintaxeComando } from '../lib/support';
 
 // prioridade na linguagem de status: alta = crítico, média = atenção, baixa = anel
 const PRIO: Record<string, string> = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
@@ -99,16 +100,17 @@ function CmdDefs() {
   const defs = useStore((s) => s.commandDefs);
   const { upsert, remove } = useStore.getState();
   const [d, setD] = useState({ name: '', desc: '', payload: '' });
+  const tecnico = veSintaxeComando(useStore((s) => s.session));
   return (
     <Card title="Comandos cadastrados" icon="comando">
-      <p className="text-small text-ink-2 mb-card-head">Cadastre comandos com a sintaxe do seu equipamento. Eles aparecem na janela de envio, por veículo ou por grupo.</p>
-      <div className="grid md:grid-cols-[1fr_1.4fr_1fr_auto] gap-field items-end mb-card-head">
+      <p className="text-small text-ink-2 mb-card-head">{tecnico ? 'Cadastre comandos com a sintaxe do seu equipamento. Eles aparecem na janela de envio, por veículo ou por grupo.' : 'Comandos disponíveis na janela de envio, por veículo ou por grupo. Para incluir um comando novo, fale com o suporte.'}</p>
+      {tecnico && <div className="grid md:grid-cols-[1fr_1.4fr_1fr_auto] gap-field items-end mb-card-head">
         <Field label="Nome"><Input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="Ex.: Abrir trava do baú" /></Field>
         <Field label="Descrição"><Input value={d.desc} onChange={(e) => setD({ ...d, desc: e.target.value })} /></Field>
         <Field label="Comando"><Input className="font-mono" value={d.payload} onChange={(e) => setD({ ...d, payload: e.target.value })} placeholder="OUTPUT2,1#" /></Field>
         <Button disabled={!d.name || !d.payload} onClick={() => { upsert('commandDefs', { ...d, kind: 'custom' }); setD({ name: '', desc: '', payload: '' }); toast('Comando incluído.'); }}>Adicionar</Button>
-      </div>
-      <Table head={['Nome', 'Descrição', 'Comando', 'Tipo', '']} rows={defs.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="text-small text-ink-2">{x.desc}</span>, <IdChip size="sm">{x.payload}</IdChip>, x.system ? <Badge>Padrão</Badge> : <Badge>Personalizado</Badge>, x.system ? '' : <TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir o comando "${x.name}"?`, detail: 'Ele some da lista de comandos enviáveis aos rastreadores.' })) { remove('commandDefs', x.id); toast('Comando excluído.', { action: { label: 'Desfazer', onClick: () => upsert('commandDefs', x) } }); } }}>Excluir</TextButton>])} />
+      </div>}
+      <Table head={['Nome', 'Descrição', ...(tecnico ? ['Comando'] : []), 'Tipo', '']} rows={defs.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="text-small text-ink-2">{x.desc}</span>, ...(tecnico ? [<IdChip size="sm">{x.payload}</IdChip>] : []), x.system ? <Badge>Padrão</Badge> : <Badge>Personalizado</Badge>, x.system ? '' : <TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir o comando "${x.name}"?`, detail: 'Ele some da lista de comandos enviáveis aos rastreadores.' })) { remove('commandDefs', x.id); toast('Comando excluído.', { action: { label: 'Desfazer', onClick: () => upsert('commandDefs', x) } }); } }}>Excluir</TextButton>])} />
     </Card>
   );
 }
@@ -117,10 +119,11 @@ function CmdHistory() {
   const commands = useStore((s) => s.commands);
   const assets = useStore((s) => s.assets);
   const n = (id: string) => assets.find((a: any) => a.id === id)?.name;
+  const tecnico = veSintaxeComando(useStore((s) => s.session));
   return (
     <Card title="Histórico de comandos" icon="historico">
-      <Table head={['Quando', 'Comando', 'Sintaxe', 'Destino', 'Por', 'Status por veículo']} emptyState={<EmptyState icon="comando" title="Nenhum comando enviado ainda" detail="Os comandos enviados pelo Monitoramento aparecem aqui com a resposta de cada veículo." />} rows={commands.map((c: any) => [<span className="num whitespace-nowrap">{fmtDT(c.ts)}</span>, <span className="font-medium">{c.name}</span>, <IdChip size="sm">{c.payload}</IdChip>, c.target === 'grupo' ? `Grupo (${c.assetIds.length})` : <AssetName name={n(c.assetIds[0])} />, c.by,
-        <div className="flex flex-wrap gap-x-stack gap-y-hair">{Object.entries<any>(c.status).map(([a, s]) => <StatusDot key={a} kind={s === 'confirmado' ? 'mov' : s === 'pendente' ? 'crit' : 'parado'} label={`${n(a)}: ${s === 'confirmado' ? 'confirmado' : s === 'pendente' ? 'sem resposta' : 'aguardando'}`} className="text-caption" />)}</div>])} />
+      <Table head={['Quando', 'Comando', ...(tecnico ? ['Sintaxe'] : []), 'Destino', 'Por', 'Status por veículo']} emptyState={<EmptyState icon="comando" title="Nenhum comando enviado ainda" detail="Os comandos enviados pelo Monitoramento aparecem aqui com a resposta de cada veículo." />} rows={commands.map((c: any) => [<span className="num whitespace-nowrap">{fmtDT(c.ts)}</span>, <span className="font-medium">{c.name}</span>, ...(tecnico ? [<IdChip size="sm">{c.payload}</IdChip>] : []), c.target === 'grupo' ? `Grupo (${c.assetIds.length})` : <AssetName name={n(c.assetIds[0])} />, c.by,
+        <div className="flex flex-wrap gap-x-stack gap-y-hair">{Object.entries<any>(c.status).map(([a, s]) => <StatusDot key={a} kind={s === 'confirmado' ? 'mov' : ['pendente', 'falhou', 'expirado'].includes(s) ? 'crit' : 'parado'} label={`${n(a)}: ${STATUS_COMANDO[s] || s}`} className="text-caption" />)}</div>])} />
     </Card>
   );
 }
