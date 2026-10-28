@@ -151,7 +151,7 @@ function LayoutBody() {
   ];
   const canConfig = session.role === 'revenda' || session.role === 'locale';
   // Setup (parâmetros de operação, docs/PLANO-SETUP-ADMIN.md): quem vê a frota configura a própria empresa; a API decide quem pode alterar
-  const mods = [...allowed(OPERACAO), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
+  const mods = [...allowed(OPERACAO), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
   const mini = state === 'collapsed' && !openMobile; // só ícones (desktop recolhido)
   const sbw = mini ? SIDEBAR_WIDTH_ICON : SIDEBAR_WIDTH;
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
@@ -205,7 +205,7 @@ function LayoutBody() {
             </div>
             <div className="flex items-center gap-stack mt-2 pt-3 pl-2 overflow-hidden border-t border-line">
               <div className="w-8 h-8 rounded-pill bg-avatar text-ink flex items-center justify-center font-semibold text-caption shrink-0" title={mini ? session.name : undefined}>{session.name.slice(0, 2).toUpperCase()}</div>
-              <div className={cx('flex flex-col min-w-0 mr-auto', fade)}><span className="font-medium text-body truncate">{session.name}</span><span className="text-caption text-ink-2 truncate">{session.support ? 'Acesso de suporte' : session.role === 'locale' ? 'Administração Locale' : session.role === 'revenda' ? 'Admin da revenda' : 'Gestor da frota'}</span></div>
+              <NavLink to="/conta" title="Minha conta" tabIndex={mini ? -1 : undefined} className={cx('flex flex-col min-w-0 mr-auto rounded-btn hover:underline', fade)}><span className="font-medium text-body truncate">{session.name}</span><span className="text-caption text-ink-2 truncate">{session.support ? 'Acesso de suporte' : session.role === 'locale' ? 'Administração Locale' : session.role === 'revenda' ? 'Admin da revenda' : 'Gestor da frota'}</span></NavLink>
               <IconButton aria-label="Sair" title="Sair" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.' })) { logout(); patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" size={18} /></IconButton>
             </div>
           </div>

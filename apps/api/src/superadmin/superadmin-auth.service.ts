@@ -17,7 +17,7 @@ export class SuperadminAuthService {
     }
     const superadmin = await this.repo.findByEmail(email);
     const valid = await bcrypt.compare(password, superadmin?.password_hash ?? HASH_FICTICIO);
-    if (!superadmin || !valid) {
+    if (!superadmin || !valid || superadmin.desativado_em) {
       throw new UnauthorizedException('E-mail ou senha inválidos');
     }
     return { accessToken: signAuthToken({ sub: superadmin.id, role: 'superadmin' }) };

@@ -3,12 +3,13 @@ import { ClientId } from '../clients/client-id.decorator';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
-import type { CreateTeamUserDto } from './dto/create-team-user.dto';
+import { parseConviteMembro } from './dto/create-team-user.dto';
 import type { UserEntity } from './user.entity';
 import { UsersService } from './users.service';
 
 function toSafeUser(user: UserEntity) {
-  return { id: user.id, email: user.email, role: user.role, ativo: user.desativado_em === null, createdAt: user.created_at };
+  // pendente: convidado que ainda não definiu a senha (convite em aberto)
+  return { id: user.id, email: user.email, role: user.role, ativo: user.desativado_em === null, pendente: user.password_hash === null, createdAt: user.created_at };
 }
 
 @Controller('users')
@@ -23,15 +24,18 @@ export class UsersController {
     return users.map(toSafeUser);
   }
 
+  /** Corpo: `{ email, role: 'gestor' | 'operador' }`. Sem SMTP, `link` volta para o admin repassar. */
   @Post()
   @RequirePermission('permissoes.gerenciar')
-  async create(
-    @ClientId() clientId: string,
-    @CurrentUserId() actingAdminId: string,
-    @Body() dto: CreateTeamUserDto,
-  ) {
-    const user = await this.service.createTeamMember(clientId, actingAdminId, dto);
-    return toSafeUser(user);
+  async convidar(@ClientId() clientId: string, @CurrentUserId() actingAdminId: string, @Body() body: unknown) {
+    const { user, conviteEnviado, link } = await this.service.convidarMembro(clientId, actingAdminId, parseConviteMembro(body));
+    return { ...toSafeUser(user), conviteEnviado, link };
+  }
+
+  @Post(':id/convite')
+  @RequirePermission('permissoes.gerenciar')
+  reenviarConvite(@ClientId() clientId: string, @CurrentUserId() actingAdminId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.reenviarConvite(clientId, actingAdminId, id);
   }
 
   @Post(':id/desativar')

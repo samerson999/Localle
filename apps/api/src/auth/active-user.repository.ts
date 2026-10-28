@@ -37,7 +37,7 @@ export class ActiveUserRepository {
 
   /** Superadmin removido perde o acesso na hora, não só quando o token de 8h expirar. */
   async isSuperadmin(id: string): Promise<boolean> {
-    const { rowCount } = await this.pool.query('select 1 from superadmins where id = $1', [id]);
+    const { rowCount } = await this.pool.query('select 1 from superadmins where id = $1 and desativado_em is null', [id]);
     return (rowCount ?? 0) > 0;
   }
 }

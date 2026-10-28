@@ -35,6 +35,8 @@ const Contratos = lazy(() => import('./pages/Contratos'));
 const Clientes = lazy(() => import('./pages/Clientes'));
 const Faturamento = lazy(() => import('./pages/Faturamento'));
 const Equipe = lazy(() => import('./pages/Equipe'));
+const MinhaConta = lazy(() => import('./pages/MinhaConta'));
+const EquipeCliente = lazy(() => import('./pages/EquipeCliente'));
 const Saude = lazy(() => import('./pages/Saude'));
 const Juridico = lazy(() => import('./pages/Juridico'));
 const Rastreadores = lazy(() => import('./pages/Rastreadores'));
@@ -86,6 +88,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/compartilhar/:token" element={<Compartilhar />} />
         <Route path="/convite/:token" element={<Convite />} />
+        <Route path="/convite-localle/:token" element={<Convite tipo="localle" />} />
+        <Route path="/redefinir-senha/:token" element={<Convite tipo="redefinir" />} />
         <Route path="/portaria" element={<Guard m="viagens" portaria><PortariaApp /></Guard>} />
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
@@ -110,6 +114,8 @@ export default function App() {
           <Route path="/ranking" element={<Guard m="ranking"><Ranking /></Guard>} />
           <Route path="/pneus" element={<Guard m="pneus"><Pneus /></Guard>} />
           <Route path="/setup" element={<Setup />} />
+          <Route path="/conta" element={<MinhaConta />} />
+          <Route path="/equipe" element={<RoleOnly roles={['gestor']}><EquipeCliente /></RoleOnly>} />
           <Route path="/locale" element={<Locale />} />
           <Route path="/locale/contratos" element={<RoleOnly roles={['locale']}><Contratos /></RoleOnly>} />
           <Route path="/locale/clientes" element={<RoleOnly roles={['locale']}><Clientes /></RoleOnly>} />

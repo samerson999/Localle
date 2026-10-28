@@ -17,6 +17,7 @@ export const UNIQUE = {
   comandoPendente: 'comandos_pendente_uidx',
   contratoPorCliente: 'contratos_client_id_key',
   usuarioEmail: 'users_email_key',
+  superadminEmail: 'superadmins_email_key',
   chipPorRastreador: 'sim_cards_rastreador_id_uidx',
 } as const;
 

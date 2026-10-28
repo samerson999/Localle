@@ -1,0 +1,2 @@
+# Scripts shell rodam em container Linux: quebra de linha do Windows (CRLF) quebra o sh.
+*.sh text eol=lf

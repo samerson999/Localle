@@ -180,11 +180,16 @@ export interface AdminRastreador {
 export interface AdminSimCard { id: string; iccid: string; operadora: string | null; numero: string | null; status: string; rastreador_id: string | null }
 export interface AdminAuditEntry { id: string; actor_type: 'user' | 'superadmin'; actor_email: string | null; client_name: string | null; action: string; target: string | null; before: unknown; after: unknown; created_at: string }
 
+/** Resultado de um convite: sem SMTP, `link` volta para quem convidou repassar. */
+export interface Entrega { conviteEnviado: boolean; link: string | null }
+export interface MembroLocalle { id: string; email: string; created_at: string; desativado_em: string | null; pendente: boolean }
+export interface MembroEquipe { id: string; email: string; role: 'admin' | 'gestor' | 'operador'; ativo: boolean; pendente: boolean; createdAt: string }
+
 export const adminApi = {
   clients: () => apiGet<AdminClient[]>('/clients'),
-  createClient: (body: { name: string; admin?: { email: string } }) => apiSend<{ client: AdminClient; conviteEnviado: boolean }>('POST', '/superadmin/clients', body),
-  createInitialAdmin: (clientId: string, body: { email: string }) => apiSend<{ conviteEnviado: boolean }>('POST', `/superadmin/clients/${clientId}/admin-users`, body),
-  reenviarConvite: (clientId: string, userId: string) => apiSend<{ conviteEnviado: boolean }>('POST', `/superadmin/clients/${clientId}/admin-users/${userId}/convite`),
+  createClient: (body: { name: string; admin?: { email: string } }) => apiSend<{ client: AdminClient; conviteEnviado: boolean; link: string | null }>('POST', '/superadmin/clients', body),
+  createInitialAdmin: (clientId: string, body: { email: string }) => apiSend<{ conviteEnviado: boolean; link: string | null }>('POST', `/superadmin/clients/${clientId}/admin-users`, body),
+  reenviarConvite: (clientId: string, userId: string) => apiSend<{ conviteEnviado: boolean; link: string | null }>('POST', `/superadmin/clients/${clientId}/admin-users/${userId}/convite`),
   contratos: () => apiGet<AdminContrato[]>('/superadmin/contratos'),
   versoes: (contratoId: string) => apiGet<ContractVersion[]>(`/superadmin/contratos/${contratoId}/versoes`),
   criarContrato: (clientId: string, body: ContratoBody) => apiSend<AdminContrato>('POST', `/superadmin/clients/${clientId}/contrato`, body),
@@ -206,7 +211,11 @@ export const adminApi = {
   createSimCard: (body: { iccid: string; operadora?: string; numero?: string }) => apiSend('POST', '/superadmin/rastreadores/sim-cards', body),
   vincularSimCard: (simCardId: string, rastreadorId: string) => apiSend('POST', `/superadmin/rastreadores/sim-cards/${simCardId}/vincular/${rastreadorId}`),
   desvincularSimCard: (simCardId: string) => apiSend('POST', `/superadmin/rastreadores/sim-cards/${simCardId}/desvincular`),
-  equipe: () => apiGet<{ id: string; email: string; created_at: string }[]>('/superadmin/equipe'),
+  equipe: () => apiGet<MembroLocalle[]>('/superadmin/equipe'),
+  convidarSuperadmin: (email: string) => apiSend<MembroLocalle & Entrega>('POST', '/superadmin/equipe', { email }),
+  reenviarConviteSuperadmin: (id: string) => apiSend<Entrega>('POST', `/superadmin/equipe/${id}/convite`),
+  desativarSuperadmin: (id: string) => apiSend<MembroLocalle>('POST', `/superadmin/equipe/${id}/desativar`),
+  reativarSuperadmin: (id: string) => apiSend<MembroLocalle>('POST', `/superadmin/equipe/${id}/reativar`),
   auditoria: () => apiGet<AdminAuditEntry[]>('/superadmin/auditoria'),
 };
 
@@ -231,6 +240,47 @@ export async function desinstalarRastreador(instalacaoId: string) {
 export async function atualizarPlacaAtivo(assetId: string, plate: string) {
   await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { plate });
 }
+// ---------- minha conta e senha (apps/api/src/auth, src/superadmin) ----------
+/** Troca a própria senha (exige a atual). Superadmin e usuário de cliente têm rotas separadas. */
+export async function trocarSenha(role: 'locale' | 'gestor', senhaAtual: string, novaSenha: string) {
+  await apiSend('POST', role === 'locale' ? '/superadmin/senha' : '/auth/senha', { senhaAtual, novaSenha });
+}
+/** Sempre "ok" na tela (a API responde 202 exista o e-mail ou não — não revela quem é cliente). */
+export async function esqueciSenha(email: string) {
+  const r = await fetchOuErro(`${BASE}/auth/esqueci-senha`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+  if (!r.ok && r.status !== 202) throw erroHttp(r.status, await r.json().catch(() => null));
+}
+export async function consultarRedefinicao(token: string): Promise<{ email: string }> {
+  const r = await fetchOuErro(`${BASE}/auth/redefinir-senha/${encodeURIComponent(token)}`);
+  if (!r.ok) throw r.status === 404 || r.status === 400 ? new Error('Link de redefinição inválido ou expirado. Peça um novo na tela de login.') : erroHttp(r.status);
+  return r.json();
+}
+export async function redefinirSenha(token: string, password: string): Promise<void> {
+  const r = await fetchOuErro(`${BASE}/auth/redefinir-senha/${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw r.status === 404 ? new Error('Link de redefinição inválido ou expirado. Peça um novo na tela de login.') : erroHttp(r.status, data);
+  setToken(data.accessToken);
+}
+export async function consultarConviteLocalle(token: string): Promise<{ email: string }> {
+  const r = await fetchOuErro(`${BASE}/superadmin/convites/${encodeURIComponent(token)}`);
+  if (!r.ok) throw r.status === 404 || r.status === 400 ? new Error('Convite inválido ou expirado. Peça um novo a alguém da equipe da Localle.') : erroHttp(r.status);
+  return r.json();
+}
+export async function aceitarConviteLocalle(token: string, password: string): Promise<void> {
+  const r = await fetchOuErro(`${BASE}/superadmin/convites/${encodeURIComponent(token)}/aceitar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw r.status === 404 ? new Error('Convite inválido ou expirado. Peça um novo a alguém da equipe da Localle.') : erroHttp(r.status, data);
+  setToken(data.accessToken);
+}
+/** Equipe do próprio cliente (admin): convite por e-mail para Gestor/Operador. */
+export const equipeApi = {
+  listar: () => apiGet<MembroEquipe[]>('/users'),
+  convidar: (email: string, role: 'gestor' | 'operador') => apiSend<MembroEquipe & Entrega>('POST', '/users', { email, role }),
+  reenviarConvite: (id: string) => apiSend<Entrega>('POST', `/users/${id}/convite`),
+  desativar: (id: string) => apiSend<MembroEquipe>('POST', `/users/${id}/desativar`),
+  reativar: (id: string) => apiSend<MembroEquipe>('POST', `/users/${id}/reativar`),
+};
+
 /** Ativo novo nasce na API (é nele que o rastreador é instalado); devolve o id do store (lc_…). */
 export async function criarAtivo(plate: string): Promise<string> {
   const a = await apiSend<{ id: string }>('POST', '/assets', { plate });

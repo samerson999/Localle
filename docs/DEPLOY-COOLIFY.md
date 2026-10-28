@@ -13,6 +13,16 @@ checklist de configuração, não como código a escrever.
 
 ---
 
+> **Atualização de 28/10/2026 — migrations na subida do container.** A imagem da API passou a levar o
+> `node-pg-migrate` (dependência de runtime) e as migrations compiladas em JS (`dist-migrations`); a entrada
+> `apps/api/scripts/start-prod.sh` roda `migrate up` antes de subir a API e, se falhar, o container não sobe
+> (o erro aparece no log do deploy). Em homologação isso substitui o passo manual/job `migrate`. Variáveis da
+> API no Coolify: `MIGRATION_DATABASE_URL` = conexão **direta** ao Postgres (`postgres://plataforma:<senha>@db:5432/plataforma`
+> na rede `coolify`, não o PgBouncer — em pool por transação a trava do node-pg-migrate não é confiável; sem
+> ela, roda sem trava, o que só é seguro com uma instância da API) e `APP_URL` = endereço público do front
+> (base dos links de convite e de redefinição de senha). Com mais de uma instância da API em produção, manter
+> `MIGRATION_DATABASE_URL` definida (a trava passa a valer) ou voltar a migrar num passo separado.
+
 ## 1. Visão geral do pipeline
 
 ```

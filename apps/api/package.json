@@ -14,7 +14,8 @@
     "migrate:down": "pnpm migrate down",
     "migrate:create": "pnpm migrate create",
     "seed:demo-user": "node scripts/seed-demo-user.mjs",
-    "seed:superadmin": "node scripts/seed-superadmin.mjs"
+    "seed:superadmin": "node scripts/seed-superadmin.mjs",
+    "build:migrations": "tsc -p tsconfig.migrations.json"
   },
   "dependencies": {
     "@localle/shared": "workspace:*",
@@ -26,6 +27,7 @@
     "dotenv": "^16.4.7",
     "ioredis": "^5.4.2",
     "jsonwebtoken": "^9.0.2",
+    "node-pg-migrate": "^7.9.1",
     "nodemailer": "6.9.16",
     "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",
@@ -39,7 +41,6 @@
     "@types/node": "^20.17.9",
     "@types/nodemailer": "6.4.17",
     "@types/pg": "^8.11.10",
-    "node-pg-migrate": "^7.9.1",
     "ts-node": "^10.9.2",
     "typescript": "5.6.2",
     "vitest": "^2.1.9"

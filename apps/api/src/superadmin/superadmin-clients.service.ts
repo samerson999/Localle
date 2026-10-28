@@ -40,7 +40,7 @@ export class SuperadminClientsService {
   async createClient(
     superadminId: string,
     data: { name: string; revendaId?: string; admin?: { email: string } },
-  ): Promise<{ client: ClientEntity; admin: UserEntity | null; conviteEnviado: boolean }> {
+  ): Promise<{ client: ClientEntity; admin: UserEntity | null; conviteEnviado: boolean; link: string | null }> {
     const result = await this.emailUnico(() =>
       withTransaction(this.pool, async (tx) => {
         const created = await this.clients.create({ name: data.name, revendaId: data.revendaId }, tx);
@@ -52,24 +52,24 @@ export class SuperadminClientsService {
         return { client: created, admin };
       }),
     );
-    const conviteEnviado = result.admin ? await this.convites.enviar(result.admin.user.email, result.client.name, result.admin.token) : false;
+    const entrega = result.admin ? await this.convites.entregar(result.admin.user.email, result.client.name, result.admin.token) : { conviteEnviado: false, link: null };
     this.logger.log(`cliente criado client_id=${result.client.id} por superadmin=${superadminId} admin_inicial=${result.admin?.user.id ?? 'nenhum'}`);
-    return { client: result.client, admin: result.admin?.user ?? null, conviteEnviado };
+    return { client: result.client, admin: result.admin?.user ?? null, ...entrega };
   }
 
-  async createInitialAdmin(superadminId: string, clientId: string, data: { email: string }): Promise<{ user: UserEntity; conviteEnviado: boolean }> {
+  async createInitialAdmin(superadminId: string, clientId: string, data: { email: string }): Promise<{ user: UserEntity; conviteEnviado: boolean; link: string | null }> {
     const client = await this.clients.findById(clientId);
     if (!client) throw new NotFoundException('Cliente não encontrado');
     const { user, token } = await this.emailUnico(() =>
       withTransaction(this.pool, (tx) => this.insertAdmin(tx, superadminId, clientId, data.email)),
     );
-    const conviteEnviado = await this.convites.enviar(user.email, client.name, token);
+    const entrega = await this.convites.entregar(user.email, client.name, token);
     this.logger.log(`admin inicial convidado user_id=${user.id} client_id=${clientId} por superadmin=${superadminId}`);
-    return { user, conviteEnviado };
+    return { user, ...entrega };
   }
 
   /** Novo link (o anterior deixa de valer). Só para quem ainda não definiu senha. */
-  async reenviarConvite(superadminId: string, clientId: string, userId: string): Promise<{ conviteEnviado: boolean }> {
+  async reenviarConvite(superadminId: string, clientId: string, userId: string): Promise<{ conviteEnviado: boolean; link: string | null }> {
     const client = await this.clients.findById(clientId);
     const user = client ? await this.users.findOneByClient(clientId, userId) : null;
     if (!client || !user) throw new NotFoundException('Usuário não encontrado');
@@ -82,7 +82,7 @@ export class SuperadminClientsService {
       );
       return t;
     });
-    return { conviteEnviado: await this.convites.enviar(user.email, client.name, token) };
+    return this.convites.entregar(user.email, client.name, token);
   }
 
   private async insertAdmin(executor: Queryable, superadminId: string, clientId: string, email: string) {

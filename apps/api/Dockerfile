@@ -18,7 +18,7 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
-RUN pnpm --filter api build
+RUN pnpm --filter api build && pnpm --filter api build:migrations
 
 FROM node:20-alpine AS runner
 RUN corepack enable
@@ -30,13 +30,14 @@ COPY --from=build /repo/apps/web/package.json apps/web/package.json
 COPY --from=build /repo/packages/shared/package.json packages/shared/package.json
 RUN pnpm install --frozen-lockfile --prod --filter api
 COPY --from=build /repo/apps/api/dist apps/api/dist
+COPY --from=build /repo/apps/api/dist-migrations apps/api/dist-migrations
+COPY apps/api/scripts/start-prod.sh apps/api/scripts/start-prod.sh
 
 WORKDIR /app/apps/api
 EXPOSE 3000
+# Aplica as migrations pendentes (dist-migrations, compiladas no build) e sobe a API — scripts/start-prod.sh.
 # dist/apps/api/src: a API importa tipos de packages/shared, então o rootDir do tsc é a raiz do monorepo.
-CMD ["node", "dist/apps/api/src/main.js"]
+CMD ["sh", "scripts/start-prod.sh"]
 
-# Migrações não rodam a partir desta imagem (sem node-pg-migrate/ts-node, que são devDependencies —
-# propositalmente fora da imagem de runtime). O CI/CD roda `pnpm --filter api migrate:up` a partir do
-# estágio "build" (com devDependencies) contra o banco do ambiente, como passo separado antes do deploy —
-# ver docs/DEPLOY-COOLIFY.md.
+# Migrações rodam na subida do container (scripts/start-prod.sh), com o node-pg-migrate de dependência de
+# runtime e as migrations já em JS — ts-node/typescript continuam fora da imagem.

@@ -27,6 +27,8 @@ export function linkConvite(token: string): string {
  * rate limit dedicado no aceite — adivinhar um token é inviável; continua valendo o débito geral de rate
  * limit dos endpoints públicos (`.claude/rules/security.md` item 6).
  */
+const PAPEL_CONVITE: Record<string, string> = { admin: 'administrador', gestor: 'gestor', operador: 'operador' };
+
 @Injectable()
 export class ConvitesService {
   private readonly logger = new Logger(ConvitesService.name);
@@ -54,14 +56,26 @@ export class ConvitesService {
   }
 
   /** Depois do commit: falha de envio não desfaz o usuário — o convite pode ser reenviado pelo painel. */
-  async enviar(email: string, clientName: string, token: string): Promise<boolean> {
+  async enviar(email: string, clientName: string, token: string, papel: Role = 'admin'): Promise<boolean> {
     const link = linkConvite(token);
+    const comoPapel = PAPEL_CONVITE[papel] ?? PAPEL_CONVITE.admin;
     return this.mail.send({
       to: email,
       subject: 'Seu acesso à Localle',
-      text: `Olá,\n\nVocê foi cadastrado como administrador de ${clientName} na Localle.\nPara confirmar seu e-mail e criar sua senha, acesse:\n\n${link}\n\nO link vale por ${VALIDADE_CONVITE_H} horas e só pode ser usado uma vez. Se você não esperava este e-mail, ignore-o.`,
-      html: `<p>Olá,</p><p>Você foi cadastrado como administrador de <strong>${escapeHtml(clientName)}</strong> na Localle.</p><p>Para confirmar seu e-mail e criar sua senha:</p><p><a href="${link}">Criar minha senha</a></p><p style="color:#666">O link vale por ${VALIDADE_CONVITE_H} horas e só pode ser usado uma vez. Se você não esperava este e-mail, ignore-o.</p>`,
+      text: `Olá,\n\nVocê foi cadastrado como ${comoPapel} de ${clientName} na Localle.\nPara confirmar seu e-mail e criar sua senha, acesse:\n\n${link}\n\nO link vale por ${VALIDADE_CONVITE_H} horas e só pode ser usado uma vez. Se você não esperava este e-mail, ignore-o.`,
+      html: `<p>Olá,</p><p>Você foi cadastrado como ${comoPapel} de <strong>${escapeHtml(clientName)}</strong> na Localle.</p><p>Para confirmar seu e-mail e criar sua senha:</p><p><a href="${link}">Criar minha senha</a></p><p style="color:#666">O link vale por ${VALIDADE_CONVITE_H} horas e só pode ser usado uma vez. Se você não esperava este e-mail, ignore-o.</p>`,
     });
+  }
+
+  /**
+   * Envia o convite e, se o e-mail não sair (SMTP desligado ou falha), devolve o link para quem convidou
+   * repassar por outro meio. Quem convida é admin do cliente ou superadmin — já autenticado e autorizado
+   * a dar esse acesso; com SMTP ligado o link nunca volta na resposta.
+   */
+  async entregar(email: string, clientName: string, token: string, papel: Role = 'admin'): Promise<{ conviteEnviado: boolean; link: string | null }> {
+    const conviteEnviado = await this.enviar(email, clientName, token, papel);
+    if (!conviteEnviado) this.logger.warn(`convite para ${email} não enviado por e-mail; link devolvido a quem convidou`);
+    return { conviteEnviado, link: conviteEnviado ? null : linkConvite(token) };
   }
 
   private async abertoPorToken(executor: Queryable, token: string, lock = false) {

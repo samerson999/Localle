@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { BrandMark } from '../components/Layout';
 import { homeOf } from '../lib/support';
-import { login } from '../lib/localleApi';
-import { Button, Input, Field, cx } from '../components/ui';
+import { esqueciSenha, login } from '../lib/localleApi';
+import { Button, Input, Field, TextButton, cx } from '../components/ui';
 
 export default function Login() {
   const b = useStore((s) => s.revenda.branding);
@@ -13,6 +13,16 @@ export default function Login() {
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // "esqueci minha senha": link de uso único por e-mail (só usuário de cliente; acesso da Localle é
+  // redefinido por outro membro da equipe). A resposta é sempre a mesma, exista o e-mail ou não.
+  const [modo, setModo] = useState<'entrar' | 'esqueci' | 'enviado'>('entrar');
+  const pedirLink = async () => {
+    if (!email.trim()) { setErr('Informe o e-mail da sua conta.'); return; }
+    setBusy(true); setErr('');
+    try { await esqueciSenha(email.trim().toLowerCase()); setModo('enviado'); }
+    catch (e: any) { setErr(e.message || String(e)); }
+    finally { setBusy(false); }
+  };
   // Autenticação sempre na API: usuário de cliente entra como gestor da
   // frota, superadmin da Locale no Painel da Locale. Permissões de cada papel são decididas pela API.
   const enter = async () => {
@@ -37,13 +47,25 @@ export default function Login() {
   );
   const form = (
     <div className={cx('relative flex items-center p-6 md:p-10', pos === 'fundo' ? 'w-full min-h-screen justify-end md:pr-20' : pos === 'centro' ? 'w-full min-h-screen justify-center' : 'flex-[1_1_460px] justify-center')}>
-      <form onSubmit={(e) => { e.preventDefault(); void enter(); }} className="w-full max-w-[400px] bg-card rounded-card p-6 sm:p-8 md:p-10 flex flex-col gap-5">
+      <form onSubmit={(e) => { e.preventDefault(); void (modo === 'esqueci' ? pedirLink() : enter()); }} className="w-full max-w-[400px] bg-card rounded-card p-6 sm:p-8 md:p-10 flex flex-col gap-5">
         <div className="flex items-center gap-3"><BrandMark size={48} /><div className="flex flex-col"><span className="text-h3 font-semibold">{b.name}</span><span className="text-small text-ink-2">Gestão de frotas e rastreamento</span></div></div>
-        <div><h1 className="text-h2 font-semibold">Entrar</h1><p className="text-body text-ink-2 mt-1">Use o e-mail cadastrado pela sua central.</p></div>
-        <Field label="E-mail ou usuário"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" /></Field>
-        <Field label="Senha"><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} className="h-ctl-lg" autoComplete="current-password" /></Field>
-        {err && <p role="alert" className="text-small font-medium text-crit-ink">{err}</p>}
-        <Button type="submit" size="lg" disabled={busy}>{busy ? 'Entrando…' : 'Acessar plataforma'}</Button>
+        {modo === 'entrar' ? <>
+          <div><h1 className="text-h2 font-semibold">Entrar</h1><p className="text-body text-ink-2 mt-1">Use o e-mail cadastrado pela sua central.</p></div>
+          <Field label="E-mail ou usuário"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" /></Field>
+          <Field label="Senha"><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} className="h-ctl-lg" autoComplete="current-password" /></Field>
+          {err && <p role="alert" className="text-small font-medium text-crit-ink">{err}</p>}
+          <Button type="submit" size="lg" disabled={busy}>{busy ? 'Entrando…' : 'Acessar plataforma'}</Button>
+          <TextButton type="button" className="self-start" onClick={() => { setErr(''); setModo('esqueci'); }}>Esqueci minha senha</TextButton>
+        </> : modo === 'esqueci' ? <>
+          <div><h1 className="text-h2 font-semibold">Esqueci minha senha</h1><p className="text-body text-ink-2 mt-1">Enviamos um link para você criar uma nova senha.</p></div>
+          <Field label="E-mail"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" autoFocus /></Field>
+          {err && <p role="alert" className="text-small font-medium text-crit-ink">{err}</p>}
+          <Button type="submit" size="lg" loading={busy}>Enviar link</Button>
+          <TextButton type="button" className="self-start" onClick={() => { setErr(''); setModo('entrar'); }}>Voltar para o login</TextButton>
+        </> : <>
+          <div><h1 className="text-h2 font-semibold">Confira seu e-mail</h1><p className="text-body text-ink-2 mt-1">Se <span className="font-medium text-ink">{email.trim()}</span> estiver cadastrado, enviamos um link para criar uma nova senha. Ele vale 30 minutos e só pode ser usado uma vez.</p></div>
+          <Button type="button" variant="secondary" onClick={() => setModo('entrar')}>Voltar para o login</Button>
+        </>}
         <div className="text-small text-ink-2 border-t border-line pt-4">Suporte: <span className="num">{b.supportPhone}</span></div>
       </form>
     </div>

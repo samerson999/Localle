@@ -2,6 +2,7 @@
 // com o admin inicial na mesma transação; o admin recebe um convite por e-mail e define a própria senha (a Locale
 // nunca a conhece). Situação vem do contrato (editado em Contratos); pagamento fica em Faturamento.
 import { useState } from 'react';
+import { ConviteLink } from '../components/ConviteLink';
 import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Callout, toast, EmptyState } from '../components/ui';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery, type AdminClient } from '../lib/localleApi';
@@ -17,12 +18,15 @@ export default function Clientes() {
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<AdminClient | null>(null);
   const [adminFor, setAdminFor] = useState<AdminClient | null>(null);
+  // sem SMTP o e-mail não sai: a API devolve o link do convite para repassar
+  const [link, setLink] = useState<{ email: string; link: string } | null>(null);
   if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com o acesso da Locale para ver o Console da Locale." /></Card>;
 
   const reenviar = async (c: AdminClient) => {
     try {
-      const { conviteEnviado } = await adminApi.reenviarConvite(c.id, c.admin_pendente_id!);
-      conviteToast(conviteEnviado, 'Convite reenviado. O link anterior deixou de valer.');
+      const { conviteEnviado, link: l } = await adminApi.reenviarConvite(c.id, c.admin_pendente_id!);
+      if (l) setLink({ email: `o administrador de ${c.name}`, link: l });
+      else conviteToast(conviteEnviado, 'Convite reenviado. O link anterior deixou de valer.');
     } catch (e: any) { toast(e.message || String(e), { tone: 'crit' }); }
   };
 
@@ -59,9 +63,10 @@ export default function Clientes() {
           </Card>
         </Section>
       </PageBody>
-      {creating && <NewClientModal onClose={() => setCreating(false)} onDone={reload} />}
+      {creating && <NewClientModal onClose={() => setCreating(false)} onDone={reload} onLink={setLink} />}
       {renaming && <RenameModal client={renaming} onClose={() => setRenaming(null)} onDone={reload} />}
-      {adminFor && <AdminModal client={adminFor} onClose={() => setAdminFor(null)} onDone={reload} />}
+      {adminFor && <AdminModal client={adminFor} onClose={() => setAdminFor(null)} onDone={reload} onLink={setLink} />}
+      {link && <ConviteLink email={link.email} link={link.link} onClose={() => setLink(null)} />}
     </div>
   );
 }
@@ -87,12 +92,14 @@ function useSubmit<T>(run: () => Promise<T>, after: (r: T) => void, onDone: () =
 
 const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 
-function NewClientModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+type OnLink = (v: { email: string; link: string }) => void;
+
+function NewClientModal({ onClose, onDone, onLink }: { onClose: () => void; onDone: () => void; onLink: OnLink }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const { busy, submit } = useSubmit(
     () => adminApi.createClient({ name: name.trim(), admin: { email: email.trim() } }),
-    (r) => conviteToast(r.conviteEnviado, `Cliente cadastrado. Convite enviado para ${email.trim()}.`),
+    (r) => (r.link ? onLink({ email: email.trim(), link: r.link }) : conviteToast(r.conviteEnviado, `Cliente cadastrado. Convite enviado para ${email.trim()}.`)),
     onDone, onClose,
   );
   return (
@@ -104,11 +111,11 @@ function NewClientModal({ onClose, onDone }: { onClose: () => void; onDone: () =
   );
 }
 
-function AdminModal({ client, onClose, onDone }: { client: AdminClient; onClose: () => void; onDone: () => void }) {
+function AdminModal({ client, onClose, onDone, onLink }: { client: AdminClient; onClose: () => void; onDone: () => void; onLink: OnLink }) {
   const [email, setEmail] = useState('');
   const { busy, submit } = useSubmit(
     () => adminApi.createInitialAdmin(client.id, { email: email.trim() }),
-    (r) => conviteToast(r.conviteEnviado, `Convite enviado para ${email.trim()}.`),
+    (r) => (r.link ? onLink({ email: email.trim(), link: r.link }) : conviteToast(r.conviteEnviado, `Convite enviado para ${email.trim()}.`)),
     onDone, onClose,
   );
   return (

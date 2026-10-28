@@ -8,6 +8,9 @@ import { AuditLogRepository } from '../audit/audit-log.repository';
 import { ActiveUserRepository } from '../auth/active-user.repository';
 import { AuthGuard } from '../auth/auth.guard';
 import { AuthService } from '../auth/auth.service';
+import { ClientsRepository } from '../clients/clients.repository';
+import { ConvitesService } from '../convites/convites.service';
+import type { MailService } from '../mail/mail.service';
 import { UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
 
@@ -19,7 +22,9 @@ import { UsersService } from './users.service';
 describe('UsersService.setAtivo + AuthGuard', () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const repo = new UsersRepository(pool);
-  const service = new UsersService(repo, new AuditLogRepository(pool), pool);
+  const semEmail = { send: async () => false } as unknown as MailService;
+  const convites = new ConvitesService(pool, semEmail, new ActiveUserRepository(pool), new AuditLogRepository(pool));
+  const service = new UsersService(repo, new AuditLogRepository(pool), new ClientsRepository(pool), convites, pool);
   const auth = new AuthService(repo, new ActiveUserRepository(pool));
   const guard = new AuthGuard(new Reflector(), new ActiveUserRepository(pool));
   const senha = 'senha-teste-123';
