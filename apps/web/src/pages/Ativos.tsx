@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { definirMotoristaDoAtivo, desativarMotorista, isRealAsset, removerGrupo, salvarGrupo, salvarMotorista } from '../lib/localleApi';
+import { atualizarPlacaAtivo, criarAtivo, definirMotoristaDoAtivo, desativarMotorista, desinstalarRastreador, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador } from '../lib/localleApi';
+import { backendIdOf } from '../lib/localleMap';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard } from '../components/ui';
 import { couplingsOf, currentCoupling, compositionOf, compositionName, compositionError, setComposition, tractorHistory, TRAILER_TYPE, MAX_ITEMS, type TrailerType } from '@localle/shared/couplings';
 import { Num, StatusDot, AssetName, IdChip, KpiTile, type StatusKind } from '../components/story';
@@ -170,11 +171,16 @@ function ImportPreview({ plan, onClose }: { plan: ImportPlan | null; onClose: ()
 function AssetForm({ a, setA }: any) {
   const s = useStoreData();
   const [msg, setMsg] = useState('');
-  const [imei, setImei] = useState(a.tracker?.imei || '');
-  const [tmodel, setTmodel] = useState(a.tracker?.model || 'GT06');
-  const [iccid, setIccid] = useState(a.tracker?.iccid || '');
+  // rastreadores que a Localle vinculou a esta conta (API); o cliente só escolhe em qual ativo cada um está
+  const [meus, setMeus] = useState<MeuRastreador[] | null>(null);
+  const [erroLista, setErroLista] = useState('');
+  useEffect(() => { meusRastreadores().then(setMeus).catch((e: any) => setErroLista(e.message || String(e))); }, []);
+  const instalado = meus?.find((r) => isRealAsset(a) && r.asset_id === backendIdOf(a.id)) || null;
+  const livres = (meus || []).filter((r) => !r.instalacao_id);
+  const [rid, setRid] = useState('');
+  const [busy, setBusy] = useState(false);
   const [inst, setInst] = useState({ km: '', photo: '', tech: '', calc: false, date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) });
-  const newLink = !!imei && imei !== a.tracker?.imei;
+  const newLink = !!rid && !instalado;
   const instErr = !newLink ? '' : !inst.tech.trim() ? 'Informe o técnico responsável pela instalação.' : inst.calc ? '' : !inst.km ? 'Informe o odômetro inicial do painel.' : !inst.photo ? 'Envie a foto do painel com o odômetro.' : '';
   const isV = a.kind === 'veiculo';
   const set = (k: string, v: any) => setA({ ...a, [k]: v });
@@ -184,16 +190,34 @@ function AssetForm({ a, setA }: any) {
     if (SPECS_DB[a.model]) { setA({ ...a, plate: p, specs: SPECS_DB[a.model], brand: a.brand || MODEL_BRAND[a.model] }); setMsg('Ficha técnica preenchida pelo modelo.'); }
     else setMsg('Escolha o modelo na lista para preencher a ficha técnica, ou preencha manualmente.');
   };
-  const save = () => {
-    const orig = s.assets.find((x: any) => x.id === a.id);
-    const saved = s.upsert('assets', { ...a, driverId: orig ? orig.driverId : '', id: a.id || undefined, plate: a.plate.toUpperCase(), name: a.name || a.plate.toUpperCase(), fuelGoal: +a.fuelGoal || 0, fuelBudget: +a.fuelBudget || 0, kmOffset: +a.kmOffset || 0 });
-    if ((a.driverId || '') !== (orig?.driverId || '')) { if (isRealAsset(saved)) definirMotoristaDoAtivo(saved.id, a.driverId).catch((e: any) => toast('Motorista não gravado: ' + (e.message || e), { tone: 'crit' })); else setDriver(saved.id, a.driverId, 'escala'); }
-    if (newLink) linkTrackerWithInstall(saved.id, { imei, model: tmodel, iccid }, { initialKm: inst.calc ? null : +inst.km, photo: inst.photo, technician: inst.tech.trim(), kmCalculated: inst.calc, installedAt: new Date(inst.date).getTime() });
-    setA(null);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const orig = s.assets.find((x: any) => x.id === a.id);
+      const plate = a.plate.toUpperCase();
+      // o ativo existe na API (é nele que o rastreador é instalado); o que só existia no navegador migra agora
+      let id = a.id;
+      if (!isRealAsset(a)) { id = await criarAtivo(plate); if (a.id) s.remove('assets', a.id); }
+      else if (orig && orig.plate !== plate) await atualizarPlacaAtivo(id, plate);
+      const saved = s.upsert('assets', { ...a, driverId: orig ? orig.driverId : '', id, plate, name: a.name || a.plate.toUpperCase(), fuelGoal: +a.fuelGoal || 0, fuelBudget: +a.fuelBudget || 0, kmOffset: +a.kmOffset || 0 });
+      if ((a.driverId || '') !== (orig?.driverId || '')) { if (isRealAsset(saved)) definirMotoristaDoAtivo(saved.id, a.driverId).catch((e: any) => toast('Motorista não gravado: ' + (e.message || e), { tone: 'crit' })); else setDriver(saved.id, a.driverId, 'escala'); }
+      if (newLink) {
+        const r = livres.find((x) => x.id === rid)!;
+        await instalarRastreador(rid, saved.id, { tecnico: inst.tech.trim(), kmInicial: inst.calc ? null : +inst.km, instaladoEm: new Date(inst.date).getTime() });
+        // foto do painel e km calculado continuam no navegador (a API guarda técnico, data e km inicial)
+        linkTrackerWithInstall(saved.id, { id: r.id, imei: r.imei, model: r.modelo || '', live: true, source: 'localle' }, { initialKm: inst.calc ? null : +inst.km, photo: inst.photo, technician: inst.tech.trim(), kmCalculated: inst.calc, installedAt: new Date(inst.date).getTime() });
+      }
+      await syncFrota();
+      setA(null);
+    } catch (e: any) {
+      toast('Não foi possível salvar o ativo: ' + (e.message || e), { tone: 'crit' });
+    } finally {
+      setBusy(false);
+    }
   };
   const specs = Object.entries<string>(a.specs || {});
   return (
-    <Modal open onClose={() => setA(null)} title={a.id ? a.name : 'Novo ativo'} width="max-w-5xl" footer={<><Button variant="ghost" onClick={() => setA(null)}>Cancelar</Button><Button disabled={!(a.name || a.plate) || !!instErr} onClick={save}>Salvar ativo</Button></>}>
+    <Modal open onClose={() => setA(null)} title={a.id ? a.name : 'Novo ativo'} width="max-w-5xl" footer={<><Button variant="ghost" onClick={() => setA(null)}>Cancelar</Button><Button loading={busy} disabled={!a.plate || !!instErr} onClick={save}>Salvar ativo</Button></>}>
       <div role="group" aria-label="Tipo do ativo" className="flex flex-wrap gap-2">{CATEGORIES.map((ct) => { const on = (a.category || categoryOf(a)) === ct.key; return <button key={ct.key} type="button" aria-pressed={on} onClick={() => { const k = ct.kind; setA({ ...blank(k), ...a, category: ct.key, kind: k, meter: k === a.kind ? a.meter : k === 'veiculo' || k === 'implemento' ? 'km' : k === 'linha_amarela' ? 'horimetro' : 'nenhum', kmSource: k === a.kind ? a.kmSource : blank(k).kmSource }); }} className={cx('flex flex-col items-center gap-tight w-[112px] pt-3 pb-3 rounded-ctl text-caption transition-colors', on ? 'bg-card-2 ring-[1.5px] ring-inset ring-ink text-ink font-medium' : 'border border-line text-ink-2 hover:bg-card-2')}><AssetSilhouette category={ct.key} className="w-14 h-6" />{ct.label}</button>; })}</div>
 
       <div className="flex flex-wrap gap-group">
@@ -269,10 +293,20 @@ function AssetForm({ a, setA }: any) {
           <Dropzone label="Foto do ativo" hint="Aparece no mapa e no detalhe. JPG, PNG ou WebP até 4 MB." value={a.photo} onChange={(d) => set('photo', d)} previewAlt={`Foto de ${a.name || 'ativo'}`} />
           <IconPicker category={a.category || categoryOf(a)} value={a.icon} onChange={(v) => set('icon', v)} />
           <div className="flex flex-col gap-stack border border-line rounded-ctl p-card-sm">
-            <span className="text-small font-semibold">Rastreador vinculado</span>
-            <Field label="IMEI"><Input className="font-mono" value={imei} onChange={(e) => setImei(e.target.value.replace(/\D/g, '').slice(0, 15))} placeholder="15 dígitos" /></Field>
-            <Field label="Modelo / protocolo"><Select value={tmodel} onChange={(e) => setTmodel(e.target.value)} options={['GT06', 'Teltonika FMC130', 'Suntech ST310U', 'Queclink GV300', 'IoT LoRa Tag']} /></Field>
-            <Field label="Chip (ICCID)"><Input value={iccid} onChange={(e) => setIccid(e.target.value)} /></Field>
+            <span className="text-small font-semibold">Rastreador</span>
+            {instalado ? (
+              <div className="flex flex-col gap-hair">
+                <IdChip size="sm">{instalado.imei}</IdChip>
+                <span className="text-small">{instalado.modelo || 'Modelo não informado'}{instalado.protocolo ? ` · ${instalado.protocolo}` : ''}</span>
+                <span className="text-caption text-ink-2">Instalado em {fmtD(Date.parse(instalado.instalado_em!))} · último sinal {instalado.ultimo_pacote_em ? fmtDT(Date.parse(instalado.ultimo_pacote_em)) : 'ainda não recebido'}</span>
+              </div>
+            ) : meus === null ? (
+              erroLista ? <p role="alert" className="text-small text-crit-ink">Não foi possível carregar os rastreadores: {erroLista}</p> : <p className="text-small text-ink-2">Carregando rastreadores…</p>
+            ) : livres.length ? (
+              <Field label="Rastreador disponível"><Select value={rid} onChange={(e) => setRid(e.target.value)} options={[{ value: '', label: 'Sem rastreador' }, ...livres.map((r) => ({ value: r.id, label: `${r.imei} · ${r.modelo || 'modelo não informado'}` }))]} /></Field>
+            ) : (
+              <p className="text-small text-ink-2">Nenhum rastreador disponível. Os rastreadores são vinculados à sua conta pela Localle; fale com ela para incluir um.</p>
+            )}
             <Check label="Rastreador lê dados CAN (telemetria: RPM, banguela, consumo)" checked={!!a.can} onChange={(v) => set('can', v)} />
             {newLink && (
               <div className="flex flex-col gap-stack border-t border-line pt-stack">
@@ -288,7 +322,7 @@ function AssetForm({ a, setA }: any) {
                 <p className="text-caption text-ink-2 bg-card-2 border border-line rounded-btn p-stack">Ao salvar, este vínculo consome 1 acesso da licença da sua central.</p>
               </div>
             )}
-            {a.tracker && a.id && <TextButton tone="danger" className="self-start" onClick={async () => { if (await confirmAction({ title: 'Retirar o rastreador?', detail: `O rastreador ${a.tracker.imei} sai de ${a.name}, volta ao estoque e deixa de consumir acesso.`, confirmLabel: 'Retirar' })) { unlinkTracker(a.id, 'retirado'); toast('Rastreador retirado e devolvido ao estoque.'); setA(null); } }}>Retirar rastreador</TextButton>}
+            {instalado && <TextButton tone="danger" className="self-start" onClick={async () => { if (!(await confirmAction({ title: 'Retirar o rastreador?', detail: `O rastreador ${instalado.imei} sai de ${a.name} e fica disponível para outro ativo da sua conta.`, confirmLabel: 'Retirar' }))) return; try { await desinstalarRastreador(instalado.instalacao_id!); unlinkTracker(a.id, 'retirado'); toast('Rastreador retirado; está disponível para outro ativo.'); setA(null); } catch (e: any) { toast('Não foi possível retirar: ' + (e.message || e), { tone: 'crit' }); } }}>Retirar rastreador</TextButton>}
             {a.tracker && <p className="text-caption text-ink-2">Vinculado desde {fmtD(a.tracker.linkedAt)}{a.installation ? ` · instalado por ${a.installation.technician}` : ''}{a.kmCalculated ? ' · km calculado' : a.installation?.initialKm != null ? ` · odômetro inicial ${num(a.installation.initialKm)} km` : ''}</p>}
           </div>
           {a.id && <TrackerHistory assetId={a.id} />}

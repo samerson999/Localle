@@ -11,6 +11,10 @@ export interface CurrentPositionRow {
   speed_kmh: number | null;
   ignition: boolean | null;
   rastreador_id: string | null;
+  instalacao_id: string | null;
+  imei: string | null;
+  modelo: string | null;
+  instalado_em: Date | null;
   ultimo_pacote_em: Date | null;
   ultima_posicao_valida_em: Date | null;
 }
@@ -58,7 +62,7 @@ export class MonitoringRepository {
          v.fix_time,
          st_x(v.geom) as longitude, st_y(v.geom) as latitude,
          v.speed_kmh, v.ignition,
-         i.rastreador_id,
+         i.rastreador_id, i.id as instalacao_id, r.imei, r.modelo, i.instalado_em,
          -- pacote anterior à instalação vigente pertence ao ativo anterior (mesma regra da view)
          case when rc.ultimo_pacote_em >= i.instalado_em then rc.ultimo_pacote_em end as ultimo_pacote_em,
          case when rc.ultima_posicao_valida_em >= i.instalado_em then rc.ultima_posicao_valida_em end
@@ -67,6 +71,7 @@ export class MonitoringRepository {
        left join v_localizacao_atual v on v.asset_id = a.id
        left join instalacoes i
          on i.asset_id = a.id and i.client_id = a.client_id and i.papel = 'principal' and i.desinstalado_em is null
+       left join rastreadores r on r.id = i.rastreador_id
        left join rastreador_comunicacao rc on rc.rastreador_id = i.rastreador_id
        where a.client_id = $1 and a.status = 'ativo'
        order by a.plate`,

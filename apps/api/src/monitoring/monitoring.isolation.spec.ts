@@ -92,9 +92,13 @@ describe('monitoramento — frota atual e histórico', () => {
     const comPosicao = rows.find((r) => r.asset_id === assetComPosicao);
     expect(comPosicao?.fix_time).not.toBeNull();
     expect(comPosicao?.latitude).toBeCloseTo(-8.05, 2);
+    // rastreador da instalação vigente: a Gestão de ativos mostra IMEI e instalação sem outra chamada
+    expect(comPosicao).toMatchObject({ rastreador_id: rastreadorId, imei: expect.any(String) });
+    expect(comPosicao?.instalacao_id).toEqual(expect.any(String));
 
     const aguardando = rows.find((r) => r.asset_id === assetAguardando);
     expect(aguardando?.fix_time).toBeNull();
+    expect(aguardando).toMatchObject({ rastreador_id: null, imei: null, instalacao_id: null });
     expect(aguardando?.latitude).toBeNull();
   });
 

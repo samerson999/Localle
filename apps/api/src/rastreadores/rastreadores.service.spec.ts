@@ -7,6 +7,7 @@ import { AuditLogRepository } from '../audit/audit-log.repository';
 import { TraccarClient, type TraccarConfig, type TraccarDevice } from '../ingest/traccar-client';
 import { InstalacoesRepository } from './instalacoes.repository';
 import { RastreadoresRepository } from './rastreadores.repository';
+import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
 import { RastreadoresService } from './rastreadores.service';
 import { SimCardsRepository } from './sim-cards.repository';
 
@@ -45,9 +46,12 @@ describe('RastreadoresService', () => {
   const assetsRepo = new AssetsRepository(pool);
   const audit = new AuditLogRepository(pool);
   const traccar = new FakeTraccar();
-  const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, assetsRepo, audit, pool, traccar);
+  const vinculosRepo = new RastreadorVinculosRepository(pool);
+  const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, vinculosRepo, assetsRepo, audit, pool, traccar);
 
   const superadminId = randomUUID();
+  const sa = { type: 'superadmin' as const, id: superadminId };
+  const usuarioCliente = { type: 'user' as const, id: randomUUID() };
   let clientA: string;
   let clientB: string;
   const rastreadoresCriados: string[] = [];
@@ -79,6 +83,7 @@ describe('RastreadoresService', () => {
     for (const rastreadorId of rastreadoresCriados) {
       await pool.query('delete from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
       await pool.query('delete from instalacoes where rastreador_id = $1', [rastreadorId]);
+      await pool.query('delete from rastreador_vinculos where rastreador_id = $1', [rastreadorId]);
     }
     for (const simCardId of simCardsCriados) {
       await pool.query('delete from sim_cards where id = $1', [simCardId]);
@@ -86,7 +91,7 @@ describe('RastreadoresService', () => {
     for (const rastreadorId of rastreadoresCriados) {
       await pool.query('delete from rastreadores where id = $1', [rastreadorId]);
     }
-    await pool.query("delete from audit_log where actor_id = $1", [superadminId]);
+    await pool.query('delete from audit_log where actor_id in ($1, $2)', [superadminId, usuarioCliente.id]);
     await pool.query('delete from clients where id in ($1, $2)', [clientA, clientB]);
     await pool.end();
   });
@@ -95,81 +100,142 @@ describe('RastreadoresService', () => {
     return randomUUID().replace(/-/g, '').slice(0, 15);
   }
 
+  /** Rastreador cadastrado e já vinculado ao cliente (pré-requisito de instalar). */
+  async function vinculadoA(clientId: string) {
+    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    rastreadoresCriados.push(rastreador.id);
+    await service.vincular(superadminId, clientId, rastreador.id);
+    return rastreador;
+  }
+
   it('cadastra rastreador com status inicial "cadastrado"', async () => {
     const criado = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
     rastreadoresCriados.push(criado.id);
     expect(criado.status).toBe('cadastrado');
   });
 
-  it('instala rastreador num ativo do cliente, muda status para "ativo" e audita', async () => {
+  it('vincula rastreador a um cliente e audita; não vincula de novo nem a outro cliente sem desvincular', async () => {
     const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
 
+    const vinculo = await service.vincular(superadminId, clientA, rastreador.id);
+    expect(vinculo).toMatchObject({ client_id: clientA, rastreador_id: rastreador.id, desvinculado_em: null });
+    const { rows } = await pool.query("select client_id from audit_log where action = 'rastreador.vincular' and target = $1", [rastreador.id]);
+    expect(rows).toEqual([{ client_id: clientA }]);
+
+    await expect(service.vincular(superadminId, clientA, rastreador.id)).rejects.toThrow(/já está vinculado a este cliente/);
+    await expect(service.vincular(superadminId, clientB, rastreador.id)).rejects.toThrow(/vinculado a outro cliente/);
+  });
+
+  it('vincular a cliente inexistente responde 404, sem deixar vínculo', async () => {
+    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    rastreadoresCriados.push(rastreador.id);
+    await expect(service.vincular(superadminId, randomUUID(), rastreador.id)).rejects.toThrow(/Cliente não encontrado/);
+    expect(await vinculosRepo.vigentePorRastreador(rastreador.id)).toBeNull();
+  });
+
+  it('sob concorrência real, só um de dois vínculos simultâneos do mesmo rastreador vence', async () => {
+    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    rastreadoresCriados.push(rastreador.id);
+    const resultados = await Promise.allSettled([
+      service.vincular(superadminId, clientA, rastreador.id),
+      service.vincular(superadminId, clientB, rastreador.id),
+    ]);
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(resultados.filter((r) => r.status === 'rejected')).toHaveLength(1);
+  });
+
+  it('cliente instala rastreador vinculado a ele num ativo dele: status "ativo" e auditoria com o usuário', async () => {
+    const rastreador = await vinculadoA(clientA);
     const assetId = await novoAsset(clientA);
-    const instalacao = await service.instalar(superadminId, clientA, rastreador.id, {
-      assetId,
-      tecnico: 'teste',
-    });
-    expect(instalacao.client_id).toBe(clientA);
-    expect(instalacao.asset_id).toBe(assetId);
+    const instalacao = await service.instalar(usuarioCliente, clientA, rastreador.id, { assetId, tecnico: 'teste' });
+    expect(instalacao).toMatchObject({ client_id: clientA, asset_id: assetId });
 
     const atualizado = await rastreadoresRepo.findById(rastreador.id);
     expect(atualizado?.status).toBe('ativo');
 
     const { rows } = await pool.query(
-      `select * from audit_log where action = 'rastreador.instalar' and target = $1`,
+      "select actor_type, actor_id, client_id from audit_log where action = 'rastreador.instalar' and target = $1",
       [rastreador.id],
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].client_id).toBe(clientA);
+    expect(rows).toEqual([{ actor_type: 'user', actor_id: usuarioCliente.id, client_id: clientA }]);
+  });
+
+  it('não instala rastreador sem vínculo nem vinculado a outro cliente (404, nada gravado)', async () => {
+    const solto = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    rastreadoresCriados.push(solto.id);
+    const deA = await vinculadoA(clientA);
+    const assetB = await novoAsset(clientB);
+
+    await expect(service.instalar(usuarioCliente, clientB, solto.id, { assetId: assetB, tecnico: 'teste' })).rejects.toThrow(/não está vinculado/);
+    await expect(service.instalar(usuarioCliente, clientB, deA.id, { assetId: assetB, tecnico: 'teste' })).rejects.toThrow(/não está vinculado/);
+    expect(await instalacoesRepo.findAtivaPorRastreador(solto.id)).toBeNull();
+    expect(await instalacoesRepo.findAtivaPorRastreador(deA.id)).toBeNull();
+  });
+
+  it('não instala rastreador do cliente em ativo de outro cliente', async () => {
+    const rastreador = await vinculadoA(clientA);
+    const assetB = await novoAsset(clientB);
+    await expect(service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: assetB, tecnico: 'teste' })).rejects.toThrow(/Ativo não encontrado/);
   });
 
   it('rejeita instalar o mesmo rastreador em outro ativo enquanto a instalação atual está vigente', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
-    rastreadoresCriados.push(rastreador.id);
-    const assetId1 = await novoAsset(clientA);
-    const assetId2 = await novoAsset(clientB);
-    await service.instalar(superadminId, clientA, rastreador.id, { assetId: assetId1, tecnico: 'teste' });
-
+    const rastreador = await vinculadoA(clientA);
+    await service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });
     await expect(
-      service.instalar(superadminId, clientB, rastreador.id, { assetId: assetId2, tecnico: 'teste' }),
+      service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' }),
     ).rejects.toThrow(/já tem uma instalação vigente/i);
   });
 
   it('sob concorrência real, só uma de duas instalações simultâneas do mesmo rastreador vence', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
-    rastreadoresCriados.push(rastreador.id);
-    const assetId1 = await novoAsset(clientA);
-    const assetId2 = await novoAsset(clientB);
-
+    const rastreador = await vinculadoA(clientA);
+    const [assetId1, assetId2] = [await novoAsset(clientA), await novoAsset(clientA)];
     const resultados = await Promise.allSettled([
-      service.instalar(superadminId, clientA, rastreador.id, { assetId: assetId1, tecnico: 'teste-concorrencia-1' }),
-      service.instalar(superadminId, clientB, rastreador.id, { assetId: assetId2, tecnico: 'teste-concorrencia-2' }),
+      service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: assetId1, tecnico: 'teste-concorrencia-1' }),
+      service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: assetId2, tecnico: 'teste-concorrencia-2' }),
     ]);
-
-    const sucesso = resultados.filter((r) => r.status === 'fulfilled');
-    const falha = resultados.filter((r) => r.status === 'rejected');
-    expect(sucesso).toHaveLength(1);
-    expect(falha).toHaveLength(1);
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(resultados.filter((r) => r.status === 'rejected')).toHaveLength(1);
   });
 
   it('desinstala e devolve o rastreador para status "cadastrado"', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
-    rastreadoresCriados.push(rastreador.id);
-    const assetId = await novoAsset(clientA);
-    const instalacao = await service.instalar(superadminId, clientA, rastreador.id, {
-      assetId,
-      tecnico: 'teste',
-    });
+    const rastreador = await vinculadoA(clientA);
+    const instalacao = await service.instalar(sa, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });
 
-    const desinstalada = await service.desinstalar(superadminId, instalacao.id);
+    const desinstalada = await service.desinstalar(sa, instalacao.id);
     expect(desinstalada.desinstalado_em).not.toBeNull();
+    expect((await rastreadoresRepo.findById(rastreador.id))?.status).toBe('cadastrado');
+    expect(await service.historicoInstalacoes(rastreador.id)).toHaveLength(1);
+  });
 
-    const atualizado = await rastreadoresRepo.findById(rastreador.id);
-    expect(atualizado?.status).toBe('cadastrado');
+  it('cliente só desinstala instalação dele (outra responde 404 e continua vigente)', async () => {
+    const rastreador = await vinculadoA(clientA);
+    const instalacao = await service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });
 
-    const historico = await service.historicoInstalacoes(rastreador.id);
-    expect(historico).toHaveLength(1);
+    await expect(service.desinstalar(usuarioCliente, instalacao.id, clientB)).rejects.toThrow(/não encontrada/);
+    expect(await instalacoesRepo.findAtivaPorRastreador(rastreador.id)).not.toBeNull();
+
+    const desinstalada = await service.desinstalar(usuarioCliente, instalacao.id, clientA);
+    expect(desinstalada.desinstalado_em).not.toBeNull();
+  });
+
+  it('não desvincula rastreador instalado; desinstalado, desvincula e o cliente não instala mais', async () => {
+    const rastreador = await vinculadoA(clientA);
+    const instalacao = await service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });
+
+    await expect(service.desvincular(superadminId, rastreador.id)).rejects.toThrow(/desinstale antes/);
+    await service.desinstalar(usuarioCliente, instalacao.id, clientA);
+    const encerrado = await service.desvincular(superadminId, rastreador.id);
+    expect(encerrado.desvinculado_em).not.toBeNull();
+    await expect(service.desvincular(superadminId, rastreador.id)).rejects.toThrow(/não está vinculado/);
+
+    await expect(
+      service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' }),
+    ).rejects.toThrow(/não está vinculado/);
+    // desvinculado, pode ir para outro cliente (o histórico do primeiro fica)
+    await service.vincular(superadminId, clientB, rastreador.id);
+    const { rows } = await pool.query('select client_id from rastreador_vinculos where rastreador_id = $1 order by vinculado_em', [rastreador.id]);
+    expect(rows.map((r) => r.client_id)).toEqual([clientA, clientB]);
   });
 
   it('cadastra chip, vincula a um rastreador e marca ativo', async () => {
@@ -261,32 +327,30 @@ describe('RastreadoresService', () => {
     expect(rows[0]).toEqual({ before: { modelo: 'GT06', protocolo: null }, after: { modelo: 'GT06', protocolo: 'gt06' } });
   });
 
-  it('não desativa rastreador com instalação vigente; desinstalado, desativa e libera o IMEI para recadastro', async () => {
+  it('não desativa rastreador instalado nem vinculado; desinstalado e desvinculado, desativa e libera o IMEI', async () => {
     const imei = novoImei();
     const rastreador = await service.cadastrarRastreador(superadminId, { imei });
     rastreadoresCriados.push(rastreador.id);
-    const instalacao = await service.instalar(superadminId, clientA, rastreador.id, {
-      assetId: await novoAsset(clientA),
-      tecnico: 'teste',
-    });
+    await service.vincular(superadminId, clientA, rastreador.id);
+    const instalacao = await service.instalar(sa, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });
 
     await expect(service.desativar(superadminId, rastreador.id)).rejects.toThrow(/instalação vigente/);
-
-    await service.desinstalar(superadminId, instalacao.id);
-    const desativado = await service.desativar(superadminId, rastreador.id);
-    expect(desativado.status).toBe('desativado');
+    await service.desinstalar(sa, instalacao.id);
+    await expect(service.desativar(superadminId, rastreador.id)).rejects.toThrow(/desvincule antes/);
+    await service.desvincular(superadminId, rastreador.id);
+    expect((await service.desativar(superadminId, rastreador.id)).status).toBe('desativado');
 
     const recadastrado = await service.cadastrarRastreador(superadminId, { imei });
     rastreadoresCriados.push(recadastrado.id);
     expect(recadastrado.id).not.toBe(rastreador.id);
   });
 
-  it('findAllPainel traz instalação vigente, chip e cliente; sem instalação vigente, campos nulos', async () => {
-    const instalado = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+  it('findAllPainel traz cliente do vínculo, instalação vigente e chip; sem vínculo, campos nulos', async () => {
+    const instalado = await vinculadoA(clientA);
     const livre = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
-    rastreadoresCriados.push(instalado.id, livre.id);
+    rastreadoresCriados.push(livre.id);
     const assetId = await novoAsset(clientA);
-    const instalacao = await service.instalar(superadminId, clientA, instalado.id, { assetId, tecnico: 'teste' });
+    const instalacao = await service.instalar(sa, clientA, instalado.id, { assetId, tecnico: 'teste' });
     const chip = await simCardsRepo.create({ iccid: `8955${randomUUID().replace(/-/g, '').slice(0, 15)}`, operadora: 'Vivo' });
     simCardsCriados.push(chip.id);
     await simCardsRepo.vincular(chip.id, instalado.id);
@@ -296,12 +360,17 @@ describe('RastreadoresService', () => {
     const b = painel.find((r) => r.id === livre.id);
     expect(a).toMatchObject({ instalacao_id: instalacao.id, client_id: clientA, asset_id: assetId, sim_card_id: chip.id, operadora: 'Vivo' });
     expect(a?.client_name).toMatch(/^teste-rastreadores-a-/);
-    expect(b).toMatchObject({ instalacao_id: null, client_id: null, sim_card_id: null });
+    expect(b).toMatchObject({ vinculo_id: null, instalacao_id: null, client_id: null, sim_card_id: null });
 
-    // desinstalado: sai do cliente, continua no inventário (uma linha só, sem duplicar pelo histórico)
-    await service.desinstalar(superadminId, instalacao.id);
-    const depois = (await rastreadoresRepo.findAllPainel()).filter((r) => r.id === instalado.id);
+    // desinstalado: continua do cliente (vínculo), sem ativo; uma linha só, sem duplicar pelo histórico
+    await service.desinstalar(sa, instalacao.id);
+    let depois = (await rastreadoresRepo.findAllPainel()).filter((r) => r.id === instalado.id);
     expect(depois).toHaveLength(1);
-    expect(depois[0].client_id).toBeNull();
+    expect(depois[0]).toMatchObject({ client_id: clientA, instalacao_id: null, asset_id: null });
+
+    // desvinculado: sai do cliente
+    await service.desvincular(superadminId, instalado.id);
+    depois = (await rastreadoresRepo.findAllPainel()).filter((r) => r.id === instalado.id);
+    expect(depois[0]).toMatchObject({ vinculo_id: null, client_id: null });
   });
 });

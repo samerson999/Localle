@@ -386,6 +386,16 @@ create unique index rastreadores_imei_ativo_uidx
 entre rastreadores não desativados (um IMEI pode ser reaproveitado depois de desativado — troca de chip físico no
 mesmo rastreador acontece, mas dois registros ativos com o mesmo IMEI é sempre erro de cadastro).
 
+**Revisão de 28/10/2026 — vínculo rastreador × cliente (`rastreador_vinculos`, migration `1793090000000`)**: decisão de
+produto do Samerson. A Locale cadastra o rastreador no painel e o **vincula a um cliente** — inclusive aparelho do
+próprio cliente —; o cliente **só vê os rastreadores vinculados a ele** e indica em qual ativo cada um está
+(Gestão de ativos → `POST /rastreadores/:id/instalar`). O dono num dado momento passa a ser o vínculo vigente em
+`rastreador_vinculos` (`client_id`, `vinculado_em`, `desvinculado_em`, com exclusion constraint contra dois
+vínculos simultâneos do mesmo rastreador), não mais deduzido da instalação. Regras: instalar exige vínculo vigente
+com o mesmo cliente (conferido com `for update` na transação); desvincular exige não haver instalação vigente;
+desativar exige não haver vínculo. Instalações vigentes anteriores viraram vínculos no backfill da migration.
+`rastreadores` continua sem `client_id`.
+
 ### 4.2 `instalacoes` (histórico veículo × rastreador, substitui/estende `tracker_installations`)
 
 **Revisão de 23/10/2026 (segunda passada)**: a versão anterior só impedia sobreposição do **mesmo rastreador** em

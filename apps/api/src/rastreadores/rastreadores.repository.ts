@@ -6,7 +6,7 @@ import type { RastreadorEntity, RastreadorPainel } from './rastreador.entity';
 
 /**
  * `rastreadores` não tem `client_id` (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 4.1: o dono num dado
- * momento é resolvido via `instalacoes`, nunca fixo aqui) — por isso este repositório não estende
+ * momento é o vínculo vigente em `rastreador_vinculos`, nunca fixo aqui) — por isso este repositório não estende
  * `BaseRepository`, mesmo raciocínio de `ClientsRepository`. Só a camada administrativa (superadmin)
  * acessa esta tabela diretamente.
  */
@@ -22,19 +22,20 @@ export class RastreadoresRepository {
   }
 
   /**
-   * Visão do inventário para o Painel da Locale: cada rastreador com a instalação vigente (cliente e
-   * placa), o chip vinculado e o último pacote recebido. Cruza clientes de propósito — rota só de superadmin.
+   * Visão do inventário para o Painel da Locale: cada rastreador com o cliente do vínculo vigente, a
+   * instalação vigente (placa), o chip vinculado e o último pacote recebido. Cruza clientes de propósito — rota só de superadmin.
    */
   async findAllPainel(): Promise<RastreadorPainel[]> {
     const { rows } = await this.pool.query<RastreadorPainel>(
       `select r.*,
-              i.id as instalacao_id, i.client_id, c.name as client_name, i.asset_id, a.plate as asset_plate,
-              i.instalado_em,
+              v.id as vinculo_id, v.client_id, c.name as client_name, v.vinculado_em,
+              i.id as instalacao_id, i.asset_id, a.plate as asset_plate, i.instalado_em,
               s.id as sim_card_id, s.iccid, s.operadora,
               rc.ultimo_pacote_em
          from rastreadores r
+         left join rastreador_vinculos v on v.rastreador_id = r.id and v.desvinculado_em is null
+         left join clients c on c.id = v.client_id
          left join instalacoes i on i.rastreador_id = r.id and i.desinstalado_em is null
-         left join clients c on c.id = i.client_id
          left join assets a on a.id = i.asset_id
          left join sim_cards s on s.rastreador_id = r.id
          left join rastreador_comunicacao rc on rc.rastreador_id = r.id

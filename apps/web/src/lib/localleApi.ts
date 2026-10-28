@@ -173,7 +173,8 @@ export interface Saude {
 export interface AdminRastreador {
   id: string; imei: string; modelo: string | null; protocolo: string | null; status: 'cadastrado' | 'ativo' | 'desativado';
   traccar_device_id: string | null; criado_em: string;
-  instalacao_id: string | null; client_id: string | null; client_name: string | null; asset_plate: string | null; instalado_em: string | null;
+  vinculo_id: string | null; client_id: string | null; client_name: string | null; vinculado_em: string | null;
+  instalacao_id: string | null; asset_plate: string | null; instalado_em: string | null;
   sim_card_id: string | null; iccid: string | null; operadora: string | null; ultimo_pacote_em: string | null;
 }
 export interface AdminSimCard { id: string; iccid: string; operadora: string | null; numero: string | null; status: string; rastreador_id: string | null }
@@ -199,6 +200,8 @@ export const adminApi = {
   createRastreador: (body: { imei: string; modelo?: string }) => apiSend('POST', '/superadmin/rastreadores', body),
   desativarRastreador: (id: string) => apiSend('POST', `/superadmin/rastreadores/${id}/desativar`),
   desinstalar: (instalacaoId: string) => apiSend('POST', `/superadmin/rastreadores/instalacoes/${instalacaoId}/desinstalar`),
+  vincularCliente: (id: string, clientId: string) => apiSend('POST', `/superadmin/rastreadores/${id}/vincular/${clientId}`),
+  desvincularCliente: (id: string) => apiSend('POST', `/superadmin/rastreadores/${id}/desvincular`),
   simCards: () => apiGet<AdminSimCard[]>('/superadmin/rastreadores/sim-cards/all'),
   createSimCard: (body: { iccid: string; operadora?: string; numero?: string }) => apiSend('POST', '/superadmin/rastreadores/sim-cards', body),
   vincularSimCard: (simCardId: string, rastreadorId: string) => apiSend('POST', `/superadmin/rastreadores/sim-cards/${simCardId}/vincular/${rastreadorId}`),
@@ -206,6 +209,33 @@ export const adminApi = {
   equipe: () => apiGet<{ id: string; email: string; created_at: string }[]>('/superadmin/equipe'),
   auditoria: () => apiGet<AdminAuditEntry[]>('/superadmin/auditoria'),
 };
+
+// ---------- rastreadores do cliente (apps/api/src/rastreadores/rastreadores-cliente.controller.ts) ----------
+// A Locale vincula o rastreador ao cliente; o cliente só escolhe em qual ativo ele está.
+export interface MeuRastreador {
+  id: string; imei: string; modelo: string | null; protocolo: string | null; vinculado_em: string;
+  instalacao_id: string | null; asset_id: string | null; asset_plate: string | null; instalado_em: string | null; ultimo_pacote_em: string | null;
+}
+export const meusRastreadores = () => apiGet<MeuRastreador[]>('/rastreadores');
+export async function instalarRastreador(rastreadorId: string, assetId: string, inst: { tecnico: string; kmInicial?: number | null; instaladoEm?: number }) {
+  await apiSend('POST', `/rastreadores/${rastreadorId}/instalar`, {
+    assetId: backendIdOf(assetId), tecnico: inst.tecnico, kmInicial: inst.kmInicial ?? undefined,
+    instaladoEm: inst.instaladoEm ? new Date(inst.instaladoEm).toISOString() : undefined,
+  });
+  await syncFrota();
+}
+export async function desinstalarRastreador(instalacaoId: string) {
+  await apiSend('POST', `/rastreadores/instalacoes/${instalacaoId}/desinstalar`);
+  await syncFrota();
+}
+export async function atualizarPlacaAtivo(assetId: string, plate: string) {
+  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { plate });
+}
+/** Ativo novo nasce na API (é nele que o rastreador é instalado); devolve o id do store (lc_…). */
+export async function criarAtivo(plate: string): Promise<string> {
+  const a = await apiSend<{ id: string }>('POST', '/assets', { plate });
+  return assetIdFor(a.id);
+}
 
 /** Carga simples para as telas do painel: dado, erro e recarregar. */
 export function useAdminQuery<T>(load: () => Promise<T>, deps: unknown[] = []) {

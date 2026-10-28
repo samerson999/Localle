@@ -1,11 +1,8 @@
 import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
-import { parseDate } from '../common/parse-date';
-import { parseUuid } from '../common/parse-uuid';
 import { SuperadminGuard } from '../auth/superadmin.guard';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { CreateRastreadorDto } from './dto/create-rastreador.dto';
 import { CreateSimCardDto } from './dto/create-sim-card.dto';
-import { InstalarRastreadorDto } from './dto/instalar-rastreador.dto';
 import { parseUpdateRastreador, type UpdateRastreadorDto } from './dto/update-rastreador.dto';
 import { RastreadoresRepository } from './rastreadores.repository';
 import { RastreadoresService } from './rastreadores.service';
@@ -13,8 +10,8 @@ import { SimCardsRepository } from './sim-cards.repository';
 
 /**
  * Cadastro/vínculo de rastreadores e chips é inventário da Locale (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md
- * § 4.1) — rota exclusiva de superadmin, nunca do gestor de frota do cliente. Instalar/desinstalar afeta
- * um cliente específico, sempre com `clientId` explícito no path (mesmo requisito de `SuperadminController`).
+ * § 4.1) — rota exclusiva de superadmin. Vincular a um cliente leva `clientId` explícito no path (mesmo
+ * requisito de `SuperadminController`); instalar no ativo é do próprio cliente (rastreadores-cliente.controller).
  */
 @Controller('superadmin/rastreadores')
 @UseGuards(SuperadminGuard)
@@ -61,26 +58,24 @@ export class RastreadoresController {
     return this.service.desativar(superadminId, id);
   }
 
-  @Post(':id/instalar/:clientId')
-  instalar(
+  /** Rastreador passa a ser do cliente; quem escolhe o ativo é o próprio cliente (rastreadores-cliente.controller). */
+  @Post(':id/vincular/:clientId')
+  vincular(
     @CurrentUserId() superadminId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: InstalarRastreadorDto,
   ) {
-    return this.service.instalar(superadminId, clientId, id, {
-      assetId: parseUuid('assetId', dto?.assetId),
-      tecnico: dto.tecnico,
-      papel: dto.papel,
-      instaladoEm: dto.instaladoEm ? parseDate('instaladoEm', dto.instaladoEm) : undefined,
-      kmInicial: dto.kmInicial,
-      foto: dto.foto,
-    });
+    return this.service.vincular(superadminId, clientId, id);
+  }
+
+  @Post(':id/desvincular')
+  desvincular(@CurrentUserId() superadminId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.desvincular(superadminId, id);
   }
 
   @Post('instalacoes/:instalacaoId/desinstalar')
   desinstalar(@CurrentUserId() superadminId: string, @Param('instalacaoId', ParseUUIDPipe) instalacaoId: string) {
-    return this.service.desinstalar(superadminId, instalacaoId);
+    return this.service.desinstalar({ type: 'superadmin', id: superadminId }, instalacaoId);
   }
 
   @Post('sim-cards')

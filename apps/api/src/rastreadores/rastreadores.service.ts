@@ -18,14 +18,23 @@ import type { RastreadorEntity } from './rastreador.entity';
 import { RastreadoresRepository } from './rastreadores.repository';
 import type { SimCardEntity } from './sim-card.entity';
 import { SimCardsRepository } from './sim-cards.repository';
+import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
+import type { RastreadorVinculoEntity } from './rastreador-vinculo.entity';
 import { isPgError, PG_EXCLUSION_VIOLATION, UNIQUE, violouUnique } from '../db/pg-errors';
+
+/** Quem executa: superadmin (Painel da Locale) ou usuário do próprio cliente (Gestão de ativos). */
+export interface Ator {
+  type: 'superadmin' | 'user';
+  id: string;
+}
+const PG_FK_VIOLATION = '23503';
 
 
 /**
- * Orquestra o domínio de rastreadores/SIM cards (inventário da Locale, cedido em comodato) e o vínculo
- * com o ativo do cliente (`instalacoes`). Mutação + auditoria sempre na mesma transação, mesmo padrão de
- * `SuperadminClientsService` — quem chama é sempre o superadmin, nunca o cliente (rastreador e chip não
- * são recurso do cliente, só o vínculo vigente é visível para ele via monitoramento/relatórios).
+ * Orquestra o domínio de rastreadores/SIM cards e seus dois vínculos: rastreador × cliente
+ * (`rastreador_vinculos`, feito só pelo superadmin) e rastreador × ativo (`instalacoes`, feito pelo
+ * próprio cliente, ou pelo superadmin, e só com rastreador vinculado a esse cliente). Mutação + auditoria
+ * sempre na mesma transação, mesmo padrão de `SuperadminClientsService`.
  */
 @Injectable()
 export class RastreadoresService {
@@ -35,6 +44,7 @@ export class RastreadoresService {
     private readonly rastreadores: RastreadoresRepository,
     private readonly simCards: SimCardsRepository,
     private readonly instalacoes: InstalacoesRepository,
+    private readonly vinculos: RastreadorVinculosRepository,
     private readonly assets: AssetsRepository,
     private readonly audit: AuditLogRepository,
     @Inject(PG_POOL) private readonly pool: Pool,
@@ -75,9 +85,13 @@ export class RastreadoresService {
     });
   }
 
-  /** Vínculo rastreador × ativo de um cliente. `clientId` explícito, nunca inferido. */
+  /**
+   * Rastreador × ativo do cliente. `clientId` explícito (do path para superadmin, do JWT para o cliente),
+   * nunca inferido. Só com vínculo vigente do rastreador com ESSE cliente — travado na transação, para não
+   * correr com um desvincular simultâneo. Rastreador de outro cliente responde 404, sem revelar que existe.
+   */
   async instalar(
-    superadminId: string,
+    ator: Ator,
     clientId: string,
     rastreadorId: string,
     data: {
@@ -90,13 +104,16 @@ export class RastreadoresService {
     },
   ): Promise<InstalacaoEntity> {
     const rastreador = await this.rastreadores.findById(rastreadorId);
-    if (!rastreador) throw new NotFoundException('Rastreador não encontrado');
+    if (!rastreador || rastreador.status === 'desativado') throw new NotFoundException('Rastreador não encontrado');
 
     const asset = await this.assets.findOne(clientId, { id: data.assetId });
     if (!asset) throw new NotFoundException('Ativo não encontrado para este cliente');
 
     try {
       return await withTransaction(this.pool, async (client) => {
+        if (!(await this.vinculos.vigenteDoCliente(clientId, rastreadorId, client))) {
+          throw new NotFoundException('Rastreador não está vinculado a este cliente');
+        }
         const instalacao = await this.instalacoes.instalar(
           clientId,
           {
@@ -113,8 +130,8 @@ export class RastreadoresService {
         await this.rastreadores.updateStatus(rastreadorId, 'ativo', client);
         await this.audit.record(
           {
-            actorType: 'superadmin',
-            actorId: superadminId,
+            actorType: ator.type,
+            actorId: ator.id,
             clientId,
             action: 'rastreador.instalar',
             target: rastreadorId,
@@ -134,15 +151,19 @@ export class RastreadoresService {
     }
   }
 
-  async desinstalar(superadminId: string, instalacaoId: string): Promise<InstalacaoEntity> {
+  /** `clientId` só quando quem pede é o cliente: instalação de outro cliente responde 404. */
+  async desinstalar(ator: Ator, instalacaoId: string, clientId: string | null = null): Promise<InstalacaoEntity> {
+    if (clientId !== null && !(await this.instalacoes.findOne(clientId, { id: instalacaoId }))) {
+      throw new NotFoundException('Instalação vigente não encontrada');
+    }
     return withTransaction(this.pool, async (client) => {
       const instalacao = await this.instalacoes.desinstalar(instalacaoId, new Date(), client);
       if (!instalacao) throw new NotFoundException('Instalação vigente não encontrada');
       await this.rastreadores.updateStatus(instalacao.rastreador_id, 'cadastrado', client);
       await this.audit.record(
         {
-          actorType: 'superadmin',
-          actorId: superadminId,
+          actorType: ator.type,
+          actorId: ator.id,
           clientId: instalacao.client_id,
           action: 'rastreador.desinstalar',
           target: instalacao.rastreador_id,
@@ -151,6 +172,49 @@ export class RastreadoresService {
         client,
       );
       return instalacao;
+    });
+  }
+
+  /** Superadmin: rastreador passa a ser do cliente (o cliente então escolhe em qual ativo instalar). */
+  async vincular(superadminId: string, clientId: string, rastreadorId: string): Promise<RastreadorVinculoEntity> {
+    const rastreador = await this.rastreadores.findById(rastreadorId);
+    if (!rastreador || rastreador.status === 'desativado') throw new NotFoundException('Rastreador não encontrado');
+    try {
+      return await withTransaction(this.pool, async (client) => {
+        const atual = await this.vinculos.vigentePorRastreador(rastreadorId, client);
+        if (atual) {
+          throw new ConflictException(
+            atual.client_id === clientId ? 'Rastreador já está vinculado a este cliente' : 'Rastreador está vinculado a outro cliente — desvincule antes',
+          );
+        }
+        const vinculo = await this.vinculos.vincular(clientId, rastreadorId, client);
+        await this.audit.record(
+          { actorType: 'superadmin', actorId: superadminId, clientId, action: 'rastreador.vincular', target: rastreadorId, after: { vinculoId: vinculo.id } },
+          client,
+        );
+        return vinculo;
+      });
+    } catch (err) {
+      if (isPgError(err, PG_FK_VIOLATION)) throw new NotFoundException('Cliente não encontrado');
+      if (isPgError(err, PG_EXCLUSION_VIOLATION)) throw new ConflictException('Rastreador está vinculado a outro cliente — desvincule antes');
+      throw err;
+    }
+  }
+
+  /** Superadmin: encerra o vínculo vigente. Instalado num ativo do cliente, exige desinstalar antes. */
+  async desvincular(superadminId: string, rastreadorId: string): Promise<RastreadorVinculoEntity> {
+    return withTransaction(this.pool, async (client) => {
+      const atual = await this.vinculos.vigentePorRastreador(rastreadorId, client);
+      if (!atual) throw new NotFoundException('Rastreador não está vinculado a nenhum cliente');
+      if (await this.instalacoes.findAtivaPorRastreador(rastreadorId, client)) {
+        throw new ConflictException('Rastreador está instalado num ativo do cliente — desinstale antes de desvincular');
+      }
+      const encerrado = (await this.vinculos.encerrar(atual.client_id, atual.id, client))!;
+      await this.audit.record(
+        { actorType: 'superadmin', actorId: superadminId, clientId: atual.client_id, action: 'rastreador.desvincular', target: rastreadorId, after: { vinculoId: atual.id } },
+        client,
+      );
+      return encerrado;
     });
   }
 
@@ -258,6 +322,9 @@ export class RastreadoresService {
       if (!rastreador) throw new NotFoundException('Rastreador não encontrado');
       if (await this.instalacoes.findAtivaPorRastreador(rastreadorId, client)) {
         throw new ConflictException('Rastreador tem instalação vigente — desinstale antes de desativar');
+      }
+      if (await this.vinculos.vigentePorRastreador(rastreadorId, client)) {
+        throw new ConflictException('Rastreador está vinculado a um cliente — desvincule antes de desativar');
       }
       const desativado = (await this.rastreadores.updateStatus(rastreadorId, 'desativado', client))!;
       await this.audit.record(

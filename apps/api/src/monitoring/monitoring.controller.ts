@@ -38,6 +38,10 @@ export class MonitoringController {
       speedKmh: r.speed_kmh,
       ignition: r.ignition,
       rastreadorId: r.rastreador_id,
+      instalacaoId: r.instalacao_id,
+      imei: r.imei,
+      modelo: r.modelo,
+      instaladoEm: r.instalado_em,
       ultimoPacoteEm: r.ultimo_pacote_em,
       comunicacao: statusComunicacao(
         {

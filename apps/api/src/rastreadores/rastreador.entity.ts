@@ -10,9 +10,11 @@ export interface RastreadorEntity {
 }
 
 export interface RastreadorPainel extends RastreadorEntity {
-  instalacao_id: string | null;
+  vinculo_id: string | null;
   client_id: string | null;
   client_name: string | null;
+  vinculado_em: Date | null;
+  instalacao_id: string | null;
   asset_id: string | null;
   asset_plate: string | null;
   instalado_em: Date | null;

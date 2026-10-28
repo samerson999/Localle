@@ -9,6 +9,7 @@ export const backendIdOf = (assetId: string) => assetId.replace(/^lc_/, '');
 export interface CurrentRow {
   assetId: string; plate: string; fixTime: string | null; longitude: number | null; latitude: number | null;
   speedKmh: number | string | null; ignition: boolean | null; rastreadorId: string | null; ultimoPacoteEm: string | null;
+  instalacaoId?: string | null; imei?: string | null; modelo?: string | null; instaladoEm?: string | null;
   comunicacao: 'sem_rastreador' | 'aguardando' | 'online' | 'sem_gps' | 'sem_sinal';
 }
 
@@ -20,7 +21,10 @@ export function toAsset(row: CurrentRow, prev: any, liveGroupId: string) {
     name: row.plate,
     plate: row.plate,
     groupIds: prev?.groupIds?.length ? prev.groupIds : [liveGroupId],
-    tracker: row.rastreadorId ? { ...prev?.tracker, id: row.rastreadorId, linkedAt: prev?.tracker?.linkedAt || Date.now(), live: true, source: 'localle' } : undefined,
+    tracker: row.rastreadorId
+      ? { ...prev?.tracker, id: row.rastreadorId, imei: row.imei ?? prev?.tracker?.imei, model: row.modelo ?? prev?.tracker?.model, instalacaoId: row.instalacaoId ?? null,
+          linkedAt: row.instaladoEm ? Date.parse(row.instaladoEm) : prev?.tracker?.linkedAt || Date.now(), live: true, source: 'localle' }
+      : undefined,
   };
 }
 
