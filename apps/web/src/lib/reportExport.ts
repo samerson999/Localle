@@ -4,6 +4,7 @@
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useStore } from './store';
 
 export { fmtCoord } from './geocode';
 
@@ -46,24 +47,57 @@ const ROLE_LABEL: Record<string, string> = { gestor: 'gestor', revenda: 'revenda
 // certo (splitTextToSize erra a largura) e uma coluna invade a outra. Troca por equivalentes em ASCII.
 const clean = (s: unknown) => String(s ?? '').replace(/[→➝➔↦]/g, '-').replace(/[–—]/g, '-');
 
-// PDF no padrão visual da Localle: faixa azul com logo e título no cabeçalho, caixa de metadados do
-// filtro, seções com tabela de cabeçalho escuro, e rodapé com emissor/usuário/página em todas as páginas.
-export function pdf(opts: { file: string; titulo: string; cliente: string; usuario: string; role: string; meta: PdfMetaItem[]; sections: PdfSection[]; nota?: string }) {
+export type MarcaPdf = { name: string; tagline?: string; color?: string; logo?: string };
+
+const AZUL_LOCALLE: [number, number, number] = [34, 81, 230];
+/** Cor da faixa do cabeçalho (cor da revenda, ou o azul da Localle) e se o texto sobre ela precisa ser escuro. */
+export function corDaMarca(hex?: string): { rgb: [number, number, number]; textoEscuro: boolean } {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
+  const rgb: [number, number, number] = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) as [number, number, number] : AZUL_LOCALLE;
+  // luminância relativa (WCAG): acima de ~0,45 o branco perde contraste — texto grafite
+  const lin = (c: number) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+  return { rgb, textoEscuro: L > 0.45 };
+}
+
+const marcaAtual = (): MarcaPdf => { try { return useStore.getState().revenda?.branding || { name: 'Localle' }; } catch { return { name: 'Localle' }; } };
+
+// PDF no padrão visual da plataforma (sprint 28/10/2026, melhoria 5): faixa na cor da revenda com o logo dela (ou o
+// nome e o slogan), caixa de metadados do filtro, tabelas zebradas com cabeçalho repetido em cada página, e rodapé
+// com emissor/usuário e "Página N de M" em todas as páginas.
+export function pdf(opts: { file: string; titulo: string; cliente: string; usuario: string; role: string; meta: PdfMetaItem[]; sections: PdfSection[]; nota?: string; marca?: MarcaPdf }) {
   const { file, titulo, cliente, usuario, role, meta, sections, nota } = opts;
+  const marca = opts.marca ?? marcaAtual();
+  const { rgb, textoEscuro } = corDaMarca(marca.color);
+  const tinta: [number, number, number] = textoEscuro ? [20, 24, 33] : [255, 255, 255];
+  const TOTAL = '{total}';
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 28;
   const emitidoEm = new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+  // logo: data URL PNG/JPEG da revenda; formato que o jsPDF não lê (SVG etc.) cai no nome por extenso
+  let logo: { data: string; w: number; h: number } | null = null;
+  if (marca.logo && /^data:image\/(png|jpe?g)/i.test(marca.logo)) {
+    try {
+      const pr = doc.getImageProperties(marca.logo);
+      const h = 30, w = Math.min(140, (pr.width / pr.height) * h);
+      logo = { data: marca.logo, w, h: (w / ((pr.width / pr.height) * h)) * h };
+    } catch { logo = null; }
+  }
+
   const header = () => {
-    doc.setFillColor(29, 78, 216);
+    doc.setFillColor(...rgb);
     doc.rect(0, 0, W, 50, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
-    doc.text('LOCALLE', M, 21);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-    doc.text('Soluções em Rastreamento', M, 33);
+    doc.setTextColor(...tinta);
+    if (logo) {
+      doc.addImage(logo.data, M, (50 - logo.h) / 2, logo.w, logo.h);
+    } else {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+      doc.text(clean(marca.name || 'Localle'), M, marca.tagline ? 23 : 30);
+      if (marca.tagline) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(clean(marca.tagline), M, 35); }
+    }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
     doc.text(clean(titulo), W - M, 21, { align: 'right' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
@@ -76,7 +110,8 @@ export function pdf(opts: { file: string; titulo: string; cliente: string; usuar
     doc.line(M, H - 28, W - M, H - 28);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(130);
     doc.text(clean(`Gerado por Plataforma Localle · Usuário: ${usuario} (${ROLE_LABEL[role] || role}) · Horários em America/Recife (UTC-3)`), M, H - 16);
-    doc.text(`Página ${n}`, W - M, H - 16, { align: 'right' });
+    // total preenchido no fim (putTotalPages); alinhado à esquerda de um ponto fixo, porque o marcador tem outra largura
+    doc.text(`Página ${n} de ${TOTAL}`, W - M - 62, H - 16);
   };
 
   const metaBox = (y: number) => {
@@ -105,8 +140,11 @@ export function pdf(opts: { file: string; titulo: string; cliente: string; usuar
       body: s.rows.length ? s.rows.map((r) => r.map(clean)) : [[clean('Nada para exportar neste período.')]],
       startY: startY + 8,
       margin: { left: M, right: M, top: 62, bottom: 34 },
-      styles: { fontSize: 7.5, cellPadding: 4, textColor: 40 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: { top: 4.5, bottom: 4.5, left: 5, right: 5 }, textColor: 35, overflow: 'linebreak', lineColor: [226, 230, 236], lineWidth: { bottom: 0.4 } },
+      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', lineWidth: 0 },
+      alternateRowStyles: { fillColor: [246, 248, 251] },
+      showHead: 'everyPage',
+      rowPageBreak: 'avoid',
       didParseCell: (data) => { if (data.row.section === 'body' && String(data.row.raw?.[0]).trim() === 'Total') data.cell.styles.fontStyle = 'bold'; },
       didDrawPage: () => { header(); footer(); },
     });
@@ -118,5 +156,6 @@ export function pdf(opts: { file: string; titulo: string; cliente: string; usuar
     doc.text(doc.splitTextToSize(clean(nota), W - 2 * M), M, y);
   }
 
+  if (typeof (doc as any).putTotalPages === 'function') (doc as any).putTotalPages(TOTAL);
   doc.save(file);
 }
