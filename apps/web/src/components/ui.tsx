@@ -23,6 +23,17 @@ export function usePresence(open: boolean, ms = EXIT_MS) {
   return { mounted: open || mounted, closing: !open && mounted };
 }
 
+// Trava a rolagem da página enquanto um modal, gaveta ou painel sobreposto está aberto (no celular o fundo rolava junto).
+// Contador: vários sobrepostos abertos ao mesmo tempo só destravam quando o último fecha.
+let scrollLocks = 0;
+export function useScrollLock(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    if (scrollLocks++ === 0) document.documentElement.style.overflow = 'hidden';
+    return () => { if (--scrollLocks === 0) document.documentElement.style.overflow = ''; };
+  }, [active]);
+}
+
 // Botões. primary = botão principal, na cor da revenda (--brand-fill; cai no grafite quando a marca não pode pintar).
 // secondary (ghost, soft) = contorno neutro · quiet = cinza sem borda (Cancelar) · dark = grafite fixo
 // danger = vermelho, só ação destrutiva · link = texto na cor do link da revenda.
@@ -62,8 +73,9 @@ export function TextButton({ tone = 'brand', className = '', ...p }: React.Butto
 type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string; size?: 'sm' | 'md' | 'touch'; tone?: 'default' | 'sidebar' | 'on-dark' | 'outline' };
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(({ size = 'md', tone = 'default', className = '', ...p }, r) => {
   const t = { default: 'text-ink-2 hover:text-ink hover:bg-card-2', sidebar: 'text-ink-2 hover:text-ink hover:bg-surface-hover', 'on-dark': 'text-on-dark hover:bg-on-dark-hover', outline: 'bg-card border border-line-strong text-ink hover:bg-card-2' }[tone];
-  // touch = 44×44 (alvo de toque recomendado), só para a barra fixa do mobile; sm/md seguem a densidade do desktop.
-  const sizeCls = size === 'sm' ? 'w-8 h-8 rounded-btn' : size === 'touch' ? 'w-11 h-11 rounded-ctl' : 'w-10 h-10 rounded-ctl';
+  // touch = 44×44 (alvo de toque recomendado), só para a barra fixa do mobile; sm/md seguem os tokens de controle
+  // (32/40 no desktop; com dedo, 40/44 — tokens.css › toque).
+  const sizeCls = size === 'sm' ? 'w-ctl-sm h-ctl-sm rounded-btn' : size === 'touch' ? 'w-11 h-11 rounded-ctl' : 'w-ctl h-ctl rounded-ctl';
   return <button ref={r} type="button" {...p} className={cx('inline-flex items-center justify-center shrink-0 transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed', sizeCls, t, className)} />;
 });
 
@@ -86,15 +98,16 @@ export function FloatingPanel({ side = 'right', label, title, subtitle, header, 
 }) {
   return (
     <aside aria-label={label} className={cx('absolute z-[450] bg-card rounded-panel shadow-panel flex flex-col overflow-hidden bleed-card-sm',
-      side === 'right' ? 'right-3 top-3 bottom-3 w-[380px] max-w-[calc(100%-24px)]' : 'left-3 right-3 bottom-3 max-h-[60%]',
-      closing ? (side === 'right' ? 'panel-out' : 'anim-out') : (side === 'right' ? 'panel-in' : 'anim-page'), className)}>
+      side === 'right' ? 'right-3 top-3 bottom-3 w-[380px] max-w-[calc(100%-24px)] max-md:top-auto max-md:left-2 max-md:right-2 max-md:bottom-2 max-md:w-auto max-md:max-w-none max-md:max-h-[58%]' : 'left-3 right-3 bottom-3 max-h-[60%]',
+      // no celular o painel lateral vira faixa inferior (o lateral cobria o mapa inteiro) e entra de baixo
+      closing ? (side === 'right' ? 'panel-out max-md:[animation-name:page-out]' : 'anim-out') : (side === 'right' ? 'panel-in max-md:[animation-name:page-in]' : 'anim-page'), className)}>
       {(title || header || onClose) && (
         <header className="flex items-start gap-stack px-card-sm pt-card-sm">
           <div className="min-w-0 mr-auto flex flex-col gap-hair">{header}{title && <h2 className="text-h3 font-semibold">{title}</h2>}{subtitle && <p className="text-small text-ink-2">{subtitle}</p>}</div>
           {onClose && <IconButton aria-label="Fechar" size="sm" className="-mr-1 -mt-1" onClick={onClose}><Icon name="fechar" size={18} /></IconButton>}
         </header>
       )}
-      <div className="flex-1 overflow-y-auto px-card-sm pb-card-sm pt-card-head-sm"><HeadingLevel level={3}>{children}</HeadingLevel></div>
+      <div className="flex-1 overflow-y-auto overscroll-contain px-card-sm pb-card-sm pt-card-head-sm"><HeadingLevel level={3}>{children}</HeadingLevel></div>
       {footer && <footer className="flex flex-wrap items-center gap-tight px-card-sm py-stack border-t border-line">{footer}</footer>}
     </aside>
   );
@@ -109,7 +122,7 @@ export function ContextMenu({ x, y, header, items, onClose }: { x: number; y: nu
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
   }, []);
-  const cls = 'w-full flex items-center gap-icon px-stack h-9 rounded-btn text-body text-left text-ink hover:bg-surface-muted focus:bg-surface-muted';
+  const cls = 'w-full flex items-center gap-icon px-stack h-9 [@media(pointer:coarse)]:h-11 rounded-btn text-body text-left text-ink hover:bg-surface-muted focus:bg-surface-muted';
   return (
     <div ref={box} role="menu" className="absolute z-[600] w-64 bg-card border border-line rounded-pop shadow-pop p-1 anim-page" style={{ left: x, top: y }}>
       {header && <div className="px-stack py-tight text-caption text-ink-3">{header}</div>}
@@ -189,7 +202,7 @@ export function CardHeader({ title, subtitle, icon, actions, to, onOpen, classNa
         {subtitle && <p className="text-small text-ink-2">{subtitle}</p>}
       </div>
       {actions}
-      {open && (to ? <a href={`#${to}`} aria-label={label} className="w-8 h-8 -mr-1 rounded-btn flex items-center justify-center text-ink-2 hover:text-ink hover:bg-card-2"><Icon name="externo" size={20} /></a>
+      {open && (to ? <a href={`#${to}`} aria-label={label} className="w-ctl-sm h-ctl-sm -mr-1 rounded-btn flex items-center justify-center text-ink-2 hover:text-ink hover:bg-card-2"><Icon name="externo" size={20} /></a>
         : <IconButton aria-label={label} size="sm" className="-mr-1" onClick={onOpen}><Icon name="externo" size={20} /></IconButton>)}
     </header>
   );
@@ -274,7 +287,7 @@ export function SearchInput({ value, onChange, placeholder = 'Buscar', className
     <div className={cx('relative', className)}>
       <Icon name="busca" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
       <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={p['aria-label'] || placeholder} className={cx(inputCls, 'pl-10 pr-10 [&::-webkit-search-cancel-button]:hidden')} />
-      {value && <button type="button" aria-label="Limpar busca" onClick={() => onChange('')} className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
+      {value && <button type="button" aria-label="Limpar busca" onClick={() => onChange('')} className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
     </div>
   );
 }
@@ -333,7 +346,7 @@ export function Select({ className = '', options, value, onChange, disabled, id,
           className={cx('fixed z-[1400] max-h-72 max-w-[min(420px,calc(100vw-16px))] overflow-y-auto bg-card border border-line rounded-pop shadow-pop p-1', pres.closing ? 'anim-out' : 'anim-page')}>
           {opts.map((o, i) => (
             <li key={o.value} id={`${lid}-${i}`} role="option" aria-selected={i === sel} onMouseEnter={() => setAct(i)} onClick={() => pick(i)}
-              className={cx('flex items-center gap-icon px-stack py-tight rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted', i === sel && 'font-medium')}>
+              className={cx('flex items-center gap-icon px-stack py-tight [@media(pointer:coarse)]:py-stack rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted', i === sel && 'font-medium')}>
               <span className="flex-1">{o.label}</span>{i === sel && <Icon name="ok" size={16} className="shrink-0" />}
             </li>
           ))}
@@ -404,7 +417,7 @@ export function SearchSelect({ options, value, onChange, onQuery, placeholder = 
         value={query} placeholder={placeholder} onKeyDown={key}
         onFocus={show} onChange={(e) => { setQuery(e.target.value); if (!open) show(); }}
         className={cx(inputCls, 'pl-10 pr-10')} />
-      {(query || value) && <button type="button" aria-label="Limpar" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
+      {(query || value) && <button type="button" aria-label="Limpar" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
       {pres.mounted && createPortal(
         <ul ref={list} id={lid} role="listbox" aria-label={p['aria-label']} onMouseDown={(e) => e.preventDefault()}
           style={{ left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.width }}
@@ -413,7 +426,7 @@ export function SearchSelect({ options, value, onChange, onQuery, placeholder = 
             : results.length === 0 ? <li className="px-stack py-tight text-small text-ink-2">{emptyLabel}</li>
             : results.map((o, i) => (
               <li key={o.value} id={`${lid}-${i}`} role="option" aria-selected={o.value === value} onMouseEnter={() => setAct(i)} onClick={() => pick(o)}
-                className={cx('flex flex-col px-stack py-tight rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted', o.value === value && 'font-medium')}>
+                className={cx('flex flex-col px-stack py-tight [@media(pointer:coarse)]:py-stack rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted', o.value === value && 'font-medium')}>
                 <span className="flex items-center gap-icon"><span className="flex-1 truncate">{o.label}</span>{o.value === value && <Icon name="ok" size={16} className="shrink-0" />}</span>
                 {o.sub && <span className="text-caption text-ink-2 truncate">{o.sub}</span>}
               </li>
@@ -505,6 +518,9 @@ function useSlider(value: string) {
       if (!b) return;
       const next = { x: b.offsetLeft, y: b.offsetTop, w: b.offsetWidth, h: b.offsetHeight };
       const from = prev.current;
+      // trilho rolando de lado (celular): centraliza a opção ativa se ela estiver fora da vista
+      if (el.scrollWidth > el.clientWidth && (next.x < el.scrollLeft || next.x + next.w > el.scrollLeft + el.clientWidth))
+        el.scrollTo({ left: next.x - (el.clientWidth - next.w) / 2, behavior: from ? 'smooth' : 'auto' });
       prev.current = next;
       setRect(next);
       const node = indicator.current;
@@ -533,9 +549,11 @@ function useSlider(value: string) {
 const sliderText = 'transition-colors duration-[250ms]';
 // Visual único do controle segmentado (trilho em pílula + indicador que desliza na cor da revenda),
 // compartilhado por Tabs (estado) e NavTabs (rota) — mudar a forma aqui muda em toda a tela que usa qualquer um dos dois.
-const segTrack = 'relative inline-flex flex-wrap w-fit max-w-full gap-1 p-1 bg-card rounded-pill';
+// Celular: o trilho não quebra linha (viraria um bloco de 2–3 linhas com o indicador andando na diagonal); rola de lado,
+// e a opção ativa é trazida para a vista (useSlider).
+const segTrack = 'relative inline-flex flex-wrap max-md:flex-nowrap max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden w-fit max-w-full gap-1 p-1 bg-card rounded-pill';
 const segIndicator = 'absolute rounded-pill bg-brand-fill';
-const segItem = (size: 'sm' | 'md', on: boolean, style: unknown) => cx('relative px-3 rounded-pill font-medium inline-flex items-center gap-tight', size === 'sm' ? 'h-7 text-caption' : 'h-8 text-small', sliderText, on ? cx('text-brand-fill-ink', !style && 'bg-brand-fill') : 'text-ink-2 hover:text-ink');
+const segItem = (size: 'sm' | 'md', on: boolean, style: unknown) => cx('relative shrink-0 whitespace-nowrap px-3 rounded-pill font-medium inline-flex items-center gap-tight', size === 'sm' ? 'h-7 [@media(pointer:coarse)]:h-9 text-caption' : 'h-8 [@media(pointer:coarse)]:h-10 text-small', sliderText, on ? cx('text-brand-fill-ink', !style && 'bg-brand-fill') : 'text-ink-2 hover:text-ink');
 
 // Contador neutro (abas, filtros, listas). O do "Precisa de você" é o único vermelho (Layout).
 export function CountBadge({ n, className = '' }: { n: number; className?: string }) {
@@ -594,7 +612,7 @@ export function Pills({ options, value, onChange }: { options: { key: string; la
   return (
     <div ref={box} className="relative flex flex-wrap gap-tight">
       {style && <span ref={indicator} aria-hidden="true" style={style} className="absolute rounded-pill bg-brand-fill" />}
-      {options.map((o) => <button key={o.key} data-k={o.key} type="button" aria-pressed={value === o.key} onClick={() => onChange(o.key)} className={cx('relative h-8 px-3 rounded-pill text-small font-medium border', sliderText, value === o.key ? cx('text-brand-fill-ink border-transparent', !style && 'bg-brand-fill') : 'border-line-strong text-ink hover:bg-card-2')}>{o.label}</button>)}
+      {options.map((o) => <button key={o.key} data-k={o.key} type="button" aria-pressed={value === o.key} onClick={() => onChange(o.key)} className={cx('relative h-ctl-sm px-3 rounded-pill text-small font-medium border', sliderText, value === o.key ? cx('text-brand-fill-ink border-transparent', !style && 'bg-brand-fill') : 'border-line-strong text-ink hover:bg-card-2')}>{o.label}</button>)}
     </div>
   );
 }
@@ -615,7 +633,7 @@ export function Pagination({ page, pages, onChange, total, pageSize, compact = f
         <IconButton aria-label="Página anterior" size="sm" disabled={page === 0} onClick={() => onChange(page - 1)}><Icon name="voltar" size={18} /></IconButton>
         {nums.map((x, i) => x === '…' ? <span key={'e' + i} className="w-8 text-center text-ink-3">…</span>
           : <button key={x} type="button" aria-current={x === page ? 'page' : undefined} aria-label={`Página ${x + 1}`} onClick={() => onChange(x)}
-            className={cx('min-w-8 h-8 px-2 rounded-pill text-small num transition-colors', x === page ? 'bg-brand-fill text-brand-fill-ink font-semibold' : 'text-ink hover:bg-surface-muted')}>{x + 1}</button>)}
+            className={cx('min-w-ctl-sm h-ctl-sm px-2 rounded-pill text-small num transition-colors', x === page ? 'bg-brand-fill text-brand-fill-ink font-semibold' : 'text-ink hover:bg-surface-muted')}>{x + 1}</button>)}
         <IconButton aria-label="Próxima página" size="sm" disabled={page >= pages - 1} onClick={() => onChange(page + 1)}><Icon name="chevron" size={18} /></IconButton>
       </div>
     </nav>
@@ -631,8 +649,8 @@ export function FilterButton({ label, count, active, onClick, icon }: { label: s
 }
 export function FilterChip({ label, onRemove }: { label: React.ReactNode; onRemove: () => void }) {
   return (
-    <span className="h-7 pl-3 pr-1 rounded-pill bg-surface-selected border border-line text-small text-ink inline-flex items-center gap-1">
-      {label}<button type="button" aria-label={`Remover filtro ${typeof label === 'string' ? label : ''}`} onClick={onRemove} className="w-5 h-5 rounded-pill flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface-hover"><Icon name="fechar" size={14} /></button>
+    <span className="h-7 [@media(pointer:coarse)]:h-ctl-sm pl-3 pr-1 rounded-pill bg-surface-selected border border-line text-small text-ink inline-flex items-center gap-1">
+      {label}<button type="button" aria-label={`Remover filtro ${typeof label === 'string' ? label : ''}`} onClick={onRemove} className="w-5 h-5 [@media(pointer:coarse)]:w-8 [@media(pointer:coarse)]:h-8 rounded-pill flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface-hover"><Icon name="fechar" size={14} /></button>
     </span>
   );
 }
@@ -643,6 +661,7 @@ export function TabPanel({ id, className = '', children }: { id: string; classNa
 
 export function Modal({ open, onClose, title, children, width = 'max-w-2xl', footer }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; width?: string; footer?: React.ReactNode }) {
   const { mounted, closing } = usePresence(open);
+  useScrollLock(open);
   // na saída, mostra o último conteúdo aberto (quem chamou costuma zerar os dados ao fechar)
   const last = useRef({ title, children, footer });
   if (open) last.current = { title, children, footer };
@@ -659,11 +678,12 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   const c = last.current;
   // portal no body: o modal não fica preso a painéis com transform/z-index de quem o abriu
   return createPortal(
-    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} className={cx('w-full bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col', closing ? 'anim-out' : 'anim-page', width)}>
         <div className="flex items-center gap-stack mb-card-head"><h2 className="text-h2 font-semibold mr-auto">{c.title}</h2><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={onClose}><Icon name="fechar" /></IconButton></div>
         <HeadingLevel level={3}><div className="flex flex-col gap-field min-w-0">{c.children}</div></HeadingLevel>
-        {c.footer && <div className="flex flex-wrap justify-end gap-tight mt-form-actions pt-card-foot border-t border-line">{c.footer}</div>}
+        {/* celular: formulário longo não esconde as ações lá embaixo; o rodapé gruda no fim da tela enquanto o modal rola */}
+        {c.footer && <div className="flex flex-wrap justify-end gap-tight mt-form-actions pt-card-foot border-t border-line max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-card max-md:px-card max-md:-mb-card max-md:pb-card max-md:bg-card max-md:rounded-b-panel">{c.footer}</div>}
       </div>
     </div>,
     document.body,
@@ -747,14 +767,17 @@ export function Progress({ value, color = 'var(--real)', className = 'h-2', labe
 
 // célula: 12 entre colunas; a 1ª e a última recuam pelo padding do card que contém a tabela (--bleed), alinhando com o título
 const CELL_X = 'px-cell first:pl-[max(var(--bleed),var(--cell-x))] last:pr-[max(var(--bleed),var(--cell-x))]';
-// `card`: versão empilhada para telas estreitas (abaixo de md), no lugar da tabela larga.
+// `card`: versão empilhada para telas estreitas (abaixo de md), no lugar da tabela larga. Sem `card`, uma tabela que não
+// cabe no celular (minWidth > 480) ganha a versão automática (autoCard); `card={false}` mantém a rolagem lateral
+// (matriz em que a leitura cruzada importa).
 // Acima de `pageSize` linhas, pagina e mostra o total. Coluna de cabeçalho vazia ('') = ações, alinhada à direita.
 // align: alinhamento por coluna (números à direita). selected: linhas marcadas (fundo neutro; o checkbox fica com quem usa).
 // loading: linhas de esqueleto. emptyState: estado vazio rico (ilustração), no lugar do texto `empty`.
-export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, minWidth = 640, onRow, pageSize = 50, card, align, selected, loading, dense }: {
+export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, minWidth = 640, onRow, pageSize = 50, card: cardProp, align, selected, loading, dense }: {
   head: React.ReactNode[]; rows: React.ReactNode[][]; empty?: string; emptyState?: React.ReactNode; minWidth?: number; onRow?: (i: number) => void; pageSize?: number;
-  card?: (i: number) => React.ReactNode; align?: ('left' | 'right' | 'center')[]; selected?: (i: number) => boolean; loading?: boolean; dense?: boolean;
+  card?: ((i: number) => React.ReactNode) | false; align?: ('left' | 'right' | 'center')[]; selected?: (i: number) => boolean; loading?: boolean; dense?: boolean;
 }) {
+  const card = cardProp === false ? undefined : cardProp ?? (minWidth > 480 ? (i: number) => <AutoCard head={head} row={rows[i]} /> : undefined);
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const pg = Math.min(page, pages - 1);
@@ -767,8 +790,9 @@ export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, 
     <div aria-busy={loading || undefined}>
       {card && (
         <ul className="md:hidden flex flex-col -mx-bleed">
+          {loading && Array.from({ length: 4 }, (_, i) => <li key={'sk' + i} className="border-t border-line py-stack px-[max(var(--bleed),var(--cell-x))] first:border-t-0 flex flex-col gap-tight"><Skeleton className="h-4 w-32" /><Skeleton className="h-4 w-full max-w-[220px]" /></li>)}
           {!loading && rows.length === 0 && <li>{emptyNode}</li>}
-          {shown.map((_, i) => <li key={from + i} onClick={onRow && (() => onRow(from + i))} className={cx('border-t border-line py-stack px-[max(var(--bleed),var(--cell-x))] first:border-t-0', onRow && 'cursor-pointer active:bg-card-2', selected?.(from + i) && 'bg-surface-selected')}>{card(from + i)}</li>)}
+          {!loading && shown.map((_, i) => <li key={from + i} onClick={onRow && (() => onRow(from + i))} className={cx('border-t border-line py-stack px-[max(var(--bleed),var(--cell-x))] first:border-t-0', onRow && 'cursor-pointer active:bg-card-2', selected?.(from + i) && 'bg-surface-selected')}>{card(from + i)}</li>)}
         </ul>
       )}
       <div className={cx('overflow-x-auto -mx-bleed', card && 'hidden md:block')}>
@@ -788,6 +812,35 @@ export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, 
         </table>
       </div>
       {rows.length > pageSize && <Pagination className="-mx-bleed border-t border-line pt-stack px-[max(var(--bleed),var(--cell-x))]" page={pg} pages={pages} onChange={setPage} total={rows.length} pageSize={pageSize} />}
+    </div>
+  );
+}
+
+// Versão empilhada automática de uma linha da tabela (celular). Colunas de cabeçalho vazio ou não textual antes da
+// primeira coluna nomeada (miniatura, seleção) ficam à esquerda; a primeira coluna nomeada é o título; as demais viram
+// pares rótulo/valor; a coluna de ações (cabeçalho '' no fim) fica no canto, sem abrir a linha ao ser tocada.
+function AutoCard({ head, row }: { head: React.ReactNode[]; row: React.ReactNode[] }) {
+  if (!row) return null;
+  const last = head.length - 1;
+  const actIdx = last > 0 && head[last] === '' ? last : -1;
+  const titleIdx = Math.max(0, head.findIndex((h, j) => j !== actIdx && typeof h === 'string' && h !== ''));
+  const vazio = (c: React.ReactNode) => c == null || c === '' || c === false;
+  const lead = row.slice(0, titleIdx).filter((c) => !vazio(c));
+  return (
+    <div className="flex items-start gap-stack min-w-0">
+      {lead.length > 0 && <div className="shrink-0 flex items-center gap-tight" onClick={(e) => e.stopPropagation()}>{lead.map((c, k) => <React.Fragment key={k}>{c}</React.Fragment>)}</div>}
+      <div className="flex-1 min-w-0 flex flex-col gap-tight">
+        <div className="text-body font-medium min-w-0 break-words">{row[titleIdx]}</div>
+        <dl className="flex flex-col gap-hair text-small">
+          {row.map((c, j) => j <= titleIdx || j === actIdx || vazio(c) ? null : (
+            <div key={j} className="flex items-baseline justify-between gap-stack min-w-0">
+              <dt className="text-ink-2 shrink-0 max-w-[45%]">{head[j]}</dt>
+              <dd className="min-w-0 text-right break-words num">{c}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      {actIdx > 0 && !vazio(row[actIdx]) && <div className="shrink-0 -mr-1 -mt-1 flex items-center" onClick={(e) => e.stopPropagation()}>{row[actIdx]}</div>}
     </div>
   );
 }
@@ -826,7 +879,7 @@ export function Menu({ items, label = 'Mais opções', trigger }: { items: MenuI
   const regular = items.filter((x) => !x.danger), danger = items.filter((x) => x.danger);
   const row = (x: MenuItem) => (
     <button key={x.label} type="button" role="menuitem" disabled={x.disabled} onClick={(e) => { e.stopPropagation(); setOpen(false); x.onClick(); }}
-      className={cx('w-full flex items-center gap-icon px-stack h-9 rounded-btn text-body text-left disabled:opacity-40', x.danger ? 'text-crit-ink hover:bg-crit-soft focus:bg-crit-soft' : 'text-ink hover:bg-surface-muted focus:bg-surface-muted')}>
+      className={cx('w-full flex items-center gap-icon px-stack h-9 [@media(pointer:coarse)]:h-11 rounded-btn text-body text-left disabled:opacity-40', x.danger ? 'text-crit-ink hover:bg-crit-soft focus:bg-crit-soft' : 'text-ink hover:bg-surface-muted focus:bg-surface-muted')}>
       {x.icon && <Icon name={x.icon} size={18} className={x.danger ? '' : 'text-ink-2'} />}{x.label}
     </button>
   );
@@ -1001,7 +1054,7 @@ export function DateInput({ type, value, defaultValue, onChange, min, max, disab
   const label = !cur ? '' : type === 'month' ? `${MES_L[cur.getMonth()]} de ${cur.getFullYear()}` : `${cur.getDate()} ${MES_C[cur.getMonth()]} ${cur.getFullYear()}${time ? `, ${time}` : ''}`;
   const today = new Date();
   const nowStr = type === 'month' ? ymd(today).slice(0, 7) : type === 'date' ? ymd(today) : `${ymd(today)}T${z2(today.getHours())}:${z2(today.getMinutes())}`;
-  const navBtn = 'w-8 h-8 rounded-btn flex items-center justify-center text-ink-2 hover:bg-card-2 hover:text-ink';
+  const navBtn = 'w-ctl-sm h-ctl-sm rounded-btn flex items-center justify-center text-ink-2 hover:bg-card-2 hover:text-ink';
   const first = new Date(focus.getFullYear(), focus.getMonth(), 1);
   const days = Array.from({ length: 42 }, (_, i) => addD(first, i - first.getDay()));
   const cell = (sel: boolean, now: boolean, out = false) => cx('rounded-btn text-body num disabled:opacity-30 disabled:cursor-not-allowed', sel ? 'bg-brand-fill text-brand-fill-ink' : 'hover:bg-surface-muted', out && !sel && 'text-ink-3', now && !sel && 'font-semibold underline underline-offset-4');

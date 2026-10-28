@@ -256,3 +256,14 @@
   --t-glide: 800ms; /* marcador do mapa indo para a nova posição */
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 }
+
+/* ---------- toque (celular e tablet) ---------- */
+/* Dedo não é cursor: controles sobem para perto do alvo recomendado de 44px. O desktop mantém a densidade acima.
+   Campo de texto com menos de 16px faz o Safari do iPhone dar zoom na página a cada foco (regra em base.css). */
+@media (pointer: coarse) {
+  :root {
+    --h-ctl: 44px;
+    --h-ctl-sm: 40px;
+    --fs-field-touch: 16px;
+  }
+}

@@ -10,7 +10,7 @@ import { NeedsList, StatusGlyph, priorityKind, AssetName } from './story';
 import { resolveAlert } from '../lib/critical';
 import { TreatDialog, TreatedLine } from './TreatDialog';
 import { Icon } from './icons';
-import { cx, usePresence, IconButton, Button, TextButton, List, ListItem, EmptyState, CountBadge } from './ui';
+import { cx, usePresence, useScrollLock, IconButton, Button, TextButton, List, ListItem, EmptyState, CountBadge } from './ui';
 import { Link } from 'react-router-dom';
 
 export default function NeedsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -31,6 +31,7 @@ export default function NeedsPanel({ open, onClose }: { open: boolean; onClose: 
     return () => document.removeEventListener('keydown', k);
   }, [open]);
   const { mounted, closing } = usePresence(open);
+  useScrollLock(open);
   if (!mounted) return null;
   return (
     <div className={cx('fixed inset-0 z-[1100] no-print', closing && 'pointer-events-none')}>
@@ -40,7 +41,7 @@ export default function NeedsPanel({ open, onClose }: { open: boolean; onClose: 
           <h2 className="text-h2 font-semibold mr-auto">Precisa de você</h2>
           <IconButton ref={closeRef} aria-label="Fechar painel" onClick={onClose} ><Icon name="fechar" /></IconButton>
         </header>
-        <div className="flex-1 overflow-y-auto px-6 pb-8">
+        <div className="flex-1 overflow-y-auto overscroll-contain px-6 pb-8">
           <section>
             <h3 className="flex items-center gap-2 text-small text-ink-2 mb-1">Críticos<span className={cx('min-w-[20px] h-5 px-tight rounded-pill text-caption font-semibold flex items-center justify-center num', needs.length ? 'bg-crit text-on-dark' : 'bg-track text-ink-2')}>{needs.length}</span></h3>
             {needs.length === 0 ? <EmptyState illustration="ilu-tudo-em-dia" title="Nenhum alerta crítico agora" detail="Quando algo precisar de ação, aparece aqui primeiro." /> : <NeedsList onNavigate={onClose} empty="Nenhum alerta crítico agora." items={needs.map((n) => ({ id: n.id, icon: n.kind === 'pneu' ? 'pneus' : n.kind === 'veiculo' ? 'alerta' : n.kind === 'multa' ? 'multas' : n.kind === 'documento' ? 'calendario' : 'manutencao', tone: 'crit', title: n.title, context: [n.detail, n.since ? `desde ${fmtDT(n.since)}` : ''].filter(Boolean).join(' · '), to: n.to }))} />}

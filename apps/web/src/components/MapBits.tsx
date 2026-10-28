@@ -203,9 +203,10 @@ export function VehicleCard({ plate, silhouette, icon, photo, model, place, kind
 // Botão flutuante sobre o mapa (camada liga/desliga ou ação). pressed = camada visível (ponto cheio).
 export function MapButton({ icon, label, onClick, pressed, title }: { icon: string; label: string; onClick: () => void; pressed?: boolean; title?: string }) {
   return (
+    // celular: só o ícone (o nome fica para o leitor de tela); com os quatro nomes a barra quebrava linha sobre o mapa
     <button type="button" onClick={onClick} aria-pressed={pressed} title={title}
-      className={cx('h-9 pl-stack pr-3 rounded-btn bg-card border border-line shadow-float flex items-center gap-tight text-small font-medium transition-colors hover:bg-card-2', pressed === false ? 'text-ink-2' : 'text-ink')}>
-      <Icon name={icon} size={18} className={pressed === false ? 'text-ink-3' : 'text-ink-2'} />{label}
+      className={cx('h-9 [@media(pointer:coarse)]:h-ctl-sm pl-stack pr-3 max-md:px-stack rounded-btn bg-card border border-line shadow-float flex items-center gap-tight text-small font-medium transition-colors hover:bg-card-2', pressed === false ? 'text-ink-2' : 'text-ink')}>
+      <Icon name={icon} size={18} className={pressed === false ? 'text-ink-3' : 'text-ink-2'} /><span className="max-md:sr-only">{label}</span>
       {pressed !== undefined && <span aria-hidden="true" className={cx('ml-1 w-2 h-2 rounded-pill', pressed ? 'bg-graphite' : 'border border-ink-3')} />}
     </button>
   );
@@ -214,7 +215,7 @@ export function MapButton({ icon, label, onClick, pressed, title }: { icon: stri
 export function MapControls({ items }: { items: { icon: string; label: string; onClick: () => void }[] }) {
   return (
     <div className="flex flex-col bg-card border border-line rounded-btn shadow-float overflow-hidden divide-y divide-line">
-      {items.map((it) => <button key={it.label} type="button" aria-label={it.label} title={it.label} onClick={it.onClick} className="w-9 h-9 flex items-center justify-center text-ink hover:bg-card-2"><Icon name={it.icon} size={18} /></button>)}
+      {items.map((it) => <button key={it.label} type="button" aria-label={it.label} title={it.label} onClick={it.onClick} className="w-9 h-9 [@media(pointer:coarse)]:w-ctl-sm [@media(pointer:coarse)]:h-ctl-sm flex items-center justify-center text-ink hover:bg-card-2"><Icon name={it.icon} size={18} /></button>)}
     </div>
   );
 }

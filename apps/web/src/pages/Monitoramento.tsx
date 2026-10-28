@@ -67,6 +67,8 @@ export default function Monitoramento() {
   const [mapStyle, setMapStyle] = useState<MapStyleKey>('ruas');
   const [grouped, setGrouped] = useState(true);
   const [styleMenu, setStyleMenu] = useState<{ x: number; y: number } | null>(null);
+  // celular: mapa e lista não cabem lado a lado nem empilhados (a lista empurrava o mapa para fora da tela); um de cada vez
+  const [view, setView] = useState<'mapa' | 'lista'>('mapa');
   const mapSectionRef = useRef<HTMLElement>(null);
   const styleBtnRef = useRef<HTMLSpanElement>(null);
   const [fullscreen, toggleFullscreen] = useFullscreen(mapSectionRef);
@@ -109,6 +111,8 @@ export default function Monitoramento() {
     tone: a.priority === 'alta' ? 'cost' as const : 'plan' as const,
     ts: a.ts, title: a.title, detail: [assets.find((x: any) => x.id === a.assetId)?.name, a.detail].filter(Boolean).join(' · '),
   })), [alerts, assets]);
+  useEffect(() => { if (view === 'mapa') map?.invalidateSize(); }, [view, map]); // o mapa volta de display:none
+  const pick = (id: string) => { setSel(id); setView('mapa'); };
   const fitAll = () => { const pts = list.filter((x: any) => x.v).map((x: any) => x.v.pos); if (map && pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 15 }); };
   const clearFilters = () => { setQ(''); setSt('todos'); setGrp(''); };
   const passAt = (lat: number, lng: number, radius: number) => setPass({ lat, lng, radius, from: toInputDT(Date.now() - DAY), to: toInputDT(Date.now()) });
@@ -132,7 +136,7 @@ export default function Monitoramento() {
       {header}
       <PageBody>
       <Stack gap="grid">
-      <Grid cols={6} equal>
+      <Grid cols={6} equal className="max-md:flex max-md:overflow-x-auto max-md:overscroll-x-contain max-md:-mx-page max-md:px-page max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:w-[148px] max-md:[&>*]:shrink-0">
         <KpiTile label="Veículos rastreados" value={list.length} status="mov" />
         <KpiTile label="Em movimento" value={counts.mov || 0} status="mov" />
         <KpiTile label="Parados" value={counts.par || 0} status="parado" />
@@ -140,15 +144,16 @@ export default function Monitoramento() {
         <KpiTile label="Percurso hoje" value={kmHoje} unit="km" digits={0} />
         <KpiTile label="Velocidade média" value={velMedia} unit="km/h" digits={0} />
       </Grid>
+      <Tabs className="md:hidden" value={view} onChange={(k) => setView(k as 'mapa' | 'lista')} tabs={[{ key: 'mapa', label: 'Mapa' }, { key: 'lista', label: 'Lista', count: shown.length }]} />
       <div className="flex flex-wrap items-start gap-grid">
-        <Card dense className="flex-[1_1_340px] md:max-w-[420px] h-[60vh] min-h-[360px] md:h-[calc(100vh-128px)] md:min-h-[560px]">
+        <Card dense className={cx('flex-[1_1_340px] md:max-w-[420px] h-[70vh] max-md:supports-[height:100dvh]:h-[70dvh] min-h-[360px] md:h-[calc(100vh-128px)] md:min-h-[560px]', view === 'mapa' && 'max-md:hidden')}>
           <section aria-label="Veículos" className="flex flex-col gap-stack h-full min-h-0">
             <SearchInput value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
             <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />
             <ul className="flex-1 min-h-0 overflow-y-auto -mx-2 pb-16" aria-label={`${shown.length} veículos`}>
               {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, k, d }: any) => (
                 <li key={a.id}>
-                  <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => setSel(a.id)}
+                  <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
                     model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
                     speed={v && !v.noSignal ? Math.round(v.speed) : null} time={v ? fmtT(v.lastUpdate) : ''}
                     menu={[{ icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }, { icon: 'comando', label: 'Comandos', onClick: () => setCmd({ target: 'veiculo', assetId: a.id }) }]} />
@@ -160,7 +165,7 @@ export default function Monitoramento() {
           </section>
         </Card>
 
-        <section ref={mapSectionRef} aria-label="Mapa" className={cx('flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line h-[calc(100vh-128px)] min-h-[560px]', fullscreen && 'bg-ink')}>
+        <section ref={mapSectionRef} aria-label="Mapa" className={cx('flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line h-[62vh] max-md:supports-[height:100dvh]:h-[62dvh] min-h-[360px] md:h-[calc(100vh-128px)] md:min-h-[560px]', fullscreen && 'bg-ink', view === 'lista' && 'max-md:hidden')}>
           <MapContainer ref={setMap} center={[-8.1, -34.92]} zoom={12} className="w-full h-full" zoomControl={false}>
             <TileLayer key={`${tileKey}-${mapStyle}`} url={MAP_STYLES[mapStyle].url} attribution={MAP_STYLES[mapStyle].attribution} keepBuffer={6} updateWhenZooming={false} eventHandlers={{ tileerror: () => setTileErr((n) => n + 1) }} />
             {showF && <FenceShapes fences={fences} />}
@@ -170,9 +175,10 @@ export default function Monitoramento() {
             <Ctx onCtx={setCtx} />
           </MapContainer>
 
-          <div className="absolute top-3 left-3 z-[400] flex flex-wrap gap-tight">
+          <div className="absolute top-3 left-3 right-3 z-[400] flex flex-col items-start gap-tight pointer-events-none [&>*]:pointer-events-auto">
+          <div className="flex flex-wrap gap-tight">
             <MapButton icon="cerca" label="Cercas" pressed={showF} onClick={() => setShowF(!showF)} />
-            <MapButton icon="busca" label="Passou por aqui" title="Quem passou por um ponto. Dica: clique com o botão direito no mapa para escolher o ponto." onClick={() => passAt(-8.1187, -34.9048, 300)} />
+            <MapButton icon="busca" label="Passou por aqui" title="Quem passou pelo ponto no centro do mapa. Para escolher outro ponto: botão direito no computador, toque longo no celular." onClick={() => { const c = map?.getCenter(); if (c) passAt(c.lat, c.lng, 300); }} />
             <MapButton icon="equipe" label="Agrupar" pressed={grouped} title={grouped ? 'Agrupando veículos próximos' : 'Mostrando todos os veículos'} onClick={() => setGrouped(!grouped)} />
             <span ref={styleBtnRef}>
               <MapButton icon="camadas" label="Estilo do mapa" title="Trocar o estilo do mapa"
@@ -182,13 +188,14 @@ export default function Monitoramento() {
                 }} />
             </span>
           </div>
-          <div className="absolute top-14 left-3 z-[400]">
+          <div>
             <MapControls items={[
               { icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() },
               { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() },
               { icon: 'centralizar', label: 'Ver a frota toda', onClick: fitAll },
               { icon: 'tela-cheia', label: fullscreen ? 'Sair da tela cheia' : 'Tela cheia', onClick: toggleFullscreen },
             ]} />
+          </div>
           </div>
           {styleMenu && (
             <ContextMenu x={styleMenu.x} y={styleMenu.y} onClose={() => setStyleMenu(null)} header="Estilo do mapa"
@@ -204,7 +211,7 @@ export default function Monitoramento() {
           )}
 
           {ctx && (
-            <ContextMenu x={Math.min(ctx.x, 600)} y={ctx.y} onClose={() => setCtx(null)} header={<span className="num">{ctx.lat.toFixed(5)}, {ctx.lng.toFixed(5)}</span>} items={[
+            <ContextMenu x={Math.max(8, Math.min(ctx.x, (mapSectionRef.current?.clientWidth ?? 600) - 264))} y={Math.max(8, Math.min(ctx.y, (mapSectionRef.current?.clientHeight ?? 600) - 200))} onClose={() => setCtx(null)} header={<span className="num">{ctx.lat.toFixed(5)}, {ctx.lng.toFixed(5)}</span>} items={[
               { label: 'Passou por aqui…', icon: 'busca', onClick: () => passAt(ctx.lat, ctx.lng, 200) },
               { label: 'Criar cerca neste ponto', icon: 'cerca', to: `/monitoramento/cercas?lat=${ctx.lat}&lng=${ctx.lng}` },
               { label: 'Copiar coordenadas', icon: 'duplicar', onClick: () => { const p = navigator.clipboard?.writeText(`${ctx.lat.toFixed(6)}, ${ctx.lng.toFixed(6)}`); p ? p.then(() => toast('Coordenadas copiadas.'), () => toast.error('Selecione e copie à mão.', 'Não foi possível copiar')) : toast.error('Selecione e copie à mão.', 'Não foi possível copiar'); } },

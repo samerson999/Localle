@@ -122,15 +122,17 @@ export default function Replay() {
           {matching && <span className="text-caption text-ink-2 inline-flex items-center gap-tight"><Spinner size={14} />Ajustando o traçado às ruas…</span>}
         </div>
       </Card>
-      <Grid cols={5} equal>
+      <Grid cols={5} equal className="max-md:flex max-md:overflow-x-auto max-md:overscroll-x-contain max-md:-mx-page max-md:px-page max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:w-[148px] max-md:[&>*]:shrink-0">
         <KpiTile label="Distância" value={stats.dist} digits={1} unit="km" />
         <KpiTile label="Tempo em movimento" display={<span className={cx(numSizeClass('kpi'), 'num')}>{hm(stats.moving)}</span>} />
         <KpiTile label="Paradas (> 5 min)" value={stats.stops.length} />
         <KpiTile label="Velocidade máxima" value={stats.vmax} unit="km/h" status={stats.vmax > 80 ? 'parado' : undefined} sub={stats.vmax > 80 ? 'Acima de 80 km/h' : undefined} />
         <KpiTile label="Eventos" value={evs.length} />
       </Grid>
-      <div className="flex flex-wrap items-start gap-grid">
-        <section className="flex-[999_1_560px] min-w-0 h-[560px] rounded-card overflow-hidden border border-line relative">
+      {/* celular: a linha mapa + "Ponto atual" se desfaz (contents) para os controles de reprodução ficarem logo abaixo do
+          mapa; "Ponto atual" e a tabela de eventos descem (order) */}
+      <div className="flex flex-wrap items-start gap-grid max-md:contents">
+        <section className="flex-[999_1_560px] max-md:flex-none min-w-0 h-[50vh] min-h-[300px] md:h-[560px] rounded-card overflow-hidden border border-line relative">
           <MapContainer center={[-8.1, -34.92]} zoom={12} className="w-full h-full">
             <TileLayer url={TILE} attribution={ATTR} keepBuffer={6} updateWhenZooming={false} />
             {showF && <FenceShapes fences={fences} />}
@@ -149,7 +151,7 @@ export default function Replay() {
             </div>
           </div>}
         </section>
-        <aside className="flex-[1_1_300px] max-w-[380px] flex flex-col gap-grid">
+        <aside className="flex-[1_1_300px] max-w-[380px] max-md:flex-none max-md:max-w-none max-md:order-1 flex flex-col gap-grid">
           <Card title="Ponto atual" icon="rota">
             {cur ? <>
               <DescList>
@@ -188,7 +190,7 @@ export default function Replay() {
           <span className="ml-auto text-caption text-ink-3">Arraste o marcador para navegar pelo percurso</span>
         </div>
       </Card>
-      <Card title="Eventos e paradas do percurso" icon="historico">
+      <Card title="Eventos e paradas do percurso" icon="historico" className="max-md:order-2">
         <Table emptyState={<EmptyState icon="ok" title="Nenhum evento ou parada neste percurso" />} head={['Hora', 'Ocorrência', 'Detalhe', 'Endereço', '']} rows={[...evs.map((e: any) => ({ ts: e.ts, t: (EVENT_TYPES[e.type]?.label ?? e.label), d: e.value == null ? '—' : e.value + ' km/h', pos: e.pos })), ...stats.stops.map((s: any) => ({ ts: s.ts, t: 'Parada', d: hm(s.end - s.ts), pos: s.pos }))].sort((a, b) => a.ts - b.ts).map((r) => [<span className="num">{fmtDT(r.ts)}</span>, <span className="font-medium">{r.t}</span>, <span className="num">{r.d}</span>, <Address pos={r.pos} className="text-small" />, <TextButton onClick={() => { const i = pts.findIndex((p: any) => p[0] >= r.ts); if (i >= 0) { setIdx(i); setPlaying(false); } }}>Ir para o ponto</TextButton>])} />
       </Card>
       </Stack>

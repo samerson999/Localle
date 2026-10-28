@@ -124,3 +124,10 @@ a { text-underline-offset: 3px; }
 /* ícone ao lado de texto: caixa com a altura de uma linha do texto ao redor (1lh) e o ícone centrado nela.
    Alinha opticamente com a primeira linha, em qualquer tamanho de texto, sem margem de ajuste. */
 .ico-line { display: inline-flex; align-items: center; height: 1lh; flex-shrink: 0; }
+
+/* ---------- toque ---------- */
+/* campo com fonte < 16px dispara o zoom automático do iOS no foco; o tamanho vem de tokens.css (--fs-field-touch).
+   !important porque a classe de tamanho do Tailwind (text-body, text-small) vem depois deste arquivo. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea { font-size: var(--fs-field-touch) !important; }
+}

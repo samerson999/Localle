@@ -1,6 +1,6 @@
-import { createContext, forwardRef, useContext, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { createContext, forwardRef, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
-import { cx } from './ui';
+import { cx, useScrollLock } from './ui';
 import { Icon } from './icons';
 
 // Porte do Sidebar oficial do shadcn/ui (https://ui.shadcn.com/docs/components/base/sidebar)
@@ -103,9 +103,14 @@ export function Sidebar({ collapsible = 'icon', children }: { collapsible?: 'ico
 }
 
 // Equivalente ao Sheet do shadcn (drawer off-canvas no mobile), usando nossa própria sobreposição.
+// Diálogo modal: Esc fecha, o foco entra na gaveta ao abrir e volta para quem a abriu ao fechar, o Tab não sai dela
+// e a página de trás não rola.
 function SidebarSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
   const [mounted, setMounted] = useState(open);
   const [closing, setClosing] = useState(false);
+  const box = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  useScrollLock(open);
   useEffect(() => {
     if (open) { setMounted(true); setClosing(false); return; }
     if (!mounted) return;
@@ -113,11 +118,27 @@ function SidebarSheet({ open, onClose, children }: { open: boolean; onClose: () 
     const t = setTimeout(() => { setMounted(false); setClosing(false); }, 140);
     return () => clearTimeout(t);
   }, [open]);
+  useEffect(() => {
+    if (!open || !mounted) return;
+    const back = document.activeElement as HTMLElement | null;
+    const focusables = () => Array.from(box.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input,[tabindex]:not([tabindex="-1"])') || []);
+    (box.current?.querySelector<HTMLElement>('a[aria-current="page"]') || focusables()[0])?.focus();
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); closeRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const f = focusables(); if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('keydown', k); back?.focus?.(); };
+  }, [open, mounted]);
   if (!mounted) return null;
   return (
     <div className="md:hidden fixed inset-0 z-[1050] no-print" data-slot="sidebar" data-mobile="true">
       <div className={cx('absolute inset-0 bg-scrim', closing ? 'anim-fade-out' : 'anim-fade')} onClick={onClose} />
-      <aside aria-label="Menu" style={{ width: SIDEBAR_WIDTH_MOBILE }} className={cx('absolute left-0 top-0 h-full max-w-[85vw] bg-card border-r border-line', closing ? 'anim-out' : 'anim-page')}>{children}</aside>
+      <aside ref={box} role="dialog" aria-modal="true" aria-label="Menu" style={{ width: SIDEBAR_WIDTH_MOBILE }} className={cx('absolute left-0 top-0 h-full max-w-[85vw] bg-card border-r border-line overscroll-contain', closing ? 'anim-out' : 'anim-page')}>{children}</aside>
     </div>
   );
 }

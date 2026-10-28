@@ -50,7 +50,7 @@ function AvisoBackend() {
     try { if (semTempoReal) await syncFrota(); if (r.modulosFalhos.length) await syncModulos(); } catch { /* o estado do aviso já reflete a falha */ } finally { setTentando(false); }
   };
   return (
-    <div role="alert" className="no-print sticky top-14 md:top-14 z-[30] flex flex-wrap items-center gap-x-stack gap-y-hair px-page md:px-page-md py-tight bg-crit-soft text-crit-ink text-small">
+    <div role="alert" className="flex flex-wrap items-center gap-x-stack gap-y-hair px-page md:px-page-md py-tight bg-crit-soft text-crit-ink text-small">
       <Icon name="erro" size={16} className="shrink-0" />
       <span className="mr-auto">
         {semTempoReal
@@ -152,6 +152,9 @@ function LayoutBody() {
   const canConfig = session.role === 'revenda' || session.role === 'locale';
   // Setup (parâmetros de operação, docs/PLANO-SETUP-ADMIN.md): quem vê a frota configura a própria empresa; a API decide quem pode alterar
   const mods = [...allowed(OPERACAO), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
+  // celular: a barra superior diz em que tela se está (o título da página é discreto e o logo já mostra a revenda)
+  const atual = mods.filter((m) => loc.pathname === m.to || loc.pathname.startsWith(m.to + '/')).sort((a, b) => b.to.length - a.to.length)[0]
+    ?? (loc.pathname.startsWith('/precisa-de-voce') ? { label: 'Precisa de você' } : null);
   const mini = state === 'collapsed' && !openMobile; // só ícones (desktop recolhido)
   const sbw = mini ? SIDEBAR_WIDTH_ICON : SIDEBAR_WIDTH;
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
@@ -215,7 +218,7 @@ function LayoutBody() {
         <div style={{ ['--top-reserve' as any]: reserve && !session.support ? `calc(${reserve}px + var(--gap-grid))` : '0px' }} className="flex flex-col flex-1 min-w-0">
           {/* celular: barra superior com contador sempre visível */}
           <div className="md:hidden no-print sticky top-0 z-[800] flex items-center gap-2 px-4 h-14 bg-canvas border-b border-line">
-            <BrandMark size={30} /><span className="font-semibold text-body truncate mr-auto">{rev.branding.name}</span>
+            <BrandMark size={30} /><span className="font-semibold text-body truncate mr-auto">{atual?.label ?? rev.branding.name}</span>
             <IconButton size="touch" onClick={() => setCmdk(true)} aria-label="Buscar" ><Icon name="busca" /></IconButton>
             {fleet && <IconButton size="touch" onClick={() => setPanel(true)} aria-label={`Precisa de você: ${needs.length} críticos`} className="relative"><Icon name="atencao" />{needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute top-0.5 right-0" />}</IconButton>}
             <IconButton size="touch" onClick={() => setOpenMobile(true)} aria-label="Abrir menu" aria-expanded={openMobile} ><Icon name="menu" /></IconButton>
@@ -232,13 +235,17 @@ function LayoutBody() {
               </button>
             </div>
           )}
+          {/* faixas fixas sob a barra: suporte e falha de backend empilham num contêiner só (cada uma sticky por conta
+              própria parava no mesmo top e uma cobria a outra) */}
+          <div className="no-print sticky top-14 z-[30] flex flex-col">
           {session.support && (
-            <div role="status" className="no-print sticky top-14 md:top-14 z-[30] flex flex-wrap items-center gap-x-stack gap-y-hair px-page md:px-page-md py-tight bg-ink text-on-dark text-small">
+            <div role="status" className="flex flex-wrap items-center gap-x-stack gap-y-hair px-page md:px-page-md py-tight bg-ink text-on-dark text-small">
               <Icon name="cadeado" size={16} className="shrink-0" /><span className="mr-auto">Acesso de suporte a <b>{session.support.client}</b> desde {fmtT(session.support.at)} · {session.support.reason}</span>
               <button type="button" className="h-8 px-3 rounded-btn border border-on-dark-hover hover:bg-on-dark-hover font-medium" onClick={() => { endSupport(); nav(homeOf({ ...session, support: undefined })); }}>Encerrar acesso</button>
             </div>
           )}
           <AvisoBackend />
+          </div>
           <OdometerAsk />
           <main key={loc.pathname} className="flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end md:px-page-md md:pt-page-top-md anim-page"><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
         </div>

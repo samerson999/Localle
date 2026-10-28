@@ -65,16 +65,17 @@ export default function Cercas() {
   const others = fences.filter((x: any) => x.id !== f.id);
   const color = fenceColor(f.type);
   const inside = (fe: any) => Object.values<any>(vehicles).filter((v) => inFence(v.pos, fe)).length;
+  const toque = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches; // celular: "toque", não "clique"
   const tip = f.shape === 'circle'
-    ? (f.center ? 'Arraste o ponto central para mover a cerca.' : 'Clique no mapa onde fica o centro da cerca.')
-    : drawing ? `Clique no mapa para marcar os cantos da área (${f.points.length} marcado${f.points.length === 1 ? '' : 's'}; mínimo 3).` : 'Arraste os pontos para ajustar o contorno.';
+    ? (f.center ? 'Arraste o ponto central para mover a cerca.' : `${toque ? 'Toque' : 'Clique'} no mapa onde fica o centro da cerca.`)
+    : drawing ? `${toque ? 'Toque' : 'Clique'} no mapa para marcar os cantos da área (${f.points.length} marcado${f.points.length === 1 ? '' : 's'}; mínimo 3).` : 'Arraste os pontos para ajustar o contorno.';
 
   return (
     <div>
       <MonitorHeader title="Cercas" subtitle="Áreas que geram alertas de entrada e saída." />
       <PageBody>
       <div className="flex flex-wrap items-stretch gap-grid">
-        <section className="flex-[999_1_520px] min-w-0 min-h-[640px] rounded-card overflow-hidden border border-line relative">
+        <section className="flex-[999_1_520px] min-w-0 h-[55vh] min-h-[320px] md:h-auto md:min-h-[640px] rounded-card overflow-hidden border border-line relative">
           <MapContainer ref={setMap} center={[-8.1, -34.92]} zoom={12} className={cx('w-full h-full', ((f.shape === 'circle' && !f.center) || drawing) && 'cursor-crosshair')} zoomControl={false}>
             <TileLayer url={TILE} attribution={ATTR} keepBuffer={6} updateWhenZooming={false} />
             <FenceShapes fences={others} />

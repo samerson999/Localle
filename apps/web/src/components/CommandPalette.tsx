@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { Icon } from './icons';
-import { cx, usePresence, EmptyState } from './ui';
+import { cx, usePresence, useScrollLock, EmptyState } from './ui';
 import { Plate } from './story';
 
 export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -29,6 +29,7 @@ export default function CommandPalette({ open, onClose, modules }: { open: boole
   }, [q, assets, drivers, modules]);
 
   const { mounted, closing } = usePresence(open);
+  useScrollLock(open);
   if (!mounted) return null;
   const go = (to: string) => { onClose(); nav(to); };
   return (
@@ -43,9 +44,9 @@ export default function CommandPalette({ open, onClose, modules }: { open: boole
               else if (e.key === 'Enter' && results[i]) go(results[i].to);
               else if (e.key === 'Escape') onClose();
             }} className="flex-1 h-14 bg-transparent outline-none text-body placeholder:text-ink-3" />
-          <kbd className="text-caption text-ink-2 font-mono">Esc</kbd>
+          <kbd className="text-caption text-ink-2 font-mono [@media(pointer:coarse)]:hidden">Esc</kbd>
         </div>
-        <ul id="cmdk-list" role="listbox" className="max-h-[50vh] overflow-y-auto p-2">
+        <ul id="cmdk-list" role="listbox" className="max-h-[50vh] overflow-y-auto overscroll-contain p-2">
           {results.length === 0 && <li><EmptyState icon="busca" title={`Nada encontrado para “${q}”`} detail="Busque por placa, nome do veículo, motorista ou módulo." /></li>}
           {results.map((r, k) => (
             <li key={r.id} id={r.id} role="option" aria-selected={k === i}>
