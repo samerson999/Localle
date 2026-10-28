@@ -23,6 +23,11 @@ COPY . .
 RUN pnpm --filter web build
 
 FROM nginx:1.27-alpine AS runner
-COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+# Endereço interno da API (host:porta) para o proxy /api-localle/ do nginx.conf. O padrão serve ao
+# infra/prd-like (serviço `api`); no Coolify, sobrescrever com o nome da API na rede `coolify`.
+ENV API_UPSTREAM=api:3000
+# Em templates/ (não conf.d/): a imagem oficial passa o arquivo pelo envsubst na subida, trocando só
+# variáveis de ambiente definidas (${API_UPSTREAM}); as variáveis do próprio Nginx ($uri, $host) ficam.
+COPY apps/web/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
