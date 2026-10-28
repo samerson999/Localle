@@ -10,20 +10,9 @@ import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorMode
 import { fmtD, fmtDT } from '@localle/shared/utils';
 import { normalizarIdentificador, ROTULO_IDENTIFICADOR, TIPOS_IDENTIFICADOR, validarIdentificador, type TipoIdentificador } from '@localle/shared/rastreadorModelos';
 
-// Protocolos do Traccar mais usados e a porta padrão de cada um (sugestão ao cadastrar modelo; o nome é o que o Traccar
-// informa em cada posição — o JT808 se chama "huabao" no Traccar)
-const PROTOCOLOS_TRACCAR: { protocolo: string; porta: number; rotulo: string }[] = [
-  { protocolo: 'gt06', porta: 5023, rotulo: 'GT06 / Concox / Jimi' },
-  { protocolo: 'teltonika', porta: 5027, rotulo: 'Teltonika' },
-  { protocolo: 'huabao', porta: 5015, rotulo: 'JT808 (Huabao)' },
-  { protocolo: 'suntech', porta: 5011, rotulo: 'Suntech' },
-  { protocolo: 'h02', porta: 5013, rotulo: 'H02' },
-  { protocolo: 'gps103', porta: 5001, rotulo: 'GPS103 / Coban' },
-  { protocolo: 'tk103', porta: 5002, rotulo: 'TK103' },
-  { protocolo: 'gl200', porta: 5004, rotulo: 'Queclink' },
-  { protocolo: 'ruptela', porta: 5046, rotulo: 'Ruptela' },
-  { protocolo: 'osmand', porta: 5055, rotulo: 'OsmAnd (celular)' },
-];
+// Protocolo do modelo: texto livre, com o nome que o Traccar usa. Não há lista fixa — o Traccar não expõe os protocolos
+// pela API (só no default.xml dele). As sugestões são o que a plataforma já viu: modelos cadastrados e protocolos
+// detectados nas posições. Protocolo novo: o log do Traccar mostra o nome em "[T…: <protocolo> < ip] Unknown device - …".
 const nomeModelo = (m: { fabricante: string; nome: string }) => `${m.fabricante} ${m.nome}`;
 
 type Situacao = 'instalado' | 'vinculado' | 'estoque' | 'desativado';
@@ -141,7 +130,7 @@ export default function Rastreadores() {
       </PageBody>
       {modal === 'rastreador' && <NovoRastreadorModal modelos={modelosAtivos} onClose={() => setModal(null)} onDone={reload} onNovoModelo={() => { setModal(null); setEditandoModelo('novo'); }} />}
       {trocandoModelo && <TrocarModeloModal rastreador={trocandoModelo} modelos={modelosAtivos} onClose={() => setTrocandoModelo(null)} onDone={reload} />}
-      {editandoModelo && <ModeloModal modelo={editandoModelo === 'novo' ? null : editandoModelo} onClose={() => setEditandoModelo(null)} onDone={reload} />}
+      {editandoModelo && <ModeloModal modelo={editandoModelo === 'novo' ? null : editandoModelo} conhecidos={protocolosConhecidos(modelos, rastreadores)} onClose={() => setEditandoModelo(null)} onDone={reload} />}
       {modal === 'chip' && <NovoChipModal onClose={() => setModal(null)} onDone={reload} />}
       {vinculando && <VincularModal rastreador={vinculando} chips={chipsLivres} onClose={() => setVinculando(null)} onDone={reload} />}
       {aoCliente && <ClienteModal rastreador={aoCliente} clientes={clientes} onClose={() => setAoCliente(null)} onDone={reload} />}
@@ -217,7 +206,15 @@ function TrocarModeloModal({ rastreador, modelos, onClose, onDone }: { rastreado
   );
 }
 
-function ModeloModal({ modelo, onClose, onDone }: { modelo: AdminRastreadorModelo | null; onClose: () => void; onDone: () => void }) {
+/** Protocolos que a plataforma já conhece, com a porta quando vem de um modelo. */
+function protocolosConhecidos(modelos: AdminRastreadorModelo[], rastreadores: AdminRastreador[]) {
+  const porta = new Map<string, number | null>();
+  for (const m of modelos) porta.set(m.protocolo, m.porta);
+  for (const r of rastreadores) if (r.protocolo && !porta.has(r.protocolo)) porta.set(r.protocolo, null);
+  return [...porta].map(([protocolo, p]) => ({ protocolo, porta: p })).sort((a, b) => a.protocolo.localeCompare(b.protocolo));
+}
+
+function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRastreadorModelo | null; conhecidos: { protocolo: string; porta: number | null }[]; onClose: () => void; onDone: () => void }) {
   const [fabricante, setFabricante] = useState(modelo?.fabricante || '');
   const [nome, setNome] = useState(modelo?.nome || '');
   const [protocolo, setProtocolo] = useState(modelo?.protocolo || '');
@@ -227,8 +224,13 @@ function ModeloModal({ modelo, onClose, onDone }: { modelo: AdminRastreadorModel
   const ok = fabricante.trim() && nome.trim() && /^[a-z0-9]{2,30}$/.test(protocolo) && Number.isInteger(portaN) && portaN >= 1 && portaN <= 65535;
   const body = { fabricante: fabricante.trim(), nome: nome.trim(), protocolo, porta: portaN, tipoIdentificador: tipo };
   const { busy, submit } = useSubmit(() => (modelo ? adminApi.atualizarModelo(modelo.id, body) : adminApi.criarModelo(body)), modelo ? 'Modelo atualizado.' : 'Modelo cadastrado.', onDone, onClose);
-  // escolher um protocolo conhecido sugere a porta padrão do Traccar
-  const escolherProtocolo = (p: string) => { setProtocolo(p); const conhecido = PROTOCOLOS_TRACCAR.find((x) => x.protocolo === p); if (conhecido && !porta) setPorta(String(conhecido.porta)); if (p === 'huabao' && tipo === 'imei') setTipo('terminal_jt808'); };
+  // protocolo já usado em outro modelo: sugere a mesma porta (só se a porta ainda estiver vazia)
+  const escolherProtocolo = (v: string) => {
+    const p = v.trim().toLowerCase();
+    setProtocolo(p);
+    const ja = conhecidos.find((x) => x.protocolo === p);
+    if (ja?.porta && !porta) setPorta(String(ja.porta));
+  };
   return (
     <Modal open onClose={onClose} title={modelo ? `Editar modelo · ${nomeModelo(modelo)}` : 'Novo modelo de rastreador'} width="max-w-xl"
       footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!ok} onClick={submit}>{modelo ? 'Salvar' : 'Cadastrar'}</Button></>}>
@@ -237,10 +239,9 @@ function ModeloModal({ modelo, onClose, onDone }: { modelo: AdminRastreadorModel
         <Field label="Modelo"><Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: JR12" /></Field>
       </FormGroup>
       <FormGroup cols={2}>
-        <Field label="Protocolo do Traccar" hint="Nome que o Traccar usa (aparece no log e em cada posição).">
-          <SearchSelect value={protocolo} onChange={escolherProtocolo} placeholder="Escolha o protocolo"
-            options={[...PROTOCOLOS_TRACCAR.map((x) => ({ value: x.protocolo, label: x.protocolo, sub: `${x.rotulo} · porta ${x.porta}` })),
-              ...(protocolo && !PROTOCOLOS_TRACCAR.some((x) => x.protocolo === protocolo) ? [{ value: protocolo, label: protocolo }] : [])]} />
+        <Field label="Protocolo do Traccar" hint={'Nome exato que o Traccar usa. Para um aparelho novo, aparece no log: "[T…: protocolo < ip] Unknown device - …".'}>
+          <Input list="protocolos-conhecidos" value={protocolo} onChange={(e) => escolherProtocolo(e.target.value)} placeholder="Ex.: gt06" autoComplete="off" spellCheck={false} />
+          <datalist id="protocolos-conhecidos">{conhecidos.map((x) => <option key={x.protocolo} value={x.protocolo}>{x.porta ? `porta ${x.porta}` : 'detectado em posições'}</option>)}</datalist>
         </Field>
         <Field label="Porta"><Input inputMode="numeric" value={porta} onChange={(e) => setPorta(e.target.value.replace(/\D/g, ''))} /></Field>
       </FormGroup>
