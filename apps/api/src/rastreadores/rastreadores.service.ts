@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -21,6 +22,9 @@ import { SimCardsRepository } from './sim-cards.repository';
 import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
 import type { RastreadorVinculoEntity } from './rastreador-vinculo.entity';
 import { isPgError, PG_EXCLUSION_VIOLATION, UNIQUE, violouUnique } from '../db/pg-errors';
+import { normalizarIdentificador, validarIdentificador } from '@localle/shared/rastreadorModelos';
+import { parseUuid } from '../common/parse-uuid';
+import { RastreadorModelosRepository } from './rastreador-modelos.repository';
 
 /** Quem executa: superadmin (Painel da Locale) ou usuário do próprio cliente (Gestão de ativos). */
 export interface Ator {
@@ -49,6 +53,7 @@ export class RastreadoresService {
     private readonly audit: AuditLogRepository,
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly traccar: TraccarClient,
+    private readonly modelos: RastreadorModelosRepository,
   ) {}
 
   /**
@@ -59,15 +64,22 @@ export class RastreadoresService {
    */
   async cadastrarRastreador(
     superadminId: string,
-    data: { imei: string; traccarDeviceId?: string; modelo?: string; protocolo?: string },
+    data: { imei: string; modeloId: string; traccarDeviceId?: string },
   ): Promise<RastreadorEntity> {
+    // modelo obrigatório (catálogo, decisão de 28/10/2026): o identificador é validado pelo tipo que o modelo manda
+    const modelo = await this.modeloAtivo(data.modeloId);
+    if (typeof data.imei !== 'string') throw new BadRequestException('Informe o identificador do aparelho');
+    const imei = normalizarIdentificador(data.imei);
+    const invalido = validarIdentificador(modelo.tipo_identificador, imei);
+    if (invalido) throw new BadRequestException(invalido);
+    const nomeModelo = `${modelo.fabricante} ${modelo.nome}`;
     return withTransaction(this.pool, async (client) => {
       let criado = await this.rastreadores.create(
-        { imei: data.imei, traccarDeviceId: data.traccarDeviceId, modelo: data.modelo, protocolo: data.protocolo },
+        { imei, traccarDeviceId: data.traccarDeviceId, modelo: nomeModelo, modeloId: modelo.id },
         client,
       );
       if (!data.traccarDeviceId) {
-        const deviceId = await this.provisionarNoTraccar(criado.imei);
+        const deviceId = await this.provisionarNoTraccar(criado.imei, nomeModelo);
         if (deviceId !== null) criado = await this.rastreadores.setTraccarDeviceId(criado.id, deviceId, client);
       }
       await this.audit.record(
@@ -77,7 +89,7 @@ export class RastreadoresService {
           clientId: null,
           action: 'rastreador.cadastrar',
           target: criado.id,
-          after: { imei: criado.imei },
+          after: { imei: criado.imei, modeloId: modelo.id, modelo: nomeModelo },
         },
         client,
       );
@@ -289,12 +301,16 @@ export class RastreadoresService {
   async atualizar(
     superadminId: string,
     rastreadorId: string,
-    data: { modelo?: string | null; protocolo?: string | null },
+    data: { modeloId?: string; modelo?: string | null; protocolo?: string | null },
   ): Promise<RastreadorEntity> {
+    // trocar o modelo do catálogo também atualiza o nome exibido; o identificador já cadastrado não é revalidado
+    // (o aparelho continua mandando o mesmo), só o protocolo esperado muda
+    const modelo = data.modeloId ? await this.modeloAtivo(data.modeloId) : null;
+    const dados = modelo ? { ...data, modelo: `${modelo.fabricante} ${modelo.nome}` } : data;
     return withTransaction(this.pool, async (client) => {
       const antes = await this.rastreadores.findById(rastreadorId, client);
       if (!antes) throw new NotFoundException('Rastreador não encontrado');
-      const depois = await this.rastreadores.updateDados(rastreadorId, data, client);
+      const depois = await this.rastreadores.updateDados(rastreadorId, dados, client);
       await this.audit.record(
         {
           actorType: 'superadmin',
@@ -302,8 +318,8 @@ export class RastreadoresService {
           clientId: null,
           action: 'rastreador.atualizar',
           target: rastreadorId,
-          before: { modelo: antes.modelo, protocolo: antes.protocolo },
-          after: { modelo: depois.modelo, protocolo: depois.protocolo },
+          before: { modelo: antes.modelo, modeloId: antes.modelo_id, protocolo: antes.protocolo },
+          after: { modelo: depois.modelo, modeloId: depois.modelo_id, protocolo: depois.protocolo },
         },
         client,
       );
@@ -342,7 +358,15 @@ export class RastreadoresService {
     });
   }
 
-  private async provisionarNoTraccar(imei: string): Promise<string | null> {
+  private async modeloAtivo(modeloId: unknown) {
+    if (typeof modeloId !== 'string' || !modeloId) throw new BadRequestException('Escolha o modelo do rastreador');
+    const modelo = await this.modelos.findById(parseUuid('modeloId', modeloId));
+    if (!modelo) throw new NotFoundException('Modelo de rastreador não encontrado');
+    if (!modelo.ativo) throw new BadRequestException(`O modelo ${modelo.fabricante} ${modelo.nome} está desativado no catálogo`);
+    return modelo;
+  }
+
+  private async provisionarNoTraccar(imei: string, modelo?: string): Promise<string | null> {
     const config = this.traccar.config();
     if (!config) {
       this.logger.warn(`TRACCAR_URL não configurado — rastreador IMEI ${imei} cadastrado sem device no Traccar`);
@@ -351,7 +375,7 @@ export class RastreadoresService {
     try {
       const device =
         (await this.traccar.findDeviceByUniqueId(config, imei)) ??
-        (await this.traccar.createDevice(config, { name: imei, uniqueId: imei }));
+        (await this.traccar.createDevice(config, { name: imei, uniqueId: imei, ...(modelo ? { model: modelo } : {}) }));
       this.logger.log(`Rastreador IMEI ${imei} provisionado no Traccar (device ${device.id})`);
       return String(device.id);
     } catch (err) {

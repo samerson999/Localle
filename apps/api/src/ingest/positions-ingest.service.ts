@@ -51,8 +51,10 @@ export class PositionsIngestService {
     try {
       await client.query('begin');
 
-      const rastreador = await client.query<{ id: string; protocolo: string | null }>(
-        'select id, protocolo from rastreadores where traccar_device_id = $1',
+      const rastreador = await client.query<{ id: string; protocolo: string | null; modelo_protocolo: string | null; modelo: string | null }>(
+        `select r.id, r.protocolo, m.protocolo as modelo_protocolo, r.modelo
+           from rastreadores r left join rastreador_modelos m on m.id = r.modelo_id
+          where r.traccar_device_id = $1`,
         [position.traccarDeviceId],
       );
       if (rastreador.rowCount === 0) {
@@ -65,6 +67,13 @@ export class PositionsIngestService {
       if (position.protocol && position.protocol !== rastreador.rows[0].protocolo) {
         await client.query('update rastreadores set protocolo = $2, atualizado_em = now() where id = $1', [rastreadorId, position.protocol]);
         this.logger.log(`rastreador_id=${rastreadorId} protocolo detectado: ${rastreador.rows[0].protocolo ?? '(vazio)'} → ${position.protocol}`);
+        // decisão de 28/10/2026: protocolo diferente do modelo grava e avisa (a tela de Rastreadores marca a divergência)
+        const esperado = rastreador.rows[0].modelo_protocolo;
+        if (esperado && esperado !== position.protocol) {
+          this.logger.warn(
+            `rastreador_id=${rastreadorId} protocolo ${position.protocol} diferente do modelo ${rastreador.rows[0].modelo} (${esperado}): aparelho na porta de outro protocolo ou modelo cadastrado errado`,
+          );
+        }
       }
 
       const reserva = await client.query(

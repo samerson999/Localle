@@ -63,7 +63,8 @@ export class TraccarClient {
     return this.request<TraccarDevice[]>(config, 'GET', '/api/devices');
   }
 
-  async createDevice(config: TraccarConfig, device: { name: string; uniqueId: string }): Promise<TraccarDevice> {
+  /** `model`: modelo do catálogo, para aparecer também no painel do Traccar. */
+  async createDevice(config: TraccarConfig, device: { name: string; uniqueId: string; model?: string }): Promise<TraccarDevice> {
     return this.request<TraccarDevice>(config, 'POST', '/api/devices', device);
   }
 

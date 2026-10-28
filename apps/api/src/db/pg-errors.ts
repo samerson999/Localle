@@ -19,6 +19,7 @@ export const UNIQUE = {
   usuarioEmail: 'users_email_key',
   superadminEmail: 'superadmins_email_key',
   chipPorRastreador: 'sim_cards_rastreador_id_uidx',
+  modeloRastreador: 'rastreador_modelos_fabricante_nome_uidx',
 } as const;
 
 interface PgError { code?: string; constraint?: string }

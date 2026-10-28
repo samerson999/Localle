@@ -9,6 +9,8 @@ import { InstalacoesRepository } from './instalacoes.repository';
 import { RastreadoresRepository } from './rastreadores.repository';
 import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
 import { RastreadoresService } from './rastreadores.service';
+import { RastreadorModelosRepository } from './rastreador-modelos.repository';
+import { RastreadorModelosService } from './rastreador-modelos.service';
 import { SimCardsRepository } from './sim-cards.repository';
 
 /**
@@ -47,7 +49,13 @@ describe('RastreadoresService', () => {
   const audit = new AuditLogRepository(pool);
   const traccar = new FakeTraccar();
   const vinculosRepo = new RastreadorVinculosRepository(pool);
-  const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, vinculosRepo, assetsRepo, audit, pool, traccar);
+  const modelosRepo = new RastreadorModelosRepository(pool);
+  const modelos = new RastreadorModelosService(modelosRepo, audit);
+  const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, vinculosRepo, assetsRepo, audit, pool, traccar, modelosRepo);
+  // modelo de teste com identificador livre: os testes antigos usam IMEI aleatório em hexadecimal
+  const sufixo = randomUUID().slice(0, 8);
+  let modeloTeste: string;
+  const modelosCriados: string[] = [];
 
   const superadminId = randomUUID();
   const sa = { type: 'superadmin' as const, id: superadminId };
@@ -68,6 +76,8 @@ describe('RastreadoresService', () => {
     );
     clientA = a[0].id;
     clientB = b[0].id;
+    modeloTeste = (await modelosRepo.criar({ fabricante: `Teste ${sufixo}`, nome: 'Livre', protocolo: 'gt06', porta: 5023, tipo_identificador: 'outro' })).id;
+    modelosCriados.push(modeloTeste);
   });
 
   // Asset novo por teste: cada instalação deixa `instalacoes` aberta (sem desinstalar) por padrão, e a
@@ -91,6 +101,7 @@ describe('RastreadoresService', () => {
     for (const rastreadorId of rastreadoresCriados) {
       await pool.query('delete from rastreadores where id = $1', [rastreadorId]);
     }
+    for (const id of modelosCriados) await pool.query('delete from rastreador_modelos where id = $1', [id]);
     await pool.query('delete from audit_log where actor_id in ($1, $2)', [superadminId, usuarioCliente.id]);
     await pool.query('delete from clients where id in ($1, $2)', [clientA, clientB]);
     await pool.end();
@@ -102,20 +113,20 @@ describe('RastreadoresService', () => {
 
   /** Rastreador cadastrado e já vinculado ao cliente (pré-requisito de instalar). */
   async function vinculadoA(clientId: string) {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
     await service.vincular(superadminId, clientId, rastreador.id);
     return rastreador;
   }
 
   it('cadastra rastreador com status inicial "cadastrado"', async () => {
-    const criado = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const criado = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(criado.id);
     expect(criado.status).toBe('cadastrado');
   });
 
   it('vincula rastreador a um cliente e audita; não vincula de novo nem a outro cliente sem desvincular', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
 
     const vinculo = await service.vincular(superadminId, clientA, rastreador.id);
@@ -128,14 +139,14 @@ describe('RastreadoresService', () => {
   });
 
   it('vincular a cliente inexistente responde 404, sem deixar vínculo', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
     await expect(service.vincular(superadminId, randomUUID(), rastreador.id)).rejects.toThrow(/Cliente não encontrado/);
     expect(await vinculosRepo.vigentePorRastreador(rastreador.id)).toBeNull();
   });
 
   it('sob concorrência real, só um de dois vínculos simultâneos do mesmo rastreador vence', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
     const resultados = await Promise.allSettled([
       service.vincular(superadminId, clientA, rastreador.id),
@@ -162,7 +173,7 @@ describe('RastreadoresService', () => {
   });
 
   it('não instala rastreador sem vínculo nem vinculado a outro cliente (404, nada gravado)', async () => {
-    const solto = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const solto = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(solto.id);
     const deA = await vinculadoA(clientA);
     const assetB = await novoAsset(clientB);
@@ -239,7 +250,7 @@ describe('RastreadoresService', () => {
   });
 
   it('cadastra chip, vincula a um rastreador e marca ativo', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
     const chip = await service.cadastrarSimCard(superadminId, { iccid: randomUUID() });
     simCardsCriados.push(chip.id);
@@ -250,7 +261,7 @@ describe('RastreadoresService', () => {
   });
 
   it('rejeita vincular um segundo chip ao mesmo rastreador', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
     const chip1 = await service.cadastrarSimCard(superadminId, { iccid: randomUUID() });
     const chip2 = await service.cadastrarSimCard(superadminId, { iccid: randomUUID() });
@@ -263,7 +274,7 @@ describe('RastreadoresService', () => {
   });
 
   it('desvincula chip e marca inativo', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
     const chip = await service.cadastrarSimCard(superadminId, { iccid: randomUUID() });
     simCardsCriados.push(chip.id);
@@ -279,7 +290,7 @@ describe('RastreadoresService', () => {
 
     it('sem Traccar configurado, cadastra sem traccar_device_id', async () => {
       traccar.cfg = null;
-      const criado = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+      const criado = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
       rastreadoresCriados.push(criado.id);
       expect(criado.traccar_device_id).toBeNull();
     });
@@ -287,13 +298,13 @@ describe('RastreadoresService', () => {
     it('cria o device no Traccar e grava o id; um device já existente com o mesmo IMEI é reaproveitado', async () => {
       traccar.cfg = cfg;
       const imei = novoImei();
-      const criado = await service.cadastrarRastreador(superadminId, { imei });
+      const criado = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei });
       rastreadoresCriados.push(criado.id);
       expect(criado.traccar_device_id).toBe(String(traccar.devices.get(imei)!.id));
 
       const imeiExistente = novoImei();
       traccar.devices.set(imeiExistente, { id: 123_456_789 + Math.floor(Math.random() * 1000), uniqueId: imeiExistente, name: 'x' });
-      const reaproveitado = await service.cadastrarRastreador(superadminId, { imei: imeiExistente });
+      const reaproveitado = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: imeiExistente });
       rastreadoresCriados.push(reaproveitado.id);
       expect(reaproveitado.traccar_device_id).toBe(String(traccar.devices.get(imeiExistente)!.id));
       traccar.cfg = null;
@@ -304,7 +315,7 @@ describe('RastreadoresService', () => {
       traccar.falhar = true;
       const imei = novoImei();
       try {
-        await expect(service.cadastrarRastreador(superadminId, { imei })).rejects.toThrow(/Traccar/);
+        await expect(service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei })).rejects.toThrow(/Traccar/);
       } finally {
         traccar.cfg = null;
         traccar.falhar = false;
@@ -314,22 +325,94 @@ describe('RastreadoresService', () => {
     });
   });
 
-  it('atualiza modelo/protocolo e audita o antes e o depois', async () => {
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei: novoImei(), modelo: 'GT06' });
+  it('atualiza protocolo e audita o antes e o depois', async () => {
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
+    const nome = `Teste ${sufixo} Livre`;
+    expect(rastreador).toMatchObject({ modelo: nome, modelo_id: modeloTeste });
     const atualizado = await service.atualizar(superadminId, rastreador.id, { protocolo: 'gt06' });
-    expect(atualizado).toMatchObject({ modelo: 'GT06', protocolo: 'gt06' });
+    expect(atualizado).toMatchObject({ modelo: nome, protocolo: 'gt06' });
 
     const { rows } = await pool.query(
       "select before, after from audit_log where action = 'rastreador.atualizar' and target = $1",
       [rastreador.id],
     );
-    expect(rows[0]).toEqual({ before: { modelo: 'GT06', protocolo: null }, after: { modelo: 'GT06', protocolo: 'gt06' } });
+    expect(rows[0]).toEqual({
+      before: { modelo: nome, modeloId: modeloTeste, protocolo: null },
+      after: { modelo: nome, modeloId: modeloTeste, protocolo: 'gt06' },
+    });
+  });
+
+  // Catálogo de modelos (decisão de 28/10/2026): modelo obrigatório no cadastro, identificador validado pelo tipo do
+  // modelo, modelo enviado ao Traccar e divergência de protocolo marcada no inventário.
+  describe('catálogo de modelos', () => {
+    let modeloImei: string;
+    let modeloJt808: string;
+    beforeAll(async () => {
+      modeloImei = (await modelos.criar(superadminId, { fabricante: `Teste ${sufixo}`, nome: 'IMEI', protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei' })).id;
+      modeloJt808 = (await modelos.criar(superadminId, { fabricante: `Teste ${sufixo}`, nome: 'JT808', protocolo: 'huabao', porta: 5015, tipo_identificador: 'terminal_jt808' })).id;
+      modelosCriados.push(modeloImei, modeloJt808);
+    });
+    const digitos = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
+
+    it('cadastro sem modelo, com modelo inexistente ou desativado é recusado, sem gravar nada', async () => {
+      const imei = digitos(15);
+      await expect(service.cadastrarRastreador(superadminId, { imei } as any)).rejects.toMatchObject({ status: 400 });
+      await expect(service.cadastrarRastreador(superadminId, { imei, modeloId: randomUUID() })).rejects.toMatchObject({ status: 404 });
+      const inativo = (await modelos.criar(superadminId, { fabricante: `Teste ${sufixo}`, nome: 'Inativo', protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei' })).id;
+      modelosCriados.push(inativo);
+      await modelos.atualizar(superadminId, inativo, { ativo: false });
+      await expect(service.cadastrarRastreador(superadminId, { imei, modeloId: inativo })).rejects.toThrow(/desativado/);
+      const { rowCount } = await pool.query('select 1 from rastreadores where imei = $1', [imei]);
+      expect(rowCount).toBe(0);
+    });
+
+    it('identificador validado pelo tipo do modelo: IMEI de 15 dígitos; JT808 recusa o IMEI e aceita o terminal', async () => {
+      await expect(service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: 'ABC123' })).rejects.toThrow(/15 dígitos/);
+      await expect(service.cadastrarRastreador(superadminId, { modeloId: modeloJt808, imei: digitos(15) })).rejects.toThrow(/12 dígitos/);
+      const terminal = digitos(12);
+      const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloJt808, imei: ` ${terminal.slice(0, 6)} ${terminal.slice(6)} ` });
+      rastreadoresCriados.push(r.id);
+      expect(r.imei).toBe(terminal); // espaços digitados não vão para o Traccar
+    });
+
+    it('o device criado no Traccar leva o modelo', async () => {
+      traccar.cfg = { url: 'http://traccar.fake', user: 'u', password: 'p' };
+      const imei = digitos(15);
+      const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei });
+      rastreadoresCriados.push(r.id);
+      traccar.cfg = null;
+      expect(traccar.devices.get(imei)).toMatchObject({ uniqueId: imei, model: `Teste ${sufixo} IMEI` });
+    });
+
+    it('inventário mostra o modelo e marca protocolo detectado diferente do modelo', async () => {
+      const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+      rastreadoresCriados.push(r.id);
+      const linha = async () => (await rastreadoresRepo.findAllPainel()).find((x) => x.id === r.id)!;
+      expect(await linha()).toMatchObject({ modelo_protocolo: 'gt06', modelo_porta: 5023, protocolo_divergente: false });
+      await pool.query("update rastreadores set protocolo = 'gt06' where id = $1", [r.id]);
+      expect((await linha()).protocolo_divergente).toBe(false);
+      await pool.query("update rastreadores set protocolo = 'huabao' where id = $1", [r.id]);
+      expect((await linha()).protocolo_divergente).toBe(true);
+      // trocar para o modelo certo resolve a divergência
+      await service.atualizar(superadminId, r.id, { modeloId: modeloJt808 });
+      expect(await linha()).toMatchObject({ protocolo_divergente: false, modelo: `Teste ${sufixo} JT808` });
+    });
+
+    it('catálogo: fabricante + nome únicos (sem diferenciar maiúsculas), alteração auditada', async () => {
+      await expect(modelos.criar(superadminId, { fabricante: `TESTE ${sufixo}`, nome: 'imei', protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei' }))
+        .rejects.toMatchObject({ status: 409 });
+      const atualizado = await modelos.atualizar(superadminId, modeloJt808, { porta: 5016 });
+      expect(atualizado.porta).toBe(5016);
+      const { rows } = await pool.query("select before, after from audit_log where action = 'rastreador_modelo.atualizar' and target = $1", [modeloJt808]);
+      expect(rows.at(-1)).toEqual({ before: { porta: 5015 }, after: { porta: 5016 } });
+      await expect(modelos.atualizar(superadminId, randomUUID(), { ativo: false })).rejects.toMatchObject({ status: 404 });
+    });
   });
 
   it('não desativa rastreador instalado nem vinculado; desinstalado e desvinculado, desativa e libera o IMEI', async () => {
     const imei = novoImei();
-    const rastreador = await service.cadastrarRastreador(superadminId, { imei });
+    const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei });
     rastreadoresCriados.push(rastreador.id);
     await service.vincular(superadminId, clientA, rastreador.id);
     const instalacao = await service.instalar(sa, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });
@@ -340,14 +423,14 @@ describe('RastreadoresService', () => {
     await service.desvincular(superadminId, rastreador.id);
     expect((await service.desativar(superadminId, rastreador.id)).status).toBe('desativado');
 
-    const recadastrado = await service.cadastrarRastreador(superadminId, { imei });
+    const recadastrado = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei });
     rastreadoresCriados.push(recadastrado.id);
     expect(recadastrado.id).not.toBe(rastreador.id);
   });
 
   it('findAllPainel traz cliente do vínculo, instalação vigente e chip; sem vínculo, campos nulos', async () => {
     const instalado = await vinculadoA(clientA);
-    const livre = await service.cadastrarRastreador(superadminId, { imei: novoImei() });
+    const livre = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(livre.id);
     const assetId = await novoAsset(clientA);
     const instalacao = await service.instalar(sa, clientA, instalado.id, { assetId, tecnico: 'teste' });

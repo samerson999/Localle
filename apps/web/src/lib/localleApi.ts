@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import type { Alerta, RealtimeMessage, RealtimePosicao } from '@localle/shared/realtime';
 import type { BillingType, ContractStatus, ContractTerms, ContractVersion } from '@localle/shared/contratos';
+import type { TipoIdentificador } from '@localle/shared/rastreadorModelos';
 import { inFence } from '@localle/shared/utils';
 import { alertaIdOf, alertaToAlert, alertIdFor, applyPosicao, assetIdFor, backendIdOf, cercaToFence, createSseParser, fenceToCercaBody, regraToRule, ruleToRegraBody, eventoToReplay, type EventoApi, type RegraApi, toAsset, toVehicle, type CercaApi, type CurrentRow } from './localleMap';
 import { useStore } from './store';
@@ -176,7 +177,13 @@ export interface AdminRastreador {
   vinculo_id: string | null; client_id: string | null; client_name: string | null; vinculado_em: string | null;
   instalacao_id: string | null; asset_plate: string | null; instalado_em: string | null;
   sim_card_id: string | null; iccid: string | null; operadora: string | null; ultimo_pacote_em: string | null;
+  modelo_id: string | null; modelo_fabricante: string | null; modelo_nome: string | null; modelo_protocolo: string | null; modelo_porta: number | null;
+  modelo_tipo_identificador: TipoIdentificador | null; protocolo_divergente: boolean;
 }
+export interface AdminRastreadorModelo {
+  id: string; fabricante: string; nome: string; protocolo: string; porta: number; tipo_identificador: TipoIdentificador; ativo: boolean; rastreadores: number;
+}
+export interface ModeloBody { fabricante: string; nome: string; protocolo: string; porta: number; tipoIdentificador: TipoIdentificador }
 export interface AdminSimCard { id: string; iccid: string; operadora: string | null; numero: string | null; status: string; rastreador_id: string | null }
 export interface AdminAuditEntry { id: string; actor_type: 'user' | 'superadmin'; actor_email: string | null; client_name: string | null; action: string; target: string | null; before: unknown; after: unknown; created_at: string }
 
@@ -202,7 +209,11 @@ export const adminApi = {
   saude: () => apiGet<Saude>('/superadmin/saude'),
   renameClient: (id: string, name: string) => apiSend('PATCH', `/clients/${id}`, { name }),
   rastreadores: () => apiGet<AdminRastreador[]>('/superadmin/rastreadores'),
-  createRastreador: (body: { imei: string; modelo?: string }) => apiSend('POST', '/superadmin/rastreadores', body),
+  createRastreador: (body: { imei: string; modeloId: string }) => apiSend('POST', '/superadmin/rastreadores', body),
+  trocarModeloRastreador: (id: string, modeloId: string) => apiSend('PATCH', `/superadmin/rastreadores/${id}`, { modeloId }),
+  modelos: () => apiGet<AdminRastreadorModelo[]>('/superadmin/rastreador-modelos'),
+  criarModelo: (body: ModeloBody) => apiSend<AdminRastreadorModelo>('POST', '/superadmin/rastreador-modelos', body),
+  atualizarModelo: (id: string, body: Partial<ModeloBody> & { ativo?: boolean }) => apiSend<AdminRastreadorModelo>('PATCH', `/superadmin/rastreador-modelos/${id}`, body),
   desativarRastreador: (id: string) => apiSend('POST', `/superadmin/rastreadores/${id}/desativar`),
   desinstalar: (instalacaoId: string) => apiSend('POST', `/superadmin/rastreadores/instalacoes/${instalacaoId}/desinstalar`),
   vincularCliente: (id: string, clientId: string) => apiSend('POST', `/superadmin/rastreadores/${id}/vincular/${clientId}`),

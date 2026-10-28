@@ -31,8 +31,12 @@ export class RastreadoresRepository {
               v.id as vinculo_id, v.client_id, c.name as client_name, v.vinculado_em,
               i.id as instalacao_id, i.asset_id, a.plate as asset_plate, i.instalado_em,
               s.id as sim_card_id, s.iccid, s.operadora,
-              rc.ultimo_pacote_em
+              rc.ultimo_pacote_em,
+              m.fabricante as modelo_fabricante, m.nome as modelo_nome, m.protocolo as modelo_protocolo, m.porta as modelo_porta,
+              m.tipo_identificador as modelo_tipo_identificador,
+              coalesce(r.protocolo is not null and m.protocolo is not null and r.protocolo <> m.protocolo, false) as protocolo_divergente
          from rastreadores r
+         left join rastreador_modelos m on m.id = r.modelo_id
          left join rastreador_vinculos v on v.rastreador_id = r.id and v.desvinculado_em is null
          left join clients c on c.id = v.client_id
          left join instalacoes i on i.rastreador_id = r.id and i.desinstalado_em is null
@@ -53,13 +57,13 @@ export class RastreadoresRepository {
   }
 
   async create(
-    data: { imei: string; traccarDeviceId?: string | null; modelo?: string | null; protocolo?: string | null },
+    data: { imei: string; traccarDeviceId?: string | null; modelo?: string | null; modeloId?: string | null; protocolo?: string | null },
     executor: Queryable = this.pool,
   ): Promise<RastreadorEntity> {
     const { rows } = await executor.query<RastreadorEntity>(
-      `insert into rastreadores (imei, traccar_device_id, modelo, protocolo)
-       values ($1, $2, $3, $4) returning *`,
-      [data.imei, data.traccarDeviceId ?? null, data.modelo ?? null, data.protocolo ?? null],
+      `insert into rastreadores (imei, traccar_device_id, modelo, modelo_id, protocolo)
+       values ($1, $2, $3, $4, $5) returning *`,
+      [data.imei, data.traccarDeviceId ?? null, data.modelo ?? null, data.modeloId ?? null, data.protocolo ?? null],
     );
     return rows[0];
   }
@@ -75,16 +79,17 @@ export class RastreadoresRepository {
   /** `undefined` mantém o valor atual; `null` limpa. */
   async updateDados(
     id: string,
-    data: { modelo?: string | null; protocolo?: string | null },
+    data: { modelo?: string | null; modeloId?: string; protocolo?: string | null },
     executor: Queryable = this.pool,
   ): Promise<RastreadorEntity> {
     const { rows } = await executor.query<RastreadorEntity>(
       `update rastreadores set
          modelo = case when $2 then $3 else modelo end,
          protocolo = case when $4 then $5 else protocolo end,
+         modelo_id = coalesce($6, modelo_id),
          atualizado_em = now()
        where id = $1 returning *`,
-      [id, data.modelo !== undefined, data.modelo ?? null, data.protocolo !== undefined, data.protocolo ?? null],
+      [id, data.modelo !== undefined, data.modelo ?? null, data.protocolo !== undefined, data.protocolo ?? null, data.modeloId ?? null],
     );
     return rows[0];
   }
