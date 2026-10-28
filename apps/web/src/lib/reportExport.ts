@@ -9,6 +9,7 @@ import { useStore } from './store';
 export { fmtCoord } from './geocode';
 
 export type ReportMeta = { empresa: string; periodo: string; filtros: string; emitidoEm: string };
+export type PdfSection = { title: string; head: string[]; rows: (string | number)[][] };
 
 export function csv(name: string, head: string[], rows: (string | number)[][]) {
   const esc = (x: any) => { const s = String(x ?? ''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -16,11 +17,26 @@ export function csv(name: string, head: string[], rows: (string | number)[][]) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
 }
 
-export function xlsx(name: string, meta: ReportMeta, head: string[], rows: (string | number)[][]) {
-  const aoa = [[meta.empresa], [meta.periodo], [meta.filtros], [`Emitido em ${meta.emitidoEm}`], [], head, ...rows];
-  const sheet = XLSX.utils.aoa_to_sheet(aoa);
+// Nome de aba do Excel: até 31 caracteres, sem : \ / ? * [ ], único na pasta de trabalho.
+export function nomeAba(titulo: string, usados: Set<string>) {
+  const base = (titulo.replace(/[:\\/?*[\]]/g, ' ').replace(/\s+/g, ' ').trim() || 'Aba').slice(0, 31);
+  let nome = base, n = 2;
+  while (usados.has(nome.toLowerCase())) { const suf = ` (${n++})`; nome = base.slice(0, 31 - suf.length) + suf; }
+  usados.add(nome.toLowerCase());
+  return nome;
+}
+
+/**
+ * Excel com a tabela principal na 1ª aba e, em `extras`, as demais seções do PDF (resumo por veículo, eventos e
+ * paradas…) cada uma na sua aba, com as mesmas colunas (sprint 28/10/2026, melhoria 6). O CSV, que só comporta uma
+ * tabela, leva a principal.
+ */
+export function xlsx(name: string, meta: ReportMeta, head: string[], rows: (string | number)[][], extras: PdfSection[] = [], principal = 'Relatório') {
+  const cab = [[meta.empresa], [meta.periodo], [meta.filtros], [`Emitido em ${meta.emitidoEm}`], []];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, sheet, 'Relatório');
+  const usados = new Set<string>();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([...cab, head, ...rows]), nomeAba(principal, usados));
+  for (const s of extras) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([...cab, s.head, ...s.rows]), nomeAba(s.title, usados));
   XLSX.writeFile(wb, name);
 }
 
@@ -39,7 +55,6 @@ export function pdfFileName(titulo: string, from: number, to: number, filtro?: s
 }
 
 export type PdfMetaItem = { label: string; value: string };
-export type PdfSection = { title: string; head: string[]; rows: (string | number)[][] };
 
 const ROLE_LABEL: Record<string, string> = { gestor: 'gestor', revenda: 'revenda', locale: 'administrador', portaria: 'portaria' };
 

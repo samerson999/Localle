@@ -50,3 +50,16 @@ describe('PDF dos relatórios', () => {
     expect(saida).toContain('Revenda Exemplo');
   });
 });
+
+// Sprint de monitoramento 28/10/2026, melhoria 6: Excel com as seções do PDF, uma por aba.
+describe('nome das abas do Excel', () => {
+  it('até 31 caracteres, sem caracteres proibidos e sem repetir', async () => {
+    const { nomeAba } = await import('./reportExport');
+    const usados = new Set<string>();
+    expect(nomeAba('Resumo por veículo', usados)).toBe('Resumo por veículo');
+    expect(nomeAba('Resumo por veículo', usados)).toBe('Resumo por veículo (2)');
+    expect(nomeAba('ABC1D23 · Veículo ABC1D23 — paradas/[x]?', usados).length).toBeLessThanOrEqual(31);
+    expect(nomeAba('a:b\c/d?e*f[g]h', usados)).not.toMatch(/[:\/?*[\]]/);
+    expect(nomeAba('', usados)).toBe('Aba');
+  });
+});

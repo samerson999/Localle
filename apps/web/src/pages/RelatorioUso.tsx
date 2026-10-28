@@ -65,7 +65,7 @@ export default function RelatorioUso() {
     const rows = linhas();
     const meta = { empresa: `${revenda.clientName} — Uso da frota`, periodo: `Período: ${periodoLabel}`, filtros: filtrosTxt, emitidoEm: fmtDT(Date.now()) };
     if (formato === 'csv') csv(nomeArq('csv'), head, rows);
-    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, head, rows);
+    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, head, rows, [], 'Uso por veículo');
     else pdf({
       file: pdfFileName('Uso da frota', f, t, aid ? assets.find((a: any) => a.id === aid)?.plate : undefined),
       titulo: 'Relatório de Uso da Frota', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',

@@ -15,7 +15,7 @@ import { Icon } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { routeStats } from '@localle/shared/routeStats';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
-import { blocosPorVeiculo, planilhaLinhas, PLANILHA_HEAD, rotuloVeiculo, secoesPdf, type BlocoVeiculo } from '../lib/relatorioPosicoes';
+import { blocosPorVeiculo, paradasPlanilha, PARADAS_PLANILHA_HEAD, planilhaLinhas, PLANILHA_HEAD, resumoPlanilha, RESUMO_PLANILHA_HEAD, rotuloVeiculo, secoesPdf, type BlocoVeiculo } from '../lib/relatorioPosicoes';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
 
 // Relatório de Posições: histórico de posições detalhado da frota, com percurso no mapa e resumo
@@ -88,7 +88,10 @@ export default function RelatorioPosicoes() {
     if (!rows.length) return toast('Nada para exportar neste período.', { tone: 'crit' });
     const meta = { empresa: `${revenda.clientName} — Posições`, periodo: `Período: ${periodoLabel}`, filtros: filtrosTxt, emitidoEm: fmtDT(Date.now()) };
     if (formato === 'csv') csv(nomeArq('csv'), PLANILHA_HEAD, rows);
-    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, PLANILHA_HEAD, rows);
+    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, PLANILHA_HEAD, rows, [
+      { title: 'Resumo por veículo', head: RESUMO_PLANILHA_HEAD, rows: resumoPlanilha(filtrados) },
+      { title: 'Paradas', head: PARADAS_PLANILHA_HEAD, rows: paradasPlanilha(filtrados) },
+    ], 'Posições');
     else pdf({
       file: pdfFileName('Posições', f, t, aid ? assets.find((a: any) => a.id === aid)?.plate : undefined),
       titulo: 'Relatório de Posições', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',

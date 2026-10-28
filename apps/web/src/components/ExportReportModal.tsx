@@ -6,15 +6,16 @@ import IconExcel from '~icons/vscode-icons/file-type-excel2';
 import IconCsv from '~icons/vscode-icons/file-type-csv';
 import IconPdf from '~icons/vscode-icons/file-type-pdf2';
 
-// Modal padrão de exportação de relatório: formato (XLSX recomendado, CSV, PDF), resumo do que será
+// Modal padrão de exportação de relatório: formato (PDF principal; Excel e CSV secundários), resumo do que será
 // incluído e uma animação de progresso enquanto "gera" o arquivo. Reutilizado por toda tela de relatório
 // (Cercas, Velocidade, Posições, Passou por aqui, ...): só mudam título, período, itens e a exportação em si.
 export type ExportFormat = 'xlsx' | 'csv' | 'pdf';
 
 const FORMATOS: { key: ExportFormat; nome: string; ext: string; detalhe: string; icon: ComponentType<SVGProps<SVGSVGElement>>; tone: string; recomendado?: boolean }[] = [
-  { key: 'xlsx', nome: 'Excel (.xlsx)', ext: 'XLSX', detalhe: 'Planilha formatada, com filtros e resumo por veículo.', icon: IconExcel, tone: 'bg-real-soft', recomendado: true },
-  { key: 'csv', nome: 'CSV (.csv)', ext: 'CSV', detalhe: 'Dados tabulares para importar em outros sistemas.', icon: IconCsv, tone: 'bg-surface-muted' },
-  { key: 'pdf', nome: 'PDF (.pdf)', ext: 'PDF', detalhe: 'Documento de apresentação com identificação da empresa.', icon: IconPdf, tone: 'bg-crit-soft' },
+  // PDF é o formato principal; Excel e CSV, exportação secundária (sprint 28/10/2026, melhoria 6)
+  { key: 'pdf', nome: 'PDF (.pdf)', ext: 'PDF', detalhe: 'Documento de apresentação com identificação da empresa.', icon: IconPdf, tone: 'bg-crit-soft', recomendado: true },
+  { key: 'xlsx', nome: 'Excel (.xlsx)', ext: 'XLSX', detalhe: 'Mesmas tabelas do PDF, uma por aba.', icon: IconExcel, tone: 'bg-real-soft' },
+  { key: 'csv', nome: 'CSV (.csv)', ext: 'CSV', detalhe: 'Tabela principal, para importar em outros sistemas.', icon: IconCsv, tone: 'bg-surface-muted' },
 ];
 
 export function ExportReportModal({ open, onClose, titulo, periodo, itens, resumo, onExport }: {
@@ -26,12 +27,12 @@ export function ExportReportModal({ open, onClose, titulo, periodo, itens, resum
   resumo: string;
   onExport: (format: ExportFormat) => void;
 }) {
-  const [formato, setFormato] = useState<ExportFormat>('xlsx');
+  const [formato, setFormato] = useState<ExportFormat>('pdf');
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState(0);
   const raf = useRef(0);
 
-  useEffect(() => { if (!open) { setGerando(false); setProgresso(0); setFormato('xlsx'); cancelAnimationFrame(raf.current); } }, [open]);
+  useEffect(() => { if (!open) { setGerando(false); setProgresso(0); setFormato('pdf'); cancelAnimationFrame(raf.current); } }, [open]);
 
   const gerar = () => {
     setGerando(true);

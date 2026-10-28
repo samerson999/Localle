@@ -48,3 +48,14 @@ describe('relatório de posições em blocos por veículo', () => {
     expect(secoes.at(-1)!.rows[0][0]).toMatch(/não carregadas/);
   });
 });
+
+describe('Excel do relatório de posições', () => {
+  it('abas de resumo e paradas com placa e veículo, na ordem dos blocos', async () => {
+    const { paradasPlanilha, resumoPlanilha, PARADAS_PLANILHA_HEAD, RESUMO_PLANILHA_HEAD } = await import('./relatorioPosicoes');
+    const b = blocosPorVeiculo([bloco('2', 'QYX5B88', percurso(-8)), bloco('1', 'ABC1D23', percurso(-7))]);
+    expect(resumoPlanilha(b).map((l) => l[0])).toEqual(['ABC1D23', 'QYX5B88']);
+    expect(resumoPlanilha(b)[0]).toHaveLength(RESUMO_PLANILHA_HEAD.length);
+    expect(paradasPlanilha(b).map((l) => l[0])).toEqual(['ABC1D23', 'QYX5B88']);
+    expect(paradasPlanilha(b)[0]).toHaveLength(PARADAS_PLANILHA_HEAD.length);
+  });
+});

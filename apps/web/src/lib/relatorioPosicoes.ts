@@ -47,6 +47,12 @@ export function secoesPdf(blocos: BlocoVeiculo[]): PdfSection[] {
   });
 }
 
+/** Excel: paradas de todos os veículos numa aba, com placa e veículo, na mesma ordem dos blocos. */
+export const PARADAS_PLANILHA_HEAD = ['Placa', 'Veículo', ...PARADAS_HEAD];
+export const paradasPlanilha = (blocos: BlocoVeiculo[]) => blocos.flatMap((b) => paradasLinhas(b).map((l) => [b.a.plate || '', b.a.name, ...l]));
+export const RESUMO_PLANILHA_HEAD = ['Placa', 'Veículo', ...RESUMO_HEAD];
+export const resumoPlanilha = (blocos: BlocoVeiculo[]) => blocos.map((b) => [b.a.plate || '', b.a.name, ...resumoLinha(b)]);
+
 /** Planilha (CSV/Excel): uma linha por posição com placa e veículo, blocos em sequência. */
 export const PLANILHA_HEAD = ['Placa', 'Veículo', ...POSICOES_HEAD];
 export const planilhaLinhas = (blocos: BlocoVeiculo[]) => blocos.flatMap((b) => posicoesLinhas(b).map((l) => [b.a.plate || '', b.a.name, ...l]));

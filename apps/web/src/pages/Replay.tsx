@@ -220,7 +220,7 @@ export default function Replay() {
             ...stats.stops.map((s: any, i: number) => [fmtDT(s.ts), 'Parada', hm(s.end - s.ts), evEnderecos[evs.length + i]])].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
           const meta = { empresa: `${revenda.clientName} — Replay de percurso`, periodo: `Período: ${periodoLabel}`, filtros: `Veículo: ${asset?.name || '—'}`, emitidoEm: fmtDT(Date.now()) };
           if (formato === 'csv') csv(nomeArq('csv'), head, rows);
-          else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, head, rows);
+          else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, head, rows, [{ title: 'Eventos e paradas', head: evHead, rows: evRows }], 'Percurso');
           else pdf({
             file: pdfFileName('Replay_de_Percurso', pts[0][0], pts[pts.length - 1][0], asset?.plate),
             titulo: 'Relatório de Replay de Percurso', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',
