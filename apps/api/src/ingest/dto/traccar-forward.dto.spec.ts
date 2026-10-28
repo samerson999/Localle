@@ -31,4 +31,11 @@ describe('validação do Forwarding do Traccar', () => {
     expect(() => validarEventoForward(evento({ positionId: 'x' }))).toThrow(BadRequestException);
     expect(validarEventoForward(evento({ positionId: 0 })).positionId).toBe(0);
   });
+
+  it('diz na mensagem quais campos falharam, sem expor coordenada (o controller loga o motivo)', () => {
+    expect(() => validarPosicaoForward(posicao({ id: 0, latitude: 999 }))).toThrow('Posição inválida: id=0, latitude');
+    expect(() => validarPosicaoForward(posicao({ fixTime: undefined }))).toThrow('fixTime=ausente');
+    expect(() => validarPosicaoForward({})).toThrow('sem objeto position');
+    expect(() => validarEventoForward(evento({ type: 7 }))).toThrow('Evento inválido: type=7');
+  });
 });

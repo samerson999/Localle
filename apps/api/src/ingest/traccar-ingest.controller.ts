@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Headers,
@@ -24,6 +25,8 @@ import { InboxRepository, type InboxTipo } from './inbox.repository';
 export class TraccarIngestController {
   private readonly logger = new Logger(TraccarIngestController.name);
   private avisouSemChave = false;
+  /** Recusas por validação, agrupadas pelo motivo: um aviso por minuto por motivo, com quantas vieram no meio. */
+  private readonly recusas = new Map<string, { ultimoAviso: number; suprimidas: number }>();
 
   constructor(private readonly inbox: InboxRepository) {}
 
@@ -31,7 +34,7 @@ export class TraccarIngestController {
   @HttpCode(202)
   async positions(@Headers('x-traccar-ingest-key') chave: string | undefined, @Body() body: unknown): Promise<void> {
     this.autenticar(chave);
-    const position = validarPosicaoForward(body);
+    const position = this.validar('posicao', body, validarPosicaoForward);
     await this.guardar('posicao', { position }, `traccar_device_id ${position.deviceId}, posição ${position.id}`);
   }
 
@@ -39,8 +42,28 @@ export class TraccarIngestController {
   @HttpCode(202)
   async events(@Headers('x-traccar-ingest-key') chave: string | undefined, @Body() body: unknown): Promise<void> {
     this.autenticar(chave);
-    const event = validarEventoForward(body);
+    const event = this.validar('evento', body, validarEventoForward);
     await this.guardar('evento', { event }, `traccar_device_id ${event.deviceId}, evento ${event.id}`);
+  }
+
+  // Recusa por formato é descarte de dado (o Traccar reenvia e acaba desistindo): sempre loga o motivo e o
+  // device, nunca o corpo. Agrupado por motivo para um aparelho a cada 10 s não inundar o log.
+  private validar<T>(tipo: InboxTipo, body: unknown, validador: (b: unknown) => T): T {
+    try {
+      return validador(body);
+    } catch (err) {
+      if (!(err instanceof BadRequestException)) throw err;
+      const motivo = err.message;
+      const deviceId = (body as any)?.[tipo === 'posicao' ? 'position' : 'event']?.deviceId;
+      const agora = Date.now();
+      const r = this.recusas.get(motivo);
+      if (!r || agora - r.ultimoAviso >= 60_000) {
+        const extra = r?.suprimidas ? ` (+${r.suprimidas} recusas iguais no último minuto)` : '';
+        this.logger.warn(`Forwarding recusado (400) — ${motivo} — traccar_device_id ${typeof deviceId === 'number' ? deviceId : '?'}${extra}`);
+        this.recusas.set(motivo, { ultimoAviso: agora, suprimidas: 0 });
+      } else r.suprimidas++;
+      throw err;
+    }
   }
 
   private autenticar(recebida: string | undefined) {
