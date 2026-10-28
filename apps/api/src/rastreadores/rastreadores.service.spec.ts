@@ -33,7 +33,10 @@ class FakeTraccar extends TraccarClient {
     if (this.falhar) throw new Error('Traccar fora do ar');
     return this.devices.get(uniqueId) ?? null;
   }
+  /** uniqueId que já existe no Traccar, mas invisível ao usuário da API (criado por outra conta) */
+  duplicados = new Set<string>();
   async createDevice(_: TraccarConfig, device: { name: string; uniqueId: string }) {
+    if (this.duplicados.has(device.uniqueId)) throw new Error('Traccar POST /api/devices falhou: 400 Bad Request — Duplicate entry for key uniqueid');
     const criado = { id: this.nextId++, ...device };
     this.devices.set(device.uniqueId, criado);
     return criado;
@@ -397,6 +400,17 @@ describe('RastreadoresService', () => {
       // trocar para o modelo certo resolve a divergência
       await service.atualizar(superadminId, r.id, { modeloId: modeloJt808 });
       expect(await linha()).toMatchObject({ protocolo_divergente: false, modelo: `Teste ${sufixo} JT808` });
+    });
+
+    it('identificador já usado no Traccar por outra conta: 409 explicando o que fazer, nada gravado', async () => {
+      traccar.cfg = { url: 'http://traccar.fake', user: 'u', password: 'p' };
+      const imei = digitos(15);
+      traccar.duplicados.add(imei);
+      await expect(service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei })).rejects.toMatchObject({ status: 409 });
+      await expect(service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei })).rejects.toThrow(/Apague-o no painel do Traccar/);
+      traccar.cfg = null;
+      const { rowCount } = await pool.query('select 1 from rastreadores where imei = $1', [imei]);
+      expect(rowCount).toBe(0);
     });
 
     it('catálogo: fabricante + nome únicos (sem diferenciar maiúsculas), alteração auditada', async () => {

@@ -379,7 +379,15 @@ export class RastreadoresService {
       this.logger.log(`Rastreador IMEI ${imei} provisionado no Traccar (device ${device.id})`);
       return String(device.id);
     } catch (err) {
-      this.logger.error(`Falha ao provisionar IMEI ${imei} no Traccar: ${(err as Error).message}`);
+      const msg = (err as Error).message;
+      this.logger.error(`Falha ao provisionar IMEI ${imei} no Traccar: ${msg}`);
+      // device com esse uniqueId já existe no Traccar, mas fora do alcance do usuário da API (criado por outra conta):
+      // a busca não o vê e a criação esbarra no índice único — repetir não resolve
+      if (/ 400 .*(duplicate|unique|já existe)/i.test(msg)) {
+        throw new ConflictException(
+          `Já existe no Traccar um aparelho com o identificador ${imei}, criado por outra conta. Apague-o no painel do Traccar (ou dê acesso a ele ao usuário da API) e cadastre de novo.`,
+        );
+      }
       throw new ServiceUnavailableException('Não foi possível registrar o rastreador no Traccar; tente novamente');
     }
   }

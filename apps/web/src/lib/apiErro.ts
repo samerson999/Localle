@@ -7,9 +7,12 @@ export const MSG_SESSAO = 'Sessão expirada: entre de novo';
 
 /** Erro de uma resposta HTTP já lida. `data` é o corpo JSON (quando houve); a mensagem da API vale para 4xx. */
 export function erroHttp(status: number, data?: unknown): Error {
-  if (status >= 500) return new Error(MSG_SERVIDOR);
   const m = (data as { message?: unknown } | null)?.message;
   const texto = Array.isArray(m) ? m.join('; ') : typeof m === 'string' ? m : '';
+  // 503 lançado pela API traz mensagem pensada para a tela ("Não foi possível registrar no Traccar…"); 500 e 502/504
+  // (proxy, API reiniciando) seguem com a genérica
+  if (status === 503 && texto && !/service unavailable/i.test(texto)) return new Error(texto);
+  if (status >= 500) return new Error(MSG_SERVIDOR);
   if (texto && !/internal server error/i.test(texto)) return new Error(texto);
   if (status === 403) return new Error('Seu acesso não permite esta ação');
   if (status === 404) return new Error('Registro não encontrado. Pode ter sido removido por outro usuário.');

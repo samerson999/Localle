@@ -24,6 +24,15 @@ export interface TraccarDevice {
   status?: string;
 }
 
+/**
+ * Motivo que o Traccar devolve no corpo de um erro (ex.: "Duplicate entry" ao criar device com uniqueId já usado):
+ * uma linha, curto. Não tem credencial — é a mensagem de erro do próprio Traccar.
+ */
+async function motivo(response: Response): Promise<string> {
+  const texto = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 300);
+  return texto ? ` — ${texto}` : '';
+}
+
 /** Campos de um evento de `GET /api/reports/events` usados na conciliação de comandos. */
 export interface TraccarEventoComando {
   id: number;
@@ -79,7 +88,7 @@ export class TraccarClient {
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: command.deviceId, type: command.type, attributes: {} }),
     });
-    if (!response.ok) throw new Error(`Traccar POST /api/commands/send falhou: ${response.status} ${response.statusText}`);
+    if (!response.ok) throw new Error(`Traccar POST /api/commands/send falhou: ${response.status} ${response.statusText}${await motivo(response)}`);
     const body = (await response.json().catch(() => null)) as { id?: number } | null;
     return { queued: response.status === 202, id: typeof body?.id === 'number' ? body.id : null };
   }
@@ -102,7 +111,7 @@ export class TraccarClient {
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!response.ok) {
-      throw new Error(`Traccar ${method} ${path.split('?')[0]} falhou: ${response.status} ${response.statusText}`);
+      throw new Error(`Traccar ${method} ${path.split('?')[0]} falhou: ${response.status} ${response.statusText}${await motivo(response)}`);
     }
     return (await response.json()) as T;
   }
