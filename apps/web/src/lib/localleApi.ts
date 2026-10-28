@@ -731,6 +731,11 @@ export async function enviarComandoLocalle(cmdId: string, assetId: string, kind:
 }
 
 
+/** Valor vigente de um parâmetro do Setup para o cliente logado (GET /settings é liberado a qualquer papel). */
+export async function lerParametro(key: string): Promise<number | string | undefined> {
+  return (await apiGet<{ key: string; value: number | string }[]>('/settings')).find((x) => x.key === key)?.value;
+}
+
 // ---------- Setup (GET/PUT/DELETE /settings): registro central de parâmetros da API ----------
 export interface SetupParametro {
   key: string; modulo: string; label: string; type: 'number' | 'boolean' | 'option'; options?: string[]; min: number; max: number;

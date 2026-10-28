@@ -47,6 +47,8 @@ const LISTA: SettingDefinition[] = [
   def('monitoramento.sem_sinal_h', { modulo: 'monitoramento', label: 'Tempo sem comunicação para alertar "sem sinal" (h)', default: 6, min: 0.5, max: 72, porGrupo: true }),
   def('monitoramento.bateria_baixa_v', { modulo: 'monitoramento', label: 'Tensão de bateria considerada baixa (V)', default: 11.5, min: 9, max: 26, porGrupo: true }),
   bool('monitoramento.bloqueio_pendente_critico', 'monitoramento', 'Bloqueio pendente entra como crítico no "Precisa de você"', true),
+  // cliente que contrata só monitoramento: a tela abre direto na visão em tela cheia (sprint 28/10/2026, melhoria 1)
+  bool('monitoramento.abrir_tela_cheia', 'monitoramento', 'Abrir o Monitoramento em tela cheia (cliente só de monitoramento)', false),
   def('alertas.reaviso_regra_min', { modulo: 'monitoramento', label: 'Intervalo para reavisar a mesma regra (min)', default: 15, min: 1, max: 240, aplicacao: 'agora' }),
   def('alertas.janela_tratativas_h', { modulo: 'monitoramento', label: 'Janela de alertas tratados exibidos (h)', default: 24, min: 1, max: 168 }),
   def('cercas.raio_padrao_m', { modulo: 'monitoramento', label: 'Raio padrão de cerca nova (m)', default: 200, min: 20, max: 5000, aplicacao: 'agora' }),

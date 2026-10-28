@@ -3,10 +3,10 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-leaflet';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useStore, vehicleStatus, assetKm } from '../lib/store';
-import { Button, Badge, usePresence, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb } from '../components/ui';
+import { Button, Badge, usePresence, useScrollLock, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { glyphOf, silhouetteOf } from '../components/assetArt';
-import { GlideMarker, ClusteredVehicles, Address, FenceShapes, MapButton, MapControls, VehicleListItem, MAP_STYLES, useFullscreen, type MapStyleKey } from '../components/MapBits';
+import { GlideMarker, ClusteredVehicles, Address, FenceShapes, MapButton, MapControls, VehicleListItem, MAP_STYLES, type MapStyleKey } from '../components/MapBits';
 import { Num, Plate, AssetName, StatusDot, StatusLine, statusKind, STATUS_LABEL, KpiTile, Timeline, type StatusKind } from '../components/story';
 import { StackedColumns } from '../components/charts';
 import { Icon } from '../components/icons';
@@ -14,7 +14,8 @@ import { tv } from '../lib/tokens';
 import { useCriticalMap, resolveReasons, recentTreatments, type CritReason } from '../lib/critical';
 import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { TreatDialog, TreatedLine } from '../components/TreatDialog';
-import { confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, listarLinks, revogarLink } from '../lib/localleApi';
+import { confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, lerParametro, listarLinks, revogarLink } from '../lib/localleApi';
+import { lerVisao, salvarVisao, type VisaoMonitor } from '../lib/monitorPrefs';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { sendRealCommand } from '../lib/rastreioApi';
@@ -55,7 +56,7 @@ export default function Monitoramento() {
   // Esc fecha o painel do veículo, a menos que haja um diálogo aberto por cima (ele fecha primeiro)
   useEffect(() => {
     if (!sel) return;
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !cmd && !document.querySelector('[aria-modal="true"]')) setSel(null); };
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !cmd && !document.querySelector('[aria-modal="true"]')) { e.preventDefault(); setSel(null); } };
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
   }, [sel, cmd]);
@@ -72,7 +73,25 @@ export default function Monitoramento() {
   const [view, setView] = useState<'mapa' | 'lista'>('mapa');
   const mapSectionRef = useRef<HTMLElement>(null);
   const styleBtnRef = useRef<HTMLSpanElement>(null);
-  const [fullscreen, toggleFullscreen] = useFullscreen(mapSectionRef);
+  // Tela cheia (sprint 28/10/2026, melhoria 1): área de trabalho com mapa, cards (visão vertical) e tabela, juntos ou
+  // separados. É um modo da própria tela (fixed por cima do menu); no clique também pede a tela cheia do navegador, que
+  // só pode ser pedida por gesto do usuário — por isso o "abrir em tela cheia" do cliente usa só o modo da tela.
+  const email = useStore((s) => s.session?.email);
+  const [full, setFull] = useState(false);
+  const [visao, setVisaoRaw] = useState<VisaoMonitor>(() => lerVisao(email));
+  const setVisao = (v: VisaoMonitor) => { if (!v.cards && !v.tabela) return; setVisaoRaw(v); salvarVisao(email, v); };
+  const nativo = useRef(false);
+  const entrarTelaCheia = () => { setFull(true); const p = document.documentElement.requestFullscreen?.(); if (p) { nativo.current = true; p.catch(() => { nativo.current = false; }); } };
+  const sairTelaCheia = () => { setFull(false); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); nativo.current = false; };
+  useScrollLock(full);
+  useEffect(() => {
+    // Esc na tela cheia do navegador é consumido por ele: o fim da tela cheia nativa encerra o modo da tela junto
+    const f = () => { if (!document.fullscreenElement && nativo.current) { nativo.current = false; setFull(false); } };
+    document.addEventListener('fullscreenchange', f);
+    return () => document.removeEventListener('fullscreenchange', f);
+  }, []);
+  // cliente só de monitoramento (Setup: monitoramento.abrir_tela_cheia) já abre em tela cheia
+  useEffect(() => { lerParametro('monitoramento.abrir_tela_cheia').then((v) => { if (Number(v) === 1) setFull(true); }).catch(() => { /* sem o parâmetro, abre normal */ }); }, []);
   useEffect(() => { const id = sp.get('ativo'); if (id) setSel(id); }, [sp]); // busca (⌘K) pode trocar o veículo sem remontar a tela
 
   const list = [
@@ -113,6 +132,14 @@ export default function Monitoramento() {
     ts: a.ts, title: a.title, detail: [assets.find((x: any) => x.id === a.assetId)?.name, a.detail].filter(Boolean).join(' · '),
   })), [alerts, assets]);
   useEffect(() => { if (view === 'mapa') map?.invalidateSize(); }, [view, map]); // o mapa volta de display:none
+  useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
+  // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
+  useEffect(() => {
+    if (!full) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !sel && !cmd && !document.querySelector('[aria-modal="true"]')) sairTelaCheia(); };
+    document.addEventListener('keydown', k);
+    return () => document.removeEventListener('keydown', k);
+  }, [full, cmd, sel]);
   const pick = (id: string) => { setSel(id); setView('mapa'); };
   const fitAll = () => { const pts = list.filter((x: any) => x.v).map((x: any) => x.v.pos); if (map && pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 15 }); };
   const clearFilters = () => { setQ(''); setSt('todos'); setGrp(''); };
@@ -146,11 +173,31 @@ export default function Monitoramento() {
         <KpiTile label="Velocidade média" value={velMedia} unit="km/h" digits={0} />
       </Grid>
       <Tabs className="md:hidden" value={view} onChange={(k) => setView(k as 'mapa' | 'lista')} tabs={[{ key: 'mapa', label: 'Mapa' }, { key: 'lista', label: 'Lista', count: shown.length }]} />
-      <div className="flex flex-wrap items-start gap-grid">
-        <Card dense className={cx('flex-[1_1_340px] md:max-w-[420px] h-[70vh] max-md:supports-[height:100dvh]:h-[70dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', view === 'mapa' && 'max-md:hidden')}>
+      <div role={full ? 'dialog' : undefined} aria-label={full ? 'Monitoramento em tela cheia' : undefined}
+        className={cx(full && 'fixed inset-0 z-[1100] bg-canvas flex flex-col gap-stack p-3')}>
+      {full && (
+        <div className="flex flex-wrap items-center gap-stack shrink-0">
+          <div className="min-w-0 mr-auto">
+            <h1 className="text-h3 font-semibold leading-tight">Monitoramento</h1>
+            <p className="text-caption text-ink-2">Ao vivo · {list.length} veículos{lastUpd ? <> · atualizado às <time className="num">{fmtT(lastUpd)}</time></> : null}</p>
+          </div>
+          <SearchInput className="w-64" value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
+          <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />
+          <div role="group" aria-label="Visão" className="flex gap-tight">
+            <Button variant={visao.cards ? 'dark' : 'secondary'} size="sm" aria-pressed={visao.cards} disabled={visao.cards && !visao.tabela} title={visao.cards && !visao.tabela ? 'Ligue a tabela para poder esconder os cards' : undefined} onClick={() => setVisao({ ...visao, cards: !visao.cards })}><Icon name="ativos" size={16} />Cards</Button>
+            <Button variant={visao.tabela ? 'dark' : 'secondary'} size="sm" aria-pressed={visao.tabela} disabled={visao.tabela && !visao.cards} title={visao.tabela && !visao.cards ? 'Ligue os cards para poder esconder a tabela' : undefined} onClick={() => setVisao({ ...visao, tabela: !visao.tabela })}><Icon name="relatorios" size={16} />Tabela</Button>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setCmd({ target: 'grupo' })}><Icon name="comando" size={16} />Comando para grupo</Button>
+          <Button variant="secondary" size="sm" onClick={sairTelaCheia} title="Sair da tela cheia (Esc)"><Icon name="tela-cheia" size={16} />Sair da tela cheia</Button>
+        </div>
+      )}
+      <div className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
+        <Card dense className={full
+          ? cx('w-[360px] shrink-0 h-full max-md:hidden', !visao.cards && 'hidden')
+          : cx('flex-[1_1_340px] md:max-w-[420px] h-[70vh] max-md:supports-[height:100dvh]:h-[70dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', view === 'mapa' && 'max-md:hidden')}>
           <section aria-label="Veículos" className="flex flex-col gap-stack h-full min-h-0">
-            <SearchInput value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
-            <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />
+            {!full && <SearchInput value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />}
+            {!full && <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />}
             <ul className="flex-1 min-h-0 overflow-y-auto -mx-2 pb-16" aria-label={`${shown.length} veículos`}>
               {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, k, d }: any) => (
                 <li key={a.id}>
@@ -166,7 +213,10 @@ export default function Monitoramento() {
           </section>
         </Card>
 
-        <section ref={mapSectionRef} aria-label="Mapa" className={cx('flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line h-[62vh] max-md:supports-[height:100dvh]:h-[62dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', fullscreen && 'bg-ink', view === 'lista' && 'max-md:hidden')}>
+        <div className={full ? 'flex-1 min-w-0 flex flex-col gap-stack' : 'contents'}>
+        <section ref={mapSectionRef} aria-label="Mapa" className={full
+          ? 'flex-1 min-h-[240px] relative rounded-card overflow-hidden border border-line'
+          : cx('flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line h-[62vh] max-md:supports-[height:100dvh]:h-[62dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', view === 'lista' && 'max-md:hidden')}>
           <MapContainer ref={setMap} center={[-8.1, -34.92]} zoom={12} className="w-full h-full" zoomControl={false}>
             <TileLayer key={`${tileKey}-${mapStyle}`} url={MAP_STYLES[mapStyle].url} attribution={MAP_STYLES[mapStyle].attribution} keepBuffer={6} updateWhenZooming={false} eventHandlers={{ tileerror: () => setTileErr((n) => n + 1) }} />
             {showF && <FenceShapes fences={fences} />}
@@ -194,7 +244,7 @@ export default function Monitoramento() {
               { icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() },
               { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() },
               { icon: 'centralizar', label: 'Ver a frota toda', onClick: fitAll },
-              { icon: 'tela-cheia', label: fullscreen ? 'Sair da tela cheia' : 'Tela cheia', onClick: toggleFullscreen },
+              { icon: 'tela-cheia', label: full ? 'Sair da tela cheia' : 'Tela cheia', onClick: full ? sairTelaCheia : entrarTelaCheia },
             ]} />
           </div>
           </div>
@@ -221,6 +271,24 @@ export default function Monitoramento() {
           {vp.mounted && lastCur.current && <VehiclePanel closing={vp.closing} x={lastCur.current} reasons={crit.get(lastCur.current.a.id) || []} onClose={() => setSel(null)} onCmd={() => setCmd({ target: 'veiculo', assetId: lastCur.current.a.id })} onShare={() => setShareA(lastCur.current.a)} />}
           {pp.mounted && lastPass.current && <PassPanel closing={pp.closing} pass={lastPass.current} setPass={setPass} />}
         </section>
+        {full && visao.tabela && (
+          <Card dense className={cx('min-h-0 overflow-y-auto', visao.cards ? 'h-[40%]' : 'h-[45%]')}>
+            <Table minWidth={760} pageSize={200} card={false} align={['left', 'left', 'right', 'left', 'left', 'left', 'left']}
+              head={['Veículo', 'Status', 'Velocidade', 'Ignição', 'Motorista', 'Atualizado', 'Endereço']}
+              onRow={(i) => pick(shown[i].a.id)} selected={(i) => shown[i]?.a.id === sel}
+              emptyState={<EmptyState icon="busca" layout="row" title="Nenhum veículo com esses filtros" action={<Button variant="dark" size="sm" onClick={clearFilters}>Limpar filtros</Button>} />}
+              rows={shown.map(({ a, v, k, d }: any) => [
+                <AssetName name={a.name} />, <StatusDot kind={k} label={STATUS_LABEL[k as StatusKind]} />,
+                <span className="num">{v && !v.noSignal ? `${Math.round(v.speed)} km/h` : '—'}</span>,
+                v ? (v.ignition ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>) : '—',
+                d?.name || <span className="text-ink-2">Sem motorista</span>,
+                v ? <time className="num">{fmtT(v.lastUpdate)}</time> : '—',
+                v?.pos ? <Address pos={v.pos} className="text-small" /> : '—',
+              ])} />
+          </Card>
+        )}
+        </div>
+      </div>
       </div>
       </Stack>
       <Grid cols={2} wide>

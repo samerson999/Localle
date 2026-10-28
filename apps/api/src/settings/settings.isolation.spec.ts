@@ -49,6 +49,14 @@ describe('SettingsService — herança grupo → cliente → padrão, validaçã
     await expect(service.resolve(clientA, 'nao.existe')).rejects.toThrow(/não existe/);
   });
 
+  it('"abrir em tela cheia" (cliente só de monitoramento): desligado por padrão, liga por cliente sem afetar outro', async () => {
+    const K = 'monitoramento.abrir_tela_cheia';
+    expect(await service.resolve(clientA, K)).toBe(0);
+    await service.set(clientA, K, 1);
+    expect(await service.resolve(clientA, K)).toBe(1);
+    expect(await service.resolve(clientB, K)).toBe(0);
+  });
+
   it('opção: aceita só as listadas; resolveValor devolve a string', async () => {
     await expect(service.set(clientA, 'ranking.periodo_limite', 'ano')).rejects.toThrow(/semana, mes, trimestre/);
     await service.set(clientA, 'ranking.periodo_limite', 'semana');
