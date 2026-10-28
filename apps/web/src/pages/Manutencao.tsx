@@ -211,7 +211,7 @@ function OsModal({ init, onClose }: any) {
 
   return (
     <Modal open onClose={onClose} title={w.id ? `OS #${w.num} · ${w.title || 'sem título'}` : 'Nova ordem de serviço'} width="max-w-6xl"
-      footer={<>{w.id && w.status !== 'cancelada' && w.status !== 'concluida' && <TextButton tone="danger" className="mr-auto" onClick={async () => { if (await confirmAction({ title: `Cancelar a OS #${w.num}?`, detail: 'A OS sai da lista em andamento. Orçamentos e comentários ficam registrados.' })) { save({ status: 'cancelada' }); onClose(); } }}>Cancelar OS</TextButton>}<Button variant="ghost" onClick={onClose}>Fechar</Button><Button onClick={() => { save(); onClose(); }}>Salvar OS</Button></>}>
+      footer={<>{w.id && w.status !== 'cancelada' && w.status !== 'concluida' && <TextButton tone="danger" className="mr-auto" onClick={async () => { if (await confirmAction({ title: `Cancelar a OS #${w.num}?`, detail: 'A OS sai da lista em andamento. Orçamentos e comentários ficam registrados.', confirmLabel: 'Cancelar OS', cancelLabel: 'Voltar' })) { save({ status: 'cancelada' }); onClose(); } }}>Cancelar OS</TextButton>}<Button variant="ghost" onClick={onClose}>Fechar</Button><Button onClick={() => { save(); onClose(); }}>Salvar OS</Button></>}>
       {/* resultado e status */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 -mt-2">
         {asset && <AssetName name={asset.name} />}
