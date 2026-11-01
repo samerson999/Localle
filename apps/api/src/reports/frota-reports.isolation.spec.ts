@@ -78,6 +78,31 @@ describe('relatórios de frota', () => {
     expect(r.stats.engineOn).toBe(4 * 60_000);
   });
 
+  // AUD-06: rastreador que não informa ignição (ignition null) não pode virar "motor desligado / 0 h de motor".
+  it('percurso de rastreador sem ignição: motor ligado e ocioso desconhecidos (null), não 0', async () => {
+    const dia = { from: new Date('2026-09-05T00:00:00Z'), to: new Date('2026-09-06T00:00:00Z') };
+    const pts: [string, number, number][] = [
+      ['2026-09-05T10:00:00Z', -34.88, 40],
+      ['2026-09-05T10:01:00Z', -34.87, 0],
+      ['2026-09-05T10:20:00Z', -34.87, 0], // parada de 19 min
+      ['2026-09-05T10:21:00Z', -34.86, 40],
+    ];
+    let id = 500;
+    for (const [t, lon, v] of pts) {
+      await pool.query(
+        `insert into posicoes (rastreador_id, traccar_position_id, client_id, asset_id, fix_time, server_time, valid, geom, speed_kmh, ignition)
+         values ($1, $2, $3, $4, $5, $5, true, st_setsrid(st_makepoint($6, -8.05), 4326), $7, null)`,
+        [rastreadorId, ++id, clientA, assetA, t, lon, v],
+      );
+    }
+    const [r] = await service.percurso(clientA, [assetA], dia);
+    expect(r.posicoes).toBe(4);
+    expect(r.stats.engineOn).toBeNull();
+    expect(r.stats.idle).toBeNull();
+    expect(r.stats.stops).toHaveLength(1);
+    expect(r.stats.stops[0].ignition).toBeNull();
+  });
+
   it('cercas: passagem pela cerca do cliente (entrada 10:00, saída na primeira posição fora)', async () => {
     const [r] = await service.cercas(clientA, null, periodo, null);
     expect(r.passagens).toHaveLength(1);

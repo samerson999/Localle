@@ -15,7 +15,7 @@ import { Icon } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { routeStats } from '@localle/shared/routeStats';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
-import { blocosPorVeiculo, paradasPlanilha, PARADAS_PLANILHA_HEAD, planilhaLinhas, PLANILHA_HEAD, resumoPlanilha, RESUMO_PLANILHA_HEAD, rotuloVeiculo, secoesPdf, type BlocoVeiculo } from '../lib/relatorioPosicoes';
+import { blocosPorVeiculo, hmOuTraco, paradasPlanilha, PARADAS_PLANILHA_HEAD, planilhaLinhas, PLANILHA_HEAD, resumoPlanilha, RESUMO_PLANILHA_HEAD, rotuloIgnicao, rotuloVeiculo, secoesPdf, type BlocoVeiculo } from '../lib/relatorioPosicoes';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
 
 // Relatório de Posições: histórico de posições detalhado da frota, com percurso no mapa e resumo
@@ -184,7 +184,7 @@ function BlocoPosicoes({ b }: { b: BlocoVeiculo }) {
   const { a, pts, n, stats } = b;
   const kpis: [string, React.ReactNode][] = [
     ['Posições', n], ['Distância', `${Math.round(stats.dist)} km`], ['Vel. máxima', `${Math.round(stats.vmax)} km/h`],
-    ['Em movimento', hm(stats.moving)], ['Parado com ignição', hm(stats.idle)], ['Paradas (> 5 min)', stats.stops.length],
+    ['Em movimento', hm(stats.moving)], ['Parado com ignição', hmOuTraco(stats.idle)], ['Paradas (> 5 min)', stats.stops.length],
   ];
   return (
     <section aria-label={`Posições de ${rotuloVeiculo(a)}`} className="border border-line rounded-card p-card-sm">
@@ -200,14 +200,14 @@ function BlocoPosicoes({ b }: { b: BlocoVeiculo }) {
           <h4 className="text-small font-medium text-ink-2 mb-2">Paradas</h4>
           <Table minWidth={640} pageSize={5} align={['left', 'left', 'right', 'left', 'left']} head={['Início', 'Fim', 'Duração', 'Ignição', 'Endereço']}
             rows={stats.stops.map((s) => [<time className="num">{fmtDT(s.ts)}</time>, <time className="num">{fmtDT(s.end)}</time>, <span className="num">{hm(s.end - s.ts)}</span>,
-              s.ignition ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>, <Address pos={s.pos} className="text-small" />])} />
+              <span className={s.ignition ? 'text-ok' : 'text-ink-2'}>{rotuloIgnicao(s.ignition)}</span>, <Address pos={s.pos} className="text-small" />])} />
         </div>
       )}
       <h4 className="text-small font-medium text-ink-2 mb-2">Posições</h4>
       {pts.length ? (
         <Table minWidth={640} pageSize={10} align={['left', 'right', 'left', 'left']} head={['Data/hora', 'Velocidade', 'Ignição', 'Endereço']}
           rows={pts.map((p) => [<time className="num">{fmtDT(p[0])}</time>, <span className="num">{Math.round(p[3])} km/h</span>,
-            p[4] ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>, <Address pos={[p[1], p[2]]} className="text-small" />])} />
+            <span className={p[4] ? 'text-ok' : 'text-ink-2'}>{rotuloIgnicao(p[4])}</span>, <Address pos={[p[1], p[2]]} className="text-small" />])} />
       ) : <p className="text-small text-ink-2">Lista de posições não carregada: filtre por grupo ou veículo para ver as posições deste veículo.</p>}
     </section>
   );

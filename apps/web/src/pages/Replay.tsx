@@ -20,6 +20,7 @@ import { fetchEventos } from '../lib/localleApi';
 import { routeStats } from '@localle/shared/routeStats';
 import { matchToRoads } from '@localle/shared/routeMatch';
 import { fmtDT, fmtD, fmtT, haversine, num, toInputDT, HOUR, hm } from '@localle/shared/utils';
+import { rotuloIgnicao } from '../lib/relatorioPosicoes';
 
 function Fit({ pts, follow, cur }: any) { const m = useMap(); useEffect(() => { if (pts.length > 1) m.fitBounds(pts, { padding: [40, 40] }); }, [pts.length && pts[0][0], pts.length]); useEffect(() => { if (follow && cur) m.panTo(cur, { animate: true }); }, [follow, cur?.[0], cur?.[1]]); return null; }
 
@@ -172,7 +173,7 @@ export default function Replay() {
               <DescList>
                 <DescRow label="Hora"><span className="font-medium">{fmtDT(cur[0])}</span></DescRow>
                 <DescRow label="Velocidade"><Num value={cur[3]} unit="km/h" size="body" className="font-medium" /></DescRow>
-                <DescRow label="Ignição"><StatusDot kind={cur[3] > 3 ? 'mov' : cur[4] ? 'parado' : 'off'} label={cur[4] ? 'Ligada' : 'Desligada'} /></DescRow>
+                <DescRow label="Ignição"><StatusDot kind={cur[3] > 3 ? 'mov' : cur[4] ? 'parado' : 'off'} label={rotuloIgnicao(cur[4])} /></DescRow>
                 <DescRow label="Endereço"><Address pos={playing ? null : [cur[1], cur[2]]} className="font-medium" /></DescRow>
                 <DescRow label="Coordenadas"><span className="font-mono text-small">{cur[1].toFixed(5)}, {cur[2].toFixed(5)}</span></DescRow>
                 <DescRow label="Cerca">{inside.join(', ') || '—'}</DescRow>
@@ -211,7 +212,7 @@ export default function Replay() {
           const nomeArq = (ext: string) => `replay-${asset?.plate || asset?.id || 'veiculo'}-${new Date(pts[0][0]).toISOString().slice(0, 10)}.${ext}`;
           // posições: endereço só o que a tela já resolveu (cache), sem travar a exportação num histórico grande
           const head = ['Data/hora', 'Velocidade (km/h)', 'Ignição', 'Endereço', 'Latitude', 'Longitude'];
-          const rows = pts.map((p: any) => [fmtDT(p[0]), Math.round(p[3]), p[4] ? 'Ligada' : 'Desligada', cachedAddress(p[1], p[2]), fmtCoord(p[1]), fmtCoord(p[2])]);
+          const rows = pts.map((p: any) => [fmtDT(p[0]), Math.round(p[3]), rotuloIgnicao(p[4]), cachedAddress(p[1], p[2]), fmtCoord(p[1]), fmtCoord(p[2])]);
           // eventos e paradas: lista curta, busca o endereço de verdade (com cache) para cada um
           const evPontos = [...evs.map((e: any) => e.pos as [number, number]), ...stats.stops.map((s: any) => s.pos as [number, number])];
           const evEnderecos = await resolveAddresses(evPontos);

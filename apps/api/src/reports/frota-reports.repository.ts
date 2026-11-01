@@ -8,6 +8,9 @@ export interface AtivoDoRelatorio {
   plate: string;
 }
 
+/** Ignição do ponto: `null` (rastreador não informa) continua null — não é "desligada". */
+const ignicao = (i: boolean | null) => (i === null ? null : i ? 1 : 0);
+
 /** Teto de pontos por ativo num relatório (31 dias a 1 posição/30 s ≈ 90 mil): protege a memória da API. */
 export const MAX_PONTOS_POR_ATIVO = 120_000;
 
@@ -34,16 +37,16 @@ export class FrotaReportsRepository {
 
   /** Posições válidas do ativo no período, em ordem — formato `Point` dos cálculos de packages/shared. */
   async pontos(clientId: string, assetId: string, from: Date, to: Date): Promise<Point[]> {
-    const { rows } = await this.pool.query<{ t: string; lat: number; lon: number; v: number; ign: boolean }>(
+    const { rows } = await this.pool.query<{ t: string; lat: number; lon: number; v: number; ign: boolean | null }>(
       `select extract(epoch from fix_time) * 1000 as t, st_y(geom) as lat, st_x(geom) as lon,
-         coalesce(speed_kmh, 0)::float8 as v, coalesce(ignition, false) as ign
+         coalesce(speed_kmh, 0)::float8 as v, ignition as ign
        from posicoes
        where client_id = $1 and asset_id = $2 and fix_time between $3 and $4 and valid
        order by fix_time
        limit $5`,
       [clientId, assetId, from, to, MAX_PONTOS_POR_ATIVO],
     );
-    return rows.map((r) => [Number(r.t), r.lat, r.lon, r.v, r.ign ? 1 : 0]);
+    return rows.map((r) => [Number(r.t), r.lat, r.lon, r.v, ignicao(r.ign)]);
   }
 
   /** "Passou por aqui": só as posições dentro do raio (PostGIS faz o corte, com índice espacial). */
@@ -55,9 +58,9 @@ export class FrotaReportsRepository {
     centro: [number, number],
     raioM: number,
   ): Promise<Point[]> {
-    const { rows } = await this.pool.query<{ t: string; lat: number; lon: number; v: number; ign: boolean }>(
+    const { rows } = await this.pool.query<{ t: string; lat: number; lon: number; v: number; ign: boolean | null }>(
       `select extract(epoch from fix_time) * 1000 as t, st_y(geom) as lat, st_x(geom) as lon,
-         coalesce(speed_kmh, 0)::float8 as v, coalesce(ignition, false) as ign
+         coalesce(speed_kmh, 0)::float8 as v, ignition as ign
        from posicoes
        where client_id = $1 and asset_id = $2 and fix_time between $3 and $4 and valid
          and st_dwithin(geom::geography, st_setsrid(st_makepoint($6, $5), 4326)::geography, $7)
@@ -65,7 +68,7 @@ export class FrotaReportsRepository {
        limit $8`,
       [clientId, assetId, from, to, centro[0], centro[1], raioM, MAX_PONTOS_POR_ATIVO],
     );
-    return rows.map((r) => [Number(r.t), r.lat, r.lon, r.v, r.ign ? 1 : 0]);
+    return rows.map((r) => [Number(r.t), r.lat, r.lon, r.v, ignicao(r.ign)]);
   }
 
   /** Cercas do cliente no formato que `inFence` (packages/shared/src/utils.ts) entende. */

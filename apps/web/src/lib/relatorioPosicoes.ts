@@ -6,8 +6,13 @@ import { fmtDT, hm } from '@localle/shared/utils';
 import type { PdfSection } from './reportExport';
 import { cachedAddress, fmtCoord } from './geocode';
 
-/** Ponto do percurso: [ts, lat, lng, km/h, ignição 0/1]. */
-export type Ponto = [number, number, number, number, number];
+/** Duração que pode não ser conhecida (ex.: motor ligado de rastreador sem ignição): `null` vira "—". */
+export const hmOuTraco = (ms: number | null) => (ms === null ? '—' : hm(ms));
+/** Ignição de um ponto/parada: `null` = o rastreador não informa. */
+export const rotuloIgnicao = (i: unknown) => (i === null || i === undefined ? 'Não informada' : i ? 'Ligada' : 'Desligada');
+
+/** Ponto do percurso: [ts, lat, lng, km/h, ignição 0/1/null] (null = o rastreador não informa). */
+export type Ponto = [number, number, number, number, number | null];
 export interface BlocoVeiculo { a: { id: string; name: string; plate?: string }; pts: Ponto[]; n: number; stats: RouteStats }
 
 /** Um bloco por veículo, ordenado pela placa (depois pelo nome); pontos de cada um em ordem cronológica. */
@@ -21,15 +26,15 @@ export function blocosPorVeiculo<T extends BlocoVeiculo>(lista: T[]): T[] {
 export const rotuloVeiculo = (a: BlocoVeiculo['a']) => (a.plate && a.plate !== a.name ? `${a.plate} · ${a.name}` : a.name || a.plate || '—');
 
 export const RESUMO_HEAD = ['Posições', 'Distância', 'Vel. máxima', 'Em movimento', 'Parado com ignição', 'Paradas (> 5 min)'];
-export const resumoLinha = ({ n, stats }: BlocoVeiculo) => [n, `${Math.round(stats.dist)} km`, `${Math.round(stats.vmax)} km/h`, hm(stats.moving), hm(stats.idle), stats.stops.length];
+export const resumoLinha = ({ n, stats }: BlocoVeiculo) => [n, `${Math.round(stats.dist)} km`, `${Math.round(stats.vmax)} km/h`, hm(stats.moving), hmOuTraco(stats.idle), stats.stops.length];
 
 export const PARADAS_HEAD = ['Início', 'Fim', 'Duração', 'Ignição', 'Endereço'];
 export const paradasLinhas = ({ stats }: BlocoVeiculo) =>
-  stats.stops.map((s) => [fmtDT(s.ts), fmtDT(s.end), hm(s.end - s.ts), s.ignition ? 'Ligada' : 'Desligada', cachedAddress(s.pos[0], s.pos[1])]);
+  stats.stops.map((s) => [fmtDT(s.ts), fmtDT(s.end), hm(s.end - s.ts), rotuloIgnicao(s.ignition), cachedAddress(s.pos[0], s.pos[1])]);
 
 export const POSICOES_HEAD = ['Data/hora', 'Velocidade (km/h)', 'Ignição', 'Endereço', 'Latitude', 'Longitude'];
 export const posicoesLinhas = ({ pts }: BlocoVeiculo) =>
-  pts.map((p) => [fmtDT(p[0]), Math.round(p[3]), p[4] ? 'Ligada' : 'Desligada', cachedAddress(p[1], p[2]), fmtCoord(p[1]), fmtCoord(p[2])]);
+  pts.map((p) => [fmtDT(p[0]), Math.round(p[3]), rotuloIgnicao(p[4]), cachedAddress(p[1], p[2]), fmtCoord(p[1]), fmtCoord(p[2])]);
 
 /** Seções do PDF: para cada veículo, resumo, paradas e posições, em sequência. */
 export function secoesPdf(blocos: BlocoVeiculo[]): PdfSection[] {

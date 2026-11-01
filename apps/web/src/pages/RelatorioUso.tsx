@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { routeStats } from '@localle/shared/routeStats';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
+import { hmOuTraco } from '../lib/relatorioPosicoes';
 import { useStore, useStoreData } from '../lib/store';
 import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, EmptyState, Stack, Grid, Panel, PageHeader, toast } from '../components/ui';
@@ -46,7 +47,9 @@ export default function RelatorioUso() {
     ? porVeiculo.filter(({ a }: any) => [a.name, a.plate].some((s) => (s || '').toLowerCase().includes(busca.trim().toLowerCase())))
     : porVeiculo;
 
-  const soma = (k: 'dist' | 'moving' | 'engineOn' | 'idle') => porVeiculo.reduce((s, x) => s + x.stats[k], 0);
+  const soma = (k: 'dist' | 'moving') => porVeiculo.reduce((s, x) => s + x.stats[k], 0);
+  // motor/ocioso: só dos veículos cujo rastreador informa ignição; nenhum informa → desconhecido ("—"), não 0
+  const somaIgnicao = (k: 'engineOn' | 'idle') => { const vs = porVeiculo.map((x) => x.stats[k] as number | null).filter((v): v is number => v !== null); return vs.length ? vs.reduce((s, v) => s + v, 0) : null; };
   const paradasTotal = porVeiculo.reduce((s, x) => s + x.stats.stops.length, 0);
   const tempoParado = (st: any) => st.stops.reduce((s: number, p: any) => s + (p.end - p.ts), 0);
 
@@ -57,8 +60,8 @@ export default function RelatorioUso() {
   const filtrosTxt = `Grupo: ${groups.find((g: any) => g.id === grp)?.name || 'todos'} · Veículo: ${assets.find((a: any) => a.id === aid)?.name || 'todos'}`;
   const nomeArq = (ext: string) => `uso-da-frota-${from.slice(0, 10)}-a-${to.slice(0, 10)}.${ext}`;
   const head = ['Veículo', 'Placa', 'Km', 'Em movimento', 'Motor ligado', 'Ocioso (parado ligado)', 'Paradas', 'Tempo parado', 'Vel. máxima'];
-  const linha = ({ a, stats }: any) => [a.name, a.plate || '—', Math.round(stats.dist * 10) / 10, hm(stats.moving), hm(stats.engineOn), hm(stats.idle), stats.stops.length, hm(tempoParado(stats)), `${Math.round(stats.vmax)} km/h`];
-  const linhas = () => [...filtrados.map(linha), ['Total', '', Math.round(soma('dist') * 10) / 10, hm(soma('moving')), hm(soma('engineOn')), hm(soma('idle')), paradasTotal, '', '']];
+  const linha = ({ a, stats }: any) => [a.name, a.plate || '—', Math.round(stats.dist * 10) / 10, hm(stats.moving), hmOuTraco(stats.engineOn), hmOuTraco(stats.idle), stats.stops.length, hm(tempoParado(stats)), `${Math.round(stats.vmax)} km/h`];
+  const linhas = () => [...filtrados.map(linha), ['Total', '', Math.round(soma('dist') * 10) / 10, hm(soma('moving')), hmOuTraco(somaIgnicao('engineOn')), hmOuTraco(somaIgnicao('idle')), paradasTotal, '', '']];
 
   const exportar = (formato: ExportFormat) => {
     if (!filtrados.length) return toast('Nada para exportar neste período.', { tone: 'crit' });
@@ -108,8 +111,8 @@ export default function RelatorioUso() {
 
         <Grid cols={4} equal>
           <StatTile icon="odometro" value={`${Math.round(soma('dist'))} km`} label="rodados" sub={`${porVeiculo.length} ${porVeiculo.length === 1 ? 'veículo' : 'veículos'} no período`} />
-          <StatTile icon="relogio" value={hm(soma('engineOn'))} label="motor ligado" sub={`${hm(soma('moving'))} em movimento`} />
-          <StatTile icon="alerta" value={hm(soma('idle'))} label="ocioso" sub="Parado com a ignição ligada" />
+          <StatTile icon="relogio" value={hmOuTraco(somaIgnicao('engineOn'))} label="motor ligado" sub={`${hm(soma('moving'))} em movimento`} />
+          <StatTile icon="alerta" value={hmOuTraco(somaIgnicao('idle'))} label="ocioso" sub="Parado com a ignição ligada" />
           <StatTile icon="pause" value={paradasTotal} label="paradas" sub="Mais de 5 min parado" />
         </Grid>
 

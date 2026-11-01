@@ -349,7 +349,7 @@ function applyMessage(m: RealtimeMessage) {
       if (!v) return;
       // "dentro de quais cercas" só para exibir; entrada/saída e alertas vêm do backend como evento
       vehicles[id] = { ...v, inside: s.fences.filter((f: any) => inFence(v.pos, f)).map((f: any) => f.id) };
-      history[id] = [...(history[id] || []), [v.lastUpdate, v.pos[0], v.pos[1], v.speed, v.ignition ? 1 : 0]].slice(-LIVE_HISTORY);
+      history[id] = [...(history[id] || []), [v.lastUpdate, v.pos[0], v.pos[1], v.speed, v.ignition == null ? null : v.ignition ? 1 : 0]].slice(-LIVE_HISTORY);
     };
     if (m.kind === 'snapshot') { m.posicoes.forEach(push); return { vehicles, history }; }
     if (m.kind === 'posicao') { push(m); return { vehicles, history }; }
@@ -441,7 +441,7 @@ function runStream(signal: AbortSignal) {
 export async function fetchRoute(assetId: string, from: number, to: number) {
   const qs = `from=${new Date(from).toISOString()}&to=${new Date(to).toISOString()}`;
   const rows = await apiGet<any[]>(`/monitoring/assets/${backendIdOf(assetId)}/history?${qs}`);
-  return rows.filter((p) => p.valid).map((p) => [Date.parse(p.fixTime), +p.latitude, +p.longitude, Math.round(+p.speedKmh || 0), p.ignition ? 1 : 0]);
+  return rows.filter((p) => p.valid).map((p) => [Date.parse(p.fixTime), +p.latitude, +p.longitude, Math.round(+p.speedKmh || 0), p.ignition == null ? null : p.ignition ? 1 : 0]);
 }
 
 // Remove do navegador tudo que veio do backend (veículos lc_, alertas al:lc:), sem tocar no que é local.
