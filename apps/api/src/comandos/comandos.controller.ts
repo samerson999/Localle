@@ -23,6 +23,13 @@ export class ComandosController {
     return this.service.listar(clientId, assetId ? parseUuid('assetId', assetId) : null);
   }
 
+  /** Tipos que o rastreador do ativo aceita e se está online: a tela só oferece o que o aparelho executa. */
+  @Get('capacidades')
+  @RequirePermission('monitoramento.ver')
+  capacidades(@ClientId() clientId: string, @Query('assetId') assetId?: string) {
+    return this.service.capacidades(clientId, parseUuid('assetId', assetId));
+  }
+
   @Post()
   @RequirePermission('comandos.enviar')
   enviar(@ClientId() clientId: string, @CurrentUserId() userId: string, @Body() body: unknown) {

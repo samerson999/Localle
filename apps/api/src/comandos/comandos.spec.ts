@@ -26,6 +26,17 @@ class TraccarFake extends TraccarClient {
     this.enviados.push(command);
     return { queued: this.queued, id: 100 + this.enviados.length };
   }
+  /** O que o Traccar diz que o device aceita e se está conectado (`/api/commands/types`, `/api/devices`). */
+  tipos = ['engineStop', 'engineResume', 'positionSingle', 'custom'];
+  status = 'online';
+  consultaFalha = false;
+  override async commandTypes() {
+    if (this.consultaFalha) throw new Error('Traccar GET /api/commands/types falhou: 503');
+    return this.tipos;
+  }
+  override async deviceStatus() {
+    return this.status;
+  }
   /** `commandResult` gravados "no Traccar", para a conciliação. */
   eventos: TraccarEventoComando[] = [];
   consultas = 0;
@@ -140,7 +151,7 @@ describe('comandos ao rastreador', () => {
   it('um pendente por tipo: segundo engineStop → 409; engineResume cancela o engineStop pendente (precedência)', async () => {
     await expect(service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineStop', motivo: 'de novo' })).rejects.toMatchObject({ status: 409 });
 
-    traccar.queued = true; // aparelho offline: Traccar enfileira (202)
+    traccar.queued = true; // aparelho caiu entre a verificação (online) e o envio: Traccar enfileira (202)
     const resume = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineResume', motivo: 'recuperado' });
     traccar.queued = false;
     expect(resume.status).toBe('aguardando');
@@ -157,7 +168,8 @@ describe('comandos ao rastreador', () => {
     await service.receberResultado(deviceId, { result: 'OK' }, new Date('2026-10-26T12:00:00Z'));
     const [resume] = (await service.listar(clientA, assetA)).filter((x) => x.tipo === 'engineResume');
     expect(resume.status).toBe('confirmado');
-    expect(resume.resultado).toEqual({ result: 'OK', recebidoEm: '2026-10-26T12:00:00.000Z' });
+    // rastreador sem estado de bloqueio conhecido: a resposta é a confirmação possível, e isso fica registrado
+    expect(resume.resultado).toEqual({ result: 'OK', recebidoEm: '2026-10-26T12:00:00.000Z', confirmadoPor: 'resposta' });
     expect(resume.resolvidoEm).not.toBeNull();
 
     await service.receberResultado(deviceId, { result: 'OK' }, new Date('2026-10-26T12:05:00Z'));
@@ -179,6 +191,92 @@ describe('comandos ao rastreador', () => {
     const [ainda] = (await service.listar(clientA, assetA)).filter((x) => x.id === c.id);
     expect(ainda.status).toBe('expirado');
     expect(ainda.resultado).toMatchObject({ tardio: true });
+  });
+
+  it('capacidade do aparelho: tipo que ele não aceita, bloqueio offline ou Traccar sem responder — recusa sem criar nem enviar', async () => {
+    await limpar();
+    await posicao(agora(), 0);
+    const enviados = traccar.enviados.length;
+
+    traccar.tipos = ['custom']; // como o JR12 na HML
+    await expect(service.solicitar(clientA, userA, { assetId: assetA, tipo: 'positionSingle', motivo: null })).rejects.toThrow(/não aceita o comando positionSingle/);
+    expect(await service.capacidades(clientA, assetA)).toEqual({ tipos: [], online: true });
+    traccar.tipos = ['engineStop', 'engineResume', 'positionSingle', 'custom'];
+
+    traccar.status = 'offline';
+    await expect(service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineStop', motivo: 'furto' })).rejects.toThrow(/offline/);
+    expect(await service.capacidades(clientA, assetA)).toEqual({ tipos: ['engineStop', 'engineResume', 'positionSingle'], online: false });
+    // pedir posição não muda estado físico: segue mesmo offline (o Traccar guarda na fila)
+    traccar.queued = true;
+    expect((await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'positionSingle', motivo: null })).status).toBe('aguardando');
+    traccar.queued = false;
+    traccar.status = 'online';
+
+    traccar.consultaFalha = true;
+    await expect(service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineStop', motivo: 'furto' })).rejects.toMatchObject({ status: 503 });
+    traccar.consultaFalha = false;
+
+    expect(traccar.enviados.length).toBe(enviados + 1); // só o positionSingle
+    expect((await service.listar(clientA, assetA)).map((c) => c.tipo)).toEqual(['positionSingle']);
+  });
+
+  it('um pendente por rastreador, de qualquer tipo: o commandResult não diz a qual comando responde', async () => {
+    // positionSingle do teste anterior ainda pendente
+    await expect(service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineStop', motivo: 'furto' })).rejects.toThrow(/pendente para este rastreador \(positionSingle\)/);
+    await service.receberResultado(deviceId, { result: 'OK' }, new Date());
+    expect((await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineStop', motivo: 'furto' })).status).toBe('enviado');
+  });
+
+  it('resposta de falha do aparelho vira `recusado` (final), nunca `confirmado`', async () => {
+    await limpar();
+    await posicao(agora(), 0);
+    const c = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineStop', motivo: 'furto' });
+    expect(await service.receberResultado(deviceId, { result: 'Speed Limit, Cmd is rejected!' }, new Date())).toBe('recusado');
+    const [recusado] = (await service.listar(clientA, assetA)).filter((x) => x.id === c.id);
+    expect(recusado).toMatchObject({ status: 'recusado', resultado: { result: 'Speed Limit, Cmd is rejected!' } });
+    expect(recusado.resolvidoEm).not.toBeNull();
+    // final: não segura o rastreador
+    expect((await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineStop', motivo: 'furto' })).status).toBe('enviado');
+    await service.receberResultado(deviceId, { result: 'Fail!' }, new Date());
+  });
+
+  describe('aparelho que informa o estado de bloqueio', () => {
+    const estado = (atributos: Record<string, unknown>, em: Date) =>
+      pool.query(
+        `insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em, ultimos_atributos, atributos_em) values ($1, now(), $2, $3)
+         on conflict (rastreador_id) do update set ultimos_atributos = excluded.ultimos_atributos, atributos_em = excluded.atributos_em`,
+        [rastreadorId, JSON.stringify(atributos), em],
+      );
+    afterAll(() => pool.query('delete from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]));
+
+    it('a resposta deixa `respondido`; só confirma quando o bloqueio aparece num dado posterior à resposta', async () => {
+      await limpar();
+      await posicao(agora(), 0);
+      await estado({ blocked: false }, new Date(Date.now() - 60_000));
+      const c = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineStop', motivo: 'furto' });
+      const respondeuEm = new Date(Date.now() - 30_000);
+      expect(await service.receberResultado(deviceId, { result: 'RELAY 1 OK' }, respondeuEm)).toBe('respondido');
+
+      // ainda pendente: segura outro comando e não confirma com o estado antigo nem com o estado contrário
+      await expect(service.solicitar(clientA, userA, { assetId: assetA, tipo: 'positionSingle', motivo: null })).rejects.toThrow(/pendente/);
+      expect(await service.conferirEstado()).toBe(0);
+      await estado({ blocked: false }, new Date());
+      expect(await service.conferirEstado()).toBe(0);
+
+      await estado({ blocked: true }, new Date());
+      expect(await service.conferirEstado()).toBe(1);
+      const [ok] = (await service.listar(clientA, assetA)).filter((x) => x.id === c.id);
+      expect(ok).toMatchObject({ status: 'confirmado', resultado: { result: 'RELAY 1 OK', confirmadoPor: 'estado' } });
+    });
+
+    it('respondido sem o estado mudar no prazo expira, dizendo que o aparelho respondeu mas o estado não mudou', async () => {
+      const c = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineResume', motivo: 'recuperado' });
+      expect(await service.receberResultado(deviceId, { result: 'RELAY 0 OK' }, new Date())).toBe('respondido');
+      await pool.query("update comandos set solicitado_em = now() - interval '30 min', expira_em = now() - interval '1 min' where id = $1", [c.id]);
+      expect(await service.expirarVencidos()).toBe(1);
+      const [expirado] = (await service.listar(clientA, assetA)).filter((x) => x.id === c.id);
+      expect(expirado).toMatchObject({ status: 'expirado', resultado: { result: 'RELAY 0 OK', motivo: expect.stringMatching(/estado de bloqueio não mudou/) } });
+    });
   });
 
   it('Traccar fora ou não configurado: comando fica `falhou` com o erro, sem exceção para o usuário', async () => {

@@ -93,6 +93,18 @@ export class TraccarClient {
     return { queued: response.status === 202, id: typeof body?.id === 'number' ? body.id : null };
   }
 
+  /** Tipos de comando que o Traccar sabe codificar para o protocolo do device (varia por aparelho; ex.: só `custom`). */
+  async commandTypes(config: TraccarConfig, deviceId: number): Promise<string[]> {
+    const tipos = await this.request<{ type?: unknown }[]>(config, 'GET', `/api/commands/types?deviceId=${deviceId}`);
+    return tipos.map((t) => t.type).filter((t): t is string => typeof t === 'string');
+  }
+
+  /** Situação da conexão do device no Traccar (`online` = socket aberto agora); null se o device não existe. */
+  async deviceStatus(config: TraccarConfig, deviceId: number): Promise<string | null> {
+    const [d] = await this.request<{ status?: unknown }[]>(config, 'GET', `/api/devices?id=${deviceId}`);
+    return typeof d?.status === 'string' ? d.status : null;
+  }
+
   /**
    * Eventos `commandResult` gravados no Traccar para o device no intervalo (`GET /api/reports/events`).
    * Conciliação dos comandos (comandos.service.ts): não depende de o Forwarding ter entregado o evento.

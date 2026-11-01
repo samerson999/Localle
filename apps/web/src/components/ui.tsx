@@ -137,10 +137,10 @@ export function ContextMenu({ x, y, header, items, onClose }: { x: number; y: nu
 }
 
 // Cartão de escolha (uma opção entre várias, com descrição): é controle de seleção, então o escolhido usa a cor da revenda.
-export function ChoiceCard({ checked, onSelect, title, description, meta, tone }: { checked: boolean; onSelect: () => void; title: React.ReactNode; description?: React.ReactNode; meta?: React.ReactNode; tone?: 'danger' }) {
+export function ChoiceCard({ checked, onSelect, title, description, meta, tone, disabled }: { checked: boolean; onSelect: () => void; title: React.ReactNode; description?: React.ReactNode; meta?: React.ReactNode; tone?: 'danger'; disabled?: boolean }) {
   return (
-    <button type="button" role="radio" aria-checked={checked} onClick={onSelect}
-      className={cx('text-left p-card-sm rounded-ctl border flex flex-col gap-hair transition-colors',
+    <button type="button" role="radio" aria-checked={checked} onClick={onSelect} disabled={disabled}
+      className={cx('text-left p-card-sm rounded-ctl border flex flex-col gap-hair transition-colors disabled:opacity-50 disabled:pointer-events-none',
         checked ? 'border-brand-fill bg-brand-soft ring-1 ring-inset ring-brand-fill' : 'border-line-strong bg-card hover:bg-card-2 hover:border-line-hover')}>
       <span className={cx('text-body font-medium flex items-center gap-icon', tone === 'danger' && 'text-crit-ink')}>{title}</span>
       {description && <span className="text-small text-ink-2">{description}</span>}

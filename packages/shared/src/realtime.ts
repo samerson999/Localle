@@ -5,6 +5,20 @@
  * Ordem de entrega numa conexão: um `snapshot` (estado atual da frota), depois os `evento`s persistidos
  * desde o `since` informado pelo front (pub/sub não tem replay, § 5.2 item 5), depois incrementais.
  */
+/**
+ * Telemetria do aparelho, já na mesma unidade para qualquer protocolo (a leitura é da API, pelas chaves padrão
+ * do Traccar e o mapeamento do modelo: apps/api/src/telemetria/leitura.ts). `null` = o aparelho/protocolo não informa — a tela mostra
+ * "não informado", nunca um valor de exemplo.
+ */
+export interface Telemetria {
+  /** Tensão da alimentação externa (bateria do veículo), em volts. */
+  tensaoV: number | null;
+  satelites: number | null;
+  /** Sinal da rede celular normalizado de 0 a 5. */
+  sinalGsm: number | null;
+  bloqueado: boolean | null;
+}
+
 export interface RealtimePosicao {
   kind: 'posicao';
   assetId: string;
@@ -14,6 +28,7 @@ export interface RealtimePosicao {
   lon: number;
   speedKmh: number | null;
   ignition: boolean | null;
+  telemetria?: Telemetria;
 }
 
 export interface RealtimeEvento {
@@ -61,7 +76,8 @@ export type ComandoTipo = 'engineStop' | 'engineResume' | 'positionSingle';
  * Estados auditáveis de um comando (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 4.6). `expirado` e
  * `cancelado` são decisões do backend, não do aparelho: nunca apresentar como "veículo liberado".
  */
-export type ComandoStatus = 'solicitado' | 'enviado' | 'aguardando' | 'confirmado' | 'falhou' | 'expirado' | 'cancelado';
+/** `respondido`: o aparelho respondeu, falta o estado de bloqueio confirmar (ainda pendente). `recusado`: a resposta indica falha. */
+export type ComandoStatus = 'solicitado' | 'enviado' | 'aguardando' | 'respondido' | 'confirmado' | 'recusado' | 'falhou' | 'expirado' | 'cancelado';
 
 export interface Comando {
   id: string;

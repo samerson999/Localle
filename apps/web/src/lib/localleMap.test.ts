@@ -27,6 +27,26 @@ describe('toAsset / toVehicle', () => {
     expect(toAsset(row(), { groupIds: ['x'] }, 'g').groupIds).toEqual(['x']);
   });
 
+  it('ícone ilustrado vem da API; null limpa; resposta sem o campo mantém o do navegador', () => {
+    expect(toAsset(row({ icone: '02-sedan' }), { icon: '08-motocicleta' }, 'g').icon).toBe('02-sedan');
+    expect(toAsset(row({ icone: null }), { icon: '08-motocicleta' }, 'g').icon).toBe('');
+    expect(toAsset(row(), { icon: '08-motocicleta' }, 'g').icon).toBe('08-motocicleta');
+  });
+
+  it('telemetria que a API não envia fica null, mesmo com valor de exemplo salvo no navegador', () => {
+    const v = toVehicle(row(), { battery: 12.6, gps: 0, gsm: 0, blocked: false })!;
+    expect(v).toMatchObject({ battery: null, gps: null, gsm: null, blocked: null });
+  });
+
+  it('telemetria da API vira bateria/satélites/sinal/bloqueio; posição ao vivo sem telemetria mantém a última', () => {
+    const t = { tensaoV: 13.3, satelites: 15, sinalGsm: 5, bloqueado: false };
+    const v = toVehicle(row({ telemetria: t }), undefined)!;
+    expect(v).toMatchObject({ battery: 13.3, gps: 15, gsm: 5, blocked: false });
+    const p = { kind: 'posicao' as const, assetId: 'a1', rastreadorId: 'r1', fixTime: '2026-01-01T12:05:00Z', lat: -8, lon: -34, speedKmh: 0, ignition: true };
+    expect(applyPosicao(v, p)).toMatchObject({ battery: 13.3, gps: 15 });
+    expect(applyPosicao(v, { ...p, telemetria: { ...t, satelites: 9, tensaoV: null } })).toMatchObject({ battery: null, gps: 9 });
+  });
+
   it('sem posição ainda (aguardando) não vira veículo no mapa', () => {
     expect(toVehicle(row({ fixTime: null, latitude: null, longitude: null }), undefined)).toBeNull();
   });

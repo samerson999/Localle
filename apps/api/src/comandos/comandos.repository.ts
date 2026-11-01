@@ -21,7 +21,10 @@ export interface ComandoRow {
   resultado: Record<string, unknown> | null;
 }
 
-export const PENDENTES: ComandoStatus[] = ['solicitado', 'enviado', 'aguardando'];
+/** Ainda sem resposta do aparelho: é a estes que um `commandResult` responde. */
+export const AGUARDANDO_RESPOSTA: ComandoStatus[] = ['solicitado', 'enviado', 'aguardando'];
+/** Não resolvidos: inclui `respondido` (respondeu, mas o estado de bloqueio ainda não confirmou). */
+export const PENDENTES: ComandoStatus[] = [...AGUARDANDO_RESPOSTA, 'respondido'];
 
 const SELECT = `
   select c.*, u.email as solicitado_por_email
@@ -78,6 +81,11 @@ export class ComandosRepository extends BaseRepository<ComandoRow> {
     return rows[0] ?? null;
   }
 
+  /** Lock da linha do rastreador até o fim da transação: serializa pedidos de comando para o mesmo aparelho. */
+  async travarRastreador(rastreadorId: string, executor: Queryable): Promise<void> {
+    await executor.query('select 1 from rastreadores where id = $1 for update', [rastreadorId]);
+  }
+
   async posicaoAtual(clientId: string, assetId: string, executor: Queryable = this.pool) {
     const { rows } = await executor.query<{ fix_time: Date; speed_kmh: string | null }>(
       `select fix_time, speed_kmh from v_localizacao_atual where client_id = $1 and asset_id = $2 order by fix_time desc limit 1`,
@@ -86,11 +94,41 @@ export class ComandosRepository extends BaseRepository<ComandoRow> {
     return rows[0] ?? null;
   }
 
-  async pendentesPorRastreador(rastreadorId: string, tipos: ComandoTipo[], executor: Queryable = this.pool): Promise<ComandoRow[]> {
+  async pendentesPorRastreador(
+    rastreadorId: string,
+    tipos: ComandoTipo[],
+    executor: Queryable = this.pool,
+    status: ComandoStatus[] = PENDENTES,
+  ): Promise<ComandoRow[]> {
     const { rows } = await executor.query<ComandoRow>(
       `${SELECT} where c.rastreador_id = $1 and c.tipo = any($2) and c.status = any($3) order by c.solicitado_em desc`,
-      [rastreadorId, tipos, PENDENTES],
+      [rastreadorId, tipos, status],
     );
+    return rows;
+  }
+
+  /**
+   * Últimos atributos conhecidos do rastreador (com o horário) e o mapeamento do modelo: o estado de bloqueio
+   * que confirma um bloqueio/desbloqueio (telemetria/leitura.ts).
+   */
+  async estadoDoRastreador(rastreadorId: string, executor: Queryable = this.pool) {
+    const { rows } = await executor.query<{
+      ultimos_atributos: Record<string, unknown> | null; atributos_em: Date | null;
+      atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
+    }>(
+      `select rc.ultimos_atributos, rc.atributos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio
+         from rastreadores r
+         left join rastreador_comunicacao rc on rc.rastreador_id = r.id
+         left join rastreador_modelos m on m.id = r.modelo_id
+        where r.id = $1`,
+      [rastreadorId],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Comandos que o aparelho respondeu e esperam o estado de bloqueio confirmar (todos os clientes: rotina interna). */
+  async respondidos(executor: Queryable = this.pool): Promise<ComandoRow[]> {
+    const { rows } = await executor.query<ComandoRow>(`${SELECT} where c.status = 'respondido' order by c.solicitado_em`);
     return rows;
   }
 
@@ -180,7 +218,9 @@ export class ComandosRepository extends BaseRepository<ComandoRow> {
   async expirarVencidos(executor: Queryable = this.pool): Promise<ComandoRow[]> {
     const { rows } = await executor.query<{ id: string; client_id: string }>(
       `update comandos set status = 'expirado', resolvido_em = now(),
-         resultado = coalesce(resultado, '{}'::jsonb) || '{"motivo":"sem commandResult dentro do prazo"}'::jsonb
+         resultado = coalesce(resultado, '{}'::jsonb) || case when status = 'respondido'
+           then '{"motivo":"o aparelho respondeu, mas o estado de bloqueio não mudou dentro do prazo"}'::jsonb
+           else '{"motivo":"sem commandResult dentro do prazo"}'::jsonb end
        where status = any($1) and expira_em < now() returning id, client_id`,
       [PENDENTES],
     );

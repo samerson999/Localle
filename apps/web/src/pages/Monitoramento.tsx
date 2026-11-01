@@ -14,7 +14,7 @@ import { tv } from '../lib/tokens';
 import { useCriticalMap, resolveReasons, recentTreatments, type CritReason } from '../lib/critical';
 import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { TreatDialog, TreatedLine } from '../components/TreatDialog';
-import { confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, lerParametro, listarLinks, revogarLink } from '../lib/localleApi';
+import { capacidadesComando, confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, lerParametro, listarLinks, revogarLink, tipoComandoLocalle } from '../lib/localleApi';
 import { lerVisao, salvarVisao, type VisaoMonitor } from '../lib/monitorPrefs';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
@@ -330,6 +330,11 @@ export default function Monitoramento() {
 }
 
 // Painel do veículo selecionado: status, silhueta (ou foto), placa, métricas do dia, sensores e ações.
+const RUIM: Record<string, string> = { recusado: 'Recusado pelo rastreador', falhou: 'Falhou no envio', expirado: 'Sem confirmação no prazo', cancelado: 'Substituído por outro comando', nao_suportado: 'Não disponível para este rastreador' };
+
+// o aparelho (ou a leitura do protocolo) não traz o dado: nunca mostrar um valor de exemplo no lugar
+const NAO_INFORMADO = <span className="text-ink-2">Não informado</span>;
+
 function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
   const { a, v, s, k, d } = x;
   const kmToday = useStore((st) => { const h = st.history[a.id] || []; const t0 = new Date().setHours(0, 0, 0, 0); let km = 0; for (let i = 1; i < h.length; i++) if (h[i][0] >= t0) km += haversine([h[i - 1][1], h[i - 1][2]], [h[i][1], h[i][2]]); return km / 1000; });
@@ -368,13 +373,13 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
           <DescRow label="Última posição"><time className="num">{fmtDT(v.lastUpdate)}</time></DescRow>
         </> : <>
           <DescRow label="Ignição">{v?.ignition == null ? <span className="text-ink-2">Não informada</span> : <StatusDot kind={v.ignition ? 'mov' : 'off'} label={v.ignition ? 'Ligada' : 'Desligada'} />}</DescRow>
-          <DescRow label="Bateria">{v?.battery < BATTERY_LOW_V ? <StatusDot kind="crit" label={`${num(v.battery, 1)} V · baixa`} /> : `${num(v?.battery, 1)} V`}</DescRow>
-          <DescRow label="GPS">{v?.gps} satélites</DescRow>
-          <DescRow label="Bloqueio">{v?.blocked ? <StatusDot kind="crit" label="Bloqueado" /> : 'Livre'}</DescRow>
+          <DescRow label="Bateria">{v?.battery == null ? NAO_INFORMADO : v.battery < BATTERY_LOW_V ? <StatusDot kind="crit" label={`${num(v.battery, 1)} V · baixa`} /> : `${num(v.battery, 1)} V`}</DescRow>
+          <DescRow label="GPS">{v?.gps == null ? NAO_INFORMADO : `${v.gps} satélites`}</DescRow>
+          <DescRow label="Bloqueio">{v?.blocked == null ? NAO_INFORMADO : v.blocked ? <StatusDot kind="crit" label="Bloqueado" /> : 'Livre'}</DescRow>
           {v?.temp !== undefined && <DescRow label="Temperatura">{a.kind === 'veiculo' && v.temp > -12 ? <StatusDot kind="crit" label={`${num(v.temp, 1)} °C`} /> : `${num(v.temp, 1)} °C`}</DescRow>}
           {v?.door && <DescRow label="Porta do baú">{v.door === 'Aberta' ? <StatusDot kind="parado" label="Aberta" /> : v.door}</DescRow>}
           <DescRow label={hours ? 'Horímetro' : a.kmCalculated ? 'Odômetro (calculado)' : 'Odômetro'}>{hours ? <Num value={v?.hourmeter} unit="h" digits={1} size="body" /> : <Num value={odo} unit="km" size="body" />}</DescRow>
-          <DescRow label="Sinal GSM"><span className="inline-flex items-center gap-icon"><Icon name="sinal" size={16} className="text-ink-2" /><span className="num">{v?.gsm}/5</span></span></DescRow>
+          <DescRow label="Sinal GSM">{v?.gsm == null ? NAO_INFORMADO : <span className="inline-flex items-center gap-icon"><Icon name="sinal" size={16} className="text-ink-2" /><span className="num">{v.gsm}/5</span></span>}</DescRow>
           <DescRow label="Atualizado"><time className="num">{fmtT(v?.lastUpdate)}</time></DescRow>
         </>}
         <DescRow label="Endereço"><Address pos={v?.pos} className="text-small" /></DescRow>
@@ -502,6 +507,24 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
   // sintaxe técnica e comando livre só para a equipe Localle/revenda (lib/support.ts)
   const tecnico = veSintaxeComando(useStore((s) => s.session));
   const def = defId === 'livre' ? { id: 'livre', name: 'Comando livre', payload: free, kind: 'livre' } : defs.find((d: any) => d.id === defId);
+  // rastreador do nosso backend: o Traccar diz o que o aparelho aceita e se está conectado (comandos.service.ts).
+  // O texto de sintaxe (RELAY,1#…) não é o que vai para ele — quem codifica é o Traccar —, por isso não aparece.
+  const real = target === 'veiculo' && assets.find((a: any) => a.id === assetId)?.tracker?.source === 'localle';
+  const [cap, setCap] = useState<{ tipos: string[]; online: boolean | null } | null>(null);
+  useEffect(() => {
+    setCap(null);
+    if (!real || !state) return;
+    let vivo = true;
+    capacidadesComando(assetId).then((c) => vivo && setCap(c)).catch(() => { /* sem a consulta, a API ainda recusa no envio */ });
+    return () => { vivo = false; };
+  }, [assetId, real, state]);
+  const indisponivel = (d: any) => {
+    if (!real || !cap) return null;
+    const t = tipoComandoLocalle(d.kind, d.payload);
+    if (!t || !cap.tipos.includes(t)) return 'Este rastreador não aceita este comando';
+    if ((t === 'engineStop' || t === 'engineResume') && !cap.online) return 'Rastreador offline: só com o aparelho conectado';
+    return null;
+  };
   const ids = target === 'veiculo' ? [assetId] : assets.filter((a: any) => a.groupIds?.includes(groupId)).map((a: any) => a.id);
   const name = (id: string) => assets.find((a: any) => a.id === id)?.name;
   const send = async () => {
@@ -526,23 +549,25 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
           : <Select aria-label="Grupo" className="w-64" value={groupId} onChange={(e) => setGroupId(e.target.value)} options={groups.map((g: any) => ({ value: g.id, label: `${g.name} (${assets.filter((a: any) => a.groupIds?.includes(g.id)).length})` }))} />}
       </div>
       <div role="radiogroup" aria-label="Comando" className="grid grid-cols-2 md:grid-cols-3 gap-tight">
-        {[...defs, ...(tecnico ? [{ id: 'livre', name: 'Comando livre', desc: 'Texto direto ao equipamento' }] : [])].map((d: any) => (
-          <ChoiceCard key={d.id} checked={defId === d.id} onSelect={() => setDefId(d.id)} title={d.name} description={d.desc} meta={tecnico ? d.payload : undefined} tone={d.kind === 'bloqueio' ? 'danger' : undefined} />
+        {[...defs, ...(tecnico && !real ? [{ id: 'livre', name: 'Comando livre', desc: 'Texto direto ao equipamento' }] : [])].map((d: any) => (
+          <ChoiceCard key={d.id} checked={defId === d.id} onSelect={() => setDefId(d.id)} title={d.name} description={indisponivel(d) || d.desc} meta={tecnico && !real ? d.payload : undefined} tone={d.kind === 'bloqueio' ? 'danger' : undefined} disabled={!!indisponivel(d)} />
         ))}
       </div>
       {tecnico && defId === 'livre' && <Field label="Comando livre (sintaxe do rastreador)"><Textarea rows={2} className="font-mono" placeholder="Ex.: RELAY,1#" value={free} onChange={(e) => setFree(e.target.value)} /></Field>}
       {def?.kind === 'alerta' && <Field label="Mensagem exibida no teclado / app do motorista"><Input value={msg} onChange={(e) => setMsg(e.target.value)} /></Field>}
       <div className="flex flex-wrap gap-field items-end">
         <Field label="Confirme com sua senha" className="flex-1 min-w-[200px]"><Input type="password" value={pwd} invalid={!!err} onChange={(e) => setPwd(e.target.value)} placeholder="Sua senha de acesso" /></Field>
-        <Button variant={def?.kind === 'bloqueio' ? 'danger' : 'primary'} onClick={send} disabled={!ids.length}><Icon name="enviar" size={18} />Enviar {def?.name?.toLowerCase()} para {ids.length} {ids.length === 1 ? 'veículo' : 'veículos'}</Button>
+        <Button variant={def?.kind === 'bloqueio' ? 'danger' : 'primary'} onClick={send} disabled={!ids.length || !def || !!indisponivel(def)}><Icon name="enviar" size={18} />Enviar {def?.name?.toLowerCase()} para {ids.length} {ids.length === 1 ? 'veículo' : 'veículos'}</Button>
       </div>
       {err && <Callout tone="crit">{err}</Callout>}
       <div className="border-t border-line pt-card-foot mt-tight">
         <h3 className="text-body font-semibold mb-tight">Últimos comandos</h3>
         {commands.length === 0 ? <EmptyState icon="comando" title="Nenhum comando enviado" detail="Os comandos aparecem aqui com a confirmação do rastreador." />
           : <Table minWidth={560} head={['Quando', 'Comando', 'Destino', 'Status']} rows={commands.slice(0, 6).map((c: any) => {
-            const vals = Object.values(c.status); const ok = vals.filter((x) => x === 'confirmado').length; const pend = vals.filter((x) => x === 'pendente').length; const ruim = vals.filter((x) => ['falhou', 'expirado', 'cancelado', 'nao_suportado'].includes(x as string)).length;
-            return [<time className="num">{fmtDT(c.ts)}</time>, c.name + (c.message ? ` · "${c.message}"` : ''), c.target === 'grupo' ? `${c.assetIds.length} veículos` : <AssetName name={name(c.assetIds[0])} />, <Badge tone={ok === vals.length ? 'green' : ruim ? 'red' : 'orange'}>{ok === vals.length ? 'Confirmado pelo rastreador' : ruim ? ({ falhou: 'Falhou no envio', expirado: 'Sem confirmação no prazo', cancelado: 'Substituído por outro comando', nao_suportado: 'Não disponível para este rastreador' } as any)[vals.find((x) => ['falhou', 'expirado', 'cancelado', 'nao_suportado'].includes(x as string)) as string] : pend ? `${pend} aguardando o rastreador` : `${ok}/${vals.length} confirmados`}</Badge>];
+            const vals = Object.values(c.status) as string[]; const ok = vals.filter((x) => x === 'confirmado').length; const pend = vals.filter((x) => x === 'pendente').length;
+            // respondido: o aparelho respondeu, mas o bloqueio só confirma quando o estado dele mudar (comandos.service.ts)
+            const resp = vals.filter((x) => x === 'respondido').length; const ruim = vals.find((x) => RUIM[x]);
+            return [<time className="num">{fmtDT(c.ts)}</time>, c.name + (c.message ? ` · "${c.message}"` : ''), c.target === 'grupo' ? `${c.assetIds.length} veículos` : <AssetName name={name(c.assetIds[0])} />, <Badge tone={ok === vals.length ? 'green' : ruim ? 'red' : 'orange'}>{ok === vals.length ? 'Confirmado pelo rastreador' : ruim ? RUIM[ruim] : resp ? 'Respondeu; aguardando o estado do bloqueio' : pend ? `${pend} aguardando o rastreador` : `${ok}/${vals.length} confirmados`}</Badge>];
           })} />}
       </div>
     </Modal>

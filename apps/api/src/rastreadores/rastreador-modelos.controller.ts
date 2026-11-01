@@ -15,6 +15,11 @@ export class RastreadorModelosController {
     return this.service.listar();
   }
 
+  @Get(':id/atributos')
+  atributosRecebidos(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.atributosRecebidos(id);
+  }
+
   @Post()
   criar(@CurrentUserId() superadminId: string, @Body() body: unknown) {
     return this.service.criar(superadminId, parseCriarModelo(body));

@@ -40,7 +40,7 @@ export function criticalMap(s: any): Map<string, CritReason[]> {
     for (const aid of c.assetIds) {
       const st = c.status?.[aid];
       if (st === 'confirmado' || c.resolved?.[aid]) continue;
-      add(aid, { key: `cmd|${c.id}`, kind: 'comando', title: `${c.name} pendente`, detail: st === 'pendente' ? 'Rastreador sem comunicação; o comando não foi confirmado' : 'Aguardando confirmação do rastreador', since: c.ts, cmdId: c.id });
+      add(aid, { key: `cmd|${c.id}`, kind: 'comando', title: `${c.name} pendente`, detail: st === 'pendente' ? 'Rastreador sem comunicação; o comando não foi confirmado' : st === 'recusado' ? 'O rastreador recusou o comando' : st === 'respondido' ? 'O rastreador respondeu; aguardando o estado do bloqueio mudar' : 'Aguardando confirmação do rastreador', since: c.ts, cmdId: c.id });
     }
   }
   return out;

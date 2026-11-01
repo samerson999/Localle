@@ -27,4 +27,11 @@
     <entry key='event.forward.url'>__INGEST_URL__/ingest/traccar/events</entry>
     <entry key='event.forward.type'>json</entry>
     <entry key='event.forward.header'>X-Traccar-Ingest-Key: __INGEST_KEY__</entry>
+
+    <!-- Há aparelho que só informa o ACC em alguns pacotes (o GT06, no heartbeat a cada 5 min); a ignição é lida -->
+    <!-- de cada posição, então o Traccar copia o último valor para a posição que chega sem ele. Os demais dados -->
+    <!-- (tensão, sinal, bloqueio) a plataforma já guarda pelo último valor conhecido (rastreador_comunicacao). -->
+    <!-- Só preenche posição que chega sem o atributo: quem manda ignição em todo pacote não muda. -->
+    <entry key='processing.copyAttributes.enable'>true</entry>
+    <entry key='processing.copyAttributes'>ignition</entry>
 </properties>

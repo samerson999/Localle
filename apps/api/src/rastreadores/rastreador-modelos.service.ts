@@ -18,6 +18,11 @@ export class RastreadorModelosService {
     return this.repo.listar();
   }
 
+  async atributosRecebidos(id: string) {
+    if (!(await this.repo.findById(id))) throw new NotFoundException('Modelo não encontrado');
+    return this.repo.atributosRecebidos(id);
+  }
+
   async criar(superadminId: string, d: ModeloDados): Promise<RastreadorModeloEntity> {
     let criado: RastreadorModeloEntity;
     try {

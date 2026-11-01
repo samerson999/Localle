@@ -4,6 +4,7 @@ import { parseDate } from '../common/parse-date';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { SettingsService } from '../settings/settings.service';
+import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
 import { comunicacaoDaLinha } from './comunicacao-status';
 import type { EventosQueryDto } from './dto/eventos-query.dto';
 import type { HistoryQueryDto } from './dto/history-query.dto';
@@ -31,6 +32,7 @@ export class MonitoringController {
     return rows.map((r) => ({
       assetId: r.asset_id,
       plate: r.plate,
+      icone: r.icone,
       // null = aguardando primeira posição (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 4.4), não erro.
       fixTime: r.fix_time,
       longitude: r.longitude,
@@ -44,6 +46,7 @@ export class MonitoringController {
       instaladoEm: r.instalado_em,
       ultimoPacoteEm: r.ultimo_pacote_em,
       comunicacao: comunicacaoDaLinha(r, semSinalH(r.asset_id), agora),
+      telemetria: lerTelemetria(r.ultimos_atributos, mapeamentoDaLinha(r)),
     }));
   }
 

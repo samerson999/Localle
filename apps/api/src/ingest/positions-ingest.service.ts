@@ -1,11 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../db/pg-pool.provider';
-import type { Alerta } from '@localle/shared/realtime';
+import type { Alerta, Telemetria } from '@localle/shared/realtime';
 import { alertaDoAlarme } from '../alertas/alarmes-aparelho';
 import { inserirAlerta } from '../alertas/alertas.repository';
 import { detectarCercas } from '../cercas/cerca-detector';
 import { avaliarRegras } from '../regras/motor-regras';
+import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
 import { resolverInstalacaoVigente } from './instalacao-vigente';
 import type { NormalizedPosition } from './traccar-position.mapper';
 
@@ -23,6 +24,8 @@ export type IngestResult =
       eventos: EventoGravado[];
       /** Alertas criados nesta transação (para o worker publicar em tempo real). */
       alertas: Alerta[];
+      /** Lida dos últimos atributos conhecidos do rastreador (não só desta posição), com o mapeamento do modelo. */
+      telemetria: Telemetria;
     };
 
 export interface EventoGravado {
@@ -51,8 +54,11 @@ export class PositionsIngestService {
     try {
       await client.query('begin');
 
-      const rastreador = await client.query<{ id: string; protocolo: string | null; modelo_protocolo: string | null; modelo: string | null }>(
-        `select r.id, r.protocolo, m.protocolo as modelo_protocolo, r.modelo
+      const rastreador = await client.query<{
+        id: string; protocolo: string | null; modelo_protocolo: string | null; modelo: string | null;
+        atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
+      }>(
+        `select r.id, r.protocolo, m.protocolo as modelo_protocolo, r.modelo, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio
            from rastreadores r left join rastreador_modelos m on m.id = r.modelo_id
           where r.traccar_device_id = $1`,
         [position.traccarDeviceId],
@@ -121,7 +127,8 @@ export class PositionsIngestService {
         [posicaoId, rastreadorId, position.traccarPositionId],
       );
 
-      await this.atualizarComunicacao(client, rastreadorId, assetId, clientId, position);
+      const ultimosAtributos = await this.atualizarComunicacao(client, rastreadorId, assetId, clientId, position);
+      const telemetria = lerTelemetria(ultimosAtributos, mapeamentoDaLinha(rastreador.rows[0]));
       const atualizouUltimaPosicao = position.valid
         ? await this.atualizarUltimaPosicao(client, rastreadorId, assetId, clientId, posicaoId, position)
         : false;
@@ -167,7 +174,7 @@ export class PositionsIngestService {
       }
 
       await client.query('commit');
-      return { status: 'gravada', posicaoId, rastreadorId, clientId, assetId, atualizouUltimaPosicao, eventos, alertas };
+      return { status: 'gravada', posicaoId, rastreadorId, clientId, assetId, atualizouUltimaPosicao, eventos, alertas, telemetria };
     } catch (err) {
       await client.query('rollback');
       throw err;
@@ -182,19 +189,27 @@ export class PositionsIngestService {
     assetId: string | null,
     clientId: string | null,
     position: NormalizedPosition,
-  ): Promise<void> {
-    await client.query(
-      `insert into rastreador_comunicacao (rastreador_id, asset_id, client_id, ultimo_pacote_em, ultima_posicao_valida_em)
-       values ($1, $2, $3, now(), case when $4 then $5::timestamptz else null end)
+  ): Promise<Record<string, unknown>> {
+    const { rows } = await client.query<{ ultimos_atributos: Record<string, unknown> }>(
+      `insert into rastreador_comunicacao (rastreador_id, asset_id, client_id, ultimo_pacote_em, ultima_posicao_valida_em, ultimos_atributos, atributos_em)
+       values ($1, $2, $3, now(), case when $4 then $5::timestamptz else null end, $6::jsonb, $7)
        on conflict (rastreador_id) do update set
          asset_id = excluded.asset_id,
          client_id = excluded.client_id,
          ultimo_pacote_em = excluded.ultimo_pacote_em,
          -- greatest ignora null e não deixa pacote atrasado (fix_time antigo) regredir o valor
          ultima_posicao_valida_em = greatest(excluded.ultima_posicao_valida_em, rastreador_comunicacao.ultima_posicao_valida_em),
-         atualizado_em = now()`,
-      [rastreadorId, assetId, clientId, position.valid, position.fixTime],
+         -- último valor conhecido de cada atributo (aparelho que manda cada dado num pacote): o pacote mais novo
+         -- sobrescreve; o atrasado/reenviado só preenche chave que ainda não existia
+         ultimos_atributos = case when excluded.atributos_em >= coalesce(rastreador_comunicacao.atributos_em, '-infinity')
+           then rastreador_comunicacao.ultimos_atributos || excluded.ultimos_atributos
+           else excluded.ultimos_atributos || rastreador_comunicacao.ultimos_atributos end,
+         atributos_em = greatest(excluded.atributos_em, rastreador_comunicacao.atributos_em),
+         atualizado_em = now()
+       returning ultimos_atributos`,
+      [rastreadorId, assetId, clientId, position.valid, position.fixTime, JSON.stringify(position.attributes), position.serverTime],
     );
+    return rows[0].ultimos_atributos;
   }
 
   private async atualizarUltimaPosicao(

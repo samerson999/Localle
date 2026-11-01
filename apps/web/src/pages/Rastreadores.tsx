@@ -220,9 +220,15 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
   const [protocolo, setProtocolo] = useState(modelo?.protocolo || '');
   const [porta, setPorta] = useState(modelo ? String(modelo.porta) : '');
   const [tipo, setTipo] = useState<TipoIdentificador>(modelo?.tipo_identificador || 'imei');
+  const [tensao, setTensao] = useState(modelo?.atributo_tensao || '');
+  const [sinalMax, setSinalMax] = useState(modelo?.sinal_max ? String(modelo.sinal_max) : '');
+  const [bloqueio, setBloqueio] = useState(modelo?.atributo_bloqueio || '');
   const portaN = Number(porta);
-  const ok = fabricante.trim() && nome.trim() && /^[a-z0-9]{2,30}$/.test(protocolo) && Number.isInteger(portaN) && portaN >= 1 && portaN <= 65535;
-  const body = { fabricante: fabricante.trim(), nome: nome.trim(), protocolo, porta: portaN, tipoIdentificador: tipo };
+  const atributoOk = (v: string) => !v || /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(v);
+  const sinalN = sinalMax ? Number(sinalMax) : null;
+  const ok = fabricante.trim() && nome.trim() && /^[a-z0-9]{2,30}$/.test(protocolo) && Number.isInteger(portaN) && portaN >= 1 && portaN <= 65535
+    && atributoOk(tensao) && atributoOk(bloqueio) && (sinalN === null || (sinalN >= 1 && sinalN <= 100));
+  const body = { fabricante: fabricante.trim(), nome: nome.trim(), protocolo, porta: portaN, tipoIdentificador: tipo, atributoTensao: tensao || null, sinalMax: sinalN, atributoBloqueio: bloqueio || null };
   const { busy, submit } = useSubmit(() => (modelo ? adminApi.atualizarModelo(modelo.id, body) : adminApi.criarModelo(body)), modelo ? 'Modelo atualizado.' : 'Modelo cadastrado.', onDone, onClose);
   // protocolo já usado em outro modelo: sugere a mesma porta (só se a porta ainda estiver vazia)
   const escolherProtocolo = (v: string) => {
@@ -248,8 +254,37 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
       <Field label="Identificador que o aparelho manda">
         <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoIdentificador)} options={TIPOS_IDENTIFICADOR.map((t) => ({ value: t, label: ROTULO_IDENTIFICADOR[t] }))} />
       </Field>
+      <fieldset className="flex flex-col gap-stack border-t border-line pt-card-head">
+        <legend className="text-body font-medium">Telemetria</legend>
+        <p className="text-small text-ink-2">Deixe vazio quando o aparelho segue o padrão do Traccar (tensão em <code>power</code>, sinal de 0 a 5, bloqueio em <code>blocked</code>). Preencha só o que for diferente, olhando os atributos recebidos abaixo.</p>
+        <FormGroup cols={3}>
+          <Field label="Atributo da tensão externa" hint="Ex.: adc1, vin. Em mV é convertido sozinho."><Input value={tensao} invalid={!atributoOk(tensao)} onChange={(e) => setTensao(e.target.value.trim())} placeholder="power" spellCheck={false} /></Field>
+          <Field label="Sinal: valor máximo" hint="Ex.: 4, 31 (CSQ)."><Input inputMode="numeric" value={sinalMax} onChange={(e) => setSinalMax(e.target.value.replace(/\D/g, ''))} placeholder="5" /></Field>
+          <Field label="Atributo do bloqueio" hint="Ex.: out1. Só se o aparelho informar."><Input value={bloqueio} invalid={!atributoOk(bloqueio)} onChange={(e) => setBloqueio(e.target.value.trim())} placeholder="blocked" spellCheck={false} /></Field>
+        </FormGroup>
+        {modelo && <AtributosRecebidosLista modeloId={modelo.id} />}
+      </fieldset>
       {modelo && modelo.rastreadores > 0 && <Callout tone="warn">{modelo.rastreadores} rastreador(es) usam este modelo. Mudar protocolo ou porta muda o que a plataforma confere na próxima posição deles.</Callout>}
     </Modal>
+  );
+}
+
+// O que os aparelhos do modelo mandaram de verdade (último valor de cada atributo): base para preencher o mapeamento.
+function AtributosRecebidosLista({ modeloId }: { modeloId: string }) {
+  const { data, error, loading } = useAdminQuery(() => adminApi.atributosDoModelo(modeloId), [modeloId]);
+  if (loading) return <p className="text-caption text-ink-2">Carregando atributos recebidos…</p>;
+  if (error) return <p className="text-caption text-crit-ink">{error}</p>;
+  if (!data?.length) return <p className="text-caption text-ink-2">Nenhum rastreador deste modelo mandou dados ainda.</p>;
+  return (
+    <div className="flex flex-col gap-tight">
+      <p className="text-small font-medium">Atributos recebidos</p>
+      {data.map((r) => (
+        <div key={r.imei} className="rounded-ctl bg-surface-muted px-3 py-2">
+          <p className="text-caption text-ink-2 mb-hair"><span className="font-mono">{r.imei}</span>{r.protocolo ? ` · ${r.protocolo}` : ''} · {new Date(r.atributos_em).toLocaleString('pt-BR')}</p>
+          <p className="font-mono text-caption break-all">{Object.entries(r.atributos).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · ')}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 

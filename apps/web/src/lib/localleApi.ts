@@ -182,8 +182,14 @@ export interface AdminRastreador {
 }
 export interface AdminRastreadorModelo {
   id: string; fabricante: string; nome: string; protocolo: string; porta: number; tipo_identificador: TipoIdentificador; ativo: boolean; rastreadores: number;
+  /** Mapeamento da telemetria; null = chave padrão do Traccar. */
+  atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
 }
-export interface ModeloBody { fabricante: string; nome: string; protocolo: string; porta: number; tipoIdentificador: TipoIdentificador }
+export interface ModeloBody {
+  fabricante: string; nome: string; protocolo: string; porta: number; tipoIdentificador: TipoIdentificador;
+  atributoTensao: string | null; sinalMax: number | null; atributoBloqueio: string | null;
+}
+export interface AtributosRecebidos { imei: string; protocolo: string | null; atributos: Record<string, unknown>; atributos_em: string }
 export interface AdminSimCard { id: string; iccid: string; operadora: string | null; numero: string | null; status: string; rastreador_id: string | null }
 export interface AdminAuditEntry { id: string; actor_type: 'user' | 'superadmin'; actor_email: string | null; client_name: string | null; action: string; target: string | null; before: unknown; after: unknown; created_at: string }
 
@@ -214,6 +220,7 @@ export const adminApi = {
   modelos: () => apiGet<AdminRastreadorModelo[]>('/superadmin/rastreador-modelos'),
   criarModelo: (body: ModeloBody) => apiSend<AdminRastreadorModelo>('POST', '/superadmin/rastreador-modelos', body),
   atualizarModelo: (id: string, body: Partial<ModeloBody> & { ativo?: boolean }) => apiSend<AdminRastreadorModelo>('PATCH', `/superadmin/rastreador-modelos/${id}`, body),
+  atributosDoModelo: (id: string) => apiGet<AtributosRecebidos[]>(`/superadmin/rastreador-modelos/${id}/atributos`),
   desativarRastreador: (id: string) => apiSend('POST', `/superadmin/rastreadores/${id}/desativar`),
   desinstalar: (instalacaoId: string) => apiSend('POST', `/superadmin/rastreadores/instalacoes/${instalacaoId}/desinstalar`),
   vincularCliente: (id: string, clientId: string) => apiSend('POST', `/superadmin/rastreadores/${id}/vincular/${clientId}`),
@@ -250,6 +257,10 @@ export async function desinstalarRastreador(instalacaoId: string) {
 }
 export async function atualizarPlacaAtivo(assetId: string, plate: string) {
   await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { plate });
+}
+/** Ícone ilustrado do cadastro (png-tight); vazio volta para a silhueta da categoria. */
+export async function atualizarIconeAtivo(assetId: string, icon: string) {
+  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { icone: icon || null });
 }
 // ---------- minha conta e senha (apps/api/src/auth, src/superadmin) ----------
 /** Troca a própria senha (exige a atual). Superadmin e usuário de cliente têm rotas separadas. */
@@ -704,7 +715,7 @@ export async function syncModulos() {
 // real (`comando_status`) — `expirado`/`cancelado` nunca viram "veículo liberado" (§ 4.6 da integração).
 const TIPO_POR_KIND: Record<string, 'engineStop' | 'engineResume' | 'positionSingle'> = { bloqueio: 'engineStop', desbloqueio: 'engineResume', posicao: 'positionSingle' };
 // vocabulário do modal: 'enviado' = ainda aguardando o rastreador (o toast segue esperando); 'pendente' = sem comunicação
-const STATUS_TELA: Record<string, string> = { solicitado: 'enviado', enviado: 'enviado', aguardando: 'enviado', confirmado: 'confirmado', falhou: 'falhou', expirado: 'expirado', cancelado: 'cancelado' };
+const STATUS_TELA: Record<string, string> = { solicitado: 'enviado', enviado: 'enviado', aguardando: 'enviado', respondido: 'respondido', confirmado: 'confirmado', recusado: 'recusado', falhou: 'falhou', expirado: 'expirado', cancelado: 'cancelado' };
 
 // O id do comando no backend fica na própria entrada do modal (`backend[assetId]`), que é persistida: recarregar a
 // página ou perder uma mensagem do tempo real não deixa mais o comando preso em "aguardando" (sprint 28/10/2026, bug 1).
@@ -734,6 +745,9 @@ export async function syncComandos() {
 }
 
 /** Kind do catálogo da tela → tipo do backend; `null` = comando que o Traccar ainda não cobre por aqui. */
+/** Tipos que o rastreador do ativo aceita (perguntado ao Traccar) e se está conectado; a tela só oferece esses. */
+export const capacidadesComando = (assetId: string) => apiGet<{ tipos: string[]; online: boolean | null }>(`/comandos/capacidades?assetId=${backendIdOf(assetId)}`);
+
 export const tipoComandoLocalle = (kind: string, payload?: string) => TIPO_POR_KIND[kind] ?? (payload === 'WHERE#' ? 'positionSingle' : null);
 
 export async function enviarComandoLocalle(cmdId: string, assetId: string, kind: string, payload: string, motivo: string) {

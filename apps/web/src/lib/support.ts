@@ -18,6 +18,7 @@ export const veSintaxeComando = (session: any) => isAdminRole(session);
 export const STATUS_COMANDO: Record<string, string> = {
   enviado: 'aguardando o rastreador', confirmado: 'confirmado pelo rastreador', pendente: 'sem comunicação', falhou: 'falhou no envio',
   expirado: 'sem confirmação no prazo', cancelado: 'substituído por outro comando', nao_suportado: 'não disponível para este rastreador',
+  respondido: 'respondeu; aguardando o estado do bloqueio', recusado: 'recusado pelo rastreador',
 };
 export const homeOf = (session: any) => (session?.role === 'portaria' ? '/portaria' : canSeeFleet(session) ? '/monitoramento' : session?.role === 'locale' ? '/locale' : '/revenda');
 

@@ -68,6 +68,7 @@ export class PositionsWorker implements OnModuleInit, OnModuleDestroy {
           lon: position.longitude,
           speedKmh: position.speedKmh,
           ignition: position.ignition,
+          telemetria: result.telemetria,
         });
       }
       for (const e of result.eventos) {

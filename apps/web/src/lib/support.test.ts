@@ -13,7 +13,8 @@ describe('comandos: o que o cliente vê', () => {
 
   // antes, o histórico mostrava "aguardando" para expirado/falhou/cancelado
   it('cada status final tem o seu texto, nenhum vira "aguardando"', () => {
-    for (const s of ['confirmado', 'falhou', 'expirado', 'cancelado', 'nao_suportado', 'pendente']) expect(STATUS_COMANDO[s]).not.toMatch(/aguardando/);
+    for (const s of ['confirmado', 'falhou', 'expirado', 'cancelado', 'nao_suportado', 'pendente', 'recusado']) expect(STATUS_COMANDO[s]).not.toMatch(/aguardando/);
     expect(STATUS_COMANDO.enviado).toMatch(/aguardando/);
+    expect(STATUS_COMANDO.respondido).toMatch(/aguardando o estado/); // ainda pendente: o bloqueio confirma pelo estado
   });
 });

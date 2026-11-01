@@ -95,6 +95,19 @@ describe('isolamento por client_id (assets)', () => {
     expect(ativos.find((r) => r.id === outro.id)).toBeUndefined();
   });
 
+  it('ícone ilustrado: o dono grava e limpa; outro cliente não alcança; ausente não mexe; o banco recusa formato inválido', async () => {
+    expect(await repo.atualizar(clientB, assetOfA, { plate: null, status: null, icone: '02-sedan' })).toBeNull();
+    expect((await repo.findOne(clientA, { id: assetOfA }))?.icone).toBeNull();
+
+    expect(((await repo.atualizar(clientA, assetOfA, { plate: null, status: null, icone: '02-sedan' })) as AssetEntity).icone).toBe('02-sedan');
+    // trocar só a placa não apaga o ícone
+    const soPlaca = (await repo.atualizar(clientA, assetOfA, { plate: 'ICO1N00', status: null })) as AssetEntity;
+    expect(soPlaca.icone).toBe('02-sedan');
+    expect(((await repo.atualizar(clientA, assetOfA, { plate: null, status: null, icone: null })) as AssetEntity).icone).toBeNull();
+
+    await expect(repo.atualizar(clientA, assetOfA, { plate: null, status: null, icone: '../x.png' })).rejects.toThrow();
+  });
+
   it('o próprio dono enxerga e consegue alterar o ativo', async () => {
     const found = await repo.findOne(clientA, { id: assetOfA });
     expect(found?.id).toBe(assetOfA);

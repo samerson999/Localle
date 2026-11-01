@@ -10,7 +10,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   async atualizar(
     clientId: string,
     id: string,
-    data: { plate: string | null; status: AssetStatus | null; motoristaId?: string | null },
+    data: { plate: string | null; status: AssetStatus | null; motoristaId?: string | null; icone?: string | null },
   ): Promise<AssetEntity | null | 'motorista_invalido'> {
     // motorista precisa ser do mesmo cliente (sem IDOR por motoristaId); ausente → não mexe; null → limpa
     if (data.motoristaId) {
@@ -23,10 +23,11 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
          status_desde = case when $4::text is not null and $4::text <> status then now() else status_desde end,
          status = coalesce($4, status),
          motorista_id = case when $5 then $6::uuid else motorista_id end,
+         icone = case when $7 then $8::text else icone end,
          updated_at = now()
        where client_id = $1 and id = $2
        returning *`,
-      [clientId, id, data.plate, data.status, data.motoristaId !== undefined, data.motoristaId ?? null],
+      [clientId, id, data.plate, data.status, data.motoristaId !== undefined, data.motoristaId ?? null, data.icone !== undefined, data.icone ?? null],
     );
     return rows[0] ?? null;
   }

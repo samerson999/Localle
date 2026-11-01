@@ -199,6 +199,40 @@ describe('PositionsIngestService', () => {
     expect(comunicacao.rows[0].ultima_posicao_valida_em).toBeNull();
   });
 
+  it('telemetria usa o último valor conhecido de cada atributo; pacote atrasado só preenche o que faltava', async () => {
+    const rastreadorId = await criarRastreador(1010);
+    const t = (s: string) => new Date(`2026-01-01T12:${s}Z`);
+    // como o GT06: heartbeat com sinal/bloqueio, depois localização só com satélites, depois a tensão
+    await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 1, serverTime: t('00:00'), attributes: { rssi: 4, blocked: false } }));
+    await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 2, serverTime: t('00:15'), attributes: { sat: 15 } }));
+    const r = await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 3, serverTime: t('00:30'), attributes: { power: 13.3, rssi: 2 } }));
+    expect(r.status === 'gravada' && r.telemetria).toEqual({ tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false });
+
+    // reenvio atrasado (serverTime antigo) não volta o sinal para 4, mas traz a chave nova
+    const atrasada = await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 4, serverTime: t('00:05'), attributes: { rssi: 4, hdop: 0.7 } }));
+    expect(atrasada.status === 'gravada' && atrasada.telemetria.sinalGsm).toBe(2);
+    const { rows } = await pool.query('select ultimos_atributos, atributos_em from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
+    expect(rows[0].ultimos_atributos).toEqual({ rssi: 2, blocked: false, sat: 15, power: 13.3, hdop: 0.7 });
+    expect(rows[0].atributos_em.toISOString()).toBe('2026-01-01T12:00:30.000Z');
+  });
+
+  it('telemetria segue o mapeamento do modelo do rastreador (chave de tensão e escala do sinal)', async () => {
+    const rastreadorId = await criarRastreador(1011);
+    const modelo = await pool.query<{ id: string }>(
+      `insert into rastreador_modelos (fabricante, nome, protocolo, porta, tipo_identificador, atributo_tensao, sinal_max)
+       values ($1, 'X', 'jmak', 5259, 'imei', 'vin', 31) returning id`,
+      [`teste-${randomUUID()}`],
+    );
+    try {
+      await pool.query('update rastreadores set modelo_id = $2 where id = $1', [rastreadorId, modelo.rows[0].id]);
+      const r = await service.ingest(position({ traccarDeviceId: 1011, traccarPositionId: 1, attributes: { vin: 12507, rssi: 21, out1: false } }));
+      expect(r.status === 'gravada' && r.telemetria).toEqual({ tensaoV: 12.51, satelites: null, sinalGsm: 3, bloqueado: null });
+    } finally {
+      await pool.query('update rastreadores set modelo_id = null where id = $1', [rastreadorId]);
+      await pool.query('delete from rastreador_modelos where id = $1', [modelo.rows[0].id]);
+    }
+  });
+
   it('grava o protocolo informado pelo Traccar no rastreador, e atualiza se mudar', async () => {
     const rastreadorId = await criarRastreador(1099);
     const protocolo = async () => (await pool.query('select protocolo from rastreadores where id = $1', [rastreadorId])).rows[0].protocolo;

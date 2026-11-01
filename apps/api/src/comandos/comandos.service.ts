@@ -1,5 +1,5 @@
-import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import type { Comando } from '@localle/shared/realtime';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import type { Comando, ComandoTipo } from '@localle/shared/realtime';
 import type { Pool } from 'pg';
 import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { AuditLogRepository } from '../audit/audit-log.repository';
@@ -9,14 +9,21 @@ import { withTransaction } from '../db/with-transaction';
 import { TraccarClient } from '../ingest/traccar-client';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { SettingsService } from '../settings/settings.service';
-import { ComandosRepository, type ComandoRow, toComando } from './comandos.repository';
-import { type ComandoInput, OPOSTO, TIPOS } from './dto/parse-comando';
+import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
+import { AGUARDANDO_RESPOSTA, ComandosRepository, type ComandoRow, toComando } from './comandos.repository';
+import { type ComandoInput, OPOSTO, TIPOS, TIPOS_FISICOS } from './dto/parse-comando';
 
 const CICLO_MS = 15_000;
 /** Espera antes de conciliar: o Forwarding costuma entregar o `commandResult` em segundos. */
 const CONCILIAR_APOS_SEG = 10;
 /** Folga de relógio entre o envio registrado aqui e o horário do evento no Traccar. */
 const FOLGA_RELOGIO_MS = 10_000;
+/**
+ * Resposta do aparelho que indica que ele NÃO executou, em qualquer fabricante (texto livre do protocolo): GT06
+ * "Fail!"/"Cmd is rejected", Teltonika "IGNORED", respostas de erro em inglês ou português. Geral de propósito —
+ * não é tabela por modelo; na dúvida a resposta não recusa e o estado de bloqueio decide.
+ */
+export const RESPOSTA_DE_FALHA = /\b(fail\w*|falh\w*|error|erro|reject\w*|recusad\w*|denied|negad\w*|invalid\w*|inv[aá]lid\w*|ignored|unsupported|not\s+support\w*|unknown\s+command)\b/i;
 
 /**
  * Comandos ao rastreador via Traccar (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.4 e § 4.6). Regras de
@@ -36,6 +43,12 @@ const FOLGA_RELOGIO_MS = 10_000;
  * ciclo também concilia: para comando enviado e ainda sem resultado, consulta os `commandResult` gravados no
  * próprio Traccar. O id do evento fica em `resultado.traccarEventId` — o mesmo evento nunca é contado duas
  * vezes, venha por qual caminho vier.
+ *
+ * Capacidade do aparelho (decisão de 01/11/2026, geral para qualquer rastreador): antes de criar o comando, o
+ * Traccar diz quais tipos sabe codificar para aquele device (`/api/commands/types` — o JR12, por exemplo, só aceita
+ * `custom`) e se ele está conectado. Tipo não suportado é recusado; bloqueio/desbloqueio com o aparelho offline
+ * também — o Traccar guardaria na fila e executaria quando reconectasse, mesmo depois de expirado aqui. E só um
+ * comando pendente por rastreador: o `commandResult` não diz a qual comando responde.
  */
 @Injectable()
 export class ComandosService implements OnModuleInit, OnModuleDestroy {
@@ -64,12 +77,49 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
     return this.repo.listar(clientId, assetId);
   }
 
+  /** O que o rastreador do ativo aceita agora (a tela só oferece esses) e se está conectado ao Traccar. */
+  async capacidades(clientId: string, assetId: string): Promise<{ tipos: ComandoTipo[]; online: boolean | null }> {
+    const vigente = await this.repo.rastreadorVigente(clientId, assetId);
+    if (!vigente) throw new NotFoundException('Ativo sem rastreador principal instalado');
+    if (!this.traccar.config() || !vigente.traccar_device_id) return { tipos: [], online: null };
+    const { tipos, online } = await this.consultarAparelho(Number(vigente.traccar_device_id), true);
+    return { tipos: TIPOS.filter((t) => tipos.includes(t)), online };
+  }
+
+  private async consultarAparelho(deviceId: number, comStatus: boolean) {
+    const config = this.traccar.config()!;
+    try {
+      const [tipos, status] = await Promise.all([this.traccar.commandTypes(config, deviceId), comStatus ? this.traccar.deviceStatus(config, deviceId) : null]);
+      return { tipos, online: comStatus ? status === 'online' : null };
+    } catch (err) {
+      this.logger.error(`Consulta ao Traccar (tipos/status) falhou para traccar_device_id ${deviceId}: ${(err as Error).message}`);
+      throw new ServiceUnavailableException('Não foi possível consultar o rastreador no Traccar. Tente de novo em instantes.');
+    }
+  }
+
+  /** Recusa antes de criar qualquer coisa: tipo que o aparelho não aceita, ou bloqueio/desbloqueio com ele offline. */
+  private async verificarAparelho(clientId: string, input: ComandoInput) {
+    const vigente = await this.repo.rastreadorVigente(clientId, input.assetId);
+    if (!vigente?.traccar_device_id || !this.traccar.config()) return; // a transação recusa (404/409) ou o envio marca `falhou`
+    const fisico = TIPOS_FISICOS.includes(input.tipo);
+    const { tipos, online } = await this.consultarAparelho(Number(vigente.traccar_device_id), fisico);
+    if (!tipos.includes(input.tipo)) {
+      this.logger.warn(`Comando ${input.tipo} recusado: rastreador ${vigente.rastreador_id} não aceita (Traccar oferece: ${tipos.join(', ') || 'nenhum'}) — client_id ${clientId}`);
+      throw new ConflictException(`Este rastreador não aceita o comando ${input.tipo}`);
+    }
+    if (fisico && !online) {
+      throw new ConflictException('Rastreador offline: bloqueio e desbloqueio só com o aparelho conectado, para o comando não ser executado fora de hora');
+    }
+  }
+
   async solicitar(clientId: string, userId: string, input: ComandoInput): Promise<Comando> {
     const timeoutMin = await this.settings.resolve(clientId, 'comandos.timeout_min');
+    await this.verificarAparelho(clientId, input); // chamada HTTP externa: fora da transação
     const { comando, cancelados } = await withTransaction(this.pool, async (client) => {
       const vigente = await this.repo.rastreadorVigente(clientId, input.assetId, client);
       if (!vigente) throw new NotFoundException('Ativo sem rastreador principal instalado');
       if (!vigente.traccar_device_id) throw new ConflictException('Rastreador ainda não provisionado no Traccar');
+      await this.repo.travarRastreador(vigente.rastreador_id, client); // dois pedidos simultâneos não passam juntos pela checagem abaixo
 
       if (input.tipo === 'engineStop') await this.verificarCondicoesBloqueio(clientId, input.assetId, client);
 
@@ -87,6 +137,8 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
           if (c) cancelados.push(c);
         }
       }
+      const [pendente] = await this.repo.pendentesPorRastreador(vigente.rastreador_id, TIPOS, client);
+      if (pendente) throw new ConflictException(`Já há um comando pendente para este rastreador (${pendente.tipo}); aguarde a resposta ou o prazo`);
 
       let comando: ComandoRow;
       try {
@@ -143,6 +195,10 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
     try {
       const r = await this.traccar.sendCommand(config, { deviceId: Number(rows[0].traccar_device_id), type: comando.tipo });
       const para = r.queued ? 'aguardando' : 'enviado';
+      // o aparelho caiu entre a verificação e o envio: o Traccar guardou na fila e executa quando reconectar
+      if (r.queued && TIPOS_FISICOS.includes(comando.tipo)) {
+        this.logger.error(`Comando ${comando.id} (${comando.tipo}) ficou NA FILA do Traccar (aparelho desconectou durante o envio) — rastreador ${comando.rastreador_id}: será executado quando reconectar`);
+      }
       this.logger.log(`Comando ${comando.id} (${comando.tipo}) ${para} — traccar command ${r.id ?? '?'}`);
       return (await this.repo.transicionar(comando.id, para, { traccarCommandId: r.id, enviado: true })) ?? comando;
     } catch (err) {
@@ -167,9 +223,13 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * `commandResult` do Traccar (§ 1.4): confirma o pendente mais recente do rastreador — "o aparelho
-   * confirmou segundo o protocolo dele", não prova de estado físico. Sem pendente, é execução tardia de um
-   * comando já expirado/cancelado: fica em `resultado` e no log, nunca silenciado.
+   * `commandResult` do Traccar (§ 1.4) para o comando que espera resposta no rastreador. A resposta sozinha não
+   * prova o estado físico (decisão de 01/11/2026):
+   * - texto de falha (RESPOSTA_DE_FALHA) → `recusado`;
+   * - bloqueio/desbloqueio de modelo que informa o estado de bloqueio → `respondido`: só confirma quando o atributo
+   *   de bloqueio mudar para o esperado (`conferirEstado`), senão expira;
+   * - modelo que não informa o estado, ou pedido de posição → `confirmado` pela resposta (`confirmadoPor`).
+   * Sem comando esperando, é execução tardia de um já expirado/cancelado: fica em `resultado` e no log.
    */
   async receberResultado(
     traccarDeviceId: number,
@@ -177,7 +237,7 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
     ts: Date,
     traccarEventId?: number,
     origem: 'forwarding' | 'conciliacao' = 'forwarding',
-  ): Promise<'confirmado' | 'tardio' | 'ignorado'> {
+  ): Promise<'confirmado' | 'respondido' | 'recusado' | 'tardio' | 'ignorado'> {
     const { rows } = await this.pool.query<{ id: string }>('select id from rastreadores where traccar_device_id = $1', [traccarDeviceId]);
     if (!rows[0]) {
       this.logger.warn(`commandResult descartado: traccar_device_id ${traccarDeviceId} não cadastrado`);
@@ -188,18 +248,20 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
     // `attributes` vem do Traccar sem validação de conteúdo: só o `result` entra, como string curta
     const result = attributes.result === undefined || attributes.result === null ? null : String(attributes.result).slice(0, 500);
     const resultado = { result, recebidoEm: ts.toISOString(), ...(traccarEventId ? { traccarEventId } : {}) };
-    const [pendente] = await this.repo.pendentesPorRastreador(rastreadorId, TIPOS);
+    const [pendente] = await this.repo.pendentesPorRastreador(rastreadorId, TIPOS, undefined, AGUARDANDO_RESPOSTA);
     if (pendente) {
-      const c = await this.repo.transicionar(pendente.id, 'confirmado', { resultado, resolvido: true });
+      const para = await this.desfechoDaResposta(pendente, result);
+      const c = await this.repo.transicionar(pendente.id, para, {
+        resultado: para === 'confirmado' ? { ...resultado, confirmadoPor: 'resposta' } : resultado,
+        resolvido: para !== 'respondido',
+      });
       if (c) {
-        if (origem === 'conciliacao') {
-          // o Forwarding deveria ter entregado: confirmar por aqui funciona, mas indica o caminho principal falhando
-          this.logger.warn(`Comando ${c.id} (${c.tipo}) confirmado pela conciliação com o Traccar (evento ${traccarEventId}), não pelo Forwarding — rastreador ${rastreadorId}`);
-        } else {
-          this.logger.log(`Comando ${c.id} (${c.tipo}) confirmado pelo aparelho — rastreador ${rastreadorId}`);
-        }
+        const via = origem === 'conciliacao' ? `pela conciliação com o Traccar (evento ${traccarEventId}), não pelo Forwarding` : 'pelo Forwarding';
+        // conciliação funciona, mas indica o caminho principal (Forwarding) falhando
+        const nivel = para === 'recusado' || origem === 'conciliacao' ? 'warn' : 'log';
+        this.logger[nivel](`Comando ${c.id} (${c.tipo}) ${para} — resposta "${result ?? ''}" recebida ${via} — rastreador ${rastreadorId}`);
         await this.publicar(c);
-        return 'confirmado';
+        return para;
       }
       return 'ignorado';
     }
@@ -215,8 +277,46 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
     return 'tardio';
   }
 
+  /** Resposta de falha recusa; bloqueio/desbloqueio de aparelho que informa o estado espera o estado confirmar. */
+  private async desfechoDaResposta(c: ComandoRow, result: string | null): Promise<'confirmado' | 'respondido' | 'recusado'> {
+    if (result && RESPOSTA_DE_FALHA.test(result)) return 'recusado';
+    if (!TIPOS_FISICOS.includes(c.tipo)) return 'confirmado';
+    const estado = await this.repo.estadoDoRastreador(c.rastreador_id);
+    const bloqueado = estado ? lerTelemetria(estado.ultimos_atributos, mapeamentoDaLinha(estado)).bloqueado : null;
+    return bloqueado === null ? 'confirmado' : 'respondido';
+  }
+
+  /**
+   * `respondido` → `confirmado` quando o estado de bloqueio, lido de um dado recebido DEPOIS da resposta, é o esperado
+   * (bloqueado após engineStop, livre após engineResume). Estado contrário ou ausente: segue esperando até expirar.
+   */
+  async conferirEstado(): Promise<number> {
+    let confirmados = 0;
+    try {
+      for (const c of await this.repo.respondidos()) {
+        const estado = await this.repo.estadoDoRastreador(c.rastreador_id);
+        const respondidoEm = Date.parse(String(c.resultado?.recebidoEm ?? ''));
+        if (!estado?.atributos_em || !(estado.atributos_em.getTime() > respondidoEm)) continue;
+        const bloqueado = lerTelemetria(estado.ultimos_atributos, mapeamentoDaLinha(estado)).bloqueado;
+        if (bloqueado !== (c.tipo === 'engineStop')) continue;
+        const confirmado = await this.repo.transicionar(c.id, 'confirmado', {
+          resultado: { ...c.resultado, confirmadoPor: 'estado', estadoEm: estado.atributos_em.toISOString() },
+          resolvido: true,
+        });
+        if (!confirmado) continue;
+        confirmados++;
+        this.logger.log(`Comando ${c.id} (${c.tipo}) confirmado pelo estado de bloqueio do aparelho — rastreador ${c.rastreador_id}`);
+        await this.publicar(confirmado);
+      }
+    } catch (err) {
+      this.logger.error(`Falha ao conferir o estado de bloqueio dos comandos respondidos: ${(err as Error).message}`);
+    }
+    return confirmados;
+  }
+
   private async ciclo() {
     await this.conciliar();
+    await this.conferirEstado();
     await this.expirarVencidos();
   }
 
@@ -232,9 +332,9 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
           for (const e of [...eventos].sort((a, b) => a.eventTime.localeCompare(b.eventTime) || a.id - b.id)) {
             if (e.type !== 'commandResult' || !Number.isSafeInteger(e.id) || e.id <= 0) continue;
             // sem pendente, evento que sobrou não vira "tardio" por aqui: a conciliação só confirma
-            if (!(await this.repo.pendentesPorRastreador(r.rastreador_id, TIPOS)).length) break;
+            if (!(await this.repo.pendentesPorRastreador(r.rastreador_id, TIPOS, undefined, AGUARDANDO_RESPOSTA)).length) break;
             const res = await this.receberResultado(Number(r.traccar_device_id), e.attributes ?? {}, new Date(e.eventTime), e.id, 'conciliacao');
-            if (res === 'confirmado') confirmados++;
+            if (res === 'confirmado' || res === 'respondido' || res === 'recusado') confirmados++;
           }
         } catch (err) {
           this.logger.warn(`Conciliação de comandos falhou para o rastreador ${r.rastreador_id} (traccar_device_id ${r.traccar_device_id}): ${(err as Error).message}`);

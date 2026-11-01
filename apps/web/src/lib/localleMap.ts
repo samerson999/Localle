@@ -1,4 +1,4 @@
-import type { Alerta, ComunicacaoStatus, RealtimeComunicacao, RealtimePosicao } from '@localle/shared/realtime';
+import type { Alerta, ComunicacaoStatus, RealtimeComunicacao, RealtimePosicao, Telemetria } from '@localle/shared/realtime';
 
 // Funções puras da integração com o backend (localleApi.ts): sem store, sem rede — testáveis em Node.
 
@@ -7,10 +7,12 @@ export const backendIdOf = (assetId: string) => assetId.replace(/^lc_/, '');
 
 // ---------- mapeamento API → store (puro, testado em localleMap.test.ts) ----------
 export interface CurrentRow {
-  assetId: string; plate: string; fixTime: string | null; longitude: number | null; latitude: number | null;
+  assetId: string; plate: string; icone?: string | null; fixTime: string | null; longitude: number | null; latitude: number | null;
   speedKmh: number | string | null; ignition: boolean | null; rastreadorId: string | null; ultimoPacoteEm: string | null;
   instalacaoId?: string | null; imei?: string | null; modelo?: string | null; instaladoEm?: string | null;
   comunicacao: ComunicacaoStatus;
+  /** Ausente na API antiga: a tela fica com "não informado". */
+  telemetria?: Telemetria;
 }
 
 export function toAsset(row: CurrentRow, prev: any, liveGroupId: string) {
@@ -20,6 +22,8 @@ export function toAsset(row: CurrentRow, prev: any, liveGroupId: string) {
     id: assetIdFor(row.assetId),
     name: row.plate,
     plate: row.plate,
+    // ícone ilustrado é do cadastro na API; resposta sem o campo (API antiga) mantém o do navegador
+    icon: row.icone === undefined ? prev?.icon : row.icone || '',
     groupIds: prev?.groupIds?.length ? prev.groupIds : [liveGroupId],
     tracker: row.rastreadorId
       ? { ...prev?.tracker, id: row.rastreadorId, imei: row.imei ?? prev?.tracker?.imei, model: row.modelo ?? prev?.tracker?.model, instalacaoId: row.instalacaoId ?? null,
@@ -38,8 +42,11 @@ export function toVehicle(row: CurrentRow, prev: any) {
   if (prev && prev.lastUpdate > Date.parse(row.fixTime)) return prev;
   const speed = Math.round(Number(row.speedKmh) || 0);
   return {
-    route: undefined, seg: 0, target: 0, stopLeft: 0, inside: [], heading: 0, odometer: 0, hourmeter: 0, battery: 12.6, gps: 0, gsm: 0, blocked: false,
+    route: undefined, seg: 0, target: 0, stopLeft: 0, inside: [], heading: 0, odometer: 0, hourmeter: 0,
     ...prev,
+    // telemetria já lida por protocolo na API; null = "não informado" (nunca um valor de exemplo — também
+    // sobrescreve o 12,6 V / 0 satélites que versões antigas deixaram salvo no navegador)
+    ...telemetriaDoVeiculo(row.telemetria),
     assetId: assetIdFor(row.assetId), live: true,
     pos: [Number(row.latitude), Number(row.longitude)] as [number, number], speed, moving: speed > 3,
     ignition: row.ignition, // null = o rastreador não informa ignição (a tela diz "não informada")
@@ -53,7 +60,12 @@ export function applyPosicao(v: any, p: RealtimePosicao) {
   const lastUpdate = Date.parse(p.fixTime);
   if (v && v.lastUpdate >= lastUpdate) return null; // fora de ordem: o que está na tela é mais novo
   const speed = Math.round(p.speedKmh ?? 0);
-  return { ...v, assetId: assetIdFor(p.assetId), live: true, pos: [p.lat, p.lon] as [number, number], speed, moving: speed > 3, ignition: p.ignition, lastUpdate, comunicacao: 'online', noSignal: false };
+  return { ...v, assetId: assetIdFor(p.assetId), live: true, pos: [p.lat, p.lon] as [number, number], speed, moving: speed > 3, ignition: p.ignition, lastUpdate, comunicacao: 'online', noSignal: false, ...(p.telemetria ? telemetriaDoVeiculo(p.telemetria) : {}) };
+}
+
+/** Telemetria da API → campos do veículo que a tela já usa (bateria em V, satélites, sinal 0–5, bloqueio). */
+export function telemetriaDoVeiculo(t: Telemetria | undefined) {
+  return { battery: t?.tensaoV ?? null, gps: t?.satelites ?? null, gsm: t?.sinalGsm ?? null, blocked: t?.bloqueado ?? null };
 }
 
 /** Item do recálculo periódico do backend (kind 'comunicacao'); `null` = nada muda na tela. */

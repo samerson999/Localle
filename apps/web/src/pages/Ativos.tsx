@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { atualizarPlacaAtivo, criarAtivo, definirMotoristaDoAtivo, desativarMotorista, desinstalarRastreador, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador } from '../lib/localleApi';
+import { atualizarIconeAtivo, atualizarPlacaAtivo, criarAtivo, definirMotoristaDoAtivo, desativarMotorista, desinstalarRastreador, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador } from '../lib/localleApi';
 import { backendIdOf } from '../lib/localleMap';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard } from '../components/ui';
 import { couplingsOf, currentCoupling, compositionOf, compositionName, compositionError, setComposition, tractorHistory, TRAILER_TYPE, MAX_ITEMS, type TrailerType } from '@localle/shared/couplings';
@@ -199,6 +199,7 @@ function AssetForm({ a, setA }: any) {
       let id = a.id;
       if (!isRealAsset(a)) { id = await criarAtivo(plate); if (a.id) s.remove('assets', a.id); }
       else if (orig && orig.plate !== plate) await atualizarPlacaAtivo(id, plate);
+      if ((a.icon || '') !== (orig?.icon || '') || (a.icon && id !== a.id)) await atualizarIconeAtivo(id, a.icon || '');
       const saved = s.upsert('assets', { ...a, driverId: orig ? orig.driverId : '', id, plate, name: a.name || a.plate.toUpperCase(), fuelGoal: +a.fuelGoal || 0, fuelBudget: +a.fuelBudget || 0, kmOffset: +a.kmOffset || 0 });
       if ((a.driverId || '') !== (orig?.driverId || '')) { if (isRealAsset(saved)) definirMotoristaDoAtivo(saved.id, a.driverId).catch((e: any) => toast('Motorista não gravado: ' + (e.message || e), { tone: 'crit' })); else setDriver(saved.id, a.driverId, 'escala'); }
       if (newLink) {

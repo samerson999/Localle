@@ -1,5 +1,5 @@
 import { TIPOS_IDENTIFICADOR } from '@localle/shared/rastreadorModelos';
-import { booleano, erro, numero, opcao, texto } from '../../common/validar';
+import { booleano, erro, numero, numeroOpcional, opcao, texto } from '../../common/validar';
 import type { ModeloDados } from '../rastreador-modelos.repository';
 
 const protocolo = (v: unknown) => {
@@ -9,6 +9,22 @@ const protocolo = (v: unknown) => {
   return p;
 };
 
+// nome de atributo como o Traccar grava (power, adc1, vin, out1…); vazio = chave padrão
+const atributo = (v: unknown, campo: string) => {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(v.trim())) erro(`"${campo}" é o nome do atributo como o Traccar grava (ex.: adc1, vin, out1)`);
+  return v.trim();
+};
+
+/** Mapeamento da telemetria: só os campos enviados (ausente = não mexe; vazio/null = volta ao padrão). */
+function mapeamento(b: Record<string, unknown>): Partial<ModeloDados> {
+  const out: Partial<ModeloDados> = {};
+  if (b.atributoTensao !== undefined) out.atributo_tensao = atributo(b.atributoTensao, 'atributoTensao');
+  if (b.sinalMax !== undefined) out.sinal_max = numeroOpcional(b.sinalMax, 'sinalMax', 1, 100, true);
+  if (b.atributoBloqueio !== undefined) out.atributo_bloqueio = atributo(b.atributoBloqueio, 'atributoBloqueio');
+  return out;
+}
+
 export function parseCriarModelo(body: unknown): ModeloDados {
   const b = (body ?? {}) as Record<string, unknown>;
   return {
@@ -17,6 +33,7 @@ export function parseCriarModelo(body: unknown): ModeloDados {
     protocolo: protocolo(b.protocolo),
     porta: numero(b.porta, 'porta', 1, 65535, true),
     tipo_identificador: opcao(b.tipoIdentificador, 'tipoIdentificador', TIPOS_IDENTIFICADOR),
+    ...mapeamento(b),
   };
 }
 
@@ -29,6 +46,7 @@ export function parseAtualizarModelo(body: unknown): Partial<ModeloDados & { ati
   if (b.porta !== undefined) out.porta = numero(b.porta, 'porta', 1, 65535, true);
   if (b.tipoIdentificador !== undefined) out.tipo_identificador = opcao(b.tipoIdentificador, 'tipoIdentificador', TIPOS_IDENTIFICADOR);
   if (b.ativo !== undefined) out.ativo = booleano(b.ativo, 'ativo');
+  Object.assign(out, mapeamento(b));
   if (!Object.keys(out).length) erro('Nada para atualizar');
   return out;
 }

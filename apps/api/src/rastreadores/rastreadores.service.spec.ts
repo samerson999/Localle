@@ -11,6 +11,7 @@ import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
 import { RastreadoresService } from './rastreadores.service';
 import { RastreadorModelosRepository } from './rastreador-modelos.repository';
 import { RastreadorModelosService } from './rastreador-modelos.service';
+import { parseAtualizarModelo } from './dto/parse-rastreador-modelo';
 import { SimCardsRepository } from './sim-cards.repository';
 
 /**
@@ -447,6 +448,23 @@ describe('RastreadoresService', () => {
       const { rows } = await pool.query("select before, after from audit_log where action = 'rastreador_modelo.atualizar' and target = $1", [modeloJt808]);
       expect(rows.at(-1)).toEqual({ before: { porta: 5015 }, after: { porta: 5016 } });
       await expect(modelos.atualizar(superadminId, randomUUID(), { ativo: false })).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('mapeamento da telemetria: grava, volta ao padrão com vazio e lista os atributos recebidos do modelo', async () => {
+      const m = await modelos.atualizar(superadminId, modeloImei, parseAtualizarModelo({ atributoTensao: 'adc1', sinalMax: 4 }));
+      expect(m).toMatchObject({ atributo_tensao: 'adc1', sinal_max: 4, atributo_bloqueio: null });
+      expect(await modelos.atualizar(superadminId, modeloImei, parseAtualizarModelo({ atributoTensao: '', sinalMax: null }))).toMatchObject({ atributo_tensao: null, sinal_max: null });
+      expect(() => parseAtualizarModelo({ atributoTensao: 'adc1; drop table x' })).toThrow(/nome do atributo/);
+      expect(() => parseAtualizarModelo({ sinalMax: 0 })).toThrow(/sinalMax/);
+
+      const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+      rastreadoresCriados.push(r.id);
+      await pool.query(
+        `insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em, ultimos_atributos, atributos_em) values ($1, now(), '{"adc1": 13.3, "rssi": 4}', now())`,
+        [r.id],
+      );
+      expect(await modelos.atributosRecebidos(modeloImei)).toEqual([expect.objectContaining({ imei: r.imei, atributos: { adc1: 13.3, rssi: 4 } })]);
+      await expect(modelos.atributosRecebidos(randomUUID())).rejects.toMatchObject({ status: 404 });
     });
   });
 
