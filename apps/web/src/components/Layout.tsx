@@ -12,6 +12,7 @@ import NeedsPanel from './NeedsPanel';
 import { canSeeFleet, endSupport, homeOf } from '../lib/support';
 import { fmtT } from '@localle/shared/utils';
 import CommandPalette, { isMac } from './CommandPalette';
+import simboloLocalle from '../images/localle-simbolo.png';
 import { SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON, Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarProvider, useSidebar } from './Sidebar';
 
 const OPERACAO = [
@@ -30,11 +31,12 @@ const GESTAO = [
   { key: 'ranking', label: 'Ranking', to: '/ranking', icon: 'ranking' },
 ];
 
+// Logo da revenda (white-label); sem logo cadastrada, o símbolo da Localle (src/images/localle-simbolo.png).
 export function BrandMark({ size = 36 }: { size?: number }) {
   const b = useStore((s) => s.revenda.branding);
   return b.logo
     ? <img src={b.logo} alt={b.name} style={{ height: size, maxWidth: size * 4 }} className="object-contain" />
-    : <div style={{ width: size, height: size }} className="rounded-btn bg-brand text-brand-ink flex items-center justify-center font-semibold text-small shrink-0">{b.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}</div>;
+    : <img src={simboloLocalle} alt={b.name} style={{ width: size, height: size }} className="object-contain shrink-0" />;
 }
 
 // Falha de dado do backend que o usuário precisa ver sem abrir o dock: tempo real caído (posições podem estar
