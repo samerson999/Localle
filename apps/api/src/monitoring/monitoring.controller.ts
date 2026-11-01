@@ -4,7 +4,7 @@ import { parseDate } from '../common/parse-date';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { SettingsService } from '../settings/settings.service';
-import { statusComunicacao } from './comunicacao-status';
+import { comunicacaoDaLinha } from './comunicacao-status';
 import type { EventosQueryDto } from './dto/eventos-query.dto';
 import type { HistoryQueryDto } from './dto/history-query.dto';
 import { MonitoringRepository } from './monitoring.repository';
@@ -25,7 +25,7 @@ export class MonitoringController {
   async current(@ClientId() clientId: string) {
     const [rows, semSinalH] = await Promise.all([
       this.repo.frotaAtual(clientId),
-      this.settings.resolve(clientId, 'monitoramento.sem_sinal_h'),
+      this.settings.resolveMenorPorAtivo(clientId, 'monitoramento.sem_sinal_h'),
     ]);
     const agora = new Date();
     return rows.map((r) => ({
@@ -43,15 +43,7 @@ export class MonitoringController {
       modelo: r.modelo,
       instaladoEm: r.instalado_em,
       ultimoPacoteEm: r.ultimo_pacote_em,
-      comunicacao: statusComunicacao(
-        {
-          temRastreador: r.rastreador_id !== null,
-          ultimoPacoteEm: r.ultimo_pacote_em,
-          ultimaPosicaoValidaEm: r.ultima_posicao_valida_em,
-        },
-        semSinalH,
-        agora,
-      ),
+      comunicacao: comunicacaoDaLinha(r, semSinalH(r.asset_id), agora),
     }));
   }
 

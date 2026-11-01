@@ -51,6 +51,22 @@ export class SettingsRepository {
     return rows[0]?.value ?? null;
   }
 
+  /**
+   * Por ativo, o MENOR valor numérico de `key` entre os grupos dele que têm override. Ativo sem grupo com override
+   * não aparece. `client_id` filtra as duas tabelas: grupo e membro são sempre do mesmo cliente.
+   */
+  async menorOverrideDeGrupoPorAtivo(clientId: string, key: string): Promise<Map<string, number>> {
+    const { rows } = await this.pool.query<{ asset_id: string; valor: number }>(
+      `select m.asset_id, min((gs.value #>> '{}')::numeric)::float8 as valor
+         from asset_group_members m
+         join group_settings gs on gs.client_id = m.client_id and gs.group_id = m.group_id and gs.key = $2
+        where m.client_id = $1 and jsonb_typeof(gs.value) = 'number'
+        group by m.asset_id`,
+      [clientId, key],
+    );
+    return new Map(rows.map((r) => [r.asset_id, r.valor]));
+  }
+
   async grupoExiste(clientId: string, groupId: string, executor: Queryable = this.pool): Promise<boolean> {
     const { rowCount } = await executor.query('select 1 from asset_groups where client_id = $1 and id = $2', [clientId, groupId]);
     return (rowCount ?? 0) > 0;

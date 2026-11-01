@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-leaflet';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useStore, vehicleStatus, assetKm } from '../lib/store';
+import { useStore, vehicleStatus, contarStatusFrota, assetKm } from '../lib/store';
 import { Button, Badge, usePresence, useScrollLock, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { glyphOf, silhouetteOf } from '../components/assetArt';
@@ -104,7 +104,7 @@ export default function Monitoramento() {
   ];
   const [limit, setLimit] = useState(BATCH);
   useEffect(() => setLimit(BATCH), [q, st, grp]);
-  const counts = list.reduce((m: any, x: any) => ({ ...m, [x.s.key]: (m[x.s.key] || 0) + 1 }), {});
+  const counts = contarStatusFrota(list.map((x: any) => x.v));
   const shown = list.filter((x: any) => (st === 'todos' || x.s.key === st) && (!grp || x.a.groupIds?.includes(grp)) && (!q || (x.a.name + x.a.plate + (x.d?.name || '') + x.a.model).toLowerCase().includes(q.toLowerCase())));
   const cur = list.find((x: any) => x.a.id === sel);
   // painéis sobre o mapa: na saída mostram o último conteúdo enquanto deslizam para fora
@@ -169,11 +169,12 @@ export default function Monitoramento() {
       {header}
       <PageBody>
       <Stack gap="grid">
-      <Grid cols={6} equal className="max-md:flex max-md:overflow-x-auto max-md:overscroll-x-contain max-md:-mx-page max-md:px-page max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:w-[148px] max-md:[&>*]:shrink-0">
+      <Grid cols={7} equal className="max-md:flex max-md:overflow-x-auto max-md:overscroll-x-contain max-md:-mx-page max-md:px-page max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:w-[148px] max-md:[&>*]:shrink-0">
         <KpiTile label="Veículos rastreados" value={list.length} status="mov" />
-        <KpiTile label="Em movimento" value={counts.mov || 0} status="mov" />
-        <KpiTile label="Parados" value={counts.par || 0} status="parado" />
-        <KpiTile label="Sem sinal" value={(counts.sem || 0) + (counts.des || 0)} status="nosignal" />
+        <KpiTile label="Em movimento" value={counts.mov} status="mov" />
+        <KpiTile label="Parado ligado" value={counts.par} status="parado" />
+        <KpiTile label="Desligado" value={counts.des} status="off" />
+        <KpiTile label="Sem sinal" value={counts.sem} status="nosignal" />
         <KpiTile label="Percurso hoje" value={kmHoje} unit="km" digits={0} />
         <KpiTile label="Velocidade média" value={velMedia} unit="km/h" digits={0} />
       </Grid>
@@ -297,10 +298,10 @@ export default function Monitoramento() {
               head={['Veículo', 'Status', 'Velocidade', 'Ignição', 'Motorista', 'Atualizado', 'Endereço']}
               onRow={(i) => pick(shown[i].a.id)} selected={(i) => shown[i]?.a.id === sel}
               emptyState={<EmptyState icon="busca" layout="row" title="Nenhum veículo com esses filtros" action={<Button variant="dark" size="sm" onClick={clearFilters}>Limpar filtros</Button>} />}
-              rows={shown.map(({ a, v, k, d }: any) => [
-                <AssetName name={a.name} />, <StatusDot kind={k} label={STATUS_LABEL[k as StatusKind]} />,
+              rows={shown.map(({ a, v, s, k, d }: any) => [
+                <AssetName name={a.name} />, <StatusDot kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} />,
                 <span className="num">{v && !v.noSignal ? `${Math.round(v.speed)} km/h` : '—'}</span>,
-                v ? (v.ignition ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>) : '—',
+                v ? (v.ignition == null ? <span className="text-ink-2">Não informada</span> : v.ignition ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>) : '—',
                 d?.name || <span className="text-ink-2">Sem motorista</span>,
                 v ? <time className="num">{fmtT(v.lastUpdate)}</time> : '—',
                 v?.pos ? <Address pos={v.pos} className="text-small" /> : '—',
@@ -330,7 +331,7 @@ export default function Monitoramento() {
 
 // Painel do veículo selecionado: status, silhueta (ou foto), placa, métricas do dia, sensores e ações.
 function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
-  const { a, v, k, d } = x;
+  const { a, v, s, k, d } = x;
   const kmToday = useStore((st) => { const h = st.history[a.id] || []; const t0 = new Date().setHours(0, 0, 0, 0); let km = 0; for (let i = 1; i < h.length; i++) if (h[i][0] >= t0) km += haversine([h[i - 1][1], h[i - 1][2]], [h[i][1], h[i][2]]); return km / 1000; });
   const odo = useStore((st) => assetKm(st, a.id));
   const fences = useStore((st) => st.fences.filter((f: any) => v?.inside?.includes(f.id)));
@@ -338,7 +339,7 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
   const hours = a.meter === 'horimetro';
   return (
     <FloatingPanel label={`Detalhe de ${a.name}`} closing={closing} onClose={onClose}
-      header={<StatusLine kind={k} sub={[v && !v.noSignal ? `${Math.round(v.speed || 0)} km/h` : null, fences.length ? `em ${fences.map((f: any) => f.name).join(', ')}` : null].filter(Boolean).join(' · ') || undefined} />}
+      header={<StatusLine kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} sub={[v && !v.noSignal ? `${Math.round(v.speed || 0)} km/h` : null, fences.length ? `em ${fences.map((f: any) => f.name).join(', ')}` : null].filter(Boolean).join(' · ') || undefined} />}
       footer={<>
         <Link to={`/monitoramento/replay?a=${a.id}`} className={buttonClass('secondary', 'sm')}><Icon name="rota" size={16} />Percurso</Link>
         <FilePick accept="image/*" onFile={(data) => setPhoto(data)} className={buttonClass('secondary', 'sm')}><Icon name="camera" size={16} />{a.photo ? 'Trocar foto' : 'Enviar foto'}</FilePick>
@@ -363,10 +364,10 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
       </div>
       <DescList className="mt-card-head">
         {v?.noSignal ? <>
-          <DescRow label="Comunicação"><StatusDot kind="nosignal" /></DescRow>
+          <DescRow label="Comunicação"><StatusDot kind="nosignal" label={s.label} /></DescRow>
           <DescRow label="Última posição"><time className="num">{fmtDT(v.lastUpdate)}</time></DescRow>
         </> : <>
-          <DescRow label="Ignição"><StatusDot kind={v?.ignition ? 'mov' : 'off'} label={v?.ignition ? 'Ligada' : 'Desligada'} /></DescRow>
+          <DescRow label="Ignição">{v?.ignition == null ? <span className="text-ink-2">Não informada</span> : <StatusDot kind={v.ignition ? 'mov' : 'off'} label={v.ignition ? 'Ligada' : 'Desligada'} />}</DescRow>
           <DescRow label="Bateria">{v?.battery < BATTERY_LOW_V ? <StatusDot kind="crit" label={`${num(v.battery, 1)} V · baixa`} /> : `${num(v?.battery, 1)} V`}</DescRow>
           <DescRow label="GPS">{v?.gps} satélites</DescRow>
           <DescRow label="Bloqueio">{v?.blocked ? <StatusDot kind="crit" label="Bloqueado" /> : 'Livre'}</DescRow>

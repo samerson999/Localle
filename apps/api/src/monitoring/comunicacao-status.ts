@@ -1,4 +1,6 @@
-export type ComunicacaoStatus = 'sem_rastreador' | 'aguardando' | 'online' | 'sem_gps' | 'sem_sinal';
+import type { ComunicacaoStatus } from '@localle/shared/realtime';
+
+export type { ComunicacaoStatus };
 
 export interface ComunicacaoInput {
   temRastreador: boolean;
@@ -21,4 +23,17 @@ export function statusComunicacao(input: ComunicacaoInput, semSinalH: number, ag
     return 'sem_gps';
   }
   return 'online';
+}
+
+/** Linha de `MonitoringRepository.frotaAtual` → status. Usado por GET /monitoring/current e pelo tempo real. */
+export function comunicacaoDaLinha(
+  r: { rastreador_id: string | null; ultimo_pacote_em: Date | null; ultima_posicao_valida_em: Date | null },
+  semSinalH: number,
+  agora: Date,
+): ComunicacaoStatus {
+  return statusComunicacao(
+    { temRastreador: r.rastreador_id !== null, ultimoPacoteEm: r.ultimo_pacote_em, ultimaPosicaoValidaEm: r.ultima_posicao_valida_em },
+    semSinalH,
+    agora,
+  );
 }

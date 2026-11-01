@@ -85,4 +85,17 @@ export interface RealtimeComandoStatus {
   comando: Comando;
 }
 
-export type RealtimeMessage = RealtimePosicao | RealtimeEvento | RealtimeSnapshot | RealtimeAlerta | RealtimeComandoStatus;
+/** Comunicação do rastreador instalado no ativo (regra "sem sinal" do backend, com o limite do cliente). */
+export type ComunicacaoStatus = 'sem_rastreador' | 'aguardando' | 'online' | 'sem_gps' | 'sem_sinal';
+
+/**
+ * Comunicação da frota inteira, recalculada periodicamente pelo backend: aparelho que para de transmitir não gera
+ * posição, então a virada para "sem sinal" só chega por aqui. `fixTime` é a última posição que o cálculo viu — se
+ * o front já tem posição mais nova do ativo, o item está velho e é ignorado.
+ */
+export interface RealtimeComunicacao {
+  kind: 'comunicacao';
+  ativos: { assetId: string; comunicacao: ComunicacaoStatus; fixTime: string | null }[];
+}
+
+export type RealtimeMessage = RealtimePosicao | RealtimeEvento | RealtimeSnapshot | RealtimeAlerta | RealtimeComandoStatus | RealtimeComunicacao;

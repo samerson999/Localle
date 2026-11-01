@@ -71,6 +71,20 @@ export class SettingsService {
     return typeof v === 'number' ? v : Number.NaN;
   }
 
+  /**
+   * Valor por ativo de um parâmetro por grupo, para quem calcula a frota inteira de uma vez (monitoramento). Ativo em
+   * vários grupos com valores diferentes fica com o MENOR (decisão de 31/10/2026 para `monitoramento.sem_sinal_h`:
+   * avisa mais cedo e não depende de ordem entre grupos); sem override em nenhum grupo dele, vale o do cliente.
+   */
+  async resolveMenorPorAtivo(clientId: string, key: string): Promise<(assetId: string) => number> {
+    const def = this.definicao(key);
+    const [doCliente, porAtivo] = await Promise.all([
+      this.resolve(clientId, key),
+      def.porGrupo ? this.repo.menorOverrideDeGrupoPorAtivo(clientId, key) : Promise.resolve(new Map<string, number>()),
+    ]);
+    return (assetId) => porAtivo.get(assetId) ?? doCliente;
+  }
+
   async resolveValor(clientId: string, key: string, groupId: string | null = null): Promise<SettingValue> {
     const def = this.definicao(key);
     const override = await this.repo.findOverride(clientId, key, def.porGrupo ? groupId : null);

@@ -33,7 +33,7 @@ export function Cluster({ gap = 'tight', rowGap, align = 'center', justify = 'st
 //   split: duas colunas desiguais a partir de lg, em doze avos ("5/7" = 5 + 7 colunas); os filhos se alternam.
 //   5 colunas não cabem em 12: cols={5} usa uma grade própria (2, md 3, xl 5) e só deve formar a linha inteira de KPIs.
 //   equal: cards da linha com a mesma altura. Só quando o conteúdo é equivalente (mesma anatomia); senão alinham ao topo.
-type Cols = 1 | 2 | 3 | 4 | 5 | 6;
+type Cols = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 const COLS: Record<Cols, string> = {
   1: 'grid-cols-12 [&>*]:col-span-12',
   2: 'grid-cols-12 [&>*]:col-span-12 md:[&>*]:col-span-6',
@@ -41,6 +41,7 @@ const COLS: Record<Cols, string> = {
   4: 'grid-cols-12 [&>*]:col-span-12 sm:[&>*]:col-span-6 lg:[&>*]:col-span-3',
   5: 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5',
   6: 'grid-cols-12 [&>*]:col-span-6 sm:[&>*]:col-span-4 lg:[&>*]:col-span-2',
+  7: 'grid-cols-2 md:grid-cols-4 xl:grid-cols-7', // fileira de KPIs com 7 itens (Monitoramento): não cabe na base 12
 };
 export type Split = '3/9' | '4/8' | '5/7' | '6/6' | '7/5' | '8/4' | '9/3';
 const SPLIT: Record<Split, string> = {

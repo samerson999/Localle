@@ -33,6 +33,21 @@ export class RealtimeHub implements OnModuleDestroy {
     await this.redis.publish(realtimeChannel(clientId), JSON.stringify(message));
   }
 
+  /** Clientes com alguma conexão de tempo real aberta NESTA instância da API. */
+  clientesAssinados(): string[] {
+    const prefixo = realtimeChannel('');
+    return [...this.channels.keys()].map((c) => c.slice(prefixo.length));
+  }
+
+  /**
+   * Entrega só às conexões desta instância, sem passar pelo Redis: para mensagem que cada instância calcula para
+   * as próprias conexões (publicar no canal faria cada cliente receber uma cópia por instância).
+   */
+  entregarLocal(clientId: string, message: RealtimeMessage): void {
+    const entry = this.channels.get(realtimeChannel(clientId));
+    if (entry) for (const listener of entry.listeners) listener(message);
+  }
+
   /** Devolve a função que cancela a assinatura deste listener. */
   async subscribe(clientId: string, listener: Listener): Promise<() => Promise<void>> {
     const channel = realtimeChannel(clientId);

@@ -112,11 +112,23 @@ export function useStoreData(liveMs = 30000): any {
 // ---------- Seletores auxiliares ----------
 // status do veículo para a interface: as cores vêm dos tokens --status-* (StatusDot/StatusGlyph), não daqui
 export const vehicleStatus = (v: any) => {
-  if (!v) return { key: 'sem', label: 'Sem dados' };
-  if (v.noSignal || Date.now() - v.lastUpdate > 6 * 3600000) return { key: 'sem', label: 'Sem sinal' };
+  if (!v) return { key: 'sem', label: 'Aguardando 1ª posição' }; // rastreador instalado que ainda não mandou posição
+  // veículo da nossa API: quem decide "sem sinal" é o backend, com o limite do cliente (monitoramento.sem_sinal_h),
+  // relido a cada carga da frota (localleApi.syncFrota). As 6 h fixas ficam só para a integração antiga (rastreioApi).
+  const semSinal = v.comunicacao !== undefined ? v.noSignal : v.noSignal || Date.now() - v.lastUpdate > 6 * 3600000;
+  // sem GPS: o aparelho fala, mas sem posição válida — conta no tile Sem sinal (a posição na tela é antiga), com rótulo próprio
+  if (semSinal) return { key: 'sem', label: v.comunicacao === 'sem_gps' ? 'Sem GPS' : 'Sem sinal' };
   if (v.moving) return { key: 'mov', label: 'Em movimento' };
   if (v.ignition) return { key: 'par', label: 'Parado ligado' };
   return { key: 'des', label: 'Desligado' };
 };
+
+// Tiles do Monitoramento: um por status do PRODUCT.md (em movimento, parado ligado, desligado, sem sinal). As quatro
+// chaves são exclusivas e somam o total; "desligado" é um veículo comunicando, nunca entra em "sem sinal".
+export function contarStatusFrota(vehicles: any[]) {
+  const counts = { mov: 0, par: 0, des: 0, sem: 0 };
+  for (const v of vehicles) counts[vehicleStatus(v).key as keyof typeof counts]++;
+  return counts;
+}
 
 export { assetKm } from '@localle/shared/km';

@@ -4,7 +4,7 @@ import type { Alerta, RealtimeMessage, RealtimePosicao } from '@localle/shared/r
 import type { BillingType, ContractStatus, ContractTerms, ContractVersion } from '@localle/shared/contratos';
 import type { TipoIdentificador } from '@localle/shared/rastreadorModelos';
 import { inFence } from '@localle/shared/utils';
-import { alertaIdOf, alertaToAlert, alertIdFor, applyPosicao, assetIdFor, backendIdOf, cercaToFence, createSseParser, fenceToCercaBody, regraToRule, ruleToRegraBody, eventoToReplay, type EventoApi, type RegraApi, toAsset, toVehicle, type CercaApi, type CurrentRow } from './localleMap';
+import { alertaIdOf, alertaToAlert, alertIdFor, applyComunicacao, applyPosicao, assetIdFor, backendIdOf, cercaToFence, createSseParser, fenceToCercaBody, regraToRule, ruleToRegraBody, eventoToReplay, type EventoApi, type RegraApi, toAsset, toVehicle, type CercaApi, type CurrentRow } from './localleMap';
 import { useStore } from './store';
 import * as M from './localleModulos';
 import { LIVE_GROUP } from './rastreioApi';
@@ -353,6 +353,16 @@ function applyMessage(m: RealtimeMessage) {
     };
     if (m.kind === 'snapshot') { m.posicoes.forEach(push); return { vehicles, history }; }
     if (m.kind === 'posicao') { push(m); return { vehicles, history }; }
+    // recálculo do backend (limite "sem sinal" do cliente): só troca o que mudou
+    if (m.kind === 'comunicacao') {
+      let mudou = false;
+      for (const item of m.ativos) {
+        const id = assetIdFor(item.assetId);
+        const v = applyComunicacao(vehicles[id], item);
+        if (v) { vehicles[id] = v; mudou = true; }
+      }
+      return mudou ? { vehicles } : {};
+    }
     // alerta novo ou atualizado (lido/tratado por outro usuário): quem cria e decide é o backend
     if (m.kind === 'alerta') return { alerts: upsertAlertas(s, [m.alerta]) };
     if (m.kind === 'comando_status') return aplicarComandoStatus(s, m.comando);
@@ -396,7 +406,7 @@ function runStream(signal: AbortSignal) {
   const connect = async () => {
     while (!signal.aborted) {
       try {
-        if (attempt > 0) await Promise.all([syncAlertas(), syncComandos()]); // reconexão: o que mudou enquanto caído vem da API, não do pub/sub
+        if (attempt > 0) await Promise.all([syncFrota(), syncAlertas(), syncComandos()]); // reconexão: o que mudou enquanto caído vem da API, não do pub/sub
         const qs = since ? `?since=${encodeURIComponent(since)}` : '';
         const r = await fetchOuErro(`${BASE}/monitoring/stream${qs}`, { headers: { Authorization: `Bearer ${getToken()}` }, signal });
         if (r.status === 401) { encerrarSessao(); throw new Error(MSG_SESSAO); }
