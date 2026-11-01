@@ -66,7 +66,7 @@ export default function Setup() {
           : visiveis.length === 0 ? <Card><EmptyState title="Nenhum parâmetro" detail={termo ? 'Nada encontrado com esse termo.' : 'Este módulo não tem parâmetro nesta camada.'} /></Card>
           : <Card>
             <Table minWidth={900} head={['Parâmetro', 'Valor', 'Origem', 'Faixa permitida', 'Aplicação', '']} align={['left', 'left', 'left', 'left', 'left', 'right']} rows={visiveis.map((p) => [
-              <div className="flex flex-col gap-0.5"><span className="font-medium">{p.label}</span><span className="text-caption text-ink-2 num">{p.key}</span>{p.legal && <span className="text-caption text-ink-2">Piso legal: {p.legal.limite} ({p.legal.ref})</span>}</div>,
+              <div className="flex flex-col gap-0.5"><span className="font-medium">{p.label}</span><span className="text-caption text-ink-2 num">{p.key}</span>{p.semEfeito ? <span className="text-caption text-ink-2">Ainda sem efeito: o módulo ainda não usa este parâmetro</span> : groupId && p.grupoSemEfeito ? <span className="text-caption text-ink-2">Ainda sem efeito no grupo: por enquanto vale o valor da empresa</span> : null}{p.legal && <span className="text-caption text-ink-2">Piso legal: {p.legal.limite} ({p.legal.ref})</span>}</div>,
               <Valor p={p} onSave={(v, reason) => salvar(p, v, reason)} />,
               <span className={cx('text-small', p.origin === 'padrao' ? 'text-ink-2' : '')}>{p.somenteLocale ? 'Definido pela Locale' : ORIGEM[p.origin]}</span>,
               <span className="text-small num">{p.type === 'number' ? `${p.min} a ${p.max}` : p.type === 'boolean' ? 'liga / desliga' : (p.options || []).map((o) => OPCAO[o] || o).join(' · ')}</span>,

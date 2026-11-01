@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundEx
 import type { Pool } from 'pg';
 import { PG_POOL } from '../db/pg-pool.provider';
 import { withTransaction } from '../db/with-transaction';
-import { getDefinition, listDefinitions, REGRAS_CRUZADAS, type SettingDefinition, type SettingValue } from './setting-definitions';
+import { getDefinition, listDefinitions, REGRAS_CRUZADAS, type SettingDefinition, type SettingValue, GRUPO_APLICADO, SEM_EFEITO } from './setting-definitions';
 import { SettingsRepository } from './settings.repository';
 
 export type Origem = 'grupo' | 'cliente' | 'padrao';
@@ -19,9 +19,19 @@ export interface ResolvedSetting {
   legal?: SettingDefinition['legal'];
   aplicacao: SettingDefinition['aplicacao'];
   somenteLocale: boolean;
+  /** Nenhum código lê este parâmetro ainda (SEM_EFEITO): a tela avisa. */
+  semEfeito: boolean;
+  /** Aceita valor por grupo, mas só o valor da empresa é aplicado por enquanto (fora de GRUPO_APLICADO). */
+  grupoSemEfeito: boolean;
   value: SettingValue;
   origin: Origem;
 }
+
+/** O que a tela precisa avisar: parâmetro que nenhum código lê, ou valor de grupo que ainda não é aplicado. */
+const efeito = (def: SettingDefinition) => ({
+  semEfeito: SEM_EFEITO.has(def.key),
+  grupoSemEfeito: def.porGrupo === true && !SEM_EFEITO.has(def.key) && !GRUPO_APLICADO.has(def.key),
+});
 
 export interface Mudanca {
   groupId?: string | null;
@@ -59,6 +69,7 @@ export class SettingsService {
         legal: def.legal,
         aplicacao: def.aplicacao,
         somenteLocale: def.somenteLocale === true,
+        ...efeito(def),
         value: emGrupo ? grupo[def.key] : emCliente ? cliente[def.key] : def.default,
         origin: emGrupo ? 'grupo' : emCliente ? 'cliente' : 'padrao',
       };
@@ -196,6 +207,7 @@ export class SettingsService {
       legal: def.legal,
       aplicacao: def.aplicacao,
       somenteLocale: def.somenteLocale === true,
+      ...efeito(def),
       value,
       origin,
     };

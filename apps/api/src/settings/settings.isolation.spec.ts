@@ -113,4 +113,26 @@ describe('SettingsService — herança grupo → cliente → padrão, validaçã
     expect(await service.resolveEm(clientA, 'jornada.extras_max_h', new Date('2020-01-01'))).toBe(2);
     expect(await service.historico(clientB, 'jornada.extras_max_h')).toEqual([]);
   });
+
+  // AUD-13: valor por grupo aplicado por ativo; ativo em vários grupos fica com o menor (decisão de 31/10/2026).
+  it('resolveMenorPorAtivo: menor entre os grupos do ativo, empresa para ativo sem grupo, grupo de outro cliente não conta', async () => {
+    const ativo = async (client: string, plate: string) =>
+      (await pool.query<{ id: string }>('insert into assets (client_id, plate) values ($1, $2) returning id', [client, plate])).rows[0].id;
+    const grupo = async (client: string, asset: string) => {
+      const g = (await pool.query<{ id: string }>('insert into asset_groups (client_id, name) values ($1, $2) returning id', [client, `g-${randomUUID()}`])).rows[0].id;
+      await pool.query('insert into asset_group_members (client_id, group_id, asset_id) values ($1, $2, $3)', [client, g, asset]);
+      return g;
+    };
+    const emDoisGrupos = await ativo(clientA, 'GRP1A11');
+    const semGrupo = await ativo(clientA, 'GRP2A22');
+    await service.set(clientA, VEL, 100, { userId: userA });
+    await service.set(clientA, VEL, 90, { groupId: await grupo(clientA, emDoisGrupos), userId: userA });
+    await service.set(clientA, VEL, 70, { groupId: await grupo(clientA, emDoisGrupos), userId: userA });
+    // linha inconsistente: grupo de B com o ativo de A e limite ainda menor — não pode valer para A
+    await service.set(clientB, VEL, 30, { groupId: await grupo(clientB, emDoisGrupos) });
+
+    const limite = await service.resolveMenorPorAtivo(clientA, VEL);
+    expect(limite(emDoisGrupos)).toBe(70);
+    expect(limite(semGrupo)).toBe(100);
+  });
 });

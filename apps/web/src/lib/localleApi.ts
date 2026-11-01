@@ -761,6 +761,7 @@ export async function lerParametro(key: string): Promise<number | string | undef
 export interface SetupParametro {
   key: string; modulo: string; label: string; type: 'number' | 'boolean' | 'option'; options?: string[]; min: number; max: number;
   porGrupo: boolean; legal?: { limite: number; endurece: 'up' | 'down'; ref: string }; aplicacao: 'agora' | 'recalcula'; somenteLocale: boolean;
+  semEfeito: boolean; grupoSemEfeito: boolean;
   value: number | string; origin: 'grupo' | 'cliente' | 'padrao';
 }
 export interface SetupHistorico { id: string; key: string; old_value: number | string | null; new_value: number | string | null; changed_by_email: string | null; reason: string | null; changed_at: string }

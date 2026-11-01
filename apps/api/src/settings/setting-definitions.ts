@@ -169,6 +169,31 @@ export const REGRAS_CRUZADAS: { ordem: string[]; mensagem: string }[] = [
   { ordem: ['manutencao.os_parada_alerta_h', 'manutencao.os_parada_critica_h'], mensagem: 'OS parada: alerta precisa vir antes do crítico' },
 ];
 
+/**
+ * Parâmetros que nenhum código lê ainda: o comportamento, quando existe, usa um valor fixo no código, e mudar no Setup
+ * não muda nada. A tela mostra "Ainda sem efeito" (decisão de 01/11/2026, auditoria AUD-13). Ao passar a ler um deles,
+ * tire-o daqui — `setting-definitions.spec.ts` confere a lista contra o código nos dois sentidos.
+ */
+export const SEM_EFEITO: ReadonlySet<string> = new Set([
+  'monitoramento.bateria_baixa_v', 'monitoramento.bloqueio_pendente_critico', 'alertas.reaviso_regra_min', 'alertas.janela_tratativas_h',
+  'cercas.raio_padrao_m', 'monitoramento.passou_aqui_raio_m', 'jornada.refeicao_obrigatoria_apos_h', 'jornada.apontamentos_atencao',
+  'combustivel.meta_kml', 'combustivel.orcamento_mensal', 'combustivel.ocr_ativo', 'odometro.divergencia_min_km',
+  'odometro.divergencia_pct', 'manutencao.plano_padrao_km', 'manutencao.plano_padrao_dias', 'manutencao.antecedencia_padrao_km',
+  'manutencao.antecedencia_padrao_dias', 'manutencao.meta_disponibilidade', 'manutencao.os_parada_alerta_h', 'manutencao.os_parada_critica_h',
+  'manutencao.aprovacao_lenta_h', 'pneus.vidas_padrao', 'can.excesso_episodio_s', 'can.rpm_lenta_max',
+  'can.rpm_verde_max', 'can.rpm_amarela_max', 'can.banguela_vel_min_kmh', 'can.pedal_fundo_pct',
+  'can.temperatura_alta_c', 'can.ocioso_episodio_min', 'checklist.ciclo_padrao_dias', 'checklist.escala_nota_padrao',
+  'checklist.meta_adesao', 'checklist.meta_tempo_min', 'multas.vencimento_padrao_dias', 'viagens.tolerancia_cumprimento_min',
+  'viagens.rodando_sem_viagem_min', 'viagens.hora_volta_padrao', 'viagens.rodando_sem_viagem_prioridade', 'suporte.exige_permissao_cliente',
+  'documentos.atencao_dias', 'documentos.critico_dias', 'motoristas.origem_prioridade',
+]);
+
+/**
+ * Parâmetros por grupo cujo valor de GRUPO já é aplicado (ativo em vários grupos: vale o menor — ver
+ * `SettingsService.resolveMenorPorAtivo`). Nos demais `porGrupo`, só o valor da empresa vale por enquanto.
+ */
+export const GRUPO_APLICADO: ReadonlySet<string> = new Set(['monitoramento.sem_sinal_h', 'monitoramento.velocidade_limite_kmh']);
+
 export function getDefinition(key: string): SettingDefinition | null {
   return SETTING_DEFINITIONS[key] ?? null;
 }

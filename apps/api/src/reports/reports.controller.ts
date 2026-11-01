@@ -39,10 +39,11 @@ export class ReportsController {
   @Get('excesso-velocidade')
   async excessoVelocidade(@ClientId() clientId: string, @Query() query: AssetPeriodQueryDto) {
     const { assetId, from, to } = this.parsePeriod(query);
-    const [limiteKmh, duracaoMinSegundos] = await Promise.all([
-      this.settings.resolve(clientId, 'monitoramento.velocidade_limite_kmh'),
+    const [limitePorAtivo, duracaoMinSegundos] = await Promise.all([
+      this.settings.resolveMenorPorAtivo(clientId, 'monitoramento.velocidade_limite_kmh'),
       this.settings.resolve(clientId, 'monitoramento.excesso_episodio_min_s'),
     ]);
+    const limiteKmh = limitePorAtivo(assetId); // limite do grupo do ativo (o menor, se em vários); senão o da empresa
 
     const episodios = await this.repo.excessosPorAtivo(clientId, assetId, from, to, limiteKmh, duracaoMinSegundos);
     return {
