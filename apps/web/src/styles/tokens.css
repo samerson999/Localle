@@ -107,7 +107,7 @@
 
   /* ---------- mapa: as cores de status são exclusivas dos veículos ---------- */
   --map-bg: #E9EDF2;
-  --map-tiles: saturate(0.35) brightness(1.04); /* base apagada: as cores de status e zona se destacam */
+  --map-tiles: saturate(1.3) contrast(1.04); /* base viva: parques verdes, vias em vermelho/amarelo, mar azul */
   --cluster-bg: var(--graphite); /* grupo de veículos: escuro e neutro, com o número */
   --cluster-ink: var(--on-dark);
   /* cercas: paleta própria de zonas, sem verde, laranja, vermelho ou rosa (usar nesta ordem) */
