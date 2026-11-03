@@ -9,6 +9,7 @@ import { chartTokens } from '../lib/tokens';
 import { isPlate } from '@localle/shared/utils';
 import { useChartTip, anchorIn, anchorTop, TipBody, Swatch, DeltaText, type TipRow } from './chartTip';
 import { uiZoom } from '../lib/uiZoom';
+import { PACE_LABEL, idealAt, paceStatus, type PaceStatus } from '../lib/pace';
 export { Swatch } from './chartTip';
 
 // Padrões de hachura para SVG: use fill={`url(#${p}hatch-real)`}, com um prefixo único por gráfico (useId).
@@ -261,6 +262,31 @@ const textW = (t: string, size = 11) => t.length * size * 0.58;
 const axisLeft = (labels: string[], min = 24) => Math.ceil(Math.max(min, ...labels.map((l) => textW(l) + 10)));
 // de quantos em quantos rótulos mostrar para não se sobreporem num espaço de `slot` px cada
 const stepFor = (labels: string[], slot: number, size = 11) => (slot <= 0 ? 1 : Math.max(1, Math.ceil((Math.max(0, ...labels.map((l) => textW(l, size))) + 8) / slot)));
+// Curva monótona (como d3.curveMonotoneX): suaviza a linha sem passar do valor real entre dois pontos.
+// Devolve um trecho "C …" por intervalo, para quem precisa pintar cada intervalo de uma cor.
+type Pt = [number, number];
+function monoSegs(p: Pt[]) {
+  const n = p.length, f = (v: number) => v.toFixed(1);
+  if (n < 2) return [];
+  const h = p.slice(1).map((q, i) => q[0] - p[i][0] || 1e-6);
+  const m = h.map((hi, i) => (p[i + 1][1] - p[i][1]) / hi);
+  const t = p.map((_, i) => {
+    if (i === 0) return m[0];
+    if (i === n - 1) return m[n - 2];
+    const s0 = m[i - 1], s1 = m[i], q = (s0 * h[i] + s1 * h[i - 1]) / (h[i - 1] + h[i]);
+    return (Math.sign(s0) + Math.sign(s1)) * Math.min(Math.abs(s0), Math.abs(s1), 0.5 * Math.abs(q)) || 0;
+  });
+  return h.map((hi, i) => `C${f(p[i][0] + hi / 3)},${f(p[i][1] + (t[i] * hi) / 3)} ${f(p[i + 1][0] - hi / 3)},${f(p[i + 1][1] - (t[i + 1] * hi) / 3)} ${f(p[i + 1][0])},${f(p[i + 1][1])}`);
+}
+const smooth = (p: Pt[]) => (p.length ? `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}${monoSegs(p).join('')}` : '');
+// Esmaecimento na borda esquerda: o traço das linhas nasce mais claro e fica sólido em 12% da largura.
+// Começa em 25% (não em zero) para o primeiro ponto continuar legível em séries curtas.
+function edgeFade(id: string, x0: number, x1: number, H: number) {
+  return <>
+    <linearGradient id={`${id}g`} gradientUnits="userSpaceOnUse" x1={x0} x2={x1} y1="0" y2="0"><stop offset="0" stopColor="#fff" stopOpacity="0.25" /><stop offset="0.12" stopColor="#fff" stopOpacity="1" /></linearGradient>
+    <mask id={`${id}m`} maskUnits="userSpaceOnUse" x={-20} y={-40} width={x1 + 40} height={H + 80}><rect x={-20} y={-40} width={x1 + 40} height={H + 80} fill={`url(#${id}g)`} /></mask>
+  </>;
+}
 // tabela escondida para leitor de tela (todo gráfico tem uma)
 function SrTable({ caption, head, rows }: { caption: string; head: string[]; rows: (string | number)[][] }) {
   return <table className="sr-only"><caption>{caption}</caption><thead><tr>{head.map((h) => <th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => (j === 0 ? <th key={j}>{c}</th> : <td key={j}>{c}</td>))}</tr>)}</tbody></table>;
@@ -485,7 +511,12 @@ export function LineChart({ labels, series, goal, format = (v: number) => String
   const y = (v: number) => top + (H - top - bottom) * (1 - (v - lo) / (hi - lo || 1));
   const every = Math.max(tickEvery ?? Math.ceil(n / 6), stepFor(labels, (W - left - right) / Math.max(1, n - 1)));
   const stroke = { real: 'var(--real)', prev: 'var(--target)', loss: 'var(--loss)' };
-  const path = (vals: (number | null)[]) => vals.reduce((d, v, i) => (v == null ? d : d + `${d && vals[i - 1] != null ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`), '');
+  // cada trecho sem buraco vira uma curva suave; null interrompe a linha
+  const path = (vals: (number | null)[]) => {
+    const runs: Pt[][] = [];
+    vals.forEach((v, i) => { if (v == null) return; if (i === 0 || vals[i - 1] == null) runs.push([]); runs[runs.length - 1].push([x(i), y(v)]); });
+    return runs.map(smooth).join('');
+  };
   const idx = typeof tip.active === 'number' ? tip.active : null;
   const at = (i: number) => { const vs = series.map((s) => s.values[i]).filter((v): v is number => v != null); return anchorIn(ref.current, x(i), vs.length ? y(Math.max(...vs)) : top); };
   const body = (i: number) => (
@@ -499,7 +530,7 @@ export function LineChart({ labels, series, goal, format = (v: number) => String
       <SrTable caption="Série" head={['Ponto', ...series.map((s) => s.label)]} rows={labels.map((l, i) => [l, ...series.map((s) => (s.values[i] == null ? '—' : format(s.values[i]!)))])} />
       <div ref={ref} aria-hidden="true">
         {W > 0 && <svg width={W} height={H} className="block overflow-visible">
-          <defs><linearGradient id={`${gid}a`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--real)" stopOpacity="0.18" /><stop offset="1" stopColor="var(--real)" stopOpacity="0" /></linearGradient></defs>
+          <defs><linearGradient id={`${gid}a`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--real)" stopOpacity="0.18" /><stop offset="1" stopColor="var(--real)" stopOpacity="0" /></linearGradient>{edgeFade(gid, left, W - right, H)}</defs>
           {ticks.map((t, k) => <g key={k}><line x1={left} x2={W - right} y1={y(t)} y2={y(t)} stroke={k === 0 ? 'var(--line-strong)' : 'var(--line)'} /><text x={left - 8} y={y(t) + 4} textAnchor="end" {...AXIS}>{format(t)}</text></g>)}
           {labels.map((l, i) => showX(i, n, every) && <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} {...AXIS}>{l}</text>)}
           {goal && <g>
@@ -512,7 +543,7 @@ export function LineChart({ labels, series, goal, format = (v: number) => String
             const firstI = s.values.findIndex((v) => v != null);
             return <g key={k}>
               {s.area && s.tone === 'real' && lastI > firstI && <path d={`${d}L${x(lastI)},${y(lo)}L${x(firstI)},${y(lo)}Z`} fill={`url(#${gid}a)`} />}
-              <path d={d} fill="none" stroke={stroke[s.tone]} strokeWidth={s.tone === 'prev' ? 1.5 : 2} strokeDasharray={s.tone === 'prev' ? '4 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />
+              <path d={d} mask={`url(#${gid}m)`} fill="none" stroke={stroke[s.tone]} strokeWidth={s.tone === 'prev' ? 1.5 : 2} strokeDasharray={s.tone === 'prev' ? '4 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />
               {s.tone === 'real' && lastI >= 0 && idx == null && <g><circle cx={x(lastI)} cy={y(s.values[lastI]!)} r={8} fill="var(--real)" fillOpacity={0.15} /><circle cx={x(lastI)} cy={y(s.values[lastI]!)} r={4} fill="var(--card)" stroke="var(--real)" strokeWidth={2} /></g>}
             </g>;
           })}
@@ -544,7 +575,7 @@ export function ProjectionChart({ labels, actual, projected, budget, format = (v
   const x = (i: number) => left + (W - left - right) * (i / Math.max(1, n - 1));
   const y = (v: number) => top + (H - top - bottom) * (1 - v / hi);
   const every = Math.max(tickEvery ?? Math.ceil(n / 6), stepFor(labels, (W - left - right) / Math.max(1, n - 1)));
-  const d = actual.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  const d = smooth(actual.map((v, i): Pt => [x(i), y(v)]));
   const diff = budget ? budget.value - projected : 0, under = diff >= 0;
   const tag = budget ? `${format(Math.abs(diff))} ${under ? 'abaixo' : 'acima'}` : '';
   const tagW = textW(tag, 12) + 16;
@@ -566,7 +597,7 @@ export function ProjectionChart({ labels, actual, projected, budget, format = (v
       <SrTable caption="Acumulado e projeção" head={['Ponto', 'Acumulado']} rows={[...actual.map((v, i) => [labels[i], format(v)]), ['Projeção no fim', format(projected)], ...(budget ? [['Orçamento', format(budget.value)]] : [])]} />
       <div ref={ref} aria-hidden="true">
         {W > 0 && last >= 0 && <svg width={W} height={H} className="block overflow-visible">
-          <defs><linearGradient id={`${gid}a`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--real)" stopOpacity="0.2" /><stop offset="1" stopColor="var(--real)" stopOpacity="0" /></linearGradient></defs>
+          <defs><linearGradient id={`${gid}a`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--real)" stopOpacity="0.2" /><stop offset="1" stopColor="var(--real)" stopOpacity="0" /></linearGradient>{edgeFade(gid, left, W - right, H)}</defs>
           {nt.ticks.map((t, k) => <g key={k}><line x1={left} x2={W - right} y1={y(t)} y2={y(t)} stroke={k === 0 ? 'var(--line-strong)' : 'var(--line)'} /><text x={left - 8} y={y(t) + 4} textAnchor="end" {...AXIS}>{format(t)}</text></g>)}
           {labels.map((l, i) => showX(i, n, every) && <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} {...AXIS}>{l}</text>)}
           {budget && <g>
@@ -575,7 +606,7 @@ export function ProjectionChart({ labels, actual, projected, budget, format = (v
             <text x={W - right} y={y(budget.value) - 10} textAnchor="end" fontSize={12} fill="var(--ink-2)" fontFamily="var(--font-sans)">{budget.label ?? `Orçamento ${format(budget.value)}`}</text>
           </g>}
           <path d={`${d}L${x(last)},${y(0)}L${x(0)},${y(0)}Z`} fill={`url(#${gid}a)`} />
-          <path d={d} fill="none" stroke="var(--real)" strokeWidth={2} strokeLinejoin="round" />
+          <path d={d} mask={`url(#${gid}m)`} fill="none" stroke="var(--real)" strokeWidth={2} strokeLinejoin="round" />
           <line x1={x(last)} y1={y(actual[last])} x2={x(n - 1)} y2={y(projected)} stroke="var(--real)" strokeWidth={1.75} strokeDasharray="4 4" />
           <line x1={x(last)} x2={x(last)} y1={y(actual[last])} y2={y(0)} stroke="var(--real)" strokeOpacity={0.35} strokeDasharray="2 3" />
           <circle cx={x(n - 1)} cy={y(projected)} r={4} fill="var(--card)" stroke="var(--real)" strokeWidth={2} />
@@ -587,6 +618,80 @@ export function ProjectionChart({ labels, actual, projected, budget, format = (v
           {idx != null && <g pointerEvents="none">
             <line x1={x(idx)} x2={x(idx)} y1={top} y2={H - bottom} stroke="var(--ink-3)" strokeDasharray="3 3" />
             <circle cx={x(idx)} cy={y(valAt(idx))} r={4.5} fill="var(--card)" stroke="var(--real)" strokeWidth={2} />
+          </g>}
+          <rect x={left} y={0} width={Math.max(0, W - left - right)} height={H - bottom} fill="transparent" className="cursor-crosshair" data-chart-hit=""
+            onPointerMove={(e) => e.pointerType === 'mouse' && move(e, false)} onPointerLeave={(e) => e.pointerType === 'mouse' && tip.hide()} onClick={(e) => { e.stopPropagation(); move(e, true); }} />
+        </svg>}
+      </div>
+      {tip.node}
+    </figure>
+  );
+}
+
+// ---------- ritmo do mês: acumulado contra o ritmo ideal até o teto, cor pela situação de cada dia ----------
+// Sem eixo y: os números ficam no cabeçalho do card. Etiqueta no ponto de hoje com a distância para o ritmo ideal.
+// verde dentro do ritmo · laranja até 20% acima · rosa acima · vermelho passou do teto
+const PACE_LINE: Record<PaceStatus, string> = { under: 'var(--pos)', approaching: 'var(--warn)', over: 'var(--loss)', exceeded: 'var(--crit)' };
+const PACE_TAG: Record<PaceStatus, string> = { under: 'var(--pos)', approaching: 'var(--warn-ink)', over: 'var(--loss-ink)', exceeded: 'var(--crit-ink)' };
+export function PaceChart({ labels, spent, cap, format = (v: number) => String(v), height = 170 }: {
+  labels: string[]; spent: number[]; cap: number; format?: (v: number) => string; height?: number;
+}) {
+  const [ref, W] = useWidth<HTMLDivElement>();
+  const tip = useChartTip();
+  const gid = useId().replace(/:/g, '');
+  const n = labels.length, last = spent.length - 1;
+  const ideal = (i: number) => idealAt(cap, i + 1, n);
+  const st = (i: number) => paceStatus(spent[i], ideal(i), cap);
+  const hi = Math.max(1, cap, ...spent) * 1.06;
+  const top = 34, bottom = 22, left = 8, right = 8, H = height;
+  const x = (i: number) => left + (W - left - right) * (n <= 1 ? 0.5 : i / (n - 1));
+  const y = (v: number) => top + (H - top - bottom) * (1 - v / hi);
+  const pts = spent.map((v, i): Pt => [x(i), y(v)]);
+  const segs = monoSegs(pts);
+  const now = last >= 0 ? st(last) : 'under';
+  const diff = last >= 0 ? ideal(last) - spent[last] : 0;
+  const tag = `${format(Math.abs(diff))} ${diff >= 0 ? 'abaixo' : 'acima'} do ritmo`;
+  const tagW = textW(tag, 12) + 16;
+  const idx = typeof tip.active === 'number' ? tip.active : null;
+  const body = (i: number) => (
+    <TipBody title={labels[i]} rows={[
+      ...(i <= last ? [{ swatch: <Swatch color={PACE_LINE[st(i)]} line />, label: 'Gasto acumulado', value: format(spent[i]), strong: true }] : []),
+      { swatch: <Swatch color="var(--target)" line dashed />, label: 'Ritmo ideal', value: format(ideal(i)), tone: 'muted' as const },
+    ]} foot={i <= last ? `${PACE_LABEL[st(i)]} · ${format(Math.abs(ideal(i) - spent[i]))} ${ideal(i) >= spent[i] ? 'abaixo' : 'acima'}` : `Teto do mês ${format(cap)}`} />
+  );
+  const move = (e: React.PointerEvent | React.MouseEvent, pin: boolean) => { const i = nearest(e.clientX, ref.current, left, W - left - right, n); tip.show(i, anchorIn(ref.current, x(i), y(i <= last ? Math.max(spent[i], ideal(i)) : ideal(i))), body(i), pin); };
+  // etiqueta acima do ponto de hoje; se não couber, abaixo
+  const tx = last >= 0 ? Math.max(0, Math.min(W - tagW, x(last) - tagW / 2)) : 0, cx0 = last >= 0 ? Math.max(4, Math.min(tagW - 14, x(last) - tx - 5)) : 0;
+  const below = last >= 0 && y(spent[last]) - 34 < 0;
+  const ty = last >= 0 ? (below ? y(spent[last]) + 14 : y(spent[last]) - 34) : 0;
+  return (
+    <figure className="m-0">
+      <SrTable caption="Gasto acumulado e ritmo ideal" head={['Dia', 'Acumulado', 'Ritmo ideal']} rows={labels.map((l, i) => [l, i <= last ? format(spent[i]) : '—', format(ideal(i))])} />
+      <div ref={ref} aria-hidden="true">
+        {W > 0 && n > 0 && <svg width={W} height={H} className="block overflow-visible">
+          <defs>
+            <linearGradient id={`${gid}a`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor={PACE_LINE[now]} stopOpacity="0.2" /><stop offset="1" stopColor={PACE_LINE[now]} stopOpacity="0" /></linearGradient>
+            {edgeFade(gid, left, W - right, H)}
+          </defs>
+          <line x1={left} x2={W - right} y1={y(0)} y2={y(0)} stroke="var(--line)" />
+          <line x1={x(0)} y1={y(ideal(0))} x2={x(n - 1)} y2={y(cap)} stroke="var(--target)" strokeWidth={1.5} strokeDasharray="5 5" />
+          {[0, n - 1].map((i) => <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? 'start' : 'end'} {...AXIS}>{labels[i]}</text>)}
+          {last >= 1 && <path d={`${smooth(pts)}L${x(last)},${y(0)}L${x(0)},${y(0)}Z`} fill={`url(#${gid}a)`} />}
+          <g mask={`url(#${gid}m)`}>
+            {segs.map((c, i) => <path key={i} d={`M${pts[i][0].toFixed(1)},${pts[i][1].toFixed(1)}${c}`} fill="none" stroke={PACE_LINE[st(i + 1)]} strokeWidth={2.5} strokeLinecap="round" />)}
+          </g>
+          {last >= 0 && idx == null && <g>
+            <circle cx={x(last)} cy={y(spent[last])} r={5.5} fill={PACE_LINE[now]} stroke="var(--card)" strokeWidth={2} />
+            <g transform={`translate(${tx},${ty})`}>
+              <rect width={tagW} height={22} rx={6} fill={PACE_TAG[now]} />
+              <path d={below ? `M${cx0},0l5,-6l5,6z` : `M${cx0},22l5,6l5,-6z`} fill={PACE_TAG[now]} />
+              <text x={tagW / 2} y={15} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--on-dark)" fontFamily="var(--font-sans)">{tag}</text>
+            </g>
+          </g>}
+          {idx != null && <g pointerEvents="none">
+            <line x1={x(idx)} x2={x(idx)} y1={top} y2={H - bottom} stroke="var(--ink-3)" strokeDasharray="3 3" />
+            <circle cx={x(idx)} cy={y(ideal(idx))} r={3.5} fill="var(--card)" stroke="var(--target)" strokeWidth={1.5} />
+            {idx <= last && <circle cx={x(idx)} cy={y(spent[idx])} r={4.5} fill="var(--card)" stroke={PACE_LINE[st(idx)]} strokeWidth={2} />}
           </g>}
           <rect x={left} y={0} width={Math.max(0, W - left - right)} height={H - bottom} fill="transparent" className="cursor-crosshair" data-chart-hit=""
             onPointerMove={(e) => e.pointerType === 'mouse' && move(e, false)} onPointerLeave={(e) => e.pointerType === 'mouse' && tip.hide()} onClick={(e) => { e.stopPropagation(); move(e, true); }} />

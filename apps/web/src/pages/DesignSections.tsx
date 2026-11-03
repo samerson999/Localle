@@ -9,7 +9,7 @@ import { Button, TextButton, IconButton, Check, Radio, Switch, Tabs, PageTabs, P
 import { Section as UISection } from '../components/ui';
 import { Icon } from '../components/icons';
 import { Num, Plate, IdChip, DeltaChip, StatusDot, StatusLine, Deadline, DeadlineRow, KpiCard, ChartCard, PeriodButton, statusKind, type StatusKind } from '../components/story';
-import { ColumnChart, CompareBars, StackedColumns, RankBars, Bar100, LineChart, ProjectionChart, Gauge, Donut, Ring } from '../components/charts';
+import { ColumnChart, CompareBars, StackedColumns, RankBars, Bar100, LineChart, ProjectionChart, PaceChart, Gauge, Donut, Ring } from '../components/charts';
 import { GlideMarker, ClusteredVehicles, FenceShapes, VehicleCard, TILE, ATTR, fenceZone } from '../components/MapBits';
 import { AssetSilhouette, SILHOUETTES, glyphOf, silhouetteOf } from '../components/assetArt';
 
@@ -286,6 +286,12 @@ export function ChartsGallery({ st }: { st: 'ready' | 'loading' | 'empty' | 'err
       <ChartCard state={st} icon="dinheiro" title="Custo da frota no mês" period="Acumulado, projeção e orçamento" insight="No ritmo atual, o mês fecha abaixo do orçamento.">
         <ProjectionChart labels={days} actual={actual} projected={projected} budget={{ value: 52000 }} format={(v) => `R$ ${num(v / 1000)} mil`} />
       </ChartCard>
+      {/* ritmo do mês (BI de combustível): mesmo acumulado, dois tetos para mostrar as cores da situação */}
+      {[52000, 36000].map((cap) => (
+        <ChartCard key={cap} state={st} icon="combustivel" title="Ritmo do mês" period={`Teto R$ ${num(cap / 1000)} mil`} insight={cap > 40000 ? 'Dentro do ritmo: sobra no teto.' : 'Passou do ritmo ideal no meio do mês.'}>
+          <PaceChart labels={days} spent={actual} cap={cap} format={(v) => `R$ ${num(v / 1000, 1)} mil`} />
+        </ChartCard>
+      ))}
       <ChartCard state={st} icon="alvo" title="Disponibilidade" period="Meta 95%" insight="2,1 p.p. acima do período anterior.">
         <div className="flex justify-center pt-2"><Gauge value={92.4} goal={95} label="da frota disponível" /></div>
       </ChartCard>
