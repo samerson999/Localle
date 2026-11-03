@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { Card, Table, EmptyState, Stack, Grid, PageHeader } from '../components/ui';
+import { Card, Table, EmptyState, ErrorState, Stack, Grid, PageHeader } from '../components/ui';
+import { listarRelatoriosGerados, useAdminQuery, type TipoRelatorio } from '../lib/localleApi';
+import { fmtDT, num } from '@localle/shared/utils';
 import { Icon } from '../components/icons';
 import imgCerca from '../images/images-relatorios/cerca.png';
 import imgVelocidade from '../images/images-relatorios/velocidade.png';
@@ -12,16 +14,19 @@ import imgPassouPorAquiWeb from '../images/images-relatorios/web/passou-por-aqui
 
 // Relatórios: hub com um atalho por tipo de relatório. Período, filtros e geração ficam
 // na tela específica de cada tipo.
-const TIPOS: { icon: string; title: string; detail: string; img: string; webp: string; path: string }[] = [
-  { icon: 'cerca', title: 'Cercas', detail: 'Veja as passagens da frota pelas cercas definidas e o tempo de permanência.', img: imgCerca, webp: imgCercaWeb, path: '/relatorios/cercas' },
-  { icon: 'velocimetro', title: 'Velocidade', detail: 'Identifique excessos de velocidade e analise os trechos mais críticos.', img: imgVelocidade, webp: imgVelocidadeWeb, path: '/relatorios/velocidade' },
-  { icon: 'rota', title: 'Posições', detail: 'Consulte o histórico de posições detalhado da sua frota.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/posicoes' },
-  { icon: 'alvo', title: 'Passou por aqui', detail: 'Verifique quais veículos passaram por um ponto específico no mapa.', img: imgPassouPorAqui, webp: imgPassouPorAquiWeb, path: '/relatorios/passou-por-aqui' },
-  { icon: 'odometro', title: 'Uso da frota', detail: 'Km rodado, motor ligado, ociosidade e paradas de cada veículo.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/uso' },
+const TIPOS: { tipo: TipoRelatorio; icon: string; title: string; detail: string; img: string; webp: string; path: string }[] = [
+  { tipo: 'cercas', icon: 'cerca', title: 'Cercas', detail: 'Veja as passagens da frota pelas cercas definidas e o tempo de permanência.', img: imgCerca, webp: imgCercaWeb, path: '/relatorios/cercas' },
+  { tipo: 'velocidade', icon: 'velocimetro', title: 'Velocidade', detail: 'Identifique excessos de velocidade e analise os trechos mais críticos.', img: imgVelocidade, webp: imgVelocidadeWeb, path: '/relatorios/velocidade' },
+  { tipo: 'posicoes', icon: 'rota', title: 'Posições', detail: 'Consulte o histórico de posições detalhado da sua frota.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/posicoes' },
+  { tipo: 'passou_por_aqui', icon: 'alvo', title: 'Passou por aqui', detail: 'Verifique quais veículos passaram por um ponto específico no mapa.', img: imgPassouPorAqui, webp: imgPassouPorAquiWeb, path: '/relatorios/passou-por-aqui' },
+  { tipo: 'uso', icon: 'odometro', title: 'Uso da frota', detail: 'Km rodado, motor ligado, ociosidade e paradas de cada veículo.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/uso' },
 ];
 
 export default function Relatorios() {
   const navigate = useNavigate();
+  const hist = useAdminQuery(listarRelatoriosGerados);
+  const lista = hist.data || [];
+  const tipoDe = (k: TipoRelatorio) => TIPOS.find((t) => t.tipo === k);
   return (
     <div>
       <PageHeader icon="relatorios" title="Relatórios" subtitle="Transforme os dados da sua frota em informações claras e acionáveis" />
@@ -51,12 +56,27 @@ export default function Relatorios() {
           ))}
         </Grid>
 
-        <Card title="Relatórios recentes" icon="relogio" subtitle="Seus últimos relatórios gerados. Acesse um dos tipos acima para gerar um novo.">
-          <Table
-            head={['Tipo', 'Período', 'Filtros aplicados', 'Gerado em', 'Registros', 'Formato']}
-            rows={[]}
-            emptyState={<EmptyState icon="relogio" title="Nenhum relatório gerado ainda" detail="Abra um dos tipos acima para gerar o primeiro relatório do período." />}
-          />
+        {/* registrado pelo backend a cada exportação (reports/historico), da empresa toda; clique abre o tipo */}
+        <Card title="Relatórios recentes" icon="relogio" subtitle="Os últimos 50 relatórios exportados pela empresa. Clique num deles para abrir o tipo e gerar de novo.">
+          {hist.error ? <ErrorState detail={hist.error} onRetry={hist.reload} /> : (
+            <Table loading={hist.loading} minWidth={900} onRow={(i) => { const t = tipoDe(lista[i].tipo); if (t) navigate(t.path); }}
+              head={['Tipo', 'Período', 'Filtros aplicados', 'Gerado em', 'Por', 'Registros', 'Formato']}
+              align={['left', 'left', 'left', 'left', 'left', 'right', 'left']}
+              rows={lista.map((r) => {
+                const t = tipoDe(r.tipo);
+                return [
+                  <span className="flex items-center gap-icon font-medium"><Icon name={t?.icon || 'relatorios'} size={16} className="text-ink-2 shrink-0" />{t?.title || r.tipo}</span>,
+                  <span className="num whitespace-nowrap">{fmtDT(Date.parse(r.inicio))} → {fmtDT(Date.parse(r.fim))}</span>,
+                  <span className="text-small text-ink-2">{r.filtros || '—'}</span>,
+                  <span className="num whitespace-nowrap">{fmtDT(Date.parse(r.geradoEm))}</span>,
+                  <span className="text-small">{r.geradoPor || '—'}</span>,
+                  <span className="num">{num(r.registros)}</span>,
+                  <span className="text-small font-medium">{r.formato.toUpperCase()}</span>,
+                ];
+              })}
+              emptyState={<EmptyState icon="relogio" title="Nenhum relatório gerado ainda" detail="Abra um dos tipos acima e exporte em PDF, Excel ou CSV: ele aparece aqui." />}
+            />
+          )}
         </Card>
       </Stack>
     </div>

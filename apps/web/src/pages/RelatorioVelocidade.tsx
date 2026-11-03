@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
+import { isRealAsset, useRelatorioApi, registrarRelatorio } from '../lib/localleApi';
 import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
@@ -102,6 +102,7 @@ export default function RelatorioVelocidade() {
       ],
       nota: 'Um trecho é um período contínuo acima da velocidade mínima configurada.',
     });
+    registrarRelatorio({ tipo: 'velocidade', inicio: f, fim: t, filtros: filtrosTxt, registros: rows.length, formato });
     toast(`Relatório de velocidade gerado com ${rows.length} ${rows.length === 1 ? 'linha' : 'linhas'}.`);
   };
 

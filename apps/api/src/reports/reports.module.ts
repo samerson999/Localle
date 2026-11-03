@@ -7,10 +7,12 @@ import { FrotaReportsRepository } from './frota-reports.repository';
 import { FrotaReportsService } from './frota-reports.service';
 import { ReportsController } from './reports.controller';
 import { ReportsRepository } from './reports.repository';
+import { RelatoriosGeradosController } from './relatorios-gerados.controller';
+import { RelatoriosGeradosRepository } from './relatorios-gerados.repository';
 
 @Module({
   imports: [AuthGuardsModule, SettingsModule, PermissionsModule],
-  controllers: [ReportsController, FrotaReportsController],
-  providers: [ReportsRepository, FrotaReportsRepository, FrotaReportsService],
+  controllers: [ReportsController, FrotaReportsController, RelatoriosGeradosController],
+  providers: [ReportsRepository, FrotaReportsRepository, FrotaReportsService, RelatoriosGeradosRepository],
 })
 export class ReportsModule {}

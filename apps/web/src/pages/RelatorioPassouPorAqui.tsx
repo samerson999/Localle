@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
+import { isRealAsset, useRelatorioApi, registrarRelatorio } from '../lib/localleApi';
 import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
@@ -107,6 +107,7 @@ export default function RelatorioPassouPorAqui() {
       ],
       nota: 'Uma passagem é uma sequência contínua de posições dentro do raio; passagens do mesmo veículo separadas por mais de 5 minutos contam em separado.',
     });
+    registrarRelatorio({ tipo: 'passou_por_aqui', inicio: f, fim: t, filtros: filtrosTxt, registros: rows.length, formato });
     toast(`Relatório gerado com ${rows.length} ${rows.length === 1 ? 'linha' : 'linhas'}.`);
   };
 

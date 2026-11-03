@@ -309,6 +309,16 @@ export async function criarAtivo(plate: string): Promise<string> {
   return assetIdFor(a.id);
 }
 
+// ---------- histórico de relatórios (tela Relatórios › Relatórios recentes; visível para a empresa toda) ----------
+export type TipoRelatorio = 'cercas' | 'velocidade' | 'posicoes' | 'passou_por_aqui' | 'uso';
+export interface RelatorioGerado { id: string; tipo: TipoRelatorio; inicio: string; fim: string; filtros: string; registros: number; formato: 'pdf' | 'xlsx' | 'csv'; geradoEm: string; geradoPor: string | null }
+export const listarRelatoriosGerados = () => apiGet<RelatorioGerado[]>('/reports/historico');
+/** Registro de que um relatório foi exportado. Falhar aqui não desfaz a exportação: só avisa no console. */
+export function registrarRelatorio(r: { tipo: TipoRelatorio; inicio: number; fim: number; filtros: string; registros: number; formato: 'pdf' | 'xlsx' | 'csv' }) {
+  apiSend('POST', '/reports/historico', { ...r, inicio: new Date(r.inicio).toISOString(), fim: new Date(r.fim).toISOString(), filtros: r.filtros.slice(0, 500) })
+    .catch((e) => console.warn('[relatorios] histórico não registrado:', r.tipo, r.formato, e));
+}
+
 /** Carga simples para as telas do painel: dado, erro e recarregar. */
 export function useAdminQuery<T>(load: () => Promise<T>, deps: unknown[] = []) {
   const [state, setState] = useState<{ data: T | null; error: string; loading: boolean }>({ data: null, error: '', loading: true });

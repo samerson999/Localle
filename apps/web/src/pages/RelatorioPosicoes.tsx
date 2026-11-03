@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
+import { isRealAsset, useRelatorioApi, registrarRelatorio } from '../lib/localleApi';
 import { fetchLiveRoute } from '../lib/positionsSource';
 
 // Pontos (mapa e exportação linha a linha) dos veículos reais só até este tanto de veículos por vez;
@@ -104,6 +104,7 @@ export default function RelatorioPosicoes() {
       sections: [...secoesPdf(filtrados), { title: 'Resumo da frota', head: resumoHead, rows: resumoRows() }],
       nota: 'Um bloco por veículo, em ordem de placa; dentro do bloco, cada linha é uma posição enviada pelo rastreador, em ordem cronológica. Parada = mais de 5 min a até 3 km/h.',
     });
+    registrarRelatorio({ tipo: 'posicoes', inicio: f, fim: t, filtros: filtrosTxt, registros: rows.length, formato });
     toast(`Relatório de posições gerado com ${rows.length} ${rows.length === 1 ? 'linha' : 'linhas'}.`);
   };
 

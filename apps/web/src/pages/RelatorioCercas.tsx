@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
+import { isRealAsset, useRelatorioApi, registrarRelatorio } from '../lib/localleApi';
 import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
@@ -104,6 +104,7 @@ export default function RelatorioCercas() {
       ],
       nota: 'Uma passagem vai da entrada à saída da cerca; veículos ainda dentro da cerca contam até o fim do período.',
     });
+    registrarRelatorio({ tipo: 'cercas', inicio: f, fim: t, filtros: filtrosTxt, registros: rows.length, formato });
     toast(`Relatório de cercas gerado com ${rows.length} ${rows.length === 1 ? 'linha' : 'linhas'}.`);
   };
 

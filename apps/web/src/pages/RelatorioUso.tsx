@@ -4,7 +4,7 @@ import { routeStats } from '@localle/shared/routeStats';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { hmOuTraco } from '../lib/relatorioPosicoes';
 import { useStore, useStoreData } from '../lib/store';
-import { isRealAsset, useRelatorioApi } from '../lib/localleApi';
+import { isRealAsset, useRelatorioApi, registrarRelatorio } from '../lib/localleApi';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, EmptyState, Stack, Grid, Panel, PageHeader, toast } from '../components/ui';
 import { AssetName } from '../components/story';
 import { Icon } from '../components/icons';
@@ -80,6 +80,7 @@ export default function RelatorioUso() {
       sections: [{ title: 'Uso por veículo', head, rows }],
       nota: 'Parada = mais de 5 min a até 3 km/h. Ocioso = parado com a ignição ligada.',
     });
+    registrarRelatorio({ tipo: 'uso', inicio: f, fim: t, filtros: filtrosTxt, registros: filtrados.length, formato });
     toast(`Relatório de uso gerado com ${filtrados.length} ${filtrados.length === 1 ? 'veículo' : 'veículos'}.`);
   };
 
