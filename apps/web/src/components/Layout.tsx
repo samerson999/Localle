@@ -229,7 +229,7 @@ function LayoutBody() {
               por --top-reserve). Com a faixa de suporte aberta, volta a ocupar uma linha própria acima dela. Não acompanha o scroll. */}
           {fleet && (
             <div className={cx('no-print hidden md:flex z-[40] justify-end items-start px-page-md pointer-events-none', session.support ? 'pt-page-top-md bg-canvas' : 'h-0')}>
-              <button ref={needsBtn} type="button" onClick={() => setPanel(true)} aria-expanded={panel} title="Precisa de você"
+              <button ref={needsBtn} type="button" onClick={() => setPanel((x) => !x)} aria-expanded={panel} aria-haspopup="dialog" title="Precisa de você"
                 className={cx('pointer-events-auto flex items-center gap-icon h-ctl px-3 rounded-ctl bg-card border border-line shadow-pop text-body font-medium text-ink-2 hover:text-ink hover:bg-surface-hover', !session.support && 'mt-page-top-md')}>
                 <Icon name="atencao" className="shrink-0" /><span>Precisa de você</span>
                 {needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="ml-1" />}
@@ -252,7 +252,7 @@ function LayoutBody() {
           <main key={loc.pathname} className="flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end md:px-page-md md:pt-page-top-md anim-page"><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
         </div>
       </SidebarInset>
-      <NeedsPanel open={panel} onClose={() => setPanel(false)} />
+      <NeedsPanel open={panel} onClose={() => setPanel(false)} anchor={needsBtn.current} />
       <CommandPalette open={cmdk} onClose={() => setCmdk(false)} modules={mods} />
     </div>
   );

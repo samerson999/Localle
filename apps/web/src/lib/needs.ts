@@ -36,3 +36,23 @@ export function useNeedsYou(): NeedItem[] {
   }, [s.plans, s.workOrders, s.tires, s.vehicles, s.fines, s.assets, s.drivers]);
   return useMemo(() => [...vehicles, ...rest], [vehicles, rest]);
 }
+
+// Tipos de "Precisa de você": rótulo e ícone (mesmos no painel do topo e na central)
+export const NEED_KINDS: { kind: NeedItem['kind']; label: string; icon: string }[] = [
+  { kind: 'veiculo', label: 'Veículos', icon: 'alerta' },
+  { kind: 'os', label: 'Manutenção', icon: 'manutencao' },
+  { kind: 'pneu', label: 'Pneus', icon: 'pneus' },
+  { kind: 'multa', label: 'Multas', icon: 'multas' },
+  { kind: 'documento', label: 'Documentos', icon: 'calendario' },
+];
+export const needIcon = (k: NeedItem['kind']) => NEED_KINDS.find((x) => x.kind === k)?.icon || 'alerta';
+
+/** há quanto tempo o item espera: "há 12 min", "há 5 h", "há 3 dias" (sem `since`, vazio) */
+export function needAge(since?: number, now = Date.now()) {
+  if (since == null || !isFinite(since)) return '';
+  const min = Math.max(0, Math.floor((now - since) / 60000));
+  if (min < 60) return `há ${Math.max(1, min)} min`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return `há ${h} h`;
+  return `há ${Math.floor(h / 24)} dias`;
+}
