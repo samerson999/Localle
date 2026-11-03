@@ -217,120 +217,145 @@ function AssetForm({ a, setA }: any) {
     }
   };
   const specs = Object.entries<string>(a.specs || {});
+  // abas do cadastro: identificação, ficha, uso/operação, documentos, rastreador e (ativo já salvo) histórico
+  const [aba, setAba] = useState('dados');
+  const abas = [
+    { key: 'dados', label: 'Dados' },
+    { key: 'ficha', label: isV ? 'Ficha técnica' : 'Campos' },
+    { key: 'operacao', label: 'Operação' },
+    { key: 'documentos', label: 'Documentos', count: (a.documents || []).length || undefined },
+    { key: 'rastreador', label: 'Rastreador' },
+    ...(a.id ? [{ key: 'historico', label: 'Histórico' }] : []),
+  ];
+  // o que impede salvar fica visível no rodapé, com atalho para a aba onde se resolve
+  const pend = !a.plate && (isV || a.kind === 'implemento') ? { aba: 'dados', txt: 'Informe a placa na aba Dados' } : instErr ? { aba: 'rastreador', txt: `Rastreador: ${instErr}` } : null;
   return (
-    <Modal open onClose={() => setA(null)} title={a.id ? a.name : 'Novo ativo'} width="max-w-5xl" footer={<><Button variant="ghost" onClick={() => setA(null)}>Cancelar</Button><Button loading={busy} disabled={!a.plate || !!instErr} onClick={save}>Salvar ativo</Button></>}>
+    <Modal open onClose={() => setA(null)} title={a.id ? a.name : 'Novo ativo'} width="max-w-5xl" footer={<>{pend && <TextButton className="mr-auto text-left" onClick={() => setAba(pend.aba)}>{pend.txt}</TextButton>}<Button variant="ghost" onClick={() => setA(null)}>Cancelar</Button><Button loading={busy} disabled={!a.plate || !!instErr} onClick={save}>Salvar ativo</Button></>}>
       <div role="group" aria-label="Tipo do ativo" className="flex flex-wrap gap-2">{CATEGORIES.map((ct) => { const on = (a.category || categoryOf(a)) === ct.key; return <button key={ct.key} type="button" aria-pressed={on} onClick={() => { const k = ct.kind; setA({ ...blank(k), ...a, category: ct.key, kind: k, meter: k === a.kind ? a.meter : k === 'veiculo' || k === 'implemento' ? 'km' : k === 'linha_amarela' ? 'horimetro' : 'nenhum', kmSource: k === a.kind ? a.kmSource : blank(k).kmSource }); }} className={cx('flex flex-col items-center gap-tight w-[112px] pt-3 pb-3 rounded-ctl text-caption transition-colors', on ? 'bg-card-2 ring-[1.5px] ring-inset ring-ink text-ink font-medium' : 'border border-line text-ink-2 hover:bg-card-2')}><AssetSilhouette category={ct.key} className="w-14 h-6" />{ct.label}</button>; })}</div>
-
-      <div className="flex flex-wrap gap-group">
-        <div className="flex-[999_1_480px] min-w-0 flex flex-col gap-group">
-          {isV ? (
-            <>
-              <div className="flex flex-wrap gap-field items-end">
-                <Field label="Placa" className="w-36"><Input className="font-mono font-semibold uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} placeholder="ABC1D23" /></Field>
-                <Field label="Marca" className="w-40"><Input value={a.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
-                <Field label="Modelo" className="flex-1 min-w-[180px]"><Input list="models" value={a.model} onChange={(e) => set('model', e.target.value)} /><datalist id="models">{Object.keys(SPECS_DB).map((m) => <option key={m} value={m} />)}</datalist></Field>
-                <Field label="Ano" className="w-28"><Input value={a.year} onChange={(e) => set('year', e.target.value)} placeholder="2024/2025" /></Field>
-                <div className="flex flex-col gap-field-label"><span className="invisible text-small" aria-hidden="true">·</span><Button variant="ghost" onClick={lookup}>Consultar dados do veículo</Button></div>
-              </div>
-              {msg && <p role="status" className="text-small text-ink-2 bg-card-2 border border-line rounded-ctl p-stack">{msg}</p>}
-            </>
-          ) : (
-            <>
-              <p className="text-small text-ink-2">{a.kind === 'implemento' ? 'Carreta ou implemento: engata em cavalos diferentes, tem pneus próprios e pode ter rastreador próprio.' : 'Ativos que não são veículos são cadastrados manualmente.'}</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
-                {a.kind === 'implemento' && <Field label="Placa"><Input className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>}
-                <Field label="Fabricante"><Input value={a.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
-                <Field label="Modelo"><Input value={a.model} onChange={(e) => set('model', e.target.value)} /></Field>
-                <Field label="Ano"><Input value={a.year} onChange={(e) => set('year', e.target.value)} /></Field>
-                <Field label="Nº de série / patrimônio"><Input value={a.serial} onChange={(e) => set('serial', e.target.value)} /></Field>
-                {a.kind !== 'implemento' && <Field label="Medidor de uso"><Select value={a.meter} onChange={(e) => set('meter', e.target.value)} options={[{ value: 'horimetro', label: 'Horímetro' }, { value: 'km', label: 'Quilometragem' }, { value: 'nenhum', label: 'Sem medidor' }]} /></Field>}
-              </div>
-            </>
-          )}
-          <Field label="Apelido / identificação no mapa"><Input value={a.name} onChange={(e) => set('name', e.target.value)} placeholder={isV ? 'Ex.: placa ou nome do veículo' : 'Ex.: Caixa fria CF-08'} /></Field>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center"><span className="text-small font-semibold mr-auto">{isV ? 'Ficha técnica e referência de peças' : 'Campos personalizados'}</span>
-              <Button size="sm" variant="soft" onClick={() => isV ? set('specs', { ...a.specs, 'Novo item': '' }) : set('customFields', [...a.customFields, { k: '', v: '' }])}>Adicionar campo</Button></div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {isV ? specs.map(([k, v], i) => (
-                <div key={i} className="flex flex-col gap-hair border border-line rounded-ctl p-tight">
-                  <InlineInput aria-label="Item" className="text-caption font-medium text-ink-3" value={k} onChange={(e) => { const n = Object.fromEntries(specs.map(([kk, vv], j) => (j === i ? [e.target.value, vv] : [kk, vv]))); set('specs', n); }} />
-                  <InlineInput aria-label={k} className="text-body font-medium" value={v} onChange={(e) => set('specs', { ...a.specs, [k]: e.target.value })} />
-                </div>
-              )) : a.customFields.map((c: any, i: number) => (
-                <div key={i} className="flex flex-col gap-hair border border-line rounded-ctl p-tight">
-                  <InlineInput aria-label="Campo" placeholder="Campo" className="text-caption font-medium text-ink-3" value={c.k} onChange={(e) => set('customFields', a.customFields.map((x: any, j: number) => (j === i ? { ...x, k: e.target.value } : x)))} />
-                  <InlineInput aria-label="Valor" placeholder="Valor" className="text-body font-medium" value={c.v} onChange={(e) => set('customFields', a.customFields.map((x: any, j: number) => (j === i ? { ...x, v: e.target.value } : x)))} />
-                </div>
-              ))}
+      <Tabs className="mt-group" value={aba} onChange={setAba} tabs={abas} />
+      {/* altura mínima: trocar de aba não faz o modal pular de tamanho */}
+      <div className="pt-group min-h-[460px]">
+        {aba === 'dados' && (
+          <div className="flex flex-wrap gap-group">
+            <div className="flex-[999_1_480px] min-w-0 flex flex-col gap-group">
+              {isV ? (
+                <>
+                  <div className="flex flex-wrap gap-field items-end">
+                    <Field label="Placa" className="w-36"><Input className="font-mono font-semibold uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} placeholder="ABC1D23" /></Field>
+                    <Field label="Marca" className="w-40"><Input value={a.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
+                    <Field label="Modelo" className="flex-1 min-w-[180px]"><Input list="models" value={a.model} onChange={(e) => set('model', e.target.value)} /><datalist id="models">{Object.keys(SPECS_DB).map((m) => <option key={m} value={m} />)}</datalist></Field>
+                    <Field label="Ano" className="w-28"><Input value={a.year} onChange={(e) => set('year', e.target.value)} placeholder="2024/2025" /></Field>
+                    <div className="flex flex-col gap-field-label"><span className="invisible text-small" aria-hidden="true">·</span><Button variant="ghost" onClick={lookup}>Consultar dados do veículo</Button></div>
+                  </div>
+                  {msg && <p role="status" className="text-small text-ink-2 bg-card-2 border border-line rounded-ctl p-stack">{msg}</p>}
+                </>
+              ) : (
+                <>
+                  <p className="text-small text-ink-2">{a.kind === 'implemento' ? 'Carreta ou implemento: engata em cavalos diferentes, tem pneus próprios e pode ter rastreador próprio.' : 'Ativos que não são veículos são cadastrados manualmente.'}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
+                    {a.kind === 'implemento' && <Field label="Placa"><Input className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>}
+                    <Field label="Fabricante"><Input value={a.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
+                    <Field label="Modelo"><Input value={a.model} onChange={(e) => set('model', e.target.value)} /></Field>
+                    <Field label="Ano"><Input value={a.year} onChange={(e) => set('year', e.target.value)} /></Field>
+                    <Field label="Nº de série / patrimônio"><Input value={a.serial} onChange={(e) => set('serial', e.target.value)} /></Field>
+                    {a.kind !== 'implemento' && <Field label="Medidor de uso"><Select value={a.meter} onChange={(e) => set('meter', e.target.value)} options={[{ value: 'horimetro', label: 'Horímetro' }, { value: 'km', label: 'Quilometragem' }, { value: 'nenhum', label: 'Sem medidor' }]} /></Field>}
+                  </div>
+                </>
+              )}
+              <Field label="Apelido / identificação no mapa"><Input value={a.name} onChange={(e) => set('name', e.target.value)} placeholder={isV ? 'Ex.: placa ou nome do veículo' : 'Ex.: Caixa fria CF-08'} /></Field>
+              <div className="flex flex-col gap-2"><span className="text-small font-semibold">Grupos</span><div className="flex flex-wrap gap-4">{s.groups.map((g: any) => <Check key={g.id} label={g.name} checked={a.groupIds.includes(g.id)} onChange={(v) => set('groupIds', v ? [...a.groupIds, g.id] : a.groupIds.filter((x: string) => x !== g.id))} />)}</div></div>
+            </div>
+            <div className="flex-[1_1_280px] max-w-[340px] flex flex-col gap-grid">
+              <Dropzone label="Foto do ativo" hint="Aparece no mapa e no detalhe. JPG, PNG ou WebP até 4 MB." value={a.photo} onChange={(d) => set('photo', d)} previewAlt={`Foto de ${a.name || 'ativo'}`} />
+              <IconPicker category={a.category || categoryOf(a)} value={a.icon} onChange={(v) => set('icon', v)} />
             </div>
           </div>
-          {a.meter !== 'nenhum' && (
+        )}
+        {aba === 'ficha' && <div className="flex flex-col gap-group">
             <div className="flex flex-col gap-2">
-              <span className="text-small font-semibold">Origem da {a.meter === 'horimetro' ? 'leitura do horímetro' : 'quilometragem'}</span>
-              <span className="text-small text-ink-2">Alimenta os gatilhos de manutenção, metas de combustível e relatórios.</span>
-              <div className="grid md:grid-cols-3 gap-2">
-                {(a.kind === 'implemento' ? [['engate', 'Engates', 'Soma o km dos cavalos enquanto ela esteve engatada'], ['rastreador', 'Rastreador próprio', 'Quando a carreta tem rastreador']] : [['rastreador', 'Rastreador', 'Odômetro GPS/CAN em tempo real'], ['manual', 'Lançamentos', 'Abastecimentos, checklists e OS'], ['mescla', 'Mescla', 'Rastreador corrigido pelos lançamentos']]).map(([k, l, d]) => (
-                  <ChoiceCard key={k} checked={a.kmSource === k} onSelect={() => set('kmSource', k)} title={l} description={d} />
+              <div className="flex items-center"><span className="text-small font-semibold mr-auto">{isV ? 'Ficha técnica e referência de peças' : 'Campos personalizados'}</span>
+                <Button size="sm" variant="soft" onClick={() => isV ? set('specs', { ...a.specs, 'Novo item': '' }) : set('customFields', [...a.customFields, { k: '', v: '' }])}>Adicionar campo</Button></div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {isV ? specs.map(([k, v], i) => (
+                  <div key={i} className="flex flex-col gap-hair border border-line rounded-ctl p-tight">
+                    <InlineInput aria-label="Item" className="text-caption font-medium text-ink-3" value={k} onChange={(e) => { const n = Object.fromEntries(specs.map(([kk, vv], j) => (j === i ? [e.target.value, vv] : [kk, vv]))); set('specs', n); }} />
+                    <InlineInput aria-label={k} className="text-body font-medium" value={v} onChange={(e) => set('specs', { ...a.specs, [k]: e.target.value })} />
+                  </div>
+                )) : a.customFields.map((c: any, i: number) => (
+                  <div key={i} className="flex flex-col gap-hair border border-line rounded-ctl p-tight">
+                    <InlineInput aria-label="Campo" placeholder="Campo" className="text-caption font-medium text-ink-3" value={c.k} onChange={(e) => set('customFields', a.customFields.map((x: any, j: number) => (j === i ? { ...x, k: e.target.value } : x)))} />
+                    <InlineInput aria-label="Valor" placeholder="Valor" className="text-body font-medium" value={c.v} onChange={(e) => set('customFields', a.customFields.map((x: any, j: number) => (j === i ? { ...x, v: e.target.value } : x)))} />
+                  </div>
                 ))}
               </div>
-              {a.kmSource === 'mescla' && <Field label="Ajuste do odômetro do rastreador (km)" hint="Diferença entre o painel do veículo e o rastreador. Na mescla, vale o maior entre rastreador ajustado e último lançamento." className="max-w-xs"><Input type="number" value={a.kmOffset} onChange={(e) => set('kmOffset', e.target.value)} /></Field>}
             </div>
-          )}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-field">
-            {isV && <Field label="Meta de consumo (km/L)"><Input type="number" step="0.1" value={a.fuelGoal} onChange={(e) => set('fuelGoal', e.target.value)} /></Field>}
-            {isV && <Field label="Teto mensal combustível (R$)"><Input type="number" value={a.fuelBudget} onChange={(e) => set('fuelBudget', e.target.value)} /></Field>}
-            {a.kind === 'implemento' && <Field label="Tipo de implemento"><Select value={a.trailerType || 'semirreboque'} onChange={(e) => set('trailerType', e.target.value)} options={Object.entries(TRAILER_TYPE).map(([value, label]) => ({ value, label }))} /></Field>}
-            <Field label="Operação"><Select value={a.operationId} onChange={(e) => set('operationId', e.target.value)} options={[{ value: '', label: '—' }, ...s.operations.map((o: any) => ({ value: o.id, label: o.name }))]} /></Field>
-            <Field label="Motorista / operador" hint="Registra pela escala. App e rastreador têm prioridade quando informam outro motorista."><SearchSelect value={a.driverId} onChange={(v) => set('driverId', v)} placeholder="—" options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
-            {isV && <Field label="Jornada vem de"><Select value={a.journeySource} onChange={(e) => set('journeySource', e.target.value)} options={[{ value: 'teclado', label: 'Teclado embarcado' }, { value: 'app', label: 'App do motorista' }]} /></Field>}
-          </div>
-          {a.kind === 'implemento' && a.id && <Engates trailerId={a.id} />}
-          {a.kind === 'veiculo' && a.id && (/cavalo/.test(categoryOf(a)) || compositionOf(s, a.id)) && <Composicao tractorId={a.id} />}
-          <Documentos a={a} set={set} />
-          <div className="flex flex-col gap-2"><span className="text-small font-semibold">Grupos</span><div className="flex flex-wrap gap-4">{s.groups.map((g: any) => <Check key={g.id} label={g.name} checked={a.groupIds.includes(g.id)} onChange={(v) => set('groupIds', v ? [...a.groupIds, g.id] : a.groupIds.filter((x: string) => x !== g.id))} />)}</div></div>
-        </div>
-        <div className="flex-[1_1_280px] max-w-[340px] flex flex-col gap-grid">
-          <Dropzone label="Foto do ativo" hint="Aparece no mapa e no detalhe. JPG, PNG ou WebP até 4 MB." value={a.photo} onChange={(d) => set('photo', d)} previewAlt={`Foto de ${a.name || 'ativo'}`} />
-          <IconPicker category={a.category || categoryOf(a)} value={a.icon} onChange={(v) => set('icon', v)} />
-          <div className="flex flex-col gap-stack border border-line rounded-ctl p-card-sm">
-            <span className="text-small font-semibold">Rastreador</span>
-            {instalado ? (
-              <div className="flex flex-col gap-hair">
-                <IdChip size="sm">{instalado.imei}</IdChip>
-                <span className="text-small">{instalado.modelo || 'Modelo não informado'}{instalado.protocolo ? ` · ${instalado.protocolo}` : ''}</span>
-                <span className="text-caption text-ink-2">Instalado em {fmtD(Date.parse(instalado.instalado_em!))} · último sinal {instalado.ultimo_pacote_em ? fmtDT(Date.parse(instalado.ultimo_pacote_em)) : 'ainda não recebido'}</span>
-              </div>
-            ) : meus === null ? (
-              erroLista ? <p role="alert" className="text-small text-crit-ink">Não foi possível carregar os rastreadores: {erroLista}</p> : <p className="text-small text-ink-2">Carregando rastreadores…</p>
-            ) : livres.length ? (
-              <Field label="Rastreador disponível"><Select value={rid} onChange={(e) => setRid(e.target.value)} options={[{ value: '', label: 'Sem rastreador' }, ...livres.map((r) => ({ value: r.id, label: `${r.imei} · ${r.modelo || 'modelo não informado'}` }))]} /></Field>
-            ) : (
-              <p className="text-small text-ink-2">Nenhum rastreador disponível. Os rastreadores são vinculados à sua conta pela Localle; fale com ela para incluir um.</p>
-            )}
-            <Check label="Rastreador lê dados CAN (telemetria: RPM, banguela, consumo)" checked={!!a.can} onChange={(v) => set('can', v)} />
-            {newLink && (
-              <div className="flex flex-col gap-stack border-t border-line pt-stack">
-                <span className="text-small font-semibold">Dados da instalação</span>
-                <Field label="Técnico responsável"><Input value={inst.tech} onChange={(e) => setInst({ ...inst, tech: e.target.value })} placeholder="Nome do instalador" /></Field>
-                <Field label="Data e hora da instalação"><Input type="datetime-local" value={inst.date} onChange={(e) => setInst({ ...inst, date: e.target.value })} /></Field>
-                <Check label="Veículo não permite ler o odômetro (km será calculado pelo rastreador)" checked={inst.calc} onChange={(v) => setInst({ ...inst, calc: v })} />
-                {!inst.calc && <>
-                  <Field label="Odômetro inicial do painel (km)"><Input type="number" value={inst.km} onChange={(e) => setInst({ ...inst, km: e.target.value })} /></Field>
-                  <Dropzone label="Foto do painel com o odômetro" required className="h-32" value={inst.photo} onChange={(d) => setInst({ ...inst, photo: d })} previewAlt="Foto do painel com o odômetro" />
-                </>}
-                {instErr && <p role="alert" className="text-small font-medium text-crit-ink">{instErr}</p>}
-                <p className="text-caption text-ink-2 bg-card-2 border border-line rounded-btn p-stack">Ao salvar, este vínculo consome 1 acesso da licença da sua central.</p>
+        </div>}
+        {aba === 'operacao' && <div className="flex flex-col gap-group">
+            {a.meter !== 'nenhum' && (
+              <div className="flex flex-col gap-2">
+                <span className="text-small font-semibold">Origem da {a.meter === 'horimetro' ? 'leitura do horímetro' : 'quilometragem'}</span>
+                <span className="text-small text-ink-2">Alimenta os gatilhos de manutenção, metas de combustível e relatórios.</span>
+                <div className="grid md:grid-cols-3 gap-2">
+                  {(a.kind === 'implemento' ? [['engate', 'Engates', 'Soma o km dos cavalos enquanto ela esteve engatada'], ['rastreador', 'Rastreador próprio', 'Quando a carreta tem rastreador']] : [['rastreador', 'Rastreador', 'Odômetro GPS/CAN em tempo real'], ['manual', 'Lançamentos', 'Abastecimentos, checklists e OS'], ['mescla', 'Mescla', 'Rastreador corrigido pelos lançamentos']]).map(([k, l, d]) => (
+                    <ChoiceCard key={k} checked={a.kmSource === k} onSelect={() => set('kmSource', k)} title={l} description={d} />
+                  ))}
+                </div>
+                {a.kmSource === 'mescla' && <Field label="Ajuste do odômetro do rastreador (km)" hint="Diferença entre o painel do veículo e o rastreador. Na mescla, vale o maior entre rastreador ajustado e último lançamento." className="max-w-xs"><Input type="number" value={a.kmOffset} onChange={(e) => set('kmOffset', e.target.value)} /></Field>}
               </div>
             )}
-            {instalado && <TextButton tone="danger" className="self-start" onClick={async () => { if (!(await confirmAction({ title: 'Retirar o rastreador?', detail: `O rastreador ${instalado.imei} sai de ${a.name} e fica disponível para outro ativo da sua conta.`, confirmLabel: 'Retirar' }))) return; try { await desinstalarRastreador(instalado.instalacao_id!); unlinkTracker(a.id, 'retirado'); toast('Rastreador retirado; está disponível para outro ativo.'); setA(null); } catch (e: any) { toast('Não foi possível retirar: ' + (e.message || e), { tone: 'crit' }); } }}>Retirar rastreador</TextButton>}
-            {a.tracker && <p className="text-caption text-ink-2">Vinculado desde {fmtD(a.tracker.linkedAt)}{a.installation ? ` · instalado por ${a.installation.technician}` : ''}{a.kmCalculated ? ' · km calculado' : a.installation?.initialKm != null ? ` · odômetro inicial ${num(a.installation.initialKm)} km` : ''}</p>}
-          </div>
-          {a.id && <TrackerHistory assetId={a.id} />}
-          {a.id && a.kind !== 'implemento' && <DriverHistory assetId={a.id} />}
-          {a.id && <Situacao a={a} onDone={() => setA(null)} />}
-          {a.id && <AuditLog refId={a.id} />}
-        </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-field">
+              {isV && <Field label="Meta de consumo (km/L)"><Input type="number" step="0.1" value={a.fuelGoal} onChange={(e) => set('fuelGoal', e.target.value)} /></Field>}
+              {isV && <Field label="Teto mensal combustível (R$)"><Input type="number" value={a.fuelBudget} onChange={(e) => set('fuelBudget', e.target.value)} /></Field>}
+              {a.kind === 'implemento' && <Field label="Tipo de implemento"><Select value={a.trailerType || 'semirreboque'} onChange={(e) => set('trailerType', e.target.value)} options={Object.entries(TRAILER_TYPE).map(([value, label]) => ({ value, label }))} /></Field>}
+              <Field label="Operação"><Select value={a.operationId} onChange={(e) => set('operationId', e.target.value)} options={[{ value: '', label: '—' }, ...s.operations.map((o: any) => ({ value: o.id, label: o.name }))]} /></Field>
+              <Field label="Motorista / operador" hint="Registra pela escala. App e rastreador têm prioridade quando informam outro motorista."><SearchSelect value={a.driverId} onChange={(v) => set('driverId', v)} placeholder="—" options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
+              {isV && <Field label="Jornada vem de"><Select value={a.journeySource} onChange={(e) => set('journeySource', e.target.value)} options={[{ value: 'teclado', label: 'Teclado embarcado' }, { value: 'app', label: 'App do motorista' }]} /></Field>}
+            </div>
+            {a.kind === 'implemento' && a.id && <Engates trailerId={a.id} />}
+            {a.kind === 'veiculo' && a.id && (/cavalo/.test(categoryOf(a)) || compositionOf(s, a.id)) && <Composicao tractorId={a.id} />}
+        </div>}
+        {aba === 'documentos' && <Documentos a={a} set={set} />}
+        {aba === 'rastreador' && <div className="flex flex-col gap-grid max-w-2xl">
+            <div className="flex flex-col gap-stack border border-line rounded-ctl p-card-sm">
+              <span className="text-small font-semibold">Rastreador</span>
+              {instalado ? (
+                <div className="flex flex-col gap-hair">
+                  <IdChip size="sm">{instalado.imei}</IdChip>
+                  <span className="text-small">{instalado.modelo || 'Modelo não informado'}{instalado.protocolo ? ` · ${instalado.protocolo}` : ''}</span>
+                  <span className="text-caption text-ink-2">Instalado em {fmtD(Date.parse(instalado.instalado_em!))} · último sinal {instalado.ultimo_pacote_em ? fmtDT(Date.parse(instalado.ultimo_pacote_em)) : 'ainda não recebido'}</span>
+                </div>
+              ) : meus === null ? (
+                erroLista ? <p role="alert" className="text-small text-crit-ink">Não foi possível carregar os rastreadores: {erroLista}</p> : <p className="text-small text-ink-2">Carregando rastreadores…</p>
+              ) : livres.length ? (
+                <Field label="Rastreador disponível"><Select value={rid} onChange={(e) => setRid(e.target.value)} options={[{ value: '', label: 'Sem rastreador' }, ...livres.map((r) => ({ value: r.id, label: `${r.imei} · ${r.modelo || 'modelo não informado'}` }))]} /></Field>
+              ) : (
+                <p className="text-small text-ink-2">Nenhum rastreador disponível. Os rastreadores são vinculados à sua conta pela Localle; fale com ela para incluir um.</p>
+              )}
+              <Check label="Rastreador lê dados CAN (telemetria: RPM, banguela, consumo)" checked={!!a.can} onChange={(v) => set('can', v)} />
+              {newLink && (
+                <div className="flex flex-col gap-stack border-t border-line pt-stack">
+                  <span className="text-small font-semibold">Dados da instalação</span>
+                  <Field label="Técnico responsável"><Input value={inst.tech} onChange={(e) => setInst({ ...inst, tech: e.target.value })} placeholder="Nome do instalador" /></Field>
+                  <Field label="Data e hora da instalação"><Input type="datetime-local" value={inst.date} onChange={(e) => setInst({ ...inst, date: e.target.value })} /></Field>
+                  <Check label="Veículo não permite ler o odômetro (km será calculado pelo rastreador)" checked={inst.calc} onChange={(v) => setInst({ ...inst, calc: v })} />
+                  {!inst.calc && <>
+                    <Field label="Odômetro inicial do painel (km)"><Input type="number" value={inst.km} onChange={(e) => setInst({ ...inst, km: e.target.value })} /></Field>
+                    <Dropzone label="Foto do painel com o odômetro" required className="h-32" value={inst.photo} onChange={(d) => setInst({ ...inst, photo: d })} previewAlt="Foto do painel com o odômetro" />
+                  </>}
+                  {instErr && <p role="alert" className="text-small font-medium text-crit-ink">{instErr}</p>}
+                  <p className="text-caption text-ink-2 bg-card-2 border border-line rounded-btn p-stack">Ao salvar, este vínculo consome 1 acesso da licença da sua central.</p>
+                </div>
+              )}
+              {instalado && <TextButton tone="danger" className="self-start" onClick={async () => { if (!(await confirmAction({ title: 'Retirar o rastreador?', detail: `O rastreador ${instalado.imei} sai de ${a.name} e fica disponível para outro ativo da sua conta.`, confirmLabel: 'Retirar' }))) return; try { await desinstalarRastreador(instalado.instalacao_id!); unlinkTracker(a.id, 'retirado'); toast('Rastreador retirado; está disponível para outro ativo.'); setA(null); } catch (e: any) { toast('Não foi possível retirar: ' + (e.message || e), { tone: 'crit' }); } }}>Retirar rastreador</TextButton>}
+              {a.tracker && <p className="text-caption text-ink-2">Vinculado desde {fmtD(a.tracker.linkedAt)}{a.installation ? ` · instalado por ${a.installation.technician}` : ''}{a.kmCalculated ? ' · km calculado' : a.installation?.initialKm != null ? ` · odômetro inicial ${num(a.installation.initialKm)} km` : ''}</p>}
+            </div>
+            {a.id && <TrackerHistory assetId={a.id} />}
+        </div>}
+        {aba === 'historico' && <div className="flex flex-col gap-grid max-w-2xl">
+            {a.id && a.kind !== 'implemento' && <DriverHistory assetId={a.id} />}
+            {a.id && <Situacao a={a} onDone={() => setA(null)} />}
+            {a.id && <AuditLog refId={a.id} />}
+        </div>}
       </div>
     </Modal>
   );
