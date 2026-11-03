@@ -21,7 +21,7 @@
      Ajustada +≈7% em relação à escala da Geist: a Satoshi tem x-height ~9% menor (0,484 vs 0,530 do em quadrado;
      cap-height é quase igual, 0,716 vs 0,710), então o texto minúsculo ficava visivelmente menor no mesmo tamanho.
      A proporção entre os passos (hierarquia) foi mantida. */
-  --fs-display: 60px;  --lh-display: 1;    --ls-display: -0.035em; /* número principal da tela */
+  --fs-display: 48px;  --lh-display: 1;    --ls-display: -0.04em;  /* número principal da tela */
   --fs-kpi: 43px;      --lh-kpi: 1.05;     --ls-kpi: -0.03em;      /* número do card de KPI */
   --fs-title: 34px;    --lh-title: 1.1;    --ls-title: -0.025em;   /* título de página */
   --fs-h2: 21px;       --lh-h2: 1.25;      --ls-h2: -0.015em;      /* título de seção */
@@ -50,6 +50,7 @@
   --line: #E6E9EE;
   --line-strong: #C9D0DA;
   --line-hover: #A9B2BF;
+  --card-edge: #E9ECF1; /* contorno do card, entre o fundo da página e --line */
 
   /* ---------- texto (contraste medido sobre --canvas, o pior caso) ---------- */
   --ink: #111827; /* 16,1:1 */
@@ -217,7 +218,7 @@
   --plate-off-bg: var(--surface-muted);
 
   /* ---------- sombras: quase nenhuma; só para o que flutua. Card no canvas não tem sombra, só borda. ---------- */
-  --shadow-card: none;
+  --shadow-card: 0 0 0 1px var(--card-edge), 0 1px 2px rgba(17, 24, 39, 0.05); /* contorno de 1 px + sombra curta (ref. Visor, 02/11/2026); anel em vez de borda para não mudar a medida do card */
   --shadow-seg: 0 1px 2px rgba(17, 24, 39, 0.08);
   --shadow-float: 0 1px 3px rgba(17, 24, 39, 0.18);
   --shadow-dock: 0 8px 24px -12px rgba(17, 24, 39, 0.22);

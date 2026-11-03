@@ -17,7 +17,7 @@ export type NumSize = 'display' | 'kpi' | 'lg' | 'body' | 'small';
 // display e kpi encolhem com a largura do card (unidade cqi, container em KpiCard/KpiTile/KpiHero) até um piso,
 // lg = número secundário (text-h2): nunca o protagonista do card, que é sempre kpi;
 // para "R$ 1.234.567" não estourar um card estreito; fora de um container, cqi segue a viewport e fica no teto.
-const NUM_SIZE: Record<NumSize, string> = { display: 'text-display !text-[clamp(36px,13cqi,var(--fs-display))] font-semibold', kpi: 'text-kpi !text-[clamp(28px,11cqi,var(--fs-kpi))] font-semibold', lg: 'text-h2 font-semibold', body: 'text-body', small: 'text-small' };
+const NUM_SIZE: Record<NumSize, string> = { display: 'text-display !text-[clamp(36px,13cqi,var(--fs-display))] font-medium', kpi: 'text-kpi !text-[clamp(28px,11cqi,var(--fs-kpi))] font-medium', lg: 'text-h2 font-semibold', body: 'text-body', small: 'text-small' };
 // a mesma escala para textos que fazem papel de número (ex.: "1ª vida" num KpiTile)
 export const numSizeClass = (size: NumSize) => NUM_SIZE[size];
 export function Num({ value, unit, prefix, digits = 0, size, className = '', unitClass = '', count = false }: { value: number | null | undefined; unit?: string; prefix?: string; digits?: number; size?: NumSize; className?: string; unitClass?: string; count?: boolean }) {
@@ -218,7 +218,7 @@ export function KpiHero({ title, period, value, unit, digits = 1, delta, sentenc
 }) {
   const pos = (v: number) => `${Math.max(0, Math.min(100, ((v - scale[0]) / (scale[1] - scale[0])) * 100))}%`;
   return (
-    <section className="bg-card rounded-card p-card bleed-card flex flex-col min-w-0" aria-busy={state === 'loading'}>
+    <section className="bg-card shadow-card rounded-card p-card bleed-card flex flex-col min-w-0" aria-busy={state === 'loading'}>
       <CardHeader title={title} subtitle={period} className="mb-kpi-title" />
       {state === 'loading' ? <div className="flex flex-col gap-grid"><Skeleton className="h-16 w-48" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-2.5 w-full" /><Skeleton className="h-24 w-full" /></div>
         : state === 'error' ? <ErrorState detail="O cálculo falhou ao buscar os lançamentos do período. Os dados já salvos não foram afetados." onRetry={onRetry} />
@@ -381,7 +381,7 @@ export function KpiTile({ label, value, unit, digits = 0, delta, sub, status, di
   delta?: { value: number | null; unit?: string; digits?: number; good?: 'up' | 'down' }; sub?: React.ReactNode; status?: StatusKind;
 }) {
   return (
-    <div className="bg-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size]">
+    <div className="bg-card shadow-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size]">
       <span className="text-small text-ink-2 flex items-start gap-tight">{status && <span className="ico-line"><StatusGlyph kind={status} /></span>}<span className="min-w-0">{label}</span></span>
       <div className="flex flex-wrap items-baseline gap-x-tight gap-y-hair min-w-0 mt-kpi-title">
         {display ?? <Num value={value} unit={unit} digits={digits} size="kpi" count />}

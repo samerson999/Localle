@@ -41,7 +41,7 @@ function GoalBar({ value, goal, scale }: { value: number; goal: { value: number;
 
 export function KpiHeroDestaque({ title, period, value, unit, digits = 1, delta, goal, scale = [0, 100], leituraDaFrota }: KpiHeroDestaqueProps) {
   return (
-    <section className="bg-card rounded-card p-card bleed-card flex flex-col min-w-0">
+    <section className="bg-card shadow-card rounded-card p-card bleed-card flex flex-col min-w-0">
       {/* superfície analítica: permanece branca, igual ao card comum */}
       <CardHeader title={title} subtitle={period} className="mb-kpi-title" />
       <div className="flex flex-wrap items-baseline gap-x-grid gap-y-tight [container-type:inline-size]">

@@ -182,7 +182,7 @@ export function DescRow({ label, children, stacked, extra, className = '' }: { l
 export function Card({ className = '', title, icon, actions, to, onOpen, footer, children, dense, head = 'default', subtitle, variant = 'default' }: { className?: string; title?: React.ReactNode; icon?: string; actions?: React.ReactNode; to?: string; onOpen?: () => void; footer?: React.ReactNode; children?: React.ReactNode; dense?: boolean; head?: 'default' | 'kpi'; subtitle?: React.ReactNode; variant?: 'default' | 'inset' }) {
   const level = useHeadingLevel();
   return (
-    <section className={cx('rounded-card min-w-0 flex flex-col', variant === 'inset' ? 'bg-card-2 border border-line' : 'bg-card', dense ? 'p-card-sm bleed-card-sm' : 'p-card bleed-card', className)}>
+    <section className={cx('rounded-card min-w-0 flex flex-col', variant === 'inset' ? 'bg-card-2 border border-line' : 'bg-card shadow-card', dense ? 'p-card-sm bleed-card-sm' : 'p-card bleed-card', className)}>
       {(title || actions || to || onOpen) && <CardHeader title={title} subtitle={subtitle} icon={icon} actions={actions} to={to} onOpen={onOpen} className={head === 'kpi' ? 'mb-kpi-title' : dense ? 'mb-card-head-sm' : 'mb-card-head'} />}
       <div className="flex-1 min-w-0 min-h-0"><HeadingLevel level={level + 1}>{children}</HeadingLevel></div>
       {footer && <CardFooter>{footer}</CardFooter>}
@@ -734,7 +734,7 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
   // número sempre em --ink; o tom vira um ponto ao lado do rótulo (verde não marca status)
   const dot = tone === 'red' ? 'bg-crit' : tone === 'orange' ? 'bg-warn' : '';
   return (
-    <div className="bg-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size]">
+    <div className="bg-card shadow-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size]">
       <span className="text-small text-ink-2 flex items-center gap-tight">{dot && <span aria-hidden="true" className={cx('w-2 h-2 rounded-pill shrink-0', dot)} />}{label}</span>
       <span className="mt-kpi-title text-kpi !text-[clamp(28px,11cqi,var(--fs-kpi))] font-semibold break-words num text-ink">{typeof value === 'number' || typeof value === 'string' ? <CountText value={value} /> : value}</span>
       {hint && <span className="mt-kpi-meta text-caption text-ink-2">{hint}</span>}

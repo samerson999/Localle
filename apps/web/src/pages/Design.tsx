@@ -196,7 +196,7 @@ export default function Design() {
               ))}
             </ul>
             <div className="grid grid-cols-3 gap-4 mt-6">
-              {[['--shadow-card', 'card: sem sombra'], ['--shadow-pop', 'popover'], ['--shadow-modal', 'modal']].map(([t, l]) => <div key={t} className="flex flex-col items-center gap-2"><span className="w-full h-14 bg-card border border-line rounded-ctl" style={{ boxShadow: `var(${t})` }} /><span className="text-caption text-ink-2">{l}</span></div>)}
+              {[['--shadow-card', 'card: contorno + sombra curta'], ['--shadow-pop', 'popover'], ['--shadow-modal', 'modal']].map(([t, l]) => <div key={t} className="flex flex-col items-center gap-2"><span className="w-full h-14 bg-card border border-line rounded-ctl" style={{ boxShadow: `var(${t})` }} /><span className="text-caption text-ink-2">{l}</span></div>)}
             </div>
             <p className="text-caption text-ink-3 mt-4">Sombra só no que flutua: popover, menu, modal, painel sobre o mapa, marcador.</p>
           </Card>
