@@ -93,7 +93,10 @@ a { text-underline-offset: 3px; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 @keyframes panel-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
-.anim-page { animation: page-in var(--t-page) var(--ease-out) both; }
+/* backwards, não both: o estado final já é o natural, e reter o último quadro (forwards) deixava o elemento como contexto de
+   empilhamento para sempre — a tela cheia do Monitoramento (fixed, z 1100, dentro do <main>) ficava atrás da barra superior
+   e da inferior do celular, com o botão de sair escondido */
+.anim-page { animation: page-in var(--t-page) var(--ease-out) backwards; }
 .anim-fade { animation: fade-in var(--t-page) ease both; }
 .panel-in { animation: panel-in 240ms var(--ease-out) both; }
 .grow-y { transform-box: fill-box; transform-origin: bottom; animation: grow-y var(--t-bar) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 30ms); }
@@ -142,6 +145,7 @@ a { text-underline-offset: 3px; }
   .sheet-in { animation: fade-in 150ms ease both !important; }
   .dock-drawer, .dock-pill { transition: none !important; }
   .pulse-once { animation: none; }
+  .anim-page { animation-fill-mode: backwards !important; } /* mesmo motivo do .anim-page acima: sem contexto de empilhamento depois de entrar */
   .skeleton { animation: none; }
   /* só fades curtos: nada desliza nem cresce (pílulas, menu, barras de progresso mudam direto) */
   *, *::before, *::after { transition-property: opacity, color, background-color, border-color !important; transition-duration: 150ms !important; }

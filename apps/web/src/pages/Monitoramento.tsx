@@ -31,7 +31,20 @@ function MoreOnScroll({ onMore }: { onMore: () => void }) {
   return <li ref={ref} aria-hidden="true" className="h-px" />;
 }
 
-function FlyTo({ pos }: { pos?: [number, number] }) { const m = useMap(); useEffect(() => { if (pos) m.flyTo(pos, Math.max(m.getZoom(), 14), { duration: 0.6 }); }, [pos?.[0], pos?.[1]]); return null; }
+// Mede o mapa antes de voar: no celular, tocar um veículo na aba Lista mostra o mapa (que estava em display:none) no mesmo
+// render, e este efeito roda antes do invalidateSize do pai. Com o tamanho guardado em 0×0 o flyTo calcula NaN e o mapa
+// inteiro fica cinza, sem blocos.
+function FlyTo({ pos }: { pos?: [number, number] }) {
+  const m = useMap();
+  useEffect(() => {
+    if (!pos) return;
+    m.invalidateSize({ pan: false });
+    const s = m.getSize();
+    if (!s.x || !s.y) return; // ainda escondido: nada a centralizar
+    m.flyTo(pos, Math.max(m.getZoom(), 14), { duration: 0.6 });
+  }, [pos?.[0], pos?.[1]]);
+  return null;
+}
 function Ctx({ onCtx }: { onCtx: (p: any) => void }) { useMapEvents({ contextmenu: (e) => onCtx({ lat: e.latlng.lat, lng: e.latlng.lng, x: e.containerPoint.x, y: e.containerPoint.y }), click: () => onCtx(null) }); return null; }
 
 // Status ao vivo: crítico enquanto houver evento ativo ou sem tratamento (lib/critical.ts); ler o alerta não muda o status
@@ -188,14 +201,15 @@ export default function Monitoramento() {
             <h1 className="text-h3 font-semibold leading-tight">Monitoramento</h1>
             <p className="text-caption text-ink-2">Ao vivo · {list.length} veículos{lastUpd ? <> · atualizado às <time className="num">{fmtT(lastUpd)}</time></> : null}</p>
           </div>
-          <SearchInput className="w-64 max-md:w-full" value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
-          <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />
+          <SearchInput className="w-64 max-md:w-full max-md:order-2" value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
+          <Select aria-label="Grupo" className="max-md:order-2 max-md:w-full" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />
           <div role="group" aria-label="Visão" className="flex gap-tight max-md:hidden">
             <Button variant={visao.cards ? 'dark' : 'secondary'} size="sm" aria-pressed={visao.cards} disabled={visao.cards && !visao.tabela} title={visao.cards && !visao.tabela ? 'Ligue a tabela para poder esconder os cards' : undefined} onClick={() => setVisao({ ...visao, cards: !visao.cards })}><Icon name="ativos" size={16} />Cards</Button>
             <Button variant={visao.tabela ? 'dark' : 'secondary'} size="sm" aria-pressed={visao.tabela} disabled={visao.tabela && !visao.cards} title={visao.tabela && !visao.cards ? 'Ligue os cards para poder esconder a tabela' : undefined} onClick={() => setVisao({ ...visao, tabela: !visao.tabela })}><Icon name="relatorios" size={16} />Tabela</Button>
           </div>
           <Button variant="secondary" size="sm" className="max-md:hidden" onClick={() => setCmd({ target: 'grupo' })}><Icon name="comando" size={16} />Comando para grupo</Button>
-          <Button variant="secondary" size="sm" onClick={sairTelaCheia} title="Sair da tela cheia (Esc)"><Icon name="tela-cheia" size={16} />Sair da tela cheia</Button>
+          {/* celular: X ao lado do título (o texto inteiro empurrava o botão para a última linha) */}
+          <Button variant="secondary" size="sm" className="max-md:order-1 max-md:w-ctl max-md:h-ctl max-md:!px-0" onClick={sairTelaCheia} title="Sair da tela cheia (Esc)" aria-label="Sair da tela cheia"><Icon name="tela-cheia" size={16} className="max-md:hidden" /><Icon name="fechar" size={20} className="md:hidden" /><span className="max-md:hidden">Sair da tela cheia</span></Button>
         </div>
       )}
       <div className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
