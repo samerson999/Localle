@@ -9,11 +9,26 @@ prévia de impacto (fase 4). Os módulos que leem o Setup já existem na API: mo
 jornada, multas, combustível, manutenção, pneus, ranking, motoristas (`apps/api/src/<modulo>/`). As decisões
 pendentes da seção 8 continuam abertas (1 foi resolvida: `asset_groups` existe).
 
+**Atualização 04/11/2026 — dois Setups.** São dois, um por perfil, e não se misturam:
+- **Setup da Localle = o painel admin da Localle** (Console da Locale, seção 0 item 1): é onde a Localle configura a
+  plataforma para cada cliente — contratos, clientes, módulos, faturamento, rastreadores e chips, equipe. Os padrões e
+  limites (mín./máx.) de cada parâmetro de operação ficam no registro `apps/api/src/settings/setting-definitions.ts`;
+  não há camada de plataforma no banco nem tela para editá-los (mudar padrão ou limite é mudança no registro).
+- **Setup do gestor** = `/setup` (`apps/web/src/pages/Setup.tsx`), camadas Cliente e Grupo: é onde o gestor adapta a
+  própria operação dentro dos limites. Desde 04/11/2026 é o único lugar onde ele edita esses parâmetros: as abas dos
+  módulos que repetiam valores do Setup (limites de Jornada; meta e teto da empresa e meta por grupo em Combustível;
+  sulcos, recapagem e vidas em Pneus; limite e período do Ranking) mostram o valor só para leitura, com "Ajustar no
+  Setup" (`/setup?aba=<módulo>`). O front carrega o Setup do gestor para o que as telas calculam (`syncParametros` em
+  `apps/web/src/lib/localleApi.ts`), o mesmo valor que o backend já usava — antes as telas calculavam com uma cópia no
+  navegador e podiam divergir do espelho de ponto, do ranking e dos pneus da API. Continuam no módulo, por não serem
+  parâmetro do Setup: dados do empregador (Jornada), metas por operação (Combustível), sigla e logo gravados no pneu,
+  matriz de eventos do Ranking.
+
 ## 0. Onde o Setup entra na administração (decidido em 22/10/2026)
 
 A administração da plataforma foi desenhada por perfil, em três áreas separadas (não uma tela única):
 
-1. **Console da Locale** (dona da plataforma) — estrutura final (✅ construído em 22/10/2026, ⏳ pendente):
+1. **Console da Locale** (dona da plataforma) — é o **Setup da Localle** (painel admin) — estrutura final (✅ construído em 22/10/2026, ⏳ pendente):
    1. ✅ Visão geral (clientes, veículos ativos, receita prevista, margem estimada, "Precisa de você": inadimplência, contratos vencendo, rastreadores com problema, equipamentos a recolher). `src/pages/Locale.tsx`, dados em `src/lib/platformOverview.ts`.
    2. ✅ Contratos (23/10/2026: substitui o catálogo de Planos — contrato individual por cliente, mensalidade fixa ou por veículo ativo com franquia/excedente, funcionalidades, vigência e versionamento; "duplicar de outro contrato" acelera o cadastro sem vincular os dois). `src/pages/Contratos.tsx`, dados em `src/lib/contracts.ts`.
    3. ✅ Clientes (cadastro, veículos, usuários, situação, saúde da conta; contrato é editado em Contratos). `src/pages/Clientes.tsx`, dados em `src/lib/clients.ts`. Pagamento aceita múltiplas datas/parciais (`payment.history`). Suspensão hoje é um único nível e suspende o acesso imediatamente — a suspensão gradual por etapas fica para quando houver definição com a operação.
@@ -23,10 +38,10 @@ A administração da plataforma foi desenhada por perfil, em três áreas separa
    7. ✅ Jurídico (reservada, sem regra automática por enquanto). `src/pages/Juridico.tsx`.
    8. ✅ Saúde da plataforma. `src/pages/Saude.tsx`, dados em `src/lib/platformHealth.ts`.
    9. ✅ Equipe e auditoria (usuários da Locale + o mesmo registro de alterações usado nos cadastros do cliente). `src/pages/Equipe.tsx`.
-   10. ⏳ **Setup da plataforma** — é este plano: os padrões e limites (mín./máx.) de cada parâmetro de operação, calibração por modelo de rastreador, integração e modelos por segmento. Vive dentro do Console da Locale, não como tela separada. Ainda não construído (é o resto deste documento, seções 1 a 8).
+   10. ✅ **Setup da plataforma** — é o próprio painel admin (itens 1 a 9), não uma tela à parte (atualizado em 04/11/2026). Os padrões e limites (mín./máx.) de cada parâmetro de operação estão no registro `apps/api/src/settings/setting-definitions.ts`, sem camada de plataforma no banco nem tela de edição. Calibração por modelo de rastreador, integração e modelos por segmento seguem como descritos nas seções 3.8, 3.11 e 6 (fase 3).
 
 Os dados de clientes, planos e rastreadores de cada tela foram seedados de forma independente (cada `lib/*.ts` tem sua própria simulação); os totais de uma tela não necessariamente batem com os de outra ainda. Integrar numa fonte única é item futuro, quando o modelo de dados for ao Supabase.
-2. **Configurações do cliente** (gestor da frota) — dentro do produto: empresa/logo, usuários e perfis, grupos de veículos, **Setup** (camadas cliente e grupo deste plano), notificações, integrações, plano contratado.
+2. **Configurações do cliente** (gestor da frota) — dentro do produto: empresa/logo, usuários e perfis, grupos de veículos, **Setup do gestor** (`/setup`, camadas cliente e grupo deste plano; único lugar de edição dos parâmetros de operação desde 04/11/2026), notificações, integrações, plano contratado.
 3. **Painel da revenda** — **fora do escopo por ora**: a camada de revenda continua existindo no modelo de dados (`setting_scope`, `fn_set_setting`, claim `tenant_admin`), mas não há tela de administração da revenda no momento. Quando existir, repete o padrão: a revenda ajusta o padrão dos clientes dela dentro dos limites da Locale.
 
 Isso muda o que a seção 8 tratava como pendência 2 (módulos por revenda): fica adiado junto com o painel da revenda, não é mais parte do MVP deste plano.
@@ -393,12 +408,13 @@ Para fechar a fase, uma busca garante que não sobrou número de operação ness
 ## 7. Divergências encontradas no levantamento
 
 1. A antecedência padrão do plano é 15 dias no modo local e 30 no Supabase.
-2. A meta de km/L da empresa tem padrão 5 no seed, 6 em Metas e 0 no BI.
+2. A meta de km/L da empresa tem padrão 5 no seed, 6 em Metas e 0 no BI. (04/11/2026: as telas passam a usar o valor do Setup do gestor, `combustivel.meta_kml`; Metas só o mostra.)
 3. Os 10 dias para crítico estão em três lugares, e o BI ignora o valor do plano.
 4. Os padrões de CAN, pneus e cobrança estão duplicados entre o TypeScript e o SQL.
 5. O salto de 10.000 km do combustível só é validado na tela.
 6. O limite de bateria de 11,5 V não serve para veículos de 24 V.
 7. O tempo de eventos repetidos (`debounceSec`) hoje é do cliente, mas é calibração do rastreador.
+8. Resolvida em 04/11/2026: limites de jornada, sulcos de pneu e limite do ranking eram editados também nas abas dos módulos e guardados só no navegador; as telas calculavam com essa cópia enquanto a API usava o Setup. Agora o front lê o Setup do gestor (`syncParametros`) e as abas só mostram o valor.
 
 ## 8. Decisões pendentes
 

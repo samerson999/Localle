@@ -718,10 +718,9 @@ export async function syncRanking() {
   const v = (k: string) => settings.find((x) => x.key === k)?.value;
   patch(() => ({ events: eventos.map(M.eventoRankingToEvent), rankCfg: M.tiposToRankCfg(tipos, Number(v('ranking.limite_pontos') ?? 100), String(v('ranking.periodo_limite') ?? 'mes')), customEventTypes: [] }));
 }
-export async function salvarMatrizRanking(tipos: any[], limit: number, limitPeriod: string) {
+// o limite de pontos e o período moram no Setup do gestor (ranking.limite_pontos/periodo_limite); aqui só a matriz
+export async function salvarMatrizRanking(tipos: any[]) {
   for (const t of tipos) await apiSend('PUT', `/ranking/matriz/${t.code}`, M.tipoToMatrizBody(t));
-  await apiSend('PUT', '/settings/ranking.limite_pontos', { value: limit });
-  await apiSend('PUT', '/settings/ranking.periodo_limite', { value: limitPeriod });
   await syncRanking();
 }
 export async function lancarEventoRanking(e: any) { await apiSend('POST', '/ranking/eventos', M.eventToEventoRankingBody(e)); await syncRanking(); }
@@ -757,6 +756,8 @@ export async function syncModulos() {
   ];
   const r = await Promise.allSettled(partes.map(([nome, f]) => f().finally(() => marcarPronto(nome))));
   const falhas = r.map((x, i) => (x.status === 'rejected' ? { nome: partes[i][0], motivo: mensagemDeErro(x.reason) } : null)).filter((x): x is { nome: string; motivo: string } => !!x);
+  // depois dos grupos (a meta de combustível tem camada de grupo)
+  try { await syncParametros(); } catch (e) { falhas.push({ nome: 'parâmetros do Setup', motivo: mensagemDeErro(e) }); }
   // a tela mostra "não carregou: motoristas, multas" com botão de tentar de novo; a lista vazia não pode passar por "sem dados"
   useLocalle.setState({ modulosFalhos: falhas.map((f) => f.nome), error: falhas.length ? falhas[0].motivo : '' });
 }
@@ -822,6 +823,36 @@ export async function enviarComandoLocalle(cmdId: string, assetId: string, kind:
 /** Valor vigente de um parâmetro do Setup para o cliente logado (GET /settings é liberado a qualquer papel). */
 export async function lerParametro(key: string): Promise<number | string | undefined> {
   return (await apiGet<{ key: string; value: number | string }[]>('/settings')).find((x) => x.key === key)?.value;
+}
+
+// ---------- parâmetros do Setup do gestor → o que as telas calculam ----------
+// O backend já resolve estes valores pelo Setup (espelho de ponto, ranking, pneus); as telas calculavam com uma cópia no
+// navegador (journeyCfg, tireCfg, fuelGoals) editada nas abas de cada módulo, e as duas podiam divergir. Agora a cópia é
+// só reflexo do Setup (camadas empresa e grupo): editar é no Setup (pages/Setup.tsx), que chama isto ao salvar.
+const JORNADA_SETUP: Record<string, string> = {
+  baseH: 'jornada.base_diaria_h', maxExtra: 'jornada.extras_max_h', mealH: 'jornada.refeicao_min_h', interH: 'jornada.interjornada_min_h',
+  weeklyH: 'jornada.descanso_semanal_min_h', contCargasH: 'jornada.direcao_continua_cargas_h', contPassageirosH: 'jornada.direcao_continua_passageiros_h',
+};
+const PNEUS_SETUP: Record<string, string> = { warn: 'pneus.sulco_alerta_mm', removal: 'pneus.sulco_retirada_mm', recapCost: 'pneus.custo_recapagem_padrao', maxLives: 'pneus.vidas_padrao' };
+const numeros = (ps: { key: string; value: number | string }[], mapa: Record<string, string>) =>
+  Object.fromEntries(Object.entries(mapa).map(([campo, key]) => [campo, Number(ps.find((p) => p.key === key)?.value)]).filter(([, v]) => Number.isFinite(v)));
+export async function syncParametros() {
+  const ps = await apiGet<SetupParametro[]>('/settings');
+  const val = (key: string) => { const v = Number(ps.find((p) => p.key === key)?.value); return Number.isFinite(v) ? v : undefined; };
+  // meta de consumo por grupo: só o que foi definido no próprio grupo; o resto herda a da empresa
+  const grupos = useStore.getState().groups.filter((g: any) => /^[0-9a-f-]{36}$/i.test(g.id));
+  const metasGrupo = await Promise.all(grupos.map((g: any) => apiGet<SetupParametro[]>(`/settings${grupoQs(g.id)}`)
+    .then((l) => { const m = l.find((p) => p.key === 'combustivel.meta_kml'); return m?.origin === 'grupo' ? [g.id, Number(m.value)] as const : null; })
+    .catch(() => null)));
+  useStore.getState().patch((st: any) => {
+    const fg = st.fuelGoals || { company: {}, operations: {}, groups: {} };
+    return {
+      journeyCfg: { ...(st.journeyCfg || {}), ...numeros(ps, JORNADA_SETUP) },
+      tireCfg: { ...(st.tireCfg || {}), ...numeros(ps, PNEUS_SETUP) },
+      rankCfg: { ...(st.rankCfg || {}), limit: val('ranking.limite_pontos') ?? st.rankCfg?.limit, limitPeriod: String(ps.find((p) => p.key === 'ranking.periodo_limite')?.value ?? st.rankCfg?.limitPeriod ?? 'mes') },
+      fuelGoals: { ...fg, company: { ...fg.company, kml: val('combustivel.meta_kml') ?? fg.company?.kml, budget: val('combustivel.orcamento_mensal') ?? fg.company?.budget }, groups: Object.fromEntries(metasGrupo.filter(Boolean) as [string, number][]) },
+    };
+  });
 }
 
 // ---------- Setup (GET/PUT/DELETE /settings): registro central de parâmetros da API ----------

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
-import { setupApi, type SetupHistorico, type SetupParametro } from '../lib/localleApi';
-import { Badge, Button, Callout, Card, Field, Input, Modal, PageHeader, Pills, SearchInput, Select, Switch, Table, Tabs, TabPanel, TextButton, cx, toast, EmptyState, Skeleton } from '../components/ui';
+import { setupApi, syncParametros, type SetupHistorico, type SetupParametro } from '../lib/localleApi';
+import { Badge, Button, Callout, Card, Field, Input, Modal, PageHeader, Pills, SearchInput, Select, Switch, Table, Tabs, TabPanel, TextButton, cx, toast, EmptyState, Skeleton, useUrlTab } from '../components/ui';
 import { Stack } from '../components/primitives';
 import { fmtDT } from '@localle/shared/utils';
 
@@ -24,7 +24,7 @@ export default function Setup() {
   // só grupos do backend (uuid): os locais e o grupo "Frota real" não existem na API
   const groups = useStore((s) => s.groups.filter((g: any) => /^[0-9a-f-]{36}$/i.test(g.id)));
   const [camada, setCamada] = useState('empresa'); // 'empresa' | id do grupo
-  const [tab, setTab] = useState('monitoramento');
+  const [tab, setTab] = useUrlTab('monitoramento'); // ?aba=: os módulos linkam "Ajustar no Setup" direto para a seção deles
   const [q, setQ] = useState('');
   const [params, setParams] = useState<SetupParametro[] | null>(null);
   const [erro, setErro] = useState('');
@@ -41,11 +41,11 @@ export default function Setup() {
 
   const aplicar = (atualizado: SetupParametro) => setParams((cur) => (cur || []).map((p) => (p.key === atualizado.key ? atualizado : p)));
   const salvar = async (p: SetupParametro, value: number | string, reason: string) => {
-    try { aplicar(await setupApi.set(p.key, value, groupId, reason)); toast(`${p.label}: salvo.`); }
+    try { aplicar(await setupApi.set(p.key, value, groupId, reason)); toast(`${p.label}: salvo.`); void syncParametros().catch(() => {}); }
     catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); throw e; }
   };
   const restaurar = async (p: SetupParametro) => {
-    try { aplicar(await setupApi.restaurar(p.key, groupId)); toast(`${p.label}: voltou a herdar.`); }
+    try { aplicar(await setupApi.restaurar(p.key, groupId)); toast(`${p.label}: voltou a herdar.`); void syncParametros().catch(() => {}); }
     catch (e: any) { toast('Não foi possível restaurar: ' + (e.message || e), { tone: 'crit' }); }
   };
 

@@ -824,6 +824,12 @@ export function FilterChip({ label, onRemove }: { label: React.ReactNode; onRemo
   );
 }
 // Conteúdo da aba: fade curto (--t-swap) a cada troca, sem deslocamento. Use com a mesma key da aba.
+// Valor que mora no Setup do gestor (camadas empresa e grupo) mostrado dentro de um módulo: só leitura, com o caminho
+// para ajustar. O padrão e os limites vêm do Setup da Localle (plataforma); o gestor adapta a operação no dele.
+export function SetupLink({ aba, className = '' }: { aba: string; className?: string }) {
+  return <NavLink to={`/setup?aba=${aba}`} className={cx('inline-flex items-center gap-icon text-small font-medium link-brand', className)}><Icon name="config" size={16} />Ajustar no Setup</NavLink>;
+}
+
 // "Para salvar, falta: …" ao lado do botão desabilitado (padrão nascido na Cercas): botão cinza sozinho não diz o que fazer.
 export function Missing({ items, className = '' }: { items: (string | false | null | undefined | 0 | '')[]; className?: string }) {
   const l = items.filter(Boolean) as string[];

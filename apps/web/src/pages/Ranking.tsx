@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { lancarEventoRanking, salvarMatrizRanking, useCarregando } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack, useUrlTab } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack, SetupLink, useUrlTab } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, DeltaChip, StatusDot, Num } from '../components/story';
 import { Icon } from '../components/icons';
@@ -22,7 +22,7 @@ function useMatrix() {
   const cfg = s.rankCfg || { types: {}, custom: [], limit: 100, limitPeriod: 'mes' };
   return {
     types: localTypes(s), limit: cfg.limit ?? 100, limitPeriod: cfg.limitPeriod || 'mes', ready: true,
-    save: async (types: EvType[], limit: number, limitPeriod: string) => salvarMatrizRanking(types, limit, limitPeriod),
+    save: async (types: EvType[]) => salvarMatrizRanking(types),
   };
 }
 
@@ -134,15 +134,15 @@ function Matriz() {
   const [n, setN] = useState({ label: '', weight: 2 });
   useEffect(() => { if (M.ready) { setTypes(M.types.map((t) => ({ ...t, tiers: [...t.tiers] }))); setLimit(M.limit); setLp(M.limitPeriod); } }, [M.ready, JSON.stringify(M.types), M.limit, M.limitPeriod]);
   const up = (code: string, p: Partial<EvType>) => { setTypes(types.map((t) => (t.code === code ? { ...t, ...p } : t))); };
-  const save = async () => { try { await M.save(types, limit, lp); toast('Matriz salva.'); } catch (e: any) { toast('Não foi possível salvar a matriz.', { tone: 'crit', detail: e.message }); } };
+  const save = async () => { try { await M.save(types); toast('Matriz salva.'); } catch (e: any) { toast('Não foi possível salvar a matriz.', { tone: 'crit', detail: e.message }); } };
   const cats = Object.keys(EVENT_CATEGORIES).filter((c) => !FUTURE_CATEGORIES.includes(c));
   return (
     <Stack gap="grid">
-      <Card title="Limite de pontos" icon="alvo">
-        <div className="flex flex-wrap gap-3 items-end">
-          <Field label="Limite"><Input className="w-28" type="number" value={limit} onChange={(e) => setLimit(+e.target.value)} /></Field>
-          <Field label="Por"><Select className="w-36" value={lp} onChange={(e) => setLp(e.target.value)} options={[{ value: 'semana', label: 'Semana' }, { value: 'mes', label: 'Mês' }, { value: 'trimestre', label: 'Trimestre' }]} /></Field>
-          <p className="text-small text-ink-2 pb-2 max-w-xl">Quem passar do limite fica "em atenção". Em períodos diferentes, o limite é proporcional (ex.: 100 por mês = 50 em 15 dias).</p>
+      {/* limite e período moram no Setup do gestor (ranking.limite_pontos, ranking.periodo_limite); aqui só leitura */}
+      <Card title="Limite de pontos" icon="alvo" actions={<SetupLink aba="ranking" />}>
+        <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
+          <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Limite</p><span className="text-h3 font-semibold num">{num(limit)} pontos por {PERIOD[lp] || lp}</span></div>
+          <p className="text-small text-ink-2 pb-1 max-w-xl">Quem passar do limite fica "em atenção". Em períodos diferentes, o limite é proporcional (ex.: 100 por mês = 50 em 15 dias).</p>
         </div>
       </Card>
       <Card title="Matriz de eventos × pesos" icon="config" actions={<Button onClick={save}>Salvar matriz</Button>}>
@@ -152,7 +152,7 @@ function Matriz() {
           if (!rows.length) return null;
           return (
             <div key={c} className="mb-5">
-              <div className="text-small font-medium text-ink-2 mb-2">{EVENT_CATEGORIES[c]}{c === 'jornada' && <span className="font-normal text-ink-2"> · infrações apuradas com os limites da empresa (Jornada › Regras)</span>}</div>
+              <div className="text-small font-medium text-ink-2 mb-2">{EVENT_CATEGORIES[c]}{c === 'jornada' && <span className="font-normal text-ink-2"> · infrações apuradas com os limites de jornada do Setup</span>}</div>
               <Table minWidth={860} head={['Evento', 'Peso base', 'Faixas pelo valor medido', 'Ativo']} rows={rows.map((t) => [
                 <div><span className="font-medium">{t.label}</span>{t.requiresCan && <span className="ml-2 text-caption text-ink-2">· requer CAN</span>}<div className="text-caption text-ink-2"><span className="font-mono">{t.code}</span>{t.unit ? ` · valor em ${t.unit}` : ''}</div></div>,
                 <Input className="w-20" type="number" aria-label={`Peso ${t.label}`} value={t.weight} onChange={(e) => up(t.code, { weight: +e.target.value })} />,

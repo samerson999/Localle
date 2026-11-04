@@ -3,7 +3,7 @@ import { opAssets, isOut } from '../lib/assetLifecycle';
 import { useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { TireProvider, useTires } from '../lib/tireRepo';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, Panel, EmptyState, ErrorState, Progress, TabPanel, toast, confirmAction, DescList, DescRow, SearchInput, Grid, Stack, useUrlTab, useUrlItem, Missing } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, Panel, EmptyState, ErrorState, Progress, TabPanel, toast, confirmAction, DescList, DescRow, SearchInput, Grid, Stack, useUrlTab, useUrlItem, Missing, SetupLink } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, StatusDot, StatusGlyph, Num, IdChip, AssetName, numSizeClass } from '../components/story';
@@ -464,34 +464,27 @@ function Estoque({ onOpen }: any) {
 function Config() {
   const R = useTires();
   const [cfg, setCfgL] = useState<any>(R.cfg);
-  const [err, setErr] = useState<Record<string, string>>({});
-  const check = (c: any) => {
-    const e: Record<string, string> = {};
-    if (!(c.removal >= LEGAL_MIN_MM)) e.removal = `Não pode ficar abaixo do mínimo legal de ${num(LEGAL_MIN_MM, 1)} mm. Valor salvo mantido: ${num(R.cfg.removal, 1)} mm.`;
-    if (!(c.warn > c.removal)) e.warn = `Precisa ser maior que o sulco de retirada (${num(c.removal, 1)} mm). Valor salvo mantido: ${num(R.cfg.warn, 1)} mm.`;
-    return e;
-  };
-  const set = (k: string, v: any) => { const c = { ...cfg, [k]: v }; setCfgL(c); setErr(check(c)); };
-  const dirty = ['warn', 'removal', 'recapCost', 'mark', 'markLogo'].some((k) => cfg[k] !== R.cfg[k]);
-  const ok = !Object.keys(err).length;
+  const set = (k: string, v: any) => setCfgL({ ...cfg, [k]: v });
+  // sulcos, custo de recapagem e vidas moram no Setup do gestor (pneus.*); aqui só a identificação gravada no pneu
+  const dirty = ['mark', 'markLogo'].some((k) => cfg[k] !== R.cfg[k]);
   return (
     <Stack gap="grid">
-      <Card title="Sulcos" icon="pneus">
-        <div className="grid sm:grid-cols-3 gap-4 max-w-4xl">
-          <Field label="Sulco de alerta (mm)" hint={err.warn || 'Abaixo disso o pneu entra em atenção'}><Input type="number" step="0.1" aria-invalid={!!err.warn} className={err.warn ? '!border-crit' : ''} value={cfg.warn} onChange={(e) => set('warn', +e.target.value)} /></Field>
-          <Field label="Sulco de retirada (mm)" hint={err.removal || 'Retirar para recapagem ou descarte'}><Input type="number" step="0.1" aria-invalid={!!err.removal} className={err.removal ? '!border-crit' : ''} value={cfg.removal} onChange={(e) => set('removal', +e.target.value)} /></Field>
-          <Field label="Mínimo legal (mm)" hint="Fixo por lei (Res. CONTRAN 558/1980). Pneu montado abaixo dele aparece em &quot;Precisa de você&quot;."><Input value={num(LEGAL_MIN_MM, 1)} disabled /></Field>
-        </div>
-        <p className="text-caption text-ink-2 mt-3">Estes valores passam a vir do Setup de parâmetros; a empresa só pode deixá-los mais rigorosos que o mínimo legal.</p>
+      <Card title="Sulcos e custos" icon="pneus" actions={<SetupLink aba="pneus" />}>
+        <DescList className="max-w-2xl">
+          <DescRow label="Sulco de alerta"><span className="num">{num(R.cfg.warn, 1)} mm</span><span className="text-caption text-ink-2"> · abaixo disso o pneu entra em atenção</span></DescRow>
+          <DescRow label="Sulco de retirada"><span className="num">{num(R.cfg.removal, 1)} mm</span><span className="text-caption text-ink-2"> · retirar para recapagem ou descarte</span></DescRow>
+          <DescRow label="Mínimo legal"><span className="num">{num(LEGAL_MIN_MM, 1)} mm</span><span className="text-caption text-ink-2"> · fixo por lei (Res. CONTRAN 558/1980)</span></DescRow>
+          <DescRow label="Custo padrão de recapagem"><span className="num">{brl(R.cfg.recapCost)}</span></DescRow>
+          {R.cfg.maxLives != null && <DescRow label="Vidas padrão do pneu"><span className="num">{R.cfg.maxLives}</span></DescRow>}
+        </DescList>
       </Card>
-      <Card title="Identificação e custos" icon="config">
-        <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,14rem)] gap-4 max-w-4xl items-start">
-          <Field label="Sigla gravada no pneu" hint={`Os novos pneus ficam ${cfg.mark ? `${cfg.mark.toUpperCase()}-1024` : '1024'}`}><Input className="font-mono uppercase" value={cfg.mark} onChange={(e) => set('mark', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))} /></Field>
-          <Field label="Custo padrão de recapagem (R$)" hint="Usado na projeção da vida útil"><Input type="number" value={cfg.recapCost} onChange={(e) => set('recapCost', +e.target.value)} /></Field>
-          <div className="flex flex-col gap-tight"><span className="text-small font-medium text-ink-2">Logo gravado no pneu</span><Dropzone value={cfg.markLogo || undefined} onChange={(d) => set('markLogo', d)} label="Enviar logo" className="h-24" fit="contain" maxMB={1} />{cfg.markLogo && <TextButton tone="danger" className="self-start" onClick={() => set('markLogo', '')}>Remover logo</TextButton>}</div>
+      <Card title="Identificação gravada no pneu" icon="config">
+        <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)] gap-4 max-w-3xl items-start">
+          <Field label="Sigla gravada no pneu" hint={`Os novos pneus ficam ${cfg.mark ? `${cfg.mark.toUpperCase()}-1024` : '1024'}`}><Input className="font-mono uppercase" value={cfg.mark} onChange={(e) => set('mark', e.target.value.toUpperCase())} /></Field>
+          <div className="flex flex-col gap-tight"><span className="text-small font-medium text-ink-2">Logo gravado no pneu</span><Dropzone value={cfg.markLogo || undefined} onChange={(d) => set('markLogo', d)} label="Enviar logo" /></div>
         </div>
       </Card>
-      <div className="flex gap-3 items-center"><Button disabled={!dirty || !ok} onClick={async () => { await R.setCfg({ warn: cfg.warn, removal: cfg.removal, recapCost: cfg.recapCost, mark: cfg.mark, markLogo: cfg.markLogo }); toast('Parâmetros de pneus salvos.'); }}>Salvar parâmetros</Button>{!ok && <span className="text-small text-crit-ink">Corrija os campos destacados; os valores salvos continuam valendo.</span>}</div>
+      <div className="flex gap-3 items-center"><Button disabled={!dirty} onClick={async () => { await R.setCfg({ mark: cfg.mark, markLogo: cfg.markLogo }); toast('Identificação dos pneus salva.'); }}>Salvar identificação</Button></div>
     </Stack>
   );
 }

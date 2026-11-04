@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore, assetKm, useStoreData } from '../lib/store';
 import { salvarAbastecimento, useCarregando } from '../lib/localleApi';
 import { registerOdometer } from '../lib/odometer';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack, Missing, useUrlTab } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack, Missing, SetupLink, useUrlTab } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, DeltaChip, StatusDot, Num, AssetName } from '../components/story';
@@ -342,10 +342,11 @@ function Metas() {
   return (
     <Stack gap="grid">
       <p className="text-small text-ink-2 max-w-[90ch]">A meta de consumo vale na ordem: veículo, tipo de operação, grupo e empresa. O teto mensal é indicativo: quem passa dele aparece em alerta, mas o lançamento não é bloqueado.</p>
-      <Card title="Frota" icon="ativos">
+      {/* meta e teto da empresa e meta por grupo moram no Setup do gestor (combustivel.meta_kml, combustivel.orcamento_mensal) */}
+      <Card title="Frota" icon="ativos" actions={<SetupLink aba="combustivel" />}>
         <div className="grid sm:grid-cols-[repeat(2,minmax(0,12rem))_1fr] gap-field items-end">
-          <Field label="Meta de consumo (km/L)"><Input type="number" step="0.1" value={goals.company?.kml || ''} onChange={(e) => { set({ ...goals, company: { ...goals.company, kml: +e.target.value } }); touch(); }} /></Field>
-          <Field label="Teto mensal (R$)"><Input type="number" value={goals.company?.budget || ''} onChange={(e) => { set({ ...goals, company: { ...goals.company, budget: +e.target.value } }); touch(); }} /></Field>
+          <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Meta de consumo</p>{goals.company?.kml ? <Num value={goals.company.kml} digits={1} unit="km/L" size="lg" /> : <span className="text-ink-2">Sem meta</span>}</div>
+          <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Teto mensal</p>{goals.company?.budget ? <Num value={goals.company.budget} prefix="R$" size="lg" /> : <span className="text-ink-2">Sem teto</span>}</div>
           <div><p className="text-caption text-ink-2 mb-tight">Gasto no mês: <span className="num">{brl(fleetSpend)}</span></p><Budget spent={fleetSpend} cap={goals.company?.budget} /></div>
         </div>
       </Card>
@@ -353,8 +354,8 @@ function Metas() {
         <Card title="Por tipo de operação">
           <Table minWidth={420} align={['left', 'right', 'left']} head={['Operação', 'Veículos', 'Meta (km/L)']} rows={s.operations.map((o: any) => [<span className="font-medium">{o.name}</span>, <span className="num">{vehs.filter((a: any) => a.operationId === o.id).length}</span>, <Input className="w-28" type="number" step="0.1" aria-label={`Meta ${o.name}`} value={goals.operations?.[o.id] || ''} onChange={(e) => { set({ ...goals, operations: { ...goals.operations, [o.id]: +e.target.value } }); touch(); }} />])} />
         </Card>
-        <Card title="Por grupo">
-          <Table minWidth={420} align={['left', 'right', 'left']} head={['Grupo', 'Veículos', 'Meta (km/L)']} rows={s.groups.map((g: any) => [<span className="font-medium">{g.name}</span>, <span className="num">{vehs.filter((a: any) => a.groupIds.includes(g.id)).length}</span>, <Input className="w-28" type="number" step="0.1" aria-label={`Meta ${g.name}`} value={goals.groups?.[g.id] || ''} onChange={(e) => { set({ ...goals, groups: { ...goals.groups, [g.id]: +e.target.value } }); touch(); }} />])} />
+        <Card title="Por grupo" actions={<SetupLink aba="combustivel" />}>
+          <Table minWidth={420} align={['left', 'right', 'left']} head={['Grupo', 'Veículos', 'Meta (km/L)']} rows={s.groups.map((g: any) => [<span className="font-medium">{g.name}</span>, <span className="num">{vehs.filter((a: any) => a.groupIds.includes(g.id)).length}</span>, goals.groups?.[g.id] ? <span className="num">{num(goals.groups[g.id], 1)} km/L</span> : <span className="text-ink-2 text-small">Herda da empresa</span>])} />
         </Card>
       </Grid>
       <Card title="Por veículo">

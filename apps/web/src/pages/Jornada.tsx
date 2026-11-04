@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { registrarMarcacao, removerMarcacao, useCarregando } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid, useUrlTab } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid, SetupLink, DescList, DescRow, useUrlTab } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { ColumnChart, CompareBars } from '../components/charts';
 import { computeDays, HARDEN, clampLegal, jornadaLimits } from '@localle/shared/jornada';
@@ -207,25 +207,16 @@ function Regras() {
           <Field label="CNPJ"><Input value={cfg.companyCnpj || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyCnpj: e.target.value } }))} placeholder="00.000.000/0001-00" /></Field>
           <Field label="Endereço"><Input value={cfg.companyAddress || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyAddress: e.target.value } }))} /></Field>
         </div>
+        {/* limites moram no Setup do gestor (jornada.*): a lei é piso e o Setup só aceita valor mais rigoroso; aqui só leitura */}
         <div>
-          <p className="text-body font-medium mb-1">Limites da operação</p>
-          <p className="text-small text-ink-2 mb-3">A Lei 13.103/2015 é o piso: a empresa pode ser mais rigorosa, nunca mais branda. Um valor que afrouxe a lei volta ao limite legal. Os novos limites valem para o painel, a folha de ponto e o ranking.</p>
-          <div className="grid md:grid-cols-2 gap-x-4 gap-y-3">
+          <div className="flex flex-wrap items-baseline gap-x-stack gap-y-hair mb-1"><p className="text-body font-medium mr-auto">Limites da operação</p><SetupLink aba="jornada" /></div>
+          <p className="text-small text-ink-2 mb-3">A Lei 13.103/2015 é o piso: a empresa pode ser mais rigorosa, nunca mais branda. Os limites valem para o painel, a folha de ponto e o ranking.</p>
+          <DescList>
             {Object.entries(HARDEN).map(([k, h]) => {
               const cur = k === 'maxExtra' ? Math.min(clampLegal(k, cfg[k] ?? 2), 4) : clampLegal(k, cfg[k]);
-              return (
-                <Field key={k} label={h.label} hint={err[k] ? undefined : `${h.dir === 'down' ? 'Máximo' : 'Mínimo'} legal ${String(h.legal).replace('.', ',')}h · ${h.ref}`}>
-                  <Input type="number" step="0.5" defaultValue={cur} key={k + cur} aria-invalid={!!err[k]} className={err[k] ? '!border-crit' : ''} onChange={() => err[k] && setErr({ ...err, [k]: '' })} onBlur={(e) => {
-                    const n = +e.target.value;
-                    // a lei é piso: valor que afrouxa é recusado no campo e o valor salvo continua valendo
-                    if (e.target.value === '' || isNaN(n) || n <= 0 || clampLegal(k, n) !== n) { setErr({ ...err, [k]: `${h.dir === 'down' ? 'Máximo' : 'Mínimo'} legal: ${String(h.legal).replace('.', ',')} h · ${h.ref}. Mantido ${String(cur).replace('.', ',')} h.` }); e.target.value = String(cur); return; }
-                    s.patch(() => ({ journeyCfg: { ...cfg, [k]: n } }));
-                  }} />
-                  {err[k] && <p role="alert" className="text-caption text-crit-ink mt-1">{err[k]}</p>}
-                </Field>
-              );
+              return <DescRow key={k} label={h.label}><span className="num">{String(cur).replace('.', ',')} h</span>{cur === h.legal ? <span className="text-caption text-ink-2"> · limite legal</span> : null}</DescRow>;
             })}
-          </div>
+          </DescList>
           {(cfg.maxExtra ?? 2) > 2 && <Callout className="mt-3">Mais de 2 horas extras por dia só valem com convenção ou acordo coletivo.</Callout>}
         </div>
         <Panel tone="muted" className="text-small text-ink-2 leading-relaxed">
