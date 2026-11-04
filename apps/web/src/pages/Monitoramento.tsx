@@ -16,6 +16,7 @@ import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { TreatDialog, TreatedLine } from '../components/TreatDialog';
 import { capacidadesComando, confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, lerParametro, listarLinks, revogarLink, tipoComandoLocalle } from '../lib/localleApi';
 import { lerVisao, salvarVisao, type VisaoMonitor } from '../lib/monitorPrefs';
+import { leituraAntiga } from '../lib/diagnosticoRastreador';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { sendRealCommand } from '../lib/rastreioApi';
@@ -215,7 +216,7 @@ export default function Monitoramento() {
                 <li key={a.id}>
                   <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
                     model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
-                    tracker={v ? { ignition: v.ignition, gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked } : null}
+                    tracker={v ? { ignition: v.ignition, gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, em: v.telemetriaEm } : null}
                     speed={v && !v.noSignal ? Math.round(v.speed) : null} time={v ? fmtT(v.lastUpdate) : ''}
                     menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
                       { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
@@ -393,6 +394,8 @@ const RUIM: Record<string, string> = { recusado: 'Recusado pelo rastreador', fal
 
 // o aparelho (ou a leitura do protocolo) não traz o dado: nunca mostrar um valor de exemplo no lugar
 const NAO_INFORMADO = <span className="text-ink-2">Não informado</span>;
+// leitura antiga (o rastreador continua no último valor conhecido, mas o dado não chega há tempo): mostra a idade
+const Idade = ({ em }: { em: string | null | undefined }) => { const a = leituraAntiga(em); return a ? <span className="text-ink-2"> · lido {a}</span> : null; };
 
 function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
   const { a, v, s, k, d } = x;
@@ -445,13 +448,13 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
           <DescRow label="Última posição"><time className="num">{fmtDT(v.lastUpdate)}</time></DescRow>
         </> : <>
           <DescRow label="Ignição">{v?.ignition == null ? <span className="text-ink-2">Não informada</span> : <StatusDot kind={v.ignition ? 'mov' : 'off'} label={v.ignition ? 'Ligada' : 'Desligada'} />}</DescRow>
-          <DescRow label="Bateria">{v?.battery == null ? NAO_INFORMADO : v.battery < BATTERY_LOW_V ? <StatusDot kind="crit" label={`${num(v.battery, 1)} V · baixa`} /> : `${num(v.battery, 1)} V`}</DescRow>
-          <DescRow label="GPS">{v?.gps == null ? NAO_INFORMADO : `${v.gps} satélites`}</DescRow>
-          <DescRow label="Bloqueio">{v?.blocked == null ? NAO_INFORMADO : v.blocked ? <StatusDot kind="crit" label="Bloqueado" /> : 'Livre'}</DescRow>
+          <DescRow label="Bateria">{v?.battery == null ? NAO_INFORMADO : <>{v.battery < BATTERY_LOW_V && !leituraAntiga(v.telemetriaEm?.tensaoV) ? <StatusDot kind="crit" label={`${num(v.battery, 1)} V · baixa`} /> : `${num(v.battery, 1)} V`}<Idade em={v.telemetriaEm?.tensaoV} /></>}</DescRow>
+          <DescRow label="GPS">{v?.gps == null ? NAO_INFORMADO : <>{v.gps} satélites<Idade em={v.telemetriaEm?.satelites} /></>}</DescRow>
+          <DescRow label="Bloqueio">{v?.blocked == null ? NAO_INFORMADO : <>{v.blocked ? <StatusDot kind="crit" label="Bloqueado" /> : 'Livre'}<Idade em={v.telemetriaEm?.bloqueado} /></>}</DescRow>
           {v?.temp !== undefined && <DescRow label="Temperatura">{a.kind === 'veiculo' && v.temp > -12 ? <StatusDot kind="crit" label={`${num(v.temp, 1)} °C`} /> : `${num(v.temp, 1)} °C`}</DescRow>}
           {v?.door && <DescRow label="Porta do baú">{v.door === 'Aberta' ? <StatusDot kind="parado" label="Aberta" /> : v.door}</DescRow>}
           <DescRow label={hours ? 'Horímetro' : a.kmCalculated ? 'Odômetro (calculado)' : 'Odômetro'}>{hours ? <Num value={v?.hourmeter} unit="h" digits={1} size="body" /> : <Num value={odo} unit="km" size="body" />}</DescRow>
-          <DescRow label="Sinal GSM">{v?.gsm == null ? NAO_INFORMADO : <span className="inline-flex items-center gap-icon"><Icon name="sinal" size={16} className="text-ink-2" /><span className="num">{v.gsm}/5</span></span>}</DescRow>
+          <DescRow label="Sinal GSM">{v?.gsm == null ? NAO_INFORMADO : <><span className="inline-flex items-center gap-icon"><Icon name="sinal" size={16} className="text-ink-2" /><span className="num">{v.gsm}/5</span></span><Idade em={v.telemetriaEm?.sinalGsm} /></>}</DescRow>
           <DescRow label="Atualizado"><time className="num">{fmtT(v?.lastUpdate)}</time></DescRow>
         </>}
         <DescRow label="Endereço"><Address pos={v?.pos} className="text-small" /></DescRow>

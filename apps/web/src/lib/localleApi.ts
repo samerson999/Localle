@@ -220,6 +220,8 @@ export interface DiagnosticoRastreador {
   /** null = não consultado (sem Traccar/device ou Traccar fora). */
   online: boolean | null;
   ultimoPacoteEm: string | null; atributos: Record<string, unknown>; atributosEm: string | null;
+  /** Quando cada atributo chegou pela última vez (ISO): valor de chave que parou de vir continua em `atributos`. */
+  atributosVistosEm: Record<string, string>;
   telemetria: TelemetriaLida;
   /** Última posição válida (com fix de GPS); null = nenhuma ainda. */
   ultimaPosicao: UltimaPosicao | null;
@@ -233,7 +235,11 @@ export interface SinaisMotorDiagnostico {
   suporteCan: SuporteCan; esperados: SinalMotor[];
   sinais: { sinal: SinalMotor; status: StatusSinal; motivo: string; ultimoValor: number | null; ultimaLeituraEm: string | null; ultimoRecebimentoEm: string | null; atributo: string | null; avaliadoAte: string }[];
 }
-export interface TelemetriaLida { tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null }
+export interface TelemetriaLida {
+  tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null;
+  /** Quando chegou o atributo de cada leitura (ISO); null = idade desconhecida. */
+  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null };
+}
 export interface UltimaPosicao { em: string; latitude: number; longitude: number; velocidadeKmh: number | null; ignicao: boolean | null }
 /** GET /superadmin/rastreadores/transmissao: o que cada rastreador não desativado está mandando (sem consultar o Traccar). */
 export interface TransmissaoRastreador {

@@ -17,6 +17,11 @@ export interface Telemetria {
   /** Sinal da rede celular normalizado de 0 a 5. */
   sinalGsm: number | null;
   bloqueado: boolean | null;
+  /**
+   * Quando chegou o atributo de cada leitura (ISO, horário do servidor do Traccar). Valor antigo continua valendo como
+   * "último conhecido", mas a tela mostra a idade; `null` = idade desconhecida.
+   */
+  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null };
 }
 
 export interface RealtimePosicao {

@@ -113,10 +113,10 @@ export class ComandosRepository extends BaseRepository<ComandoRow> {
    */
   async estadoDoRastreador(rastreadorId: string, executor: Queryable = this.pool) {
     const { rows } = await executor.query<{
-      ultimos_atributos: Record<string, unknown> | null; atributos_em: Date | null;
+      ultimos_atributos: Record<string, unknown> | null; atributos_em: Date | null; atributos_vistos_em: Record<string, string> | null;
       atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
     }>(
-      `select rc.ultimos_atributos, rc.atributos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio
+      `select rc.ultimos_atributos, rc.atributos_em, rc.atributos_vistos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio
          from rastreadores r
          left join rastreador_comunicacao rc on rc.rastreador_id = r.id
          left join rastreador_modelos m on m.id = r.modelo_id

@@ -297,6 +297,10 @@ export class ComandosService implements OnModuleInit, OnModuleDestroy {
         const estado = await this.repo.estadoDoRastreador(c.rastreador_id);
         const respondidoEm = Date.parse(String(c.resultado?.recebidoEm ?? ''));
         if (!estado?.atributos_em || !(estado.atributos_em.getTime() > respondidoEm)) continue;
+        // o próprio atributo de bloqueio tem que ter chegado depois da resposta: pacote novo sem ele traria o último
+        // valor guardado, de antes do comando (caso do JR12, cujo `out1` deixou de vir no Traccar 6.17)
+        const chave = estado.atributo_bloqueio || 'blocked';
+        if (!(Date.parse(estado.atributos_vistos_em?.[chave] ?? '') > respondidoEm)) continue;
         const bloqueado = lerTelemetria(estado.ultimos_atributos, mapeamentoDaLinha(estado)).bloqueado;
         if (bloqueado !== (c.tipo === 'engineStop')) continue;
         const confirmado = await this.repo.transicionar(c.id, 'confirmado', {

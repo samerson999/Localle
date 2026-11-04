@@ -33,6 +33,23 @@ export function lerTelemetria(attributes: Record<string, unknown> | null | undef
   };
 }
 
+/**
+ * `lerTelemetria` + quando chegou o atributo de cada leitura (`rastreador_comunicacao.atributos_vistos_em`). O valor
+ * vem do último conhecido de cada chave, que pode ser de dias atrás: a idade é o que deixa isso visível na tela.
+ */
+export function lerTelemetriaComIdade(
+  attributes: Record<string, unknown> | null | undefined,
+  vistosEm: Record<string, unknown> | null | undefined,
+  m: MapeamentoTelemetria = SEM_MAPEAMENTO,
+): Telemetria {
+  const v = vistosEm ?? {};
+  const em = (chave: string) => (typeof v[chave] === 'string' ? (v[chave] as string) : null);
+  return {
+    ...lerTelemetria(attributes, m),
+    lidaEm: { tensaoV: em(m.atributoTensao || 'power'), satelites: em('sat'), sinalGsm: em('rssi'), bloqueado: em(m.atributoBloqueio || 'blocked') },
+  };
+}
+
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 // saída digital vem como boolean na maioria dos decoders e como 0/1 em alguns

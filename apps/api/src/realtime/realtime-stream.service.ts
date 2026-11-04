@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import type { RealtimeMessage, RealtimePosicao } from '@localle/shared/realtime';
 import { MonitoringRepository } from '../monitoring/monitoring.repository';
-import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
+import { lerTelemetriaComIdade, mapeamentoDaLinha } from '../telemetria/leitura';
 import { RealtimeHub } from './realtime.hub';
 
 /**
@@ -46,7 +46,7 @@ export class RealtimeStreamService {
             lon: Number(r.longitude),
             speedKmh: r.speed_kmh === null ? null : Number(r.speed_kmh),
             ignition: r.ignition,
-            telemetria: lerTelemetria(r.ultimos_atributos, mapeamentoDaLinha(r)),
+            telemetria: lerTelemetriaComIdade(r.ultimos_atributos, r.atributos_vistos_em, mapeamentoDaLinha(r)),
           }));
         subscriber.next({ kind: 'snapshot', posicoes });
 

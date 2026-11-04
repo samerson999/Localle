@@ -21,6 +21,15 @@ export const haQuanto = (iso: string, agora: number) => {
   return `${Math.round(min / 1440)} dias`;
 };
 
+/** Valor guardado há mais que isso é "antigo": a tela mostra a idade (o aparelho pode ter deixado de mandar o dado). */
+export const LEITURA_ANTIGA_MIN = 60;
+
+/** "há 2 dias" quando a leitura é antiga; null quando é recente ou a idade é desconhecida. */
+export function leituraAntiga(iso: string | null | undefined, agora = Date.now()): string | null {
+  if (!iso || !(agora - Date.parse(iso) > LEITURA_ANTIGA_MIN * 60_000)) return null;
+  return `há ${haQuanto(iso, agora)}`;
+}
+
 export function itensDoDiagnostico(
   d: DiagnosticoRastreador,
   modelo: { nome: string; protocolo: string; porta: number } | null,
@@ -65,7 +74,14 @@ export function itensDoDiagnostico(
     const t = d.telemetria;
     const faltam = [t.tensaoV === null && 'tensão', t.sinalGsm === null && 'sinal', t.bloqueado === null && 'estado de bloqueio'].filter(Boolean) as string[];
     const lidos = [t.tensaoV !== null && `${t.tensaoV} V`, t.sinalGsm !== null && `sinal ${t.sinalGsm}/5`, t.bloqueado !== null && (t.bloqueado ? 'bloqueado' : 'desbloqueado')].filter(Boolean);
-    itens.push(faltam.length
+    // valor antigo comparado ao último pacote: o aparelho manda pacotes, mas não esse dado (ex.: chave mudou no decoder)
+    const ref = Date.parse(d.atributosEm);
+    const antigos = ([['tensão', t.tensaoV, t.lidaEm?.tensaoV], ['sinal', t.sinalGsm, t.lidaEm?.sinalGsm], ['estado de bloqueio', t.bloqueado, t.lidaEm?.bloqueado]] as const)
+      .filter(([, valor, em]) => valor !== null && leituraAntiga(em, ref))
+      .map(([nome, , em]) => `${nome} (lido há ${haQuanto(em!, agora)})`);
+    if (antigos.length) {
+      itens.push({ etapa: 'Telemetria', tom: 'warn', texto: `Valor antigo: ${antigos.join(', ')}. O aparelho continua mandando pacotes, mas não esse dado: confira nos dados recebidos se ele passou a vir em outro atributo e ajuste o mapeamento do modelo.` });
+    } else itens.push(faltam.length
       ? { etapa: 'Telemetria', tom: 'warn', texto: `Não lido: ${faltam.join(', ')}${lidos.length ? ` (lido: ${lidos.join(', ')})` : ''}. Veja as sugestões de mapeamento no modelo.` }
       : { etapa: 'Telemetria', tom: 'ok', texto: `Lido: ${lidos.join(', ')}.` });
   }

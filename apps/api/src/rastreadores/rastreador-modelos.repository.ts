@@ -17,7 +17,7 @@ const COLUNAS_ULTIMA_POSICAO = `up.fix_time as posicao_em, st_y(up.geom) as lati
 
 export interface EstadoRastreadorRow {
   id: string; imei: string; status: string; protocolo: string | null; traccar_device_id: string | null; modelo_id: string | null;
-  ultimo_pacote_em: Date | null; ultimos_atributos: Record<string, unknown> | null; atributos_em: Date | null;
+  ultimo_pacote_em: Date | null; ultimos_atributos: Record<string, unknown> | null; atributos_em: Date | null; atributos_vistos_em: Record<string, string> | null;
   atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
   posicao_em: Date | null; latitude: number | null; longitude: number | null; velocidade_kmh: number | null; ignicao: boolean | null;
 }
@@ -132,7 +132,7 @@ export class RastreadorModelosRepository {
   async estadoDoRastreador(rastreadorId: string) {
     const { rows } = await this.pool.query<EstadoRastreadorRow>(
       `select r.id, r.imei, r.status, r.protocolo, r.traccar_device_id, r.modelo_id,
-              rc.ultimo_pacote_em, rc.ultimos_atributos, rc.atributos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
+              rc.ultimo_pacote_em, rc.ultimos_atributos, rc.atributos_em, rc.atributos_vistos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
               ${COLUNAS_ULTIMA_POSICAO}
          from rastreadores r
          left join rastreador_comunicacao rc on rc.rastreador_id = r.id
@@ -171,7 +171,7 @@ export class RastreadorModelosRepository {
       client_name: string | null; asset_plate: string | null; ultima_posicao_valida_em: Date | null; pacotes_1h: number;
     }>(
       `select r.id, r.imei, r.status, r.protocolo, r.traccar_device_id, r.modelo_id,
-              rc.ultimo_pacote_em, rc.ultima_posicao_valida_em, rc.ultimos_atributos, rc.atributos_em,
+              rc.ultimo_pacote_em, rc.ultima_posicao_valida_em, rc.ultimos_atributos, rc.atributos_em, rc.atributos_vistos_em,
               m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
               m.fabricante as modelo_fabricante, m.nome as modelo_nome, m.protocolo as modelo_protocolo, m.porta as modelo_porta,
               c.name as client_name, a.plate as asset_plate,

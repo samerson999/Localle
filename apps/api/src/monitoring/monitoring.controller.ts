@@ -4,7 +4,7 @@ import { parseDate } from '../common/parse-date';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { SettingsService } from '../settings/settings.service';
-import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
+import { lerTelemetriaComIdade, mapeamentoDaLinha } from '../telemetria/leitura';
 import { comunicacaoDaLinha } from './comunicacao-status';
 import type { EventosQueryDto } from './dto/eventos-query.dto';
 import type { HistoryQueryDto } from './dto/history-query.dto';
@@ -46,7 +46,7 @@ export class MonitoringController {
       instaladoEm: r.instalado_em,
       ultimoPacoteEm: r.ultimo_pacote_em,
       comunicacao: comunicacaoDaLinha(r, semSinalH(r.asset_id), agora),
-      telemetria: lerTelemetria(r.ultimos_atributos, mapeamentoDaLinha(r)),
+      telemetria: lerTelemetriaComIdade(r.ultimos_atributos, r.atributos_vistos_em, mapeamentoDaLinha(r)),
     }));
   }
 

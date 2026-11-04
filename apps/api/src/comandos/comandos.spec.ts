@@ -241,11 +241,13 @@ describe('comandos ao rastreador', () => {
   });
 
   describe('aparelho que informa o estado de bloqueio', () => {
-    const estado = (atributos: Record<string, unknown>, em: Date) =>
+    // como a ingestão grava: o último valor de cada chave e quando cada uma chegou (`vistos` sobrescreve, p/ chave parada)
+    const estado = (atributos: Record<string, unknown>, em: Date, vistos?: Record<string, Date>) =>
       pool.query(
-        `insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em, ultimos_atributos, atributos_em) values ($1, now(), $2, $3)
-         on conflict (rastreador_id) do update set ultimos_atributos = excluded.ultimos_atributos, atributos_em = excluded.atributos_em`,
-        [rastreadorId, JSON.stringify(atributos), em],
+        `insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em, ultimos_atributos, atributos_em, atributos_vistos_em) values ($1, now(), $2, $3, $4)
+         on conflict (rastreador_id) do update set ultimos_atributos = excluded.ultimos_atributos, atributos_em = excluded.atributos_em,
+           atributos_vistos_em = excluded.atributos_vistos_em`,
+        [rastreadorId, JSON.stringify(atributos), em, JSON.stringify(Object.fromEntries(Object.keys(atributos).map((k) => [k, (vistos?.[k] ?? em).toISOString()])))],
       );
     afterAll(() => pool.query('delete from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]));
 
@@ -261,6 +263,10 @@ describe('comandos ao rastreador', () => {
       await expect(service.solicitar(clientA, userA, { assetId: assetA, tipo: 'positionSingle', motivo: null })).rejects.toThrow(/pendente/);
       expect(await service.conferirEstado()).toBe(0);
       await estado({ blocked: false }, new Date());
+      expect(await service.conferirEstado()).toBe(0);
+
+      // pacote novo, mas o `blocked` guardado é de antes da resposta (o aparelho deixou de mandar a chave): não confirma
+      await estado({ blocked: true, sat: 9 }, new Date(), { blocked: new Date(Date.now() - 45_000) });
       expect(await service.conferirEstado()).toBe(0);
 
       await estado({ blocked: true }, new Date());

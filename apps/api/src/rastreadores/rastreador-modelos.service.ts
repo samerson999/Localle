@@ -5,7 +5,7 @@ import type { Queryable } from '../db/queryable';
 import type { Telemetria } from '@localle/shared/realtime';
 import { nomeDoModelo } from '@localle/shared/rastreadorModelos';
 import { TraccarClient } from '../ingest/traccar-client';
-import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
+import { lerTelemetriaComIdade, mapeamentoDaLinha } from '../telemetria/leitura';
 import type { SinalMotor, StatusSinal, SuporteCan } from '../telemetria/sinais-motor';
 import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
 import { type EstadoRastreadorRow, type ModeloDados, RastreadorModelosRepository } from './rastreador-modelos.repository';
@@ -38,6 +38,8 @@ export interface DiagnosticoRastreador {
   ultimoPacoteEm: Date | null;
   atributos: Record<string, unknown>;
   atributosEm: Date | null;
+  /** Quando cada atributo chegou pela última vez (ISO): valor antigo continua em `atributos`, com a idade aqui. */
+  atributosVistosEm: Record<string, string>;
   /** Lida dos atributos com o mapeamento do modelo (a mesma leitura do monitoramento); campo null = não lido. */
   telemetria: Telemetria;
   /** Última posição válida (com fix de GPS); null = nenhuma ainda. */
@@ -88,6 +90,8 @@ export interface TransmissaoRastreador {
   ultimaPosicao: UltimaPosicao | null;
   atributos: Record<string, unknown>;
   atributosEm: Date | null;
+  /** Quando cada atributo chegou pela última vez (ISO): valor antigo continua em `atributos`, com a idade aqui. */
+  atributosVistosEm: Record<string, string>;
   telemetria: Telemetria;
 }
 
@@ -183,7 +187,8 @@ export class RastreadorModelosService {
       ultimoPacoteEm: r.ultimo_pacote_em,
       atributos: r.ultimos_atributos ?? {},
       atributosEm: r.atributos_em,
-      telemetria: lerTelemetria(r.ultimos_atributos, mapeamentoDaLinha(r)),
+      atributosVistosEm: r.atributos_vistos_em ?? {},
+      telemetria: lerTelemetriaComIdade(r.ultimos_atributos, r.atributos_vistos_em, mapeamentoDaLinha(r)),
       ultimaPosicao: ultimaPosicaoDaLinha(r),
       ficha,
       comandos,
@@ -223,7 +228,8 @@ export class RastreadorModelosService {
       ultimaPosicao: ultimaPosicaoDaLinha(r),
       atributos: r.ultimos_atributos ?? {},
       atributosEm: r.atributos_em,
-      telemetria: lerTelemetria(r.ultimos_atributos, mapeamentoDaLinha(r)),
+      atributosVistosEm: r.atributos_vistos_em ?? {},
+      telemetria: lerTelemetriaComIdade(r.ultimos_atributos, r.atributos_vistos_em, mapeamentoDaLinha(r)),
     }));
   }
 

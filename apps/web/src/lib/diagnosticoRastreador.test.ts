@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { firmwareDe, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, semFixDeGps, situacaoTransmissao, sugerirMapeamento, valorDoSinal } from './diagnosticoRastreador';
+import { firmwareDe, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, leituraAntiga, semFixDeGps, situacaoTransmissao, sugerirMapeamento, valorDoSinal } from './diagnosticoRastreador';
 import type { DiagnosticoRastreador, SinaisMotorDiagnostico } from './localleApi';
 
 const agora = Date.parse('2026-11-04T12:00:00Z');
 const modelo = { nome: 'JMAK JR12', protocolo: 'jmak', porta: 5259 };
 const base: DiagnosticoRastreador = {
   imei: '868695060665955', status: 'ativo', modeloId: 'm1', protocoloDetectado: 'jmak', traccarDeviceId: '10', online: true,
-  ultimoPacoteEm: '2026-11-04T11:55:00Z', atributos: { versionFw: 'JR12_V1.3' }, atributosEm: '2026-11-04T11:55:00Z',
+  ultimoPacoteEm: '2026-11-04T11:55:00Z', atributos: { versionFw: 'JR12_V1.3' }, atributosEm: '2026-11-04T11:55:00Z', atributosVistosEm: {},
   telemetria: { tensaoV: 12.5, satelites: 11, sinalGsm: 3, bloqueado: false },
   ultimaPosicao: { em: '2026-11-04T11:55:00Z', latitude: -3.731862, longitude: -38.526669, velocidadeKmh: 0, ignicao: false },
   ficha: { traccar: { configurado: true, versao: '6.17.0', erro: null }, protocolo: { ativo: true, porta: 5259, transporte: 'ALL' }, comandos: null },
@@ -145,5 +145,25 @@ describe('itensDosSinaisMotor (dados do painel)', () => {
     expect(valorDoSinal('combustivel', 48, 'fuel')).toBe('48 L');
     expect(valorDoSinal('combustivel', 48, 'io89')).toBe('48');
     expect(valorDoSinal('horimetro', 7_200_000, 'hours')).toBe('2 h');
+  });
+});
+
+describe('idade das leituras', () => {
+  it('leitura antiga ganha a idade; recente ou sem data, não', () => {
+    expect(leituraAntiga('2026-11-03T12:00:00Z', agora)).toBe('há 24 h');
+    expect(leituraAntiga('2026-11-04T11:30:00Z', agora)).toBeNull();
+    expect(leituraAntiga(null, agora)).toBeNull();
+  });
+
+  it('o caso do JR12: pacotes chegando, mas a tensão é do `vin` de ontem — o diagnóstico avisa em vez de dar ok', () => {
+    const d: DiagnosticoRastreador = {
+      ...base,
+      telemetria: { tensaoV: 0.72, satelites: 0, sinalGsm: 5, bloqueado: false, lidaEm: { tensaoV: '2026-11-03T18:37:45Z', satelites: '2026-11-04T11:55:00Z', sinalGsm: '2026-11-04T11:55:00Z', bloqueado: '2026-11-03T18:37:45Z' } },
+    };
+    const item = itensDoDiagnostico(d, modelo, agora).find((i) => i.etapa === 'Telemetria')!;
+    expect(item.tom).toBe('warn');
+    expect(item.texto).toMatch(/^Valor antigo: tensão \(lido há 17 h\), estado de bloqueio \(lido há 17 h\)\. O aparelho continua mandando pacotes/);
+    // tudo recente: segue ok
+    expect(tom({ ...base, telemetria: { ...base.telemetria, lidaEm: { tensaoV: '2026-11-04T11:55:00Z', satelites: null, sinalGsm: '2026-11-04T11:55:00Z', bloqueado: null } } }).Telemetria).toBe('ok');
   });
 });

@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { Logger } from '@nestjs/common';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PositionsIngestService } from './positions-ingest.service';
 import type { NormalizedPosition } from './traccar-position.mapper';
 
@@ -206,14 +207,22 @@ describe('PositionsIngestService', () => {
     await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 1, serverTime: t('00:00'), attributes: { rssi: 4, blocked: false } }));
     await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 2, serverTime: t('00:15'), attributes: { sat: 15 } }));
     const r = await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 3, serverTime: t('00:30'), attributes: { power: 13.3, rssi: 2 } }));
-    expect(r.status === 'gravada' && r.telemetria).toEqual({ tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false });
+    // cada leitura com a data da sua chave: o bloqueio é o do heartbeat das 12:00
+    expect(r.status === 'gravada' && r.telemetria).toEqual({
+      tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false,
+      lidaEm: { tensaoV: t('00:30').toISOString(), satelites: t('00:15').toISOString(), sinalGsm: t('00:30').toISOString(), bloqueado: t('00:00').toISOString() },
+    });
 
     // reenvio atrasado (serverTime antigo) não volta o sinal para 4, mas traz a chave nova
     const atrasada = await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 4, serverTime: t('00:05'), attributes: { rssi: 4, hdop: 0.7 } }));
     expect(atrasada.status === 'gravada' && atrasada.telemetria.sinalGsm).toBe(2);
-    const { rows } = await pool.query('select ultimos_atributos, atributos_em from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
+    const { rows } = await pool.query('select ultimos_atributos, atributos_em, atributos_vistos_em from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
     expect(rows[0].ultimos_atributos).toEqual({ rssi: 2, blocked: false, sat: 15, power: 13.3, hdop: 0.7 });
     expect(rows[0].atributos_em.toISOString()).toBe('2026-01-01T12:00:30.000Z');
+    // o atrasado não envelhece o rssi das 12:00:30, mas registra a chave que só ele trouxe
+    expect(rows[0].atributos_vistos_em).toEqual({
+      rssi: t('00:30').toISOString(), blocked: t('00:00').toISOString(), sat: t('00:15').toISOString(), power: t('00:30').toISOString(), hdop: t('00:05').toISOString(),
+    });
   });
 
   it('telemetria segue o mapeamento do modelo do rastreador (chave de tensão e escala do sinal)', async () => {
@@ -226,10 +235,30 @@ describe('PositionsIngestService', () => {
     try {
       await pool.query('update rastreadores set modelo_id = $2 where id = $1', [rastreadorId, modelo.rows[0].id]);
       const r = await service.ingest(position({ traccarDeviceId: 1011, traccarPositionId: 1, attributes: { vin: 12507, rssi: 21, out1: false } }));
-      expect(r.status === 'gravada' && r.telemetria).toEqual({ tensaoV: 12.51, satelites: null, sinalGsm: 3, bloqueado: null });
+      expect(r.status === 'gravada' && r.telemetria).toMatchObject({ tensaoV: 12.51, satelites: null, sinalGsm: 3, bloqueado: null });
     } finally {
       await pool.query('update rastreadores set modelo_id = null where id = $1', [rastreadorId]);
       await pool.query('delete from rastreador_modelos where id = $1', [modelo.rows[0].id]);
+    }
+  });
+
+  it('loga atributo novo e atributo lido que parou de chegar (mudança de decoder que passaria despercebida)', async () => {
+    await criarRastreador(1012);
+    const log = vi.spyOn(Logger.prototype, 'log');
+    const warn = vi.spyOn(Logger.prototype, 'warn');
+    try {
+      const em = (min: number) => new Date(Date.UTC(2026, 0, 1, 12, min));
+      await service.ingest(position({ traccarDeviceId: 1012, traccarPositionId: 1, serverTime: em(0), attributes: { power: 12.5, rssi: 3 } }));
+      // o decoder passou a mandar a tensão em outra chave
+      for (let i = 1; i <= 61; i++) {
+        await service.ingest(position({ traccarDeviceId: 1012, traccarPositionId: 1 + i, serverTime: em(i), attributes: { vin: 12500, rssi: 3 } }));
+      }
+      const mensagens = (spy: typeof log) => spy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('atributo'));
+      expect(mensagens(log)).toEqual([expect.stringMatching(/atributos novos: vin/)]);
+      expect(mensagens(warn)).toEqual([expect.stringMatching(/atributo power, lido pela plataforma como tensão, não chega desde 2026-01-01T12:01:00.000Z/)]);
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
     }
   });
 

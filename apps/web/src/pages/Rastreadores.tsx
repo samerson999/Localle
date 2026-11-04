@@ -8,7 +8,7 @@ import { KpiTile } from '../components/story';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar, type SinaisMotorDiagnostico, type SinalMotor, type SituacaoProtocolo, type SuporteCan, type TransmissaoRastreador, type PreviaModelo, type EscolhaDeModelo } from '../lib/localleApi';
 import { fmtD, fmtDT } from '@localle/shared/utils';
-import { coordenadas, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, PAROU_H, ROTULO_SINAL, ROTULO_SUPORTE_CAN, SINAIS_MOTOR, semFixDeGps, situacaoTransmissao, sugerirMapeamento, TRANSMITINDO_MIN, type SituacaoTransmissao, type Tom } from '../lib/diagnosticoRastreador';
+import { coordenadas, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, leituraAntiga, PAROU_H, ROTULO_SINAL, ROTULO_SUPORTE_CAN, SINAIS_MOTOR, semFixDeGps, situacaoTransmissao, sugerirMapeamento, TRANSMITINDO_MIN, type SituacaoTransmissao, type Tom } from '../lib/diagnosticoRastreador';
 import { nomeDoModelo, normalizarIdentificador, ROTULO_IDENTIFICADOR, TIPOS_IDENTIFICADOR, validarIdentificador, type TipoIdentificador } from '@localle/shared/rastreadorModelos';
 
 // Modelos: a fonte é a lista de aparelhos do Traccar (migration 1793170000000, ~2.200 modelos com protocolo e porta);
@@ -554,18 +554,30 @@ function SinaisPainel({ s }: { s: SinaisMotorDiagnostico }) {
 }
 
 // O último valor de cada dado que este aparelho mandou (o Traccar decodifica; a plataforma guarda o último de cada chave).
-function DadosRecebidos({ d }: { d: { atributos: Record<string, unknown>; atributosEm: string | null; ultimaPosicao: TransmissaoRastreador['ultimaPosicao'] } }) {
+// Chave que não vem há mais de LEITURA_ANTIGA_MIN em relação ao último pacote fica apagada, com a idade: o aparelho
+// deixou de mandar esse dado (decoder do Traccar, firmware ou configuração mudou).
+function DadosRecebidos({ d }: { d: { atributos: Record<string, unknown>; atributosEm: string | null; atributosVistosEm?: Record<string, string>; ultimaPosicao: TransmissaoRastreador['ultimaPosicao'] } }) {
   const p = d.ultimaPosicao;
+  const ref = d.atributosEm ? Date.parse(d.atributosEm) : Date.now();
   return (
     <section className="flex flex-col gap-hair border-t border-line pt-card-head">
       <p className="text-small font-medium">Dados recebidos <span className="font-normal text-ink-2">· {fmtDT(Date.parse(d.atributosEm!))}</span></p>
       {p && <p className="text-small text-ink-2">Posição {coordenadas(p)}{p.velocidadeKmh !== null ? ` · ${Math.round(p.velocidadeKmh)} km/h` : ''}{p.ignicao !== null ? ` · ignição ${p.ignicao ? 'ligada' : 'desligada'}` : ''}</p>}
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-hair font-mono text-caption">
         {Object.entries(d.atributos).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
-          <div key={k} className="contents"><dt className="text-ink-2">{k}</dt><dd className="break-all">{JSON.stringify(v)}</dd></div>
+          <AtributoRecebido key={k} chave={k} valor={v} antigo={leituraAntiga(d.atributosVistosEm?.[k], ref) && `há ${haQuanto(d.atributosVistosEm![k], Date.now())}`} />
         ))}
       </dl>
     </section>
+  );
+}
+
+function AtributoRecebido({ chave, valor, antigo }: { chave: string; valor: unknown; antigo: string | null }) {
+  return (
+    <div className={antigo ? 'contents text-ink-3' : 'contents'}>
+      <dt className={antigo ? '' : 'text-ink-2'}>{chave}</dt>
+      <dd className="break-all">{JSON.stringify(valor)}{antigo && <span className="font-sans"> · parou de vir, último {antigo}</span>}</dd>
+    </div>
   );
 }
 
@@ -631,8 +643,15 @@ function TransmissaoAba({ onDiagnostico }: { onDiagnostico: (r: Acompanhado) => 
   );
 }
 
+// valor com idade quando antigo: o último conhecido pode ser de dias atrás (o aparelho deixou de mandar o dado)
 function TelemetriaCelula({ t }: { t: TransmissaoRastreador['telemetria'] }) {
-  const partes = [t.tensaoV !== null && `${t.tensaoV.toFixed(1)} V`, t.sinalGsm !== null && `sinal ${t.sinalGsm}/5`, t.satelites !== null && `${t.satelites} satélites`, t.bloqueado !== null && (t.bloqueado ? 'bloqueado' : 'desbloqueado')].filter(Boolean);
+  const com = (texto: string, em: string | null | undefined) => { const a = leituraAntiga(em); return a ? `${texto} (${a})` : texto; };
+  const partes = [
+    t.tensaoV !== null && com(`${t.tensaoV.toFixed(1)} V`, t.lidaEm?.tensaoV),
+    t.sinalGsm !== null && com(`sinal ${t.sinalGsm}/5`, t.lidaEm?.sinalGsm),
+    t.satelites !== null && com(`${t.satelites} satélites`, t.lidaEm?.satelites),
+    t.bloqueado !== null && com(t.bloqueado ? 'bloqueado' : 'desbloqueado', t.lidaEm?.bloqueado),
+  ].filter(Boolean);
   return partes.length ? <span className="text-small">{partes.join(' · ')}</span> : <span className="text-ink-3">—</span>;
 }
 

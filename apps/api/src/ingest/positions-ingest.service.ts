@@ -8,7 +8,8 @@ import { detectarCercas } from '../cercas/cerca-detector';
 import { FUSO_PADRAO } from '../regras/avaliar-regra';
 import { avaliarRegras } from '../regras/motor-regras';
 import { atualizarSinaisMotor } from '../telemetria/instalacao-sinais.repository';
-import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
+import { acompanharAtributos, chavesLidas, type DatasPorChave } from '../telemetria/atributos-vistos';
+import { lerTelemetriaComIdade, mapeamentoDaLinha } from '../telemetria/leitura';
 import { mapeamentoSinaisDaLinha, ROTULO_SINAL } from '../telemetria/sinais-motor';
 import { resolverInstalacaoVigente } from './instalacao-vigente';
 import type { NormalizedPosition } from './traccar-position.mapper';
@@ -139,8 +140,21 @@ export class PositionsIngestService {
         [posicaoId, rastreadorId, position.traccarPositionId],
       );
 
-      const ultimosAtributos = await this.atualizarComunicacao(client, rastreadorId, assetId, clientId, position);
-      const telemetria = lerTelemetria(ultimosAtributos, mapeamentoDaLinha(rastreador.rows[0]));
+      const mapeamento = mapeamentoDaLinha(rastreador.rows[0]);
+      const mapeamentoSinais = mapeamentoSinaisDaLinha(rastreador.rows[0]);
+      const comunicacao = await this.atualizarComunicacao(client, rastreadorId, assetId, clientId, position, chavesLidas(mapeamento, mapeamentoSinais));
+      const telemetria = lerTelemetriaComIdade(comunicacao.ultimosAtributos, comunicacao.vistosEm, mapeamento);
+      // mudança de formato que passaria despercebida (decoder do Traccar, firmware, configuração do aparelho)
+      if (comunicacao.novos.length) {
+        this.logger.log(
+          `rastreador_id=${rastreadorId} protocolo=${position.protocol ?? '?'} atributos novos: ${comunicacao.novos.join(', ')} (decoder do Traccar, firmware ou configuração do aparelho mudou?)`,
+        );
+      }
+      for (const p of comunicacao.pararam) {
+        this.logger.warn(
+          `rastreador_id=${rastreadorId} protocolo=${position.protocol ?? '?'} atributo ${p.chave}, lido pela plataforma como ${p.leitura}, não chega desde ${p.desde} com o aparelho transmitindo: a tela mostra o último valor antigo; confira o mapeamento do modelo`,
+        );
+      }
 
       // sinais de motor: só instalado (aparelho em bancada não tem CAN) e sempre pelos atributos DESTA posição
       const alertasSinais: Alerta[] = [];
@@ -151,7 +165,7 @@ export class PositionsIngestService {
           rastreadorId,
           attributes: position.attributes,
           ctx: { fixTime: position.fixTime, serverTime: position.serverTime, gpsValido: position.valid, velocidadeKmh: position.speedKmh },
-          mapeamento: mapeamentoSinaisDaLinha(rastreador.rows[0]),
+          mapeamento: mapeamentoSinais,
           mapeamentoVersao: rastreador.rows[0].modelo_atualizado_em,
         });
         for (const t of transicoes) {
@@ -233,16 +247,33 @@ export class PositionsIngestService {
     }
   }
 
+  /**
+   * Último pacote, último valor de cada atributo e quando cada um chegou (src/telemetria/atributos-vistos.ts). Lê a linha
+   * com `for update` para calcular as datas por chave sem corrida com outro worker do mesmo rastreador.
+   */
   private async atualizarComunicacao(
     client: PoolClient,
     rastreadorId: string,
     assetId: string | null,
     clientId: string | null,
     position: NormalizedPosition,
-  ): Promise<Record<string, unknown>> {
+    lidas: Map<string, string>,
+  ) {
+    const antes = await client.query<{ atributos_vistos_em: DatasPorChave; atributos_ausentes_desde: DatasPorChave; atributos_em: Date | null }>(
+      'select atributos_vistos_em, atributos_ausentes_desde, atributos_em from rastreador_comunicacao where rastreador_id = $1 for update',
+      [rastreadorId],
+    );
+    const a = antes.rows[0];
+    const acompanhamento = acompanharAtributos(
+      a ? { vistosEm: a.atributos_vistos_em, ausentesDesde: a.atributos_ausentes_desde, atributosEm: a.atributos_em } : null,
+      Object.keys(position.attributes),
+      position.serverTime,
+      lidas,
+    );
     const { rows } = await client.query<{ ultimos_atributos: Record<string, unknown> }>(
-      `insert into rastreador_comunicacao (rastreador_id, asset_id, client_id, ultimo_pacote_em, ultima_posicao_valida_em, ultimos_atributos, atributos_em)
-       values ($1, $2, $3, now(), case when $4 then $5::timestamptz else null end, $6::jsonb, $7)
+      `insert into rastreador_comunicacao (rastreador_id, asset_id, client_id, ultimo_pacote_em, ultima_posicao_valida_em, ultimos_atributos, atributos_em,
+                                          atributos_vistos_em, atributos_ausentes_desde)
+       values ($1, $2, $3, now(), case when $4 then $5::timestamptz else null end, $6::jsonb, $7, $8::jsonb, $9::jsonb)
        on conflict (rastreador_id) do update set
          asset_id = excluded.asset_id,
          client_id = excluded.client_id,
@@ -255,11 +286,17 @@ export class PositionsIngestService {
            then rastreador_comunicacao.ultimos_atributos || excluded.ultimos_atributos
            else excluded.ultimos_atributos || rastreador_comunicacao.ultimos_atributos end,
          atributos_em = greatest(excluded.atributos_em, rastreador_comunicacao.atributos_em),
+         -- calculados acima sobre a linha travada (já tratam pacote atrasado)
+         atributos_vistos_em = excluded.atributos_vistos_em,
+         atributos_ausentes_desde = excluded.atributos_ausentes_desde,
          atualizado_em = now()
        returning ultimos_atributos`,
-      [rastreadorId, assetId, clientId, position.valid, position.fixTime, JSON.stringify(position.attributes), position.serverTime],
+      [
+        rastreadorId, assetId, clientId, position.valid, position.fixTime, JSON.stringify(position.attributes), position.serverTime,
+        JSON.stringify(acompanhamento.vistosEm), JSON.stringify(acompanhamento.ausentesDesde),
+      ],
     );
-    return rows[0].ultimos_atributos;
+    return { ultimosAtributos: rows[0].ultimos_atributos, ...acompanhamento };
   }
 
   private async atualizarUltimaPosicao(
