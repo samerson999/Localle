@@ -6,9 +6,10 @@ import { tv } from '../lib/tokens';
 import { reducedMotion } from '../lib/motion';
 import { MAP_GLYPH, AssetSilhouette, type Category, type SilhouetteKey } from './assetArt';
 import { pngIconUrl } from '../lib/pngIcons';
+import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { StatusDot, Plate, Num } from './story';
 import { IconButton, cx, Menu, type MenuItem } from './ui';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 type Glyph = Category | 'reboque';
 import { fmtCoord, useAddress } from '../lib/geocode';
 
@@ -226,10 +227,32 @@ export function MapControls({ items }: { items: { icon: string; label: string; o
   );
 }
 
-// Linha de veículo das listas ao vivo: silhueta, placa em chip, status, modelo, motorista, local, velocidade (com tendência) e hora.
-export function VehicleListItem({ silhouette, icon, photo, plate, kind, statusLabel, model, driver, pos, detail, speed, time, selected, onClick, menu }: {
+// Leitura do rastreador na linha do veículo: ignição, GPS, sinal de celular e bateria, sempre na mesma ordem (as colunas
+// se alinham na lista); bloqueio só aparece quando bloqueado. Dado que o aparelho não manda fica apagado com "não
+// informado" — nunca um valor de exemplo. Tom de atenção só onde a leitura é inequívoca (sem satélite ou menos de 4,
+// que não dão posição confiável; sem sinal de celular) e na bateria abaixo de BATTERY_LOW_V, o mesmo limite do painel do veículo.
+export type LeituraRastreador = { ignition?: boolean | null; gps?: number | null; gsm?: number | null; battery?: number | null; blocked?: boolean | null };
+type TomLeitura = 'neutro' | 'off' | 'ok' | 'warn' | 'crit';
+const TOM_LEITURA: Record<TomLeitura, string> = { neutro: 'text-ink-3', off: 'text-ink-3 opacity-40', ok: 'text-mov', warn: 'text-warn', crit: 'text-crit-ink' };
+function TrackerIcons({ t }: { t: LeituraRastreador }) {
+  const item = (icon: IconName, label: string, tom: TomLeitura) => <span key={icon} title={label} className={cx('flex', TOM_LEITURA[tom])}><Icon name={icon} size={15} label={label} /></span>;
+  const sats = (n: number) => (n === 0 ? 'GPS sem satélites' : `GPS com ${n} ${n === 1 ? 'satélite' : 'satélites'}${n < 4 ? ' (posição imprecisa)' : ''}`);
+  return (
+    <span className="flex items-center gap-2 mt-hair" aria-label="Leitura do rastreador">
+      {t.ignition == null ? item('chave', 'Ignição: não informada', 'off') : item('chave', t.ignition ? 'Ignição ligada' : 'Ignição desligada', t.ignition ? 'ok' : 'neutro')}
+      {t.gps == null ? item('gps', 'GPS: não informado', 'off') : item('gps', sats(t.gps), t.gps < 4 ? 'warn' : 'neutro')}
+      {t.gsm == null ? item('sinal', 'Sinal de celular: não informado', 'off') : item('sinal', t.gsm === 0 ? 'Sem sinal de celular' : `Sinal de celular ${t.gsm}/5`, t.gsm === 0 ? 'warn' : 'neutro')}
+      {t.battery == null ? item('bateria', 'Bateria: não informada', 'off') : item('bateria', `Bateria ${t.battery.toFixed(1).replace('.', ',')} V${t.battery < BATTERY_LOW_V ? ' · baixa' : ''}`, t.battery < BATTERY_LOW_V ? 'crit' : 'neutro')}
+      {t.blocked === true && item('cadeado', 'Bloqueado', 'crit')}
+    </span>
+  );
+}
+
+// Linha de veículo das listas ao vivo: silhueta, placa em chip, status, modelo, motorista, local, leitura do rastreador,
+// velocidade (com tendência) e hora.
+export function VehicleListItem({ silhouette, icon, photo, plate, kind, statusLabel, model, driver, pos, detail, tracker, speed, time, selected, onClick, menu }: {
   silhouette: SilhouetteKey; icon?: string; photo?: string; plate: string; kind: StatusKind; statusLabel?: string; model?: React.ReactNode; driver?: React.ReactNode; pos?: [number, number] | null;
-  detail?: React.ReactNode; speed?: number | null; time?: React.ReactNode; selected?: boolean; onClick?: () => void; menu?: MenuItem[];
+  detail?: React.ReactNode; tracker?: LeituraRastreador | null; speed?: number | null; time?: React.ReactNode; selected?: boolean; onClick?: () => void; menu?: MenuItem[];
 }) {
   const iconUrl = icon && pngIconUrl(icon);
   const moving = speed != null && speed > 0;
@@ -247,6 +270,7 @@ export function VehicleListItem({ silhouette, icon, photo, plate, kind, statusLa
         {driver && <span className="flex items-center gap-1 text-small text-ink-2 truncate"><Icon name="usuario" size={14} className="text-ink-3 shrink-0" />{driver}</span>}
         {pos && <span className="flex items-center gap-1 text-small text-ink-2 truncate"><Icon name="centralizar" size={14} className="text-ink-3 shrink-0" /><Address pos={pos} /></span>}
         {detail && <span className="text-small text-ink-2 truncate">{detail}</span>}
+        {tracker && <TrackerIcons t={tracker} />}
       </span>
       <span className="flex flex-col items-end gap-1 shrink-0 pl-2">
         <span className="flex items-center gap-1">

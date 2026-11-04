@@ -183,22 +183,13 @@ export default function Monitoramento() {
       {header}
       <PageBody>
       <Stack gap="grid">
-      <Grid cols={7} equal className="max-md:flex max-md:overflow-x-auto max-md:overscroll-x-contain max-md:-mx-page max-md:px-page max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:w-[148px] max-md:[&>*]:shrink-0">
-        <KpiTile label="Veículos rastreados" value={list.length} status="mov" />
-        <KpiTile label="Em movimento" value={counts.mov} status="mov" />
-        <KpiTile label="Parado ligado" value={counts.par} status="parado" />
-        <KpiTile label="Desligado" value={counts.des} status="off" />
-        <KpiTile label="Sem sinal" value={counts.sem} status="nosignal" />
-        <KpiTile label="Percurso hoje" value={kmHoje} unit="km" digits={0} />
-        <KpiTile label="Velocidade média" value={velMedia} unit="km/h" digits={0} />
-      </Grid>
       <Tabs className="md:hidden" value={view} onChange={(k) => setView(k as 'mapa' | 'lista')} tabs={[{ key: 'mapa', label: 'Mapa' }, { key: 'lista', label: 'Lista', count: shown.length }]} />
       <div role={full ? 'dialog' : undefined} aria-label={full ? 'Monitoramento em tela cheia' : undefined}
         className={cx(full && 'fixed inset-0 z-[1100] bg-canvas flex flex-col gap-stack p-3')}>
       {full && (
         <div className="flex flex-wrap items-center gap-stack shrink-0">
           <div className="min-w-0 mr-auto">
-            <h1 className="text-h3 font-semibold leading-tight">Monitoramento</h1>
+            <h1 className="sr-only">Monitoramento</h1>
             <p className="text-caption text-ink-2">Ao vivo · {list.length} veículos{lastUpd ? <> · atualizado às <time className="num">{fmtT(lastUpd)}</time></> : null}</p>
           </div>
           <SearchInput className="w-64 max-md:w-full max-md:order-2" value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
@@ -224,6 +215,7 @@ export default function Monitoramento() {
                 <li key={a.id}>
                   <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
                     model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
+                    tracker={v ? { ignition: v.ignition, gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked } : null}
                     speed={v && !v.noSignal ? Math.round(v.speed) : null} time={v ? fmtT(v.lastUpdate) : ''}
                     menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
                       { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
@@ -331,23 +323,68 @@ export default function Monitoramento() {
           </Card>
         )}
         </div>
+        {!full && <PainelFrota total={list.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} movimentacao={movimentacao} eventos={ultimosEventos} />}
       </div>
       </div>
       </Stack>
-      <Grid cols={2} wide>
-        <Card dense title="Últimos eventos" to="/monitoramento/alertas" className="h-[352px] overflow-y-auto">
-          {ultimosEventos.length ? <Timeline items={ultimosEventos} /> : <EmptyState icon="ok" title="Nenhum evento recente" />}
-        </Card>
-        <Card dense title="Movimentação nas últimas 24h" className="h-[352px]">
-          <div className="h-full flex flex-col justify-center">
-            <StackedColumns data={movimentacao} series={[{ label: 'Em movimento', tone: 'real' }, { label: 'Parados', tone: 'loss' }]} height={220} />
-          </div>
-        </Card>
-      </Grid>
       </PageBody>
       <CommandModal state={cmd} onClose={() => setCmd(null)} />
       <ShareModal asset={shareA} onClose={() => setShareA(null)} />
     </div>
+  );
+}
+
+// Coluna da direita (04/11/2026, referência do usuário): o mapa no centro e, ao lado, mini painéis com a leitura da
+// frota. Cada número vem da frota carregada; o insight é uma frase sobre esses mesmos números, nunca estimativa. Os
+// status da "Frota agora" filtram a lista (clicar de novo volta para todos). Abaixo de xl a coluna desce para baixo do
+// mapa, em duas colunas.
+const STATUS_FROTA: { k: 'mov' | 'par' | 'des' | 'sem'; kind: StatusKind; label: string; bar: string }[] = [
+  { k: 'mov', kind: 'mov', label: 'Em movimento', bar: 'bg-[var(--status-mov)]' },
+  { k: 'par', kind: 'parado', label: 'Parado ligado', bar: 'bg-[var(--status-parado)]' },
+  { k: 'des', kind: 'off', label: 'Desligado', bar: 'bg-[var(--status-off)]' },
+  { k: 'sem', kind: 'nosignal', label: 'Sem sinal', bar: 'hatch-prev' },
+];
+
+function PainelFrota({ total, counts, st, onStatus, kmHoje, velMedia, emMovimento, movimentacao, eventos }: {
+  total: number; counts: Record<'mov' | 'par' | 'des' | 'sem', number>; st: string; onStatus: (k: string) => void;
+  kmHoje: number; velMedia: number; emMovimento: number; movimentacao: { label: string; values: number[] }[]; eventos: { tone: 'plan' | 'cost'; ts: number; title: string; detail?: string }[];
+}) {
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+  const insight = counts.sem > 0 ? `${counts.sem} ${counts.sem === 1 ? 'veículo sem sinal' : 'veículos sem sinal'}: confira o rastreador ou o chip.`
+    : counts.par > 0 ? `${counts.par} ${counts.par === 1 ? 'parado' : 'parados'} com o motor ligado: consumo sem deslocamento.`
+    : `${pct(counts.mov)}% da frota em movimento agora.`;
+  return (
+    <aside aria-label="Painel da frota" className="flex-[1_1_100%] xl:flex-[0_0_320px] min-w-0 grid md:grid-cols-2 xl:flex xl:flex-col gap-grid xl:h-[calc(100vh/var(--ui-zoom)-128px)] xl:min-h-[560px] xl:overflow-y-auto xl:-m-1 xl:p-1">
+      <Card dense title="Frota agora">
+        <div className="flex items-baseline gap-tight"><Num value={total} size="kpi" count /><span className="text-small text-ink-2">rastreados</span></div>
+        <div className="flex h-2 rounded-pill overflow-hidden bg-surface-muted mt-stack" aria-hidden="true">
+          {STATUS_FROTA.map((s) => counts[s.k] > 0 && <span key={s.k} className={cx('h-full', s.bar)} style={{ width: `${(counts[s.k] / Math.max(1, total)) * 100}%` }} />)}
+        </div>
+        <ul className="flex flex-col mt-stack -mx-2">
+          {STATUS_FROTA.map((s) => (
+            <li key={s.k}>
+              <button type="button" aria-pressed={st === s.k} onClick={() => onStatus(s.k)} title={st === s.k ? 'Mostrar todos na lista' : `Filtrar a lista: ${s.label.toLowerCase()}`}
+                className={cx('w-full flex items-center gap-tight h-8 px-2 rounded-tight text-small row-hover', st === s.k ? 'bg-surface-selected' : 'hover:bg-card-2')}>
+                <StatusDot kind={s.kind} label={s.label} className="mr-auto" />
+                <span className="num font-medium text-ink">{counts[s.k]}</span>
+                <span className="num text-ink-3 w-10 text-right">{pct(counts[s.k])}%</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="text-caption text-ink-2 border-t border-line pt-stack mt-stack">{insight}</p>
+      </Card>
+      <div className="grid grid-cols-2 gap-grid">
+        <KpiTile label="Percurso hoje" value={kmHoje} unit="km" digits={0} sub="soma da frota" />
+        <KpiTile label="Velocidade média" value={emMovimento ? velMedia : null} unit="km/h" digits={0} sub={emMovimento ? `de ${emMovimento} em movimento` : 'nenhum em movimento'} />
+      </div>
+      <Card dense title="Movimentação nas últimas 24h">
+        <StackedColumns data={movimentacao} series={[{ label: 'Em movimento', tone: 'real' }, { label: 'Parados', tone: 'loss' }]} height={150} />
+      </Card>
+      <Card dense title="Últimos eventos" to="/monitoramento/alertas">
+        {eventos.length ? <Timeline items={eventos} /> : <EmptyState icon="ok" title="Nenhum evento recente" />}
+      </Card>
+    </aside>
   );
 }
 
