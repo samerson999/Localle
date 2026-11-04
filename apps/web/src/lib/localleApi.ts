@@ -182,12 +182,33 @@ export interface AdminRastreador {
 }
 export interface AdminRastreadorModelo {
   id: string; fabricante: string; nome: string; protocolo: string; porta: number; tipo_identificador: TipoIdentificador; ativo: boolean; rastreadores: number;
+  /** 'catalogo' = mantido pela Localle a partir da lista do Traccar; 'manual' = cadastrado pela tela. */
+  origem: 'catalogo' | 'manual';
   /** Mapeamento da telemetria; null = chave padrão do Traccar. */
   atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
 }
 export interface ModeloBody {
   fabricante: string; nome: string; protocolo: string; porta: number; tipoIdentificador: TipoIdentificador;
   atributoTensao: string | null; sinalMax: number | null; atributoBloqueio: string | null;
+}
+/** O que o Traccar diz do modelo agora (GET /superadmin/rastreador-modelos/:id/traccar). */
+export interface FichaTraccar {
+  traccar: { configurado: boolean; versao: string | null; erro: string | null };
+  /** null = Traccar não informa (anterior à 6.17). */
+  protocolo: { ativo: boolean; porta: number | null; transporte: string | null } | null;
+  /** null = nenhum aparelho do modelo conectou ainda pelo protocolo do modelo. */
+  comandos: { tipos: string[]; imei: string } | null;
+}
+/** GET /superadmin/rastreadores/:id/diagnostico: fatos; o checklist é montado em lib/diagnosticoRastreador.ts. */
+export interface DiagnosticoRastreador {
+  imei: string; status: string; modeloId: string | null; protocoloDetectado: string | null; traccarDeviceId: string | null;
+  /** null = não consultado (sem Traccar/device ou Traccar fora). */
+  online: boolean | null;
+  ultimoPacoteEm: string | null; atributos: Record<string, unknown>; atributosEm: string | null;
+  telemetria: { tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null };
+  ficha: FichaTraccar | null;
+  /** Comandos deste aparelho; null antes da primeira posição. */
+  comandos: string[] | null;
 }
 export interface AtributosRecebidos { imei: string; protocolo: string | null; atributos: Record<string, unknown>; atributos_em: string }
 export interface AdminSimCard { id: string; iccid: string; operadora: string | null; numero: string | null; status: string; rastreador_id: string | null }
@@ -221,6 +242,8 @@ export const adminApi = {
   criarModelo: (body: ModeloBody) => apiSend<AdminRastreadorModelo>('POST', '/superadmin/rastreador-modelos', body),
   atualizarModelo: (id: string, body: Partial<ModeloBody> & { ativo?: boolean }) => apiSend<AdminRastreadorModelo>('PATCH', `/superadmin/rastreador-modelos/${id}`, body),
   atributosDoModelo: (id: string) => apiGet<AtributosRecebidos[]>(`/superadmin/rastreador-modelos/${id}/atributos`),
+  diagnosticoRastreador: (id: string) => apiGet<DiagnosticoRastreador>(`/superadmin/rastreadores/${id}/diagnostico`),
+  fichaTraccarDoModelo: (id: string) => apiGet<FichaTraccar>(`/superadmin/rastreador-modelos/${id}/traccar`),
   desativarRastreador: (id: string) => apiSend('POST', `/superadmin/rastreadores/${id}/desativar`),
   desinstalar: (instalacaoId: string) => apiSend('POST', `/superadmin/rastreadores/instalacoes/${instalacaoId}/desinstalar`),
   vincularCliente: (id: string, clientId: string) => apiSend('POST', `/superadmin/rastreadores/${id}/vincular/${clientId}`),

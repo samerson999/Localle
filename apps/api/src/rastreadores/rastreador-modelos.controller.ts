@@ -20,6 +20,12 @@ export class RastreadorModelosController {
     return this.service.atributosRecebidos(id);
   }
 
+  /** Versão do Traccar, protocolo ativo/porta e comandos aceitos — ficha do modelo na tela do admin. */
+  @Get(':id/traccar')
+  fichaTraccar(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.fichaTraccar(id);
+  }
+
   @Post()
   criar(@CurrentUserId() superadminId: string, @Body() body: unknown) {
     return this.service.criar(superadminId, parseCriarModelo(body));

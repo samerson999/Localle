@@ -2,17 +2,19 @@
 // cadastro de rastreador e chip, vínculo chip↔rastreador, vínculo rastreador↔cliente, instalação vigente,
 // último pacote, desinstalação e desativação. Em qual ativo o rastreador está é o próprio cliente que indica
 // (Gestão de ativos). Custo, avaria e recolhimento físico não existem no schema.
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select, SearchSelect, TextButton, Modal, Field, FormGroup, Input, Callout, EmptyState, toast, confirmAction } from '../components/ui';
 import { KpiTile } from '../components/story';
 import { useStore } from '../lib/store';
-import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard } from '../lib/localleApi';
+import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar } from '../lib/localleApi';
 import { fmtD, fmtDT } from '@localle/shared/utils';
+import { itensDoDiagnostico, sugerirMapeamento, type Tom } from '../lib/diagnosticoRastreador';
 import { normalizarIdentificador, ROTULO_IDENTIFICADOR, TIPOS_IDENTIFICADOR, validarIdentificador, type TipoIdentificador } from '@localle/shared/rastreadorModelos';
 
-// Protocolo do modelo: texto livre, com o nome que o Traccar usa. Não há lista fixa — o Traccar não expõe os protocolos
-// pela API (só no default.xml dele). As sugestões são o que a plataforma já viu: modelos cadastrados e protocolos
-// detectados nas posições. Protocolo novo: o log do Traccar mostra o nome em "[T…: <protocolo> < ip] Unknown device - …".
+// Modelos: o catálogo Localle (migration 1793160000000) já traz protocolo, porta e identificador conferidos na lista do
+// Traccar — no cadastro de rastreador basta escolher o modelo. Modelo não listado: protocolo em texto livre, com o nome
+// que o Traccar usa; as sugestões são o que a plataforma já viu (modelos e protocolos detectados nas posições).
+// Protocolo novo: o log do Traccar mostra o nome em "[T…: <protocolo> < ip] Unknown device - …".
 const nomeModelo = (m: { fabricante: string; nome: string }) => `${m.fabricante} ${m.nome}`;
 
 type Situacao = 'instalado' | 'vinculado' | 'estoque' | 'desativado';
@@ -35,6 +37,7 @@ export default function Rastreadores() {
   const [aoCliente, setAoCliente] = useState<AdminRastreador | null>(null);
   const [trocandoModelo, setTrocandoModelo] = useState<AdminRastreador | null>(null);
   const [editandoModelo, setEditandoModelo] = useState<AdminRastreadorModelo | 'novo' | null>(null);
+  const [diagnosticando, setDiagnosticando] = useState<AdminRastreador | null>(null);
   if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com o acesso da Locale para ver o Console da Locale." /></Card>;
 
   const [rastreadores, chips, clientes, modelos] = data || [[], [], [], []];
@@ -94,6 +97,7 @@ export default function Rastreadores() {
                   <Badge tone={SIT_BADGE[s].tone}>{SIT_BADGE[s].label}</Badge>,
                   <span className="num text-small">{r.ultimo_pacote_em ? fmtDT(Date.parse(r.ultimo_pacote_em)) : '—'}</span>,
                   <div className="flex gap-3 justify-end">
+                    {s !== 'desativado' && <TextButton onClick={() => setDiagnosticando(r)}>Diagnóstico</TextButton>}
                     {s !== 'desativado' && (r.sim_card_id
                       ? <TextButton onClick={() => acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.')}>Desvincular chip</TextButton>
                       : <TextButton onClick={() => setVinculando(r)}>Vincular chip</TextButton>)}
@@ -110,14 +114,14 @@ export default function Rastreadores() {
         <Section title="Modelos de rastreador">
           <Card>
             <div className="flex flex-wrap items-center gap-stack mb-card-head">
-              <p className="text-small text-ink-2 mr-auto max-w-[80ch]">O modelo diz o protocolo do Traccar, a porta em que o aparelho conecta e o identificador que ele manda. O cadastro de rastreador exige o modelo; o protocolo da primeira posição é conferido com o do modelo.</p>
-              <Button variant="secondary" onClick={() => setEditandoModelo('novo')}>Novo modelo</Button>
+              <p className="text-small text-ink-2 mr-auto max-w-[80ch]">O catálogo já traz protocolo, porta e identificador de cada modelo, conferidos na lista do Traccar: no cadastro de rastreador basta escolher o modelo. A primeira posição confere o protocolo; em Editar, a ficha mostra o que o Traccar aceita do modelo.</p>
+              <Button variant="secondary" onClick={() => setEditandoModelo('novo')}>Modelo não listado</Button>
             </div>
             <Table minWidth={820} loading={loading && !data} align={['left', 'left', 'right', 'left', 'right', 'left', 'right']}
               head={['Modelo', 'Protocolo', 'Porta', 'Identificador', 'Rastreadores', 'Situação', '']}
-              emptyState={<EmptyState icon="sinal" title="Nenhum modelo cadastrado" action={<Button onClick={() => setEditandoModelo('novo')}>Novo modelo</Button>} />}
+              emptyState={<EmptyState icon="sinal" title="Nenhum modelo cadastrado" action={<Button onClick={() => setEditandoModelo('novo')}>Cadastrar modelo</Button>} />}
               rows={modelos.map((m) => [
-                <span className="font-medium">{nomeModelo(m)}</span>, <span className="font-mono text-small">{m.protocolo}</span>, <span className="num">{m.porta}</span>,
+                <span><span className="font-medium">{nomeModelo(m)}</span><span className="block text-caption text-ink-2">{m.origem === 'catalogo' ? 'Catálogo Localle' : 'Cadastrado pela tela'}</span></span>, <span className="font-mono text-small">{m.protocolo}</span>, <span className="num">{m.porta}</span>,
                 <span className="text-small">{ROTULO_IDENTIFICADOR[m.tipo_identificador]}</span>, <span className="num">{m.rastreadores}</span>,
                 <Badge tone={m.ativo ? 'green' : 'gray'}>{m.ativo ? 'Ativo' : 'Desativado'}</Badge>,
                 <div className="flex gap-3 justify-end">
@@ -129,6 +133,10 @@ export default function Rastreadores() {
         </Section>
       </PageBody>
       {modal === 'rastreador' && <NovoRastreadorModal modelos={modelosAtivos} onClose={() => setModal(null)} onDone={reload} onNovoModelo={() => { setModal(null); setEditandoModelo('novo'); }} />}
+      {diagnosticando && <DiagnosticoModal rastreador={diagnosticando} modelo={modelos.find((m) => m.id === diagnosticando.modelo_id) ?? null}
+        onClose={() => setDiagnosticando(null)}
+        onEditarModelo={(m) => { setDiagnosticando(null); setEditandoModelo(m); }}
+        onTrocarModelo={() => { setTrocandoModelo(diagnosticando); setDiagnosticando(null); }} />}
       {trocandoModelo && <TrocarModeloModal rastreador={trocandoModelo} modelos={modelosAtivos} onClose={() => setTrocandoModelo(null)} onDone={reload} />}
       {editandoModelo && <ModeloModal modelo={editandoModelo === 'novo' ? null : editandoModelo} conhecidos={protocolosConhecidos(modelos, rastreadores)} onClose={() => setEditandoModelo(null)} onDone={reload} />}
       {modal === 'chip' && <NovoChipModal onClose={() => setModal(null)} onDone={reload} />}
@@ -223,6 +231,9 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
   const [tensao, setTensao] = useState(modelo?.atributo_tensao || '');
   const [sinalMax, setSinalMax] = useState(modelo?.sinal_max ? String(modelo.sinal_max) : '');
   const [bloqueio, setBloqueio] = useState(modelo?.atributo_bloqueio || '');
+  // modelo do catálogo: dados técnicos vêm conferidos e ficam travados; destravar é decisão explícita
+  const [destravado, setDestravado] = useState(false);
+  const travado = modelo?.origem === 'catalogo' && !destravado;
   const portaN = Number(porta);
   const atributoOk = (v: string) => !v || /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(v);
   const sinalN = sinalMax ? Number(sinalMax) : null;
@@ -238,21 +249,29 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
     if (ja?.porta && !porta) setPorta(String(ja.porta));
   };
   return (
-    <Modal open onClose={onClose} title={modelo ? `Editar modelo · ${nomeModelo(modelo)}` : 'Novo modelo de rastreador'} width="max-w-xl"
+    <Modal open onClose={onClose} title={modelo ? `Editar modelo · ${nomeModelo(modelo)}` : 'Modelo não listado'} width="max-w-xl"
       footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!ok} onClick={submit}>{modelo ? 'Salvar' : 'Cadastrar'}</Button></>}>
+      {modelo && <FichaTraccarModelo modelo={modelo} />}
+      {!modelo && <p className="text-small text-ink-2">Antes de cadastrar, procure o modelo no catálogo. Se ele não estiver lá, pegue o protocolo e a porta na <a className="underline" href="https://www.traccar.org/devices/" target="_blank" rel="noreferrer">lista de aparelhos do Traccar</a>.</p>}
+      {modelo?.origem === 'catalogo' && (
+        <p className="text-small text-ink-2 rounded-ctl bg-surface-muted px-3 py-2">
+          Modelo do catálogo Localle: protocolo, porta e identificador conferidos na lista do Traccar.{' '}
+          {travado ? <TextButton className="text-small" onClick={() => setDestravado(true)}>Editar dados técnicos</TextButton> : <b className="text-warn-ink">Edição liberada: confira com o aparelho real antes de salvar.</b>}
+        </p>
+      )}
       <FormGroup cols={2}>
-        <Field label="Fabricante"><Input autoFocus value={fabricante} onChange={(e) => setFabricante(e.target.value)} placeholder="Ex.: JMAK" /></Field>
-        <Field label="Modelo"><Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: JR12" /></Field>
+        <Field label="Fabricante"><Input autoFocus={!modelo} disabled={travado} value={fabricante} onChange={(e) => setFabricante(e.target.value)} placeholder="Ex.: JMAK" /></Field>
+        <Field label="Modelo"><Input disabled={travado} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: JR12" /></Field>
       </FormGroup>
       <FormGroup cols={2}>
-        <Field label="Protocolo do Traccar" hint={'Nome exato que o Traccar usa. Para um aparelho novo, aparece no log: "[T…: protocolo < ip] Unknown device - …".'}>
-          <Input list="protocolos-conhecidos" value={protocolo} onChange={(e) => escolherProtocolo(e.target.value)} placeholder="Ex.: gt06" autoComplete="off" spellCheck={false} />
+        <Field label="Protocolo do Traccar" hint={travado ? undefined : 'Nome exato que o Traccar usa. Para um aparelho novo, aparece no log: "[T…: protocolo < ip] Unknown device - …".'}>
+          <Input list="protocolos-conhecidos" disabled={travado} value={protocolo} onChange={(e) => escolherProtocolo(e.target.value)} placeholder="Ex.: gt06" autoComplete="off" spellCheck={false} />
           <datalist id="protocolos-conhecidos">{conhecidos.map((x) => <option key={x.protocolo} value={x.protocolo}>{x.porta ? `porta ${x.porta}` : 'detectado em posições'}</option>)}</datalist>
         </Field>
-        <Field label="Porta"><Input inputMode="numeric" value={porta} onChange={(e) => setPorta(e.target.value.replace(/\D/g, ''))} /></Field>
+        <Field label="Porta"><Input inputMode="numeric" disabled={travado} value={porta} onChange={(e) => setPorta(e.target.value.replace(/\D/g, ''))} /></Field>
       </FormGroup>
       <Field label="Identificador que o aparelho manda">
-        <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoIdentificador)} options={TIPOS_IDENTIFICADOR.map((t) => ({ value: t, label: ROTULO_IDENTIFICADOR[t] }))} />
+        <Select disabled={travado} value={tipo} onChange={(e) => setTipo(e.target.value as TipoIdentificador)} options={TIPOS_IDENTIFICADOR.map((t) => ({ value: t, label: ROTULO_IDENTIFICADOR[t] }))} />
       </Field>
       <fieldset className="flex flex-col gap-stack border-t border-line pt-card-head">
         <legend className="text-body font-medium">Telemetria</legend>
@@ -262,21 +281,122 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
           <Field label="Sinal: valor máximo" hint="Ex.: 4, 31 (CSQ)."><Input inputMode="numeric" value={sinalMax} onChange={(e) => setSinalMax(e.target.value.replace(/\D/g, ''))} placeholder="5" /></Field>
           <Field label="Atributo do bloqueio" hint="Ex.: out1. Só se o aparelho informar."><Input value={bloqueio} invalid={!atributoOk(bloqueio)} onChange={(e) => setBloqueio(e.target.value.trim())} placeholder="blocked" spellCheck={false} /></Field>
         </FormGroup>
-        {modelo && <AtributosRecebidosLista modeloId={modelo.id} />}
+        {modelo && <AtributosRecebidosLista modeloId={modelo.id} atual={{ atributo_tensao: tensao || null, sinal_max: sinalN, atributo_bloqueio: bloqueio || null }}
+          onUsar={(campo, valor) => (campo === 'atributoTensao' ? setTensao(valor) : campo === 'sinalMax' ? setSinalMax(valor) : setBloqueio(valor))} />}
       </fieldset>
       {modelo && modelo.rastreadores > 0 && <Callout tone="warn">{modelo.rastreadores} rastreador(es) usam este modelo. Mudar protocolo ou porta muda o que a plataforma confere na próxima posição deles.</Callout>}
     </Modal>
   );
 }
 
+const COMANDO_ROTULO: Record<string, string> = { engineStop: 'Bloqueio', engineResume: 'Desbloqueio', positionSingle: 'Pedir posição' };
+const TOM_COR: Record<Tom, string> = { ok: 'bg-pos', warn: 'bg-warn', crit: 'bg-crit', info: 'bg-ink-3' };
+
+/** Itens da ficha, a partir do que o Traccar respondeu: um por linha, com o que fazer quando algo não bate. */
+function itensDaFicha(m: AdminRastreadorModelo, f: FichaTraccar): { tom: Tom; texto: ReactNode }[] {
+  if (!f.traccar.configurado) return [{ tom: 'info', texto: 'Traccar não configurado nesta API (TRACCAR_URL/USER/PASSWORD): não há o que consultar.' }];
+  if (f.traccar.erro) return [{ tom: 'crit', texto: f.traccar.erro }];
+  const versao = f.traccar.versao ? `Traccar ${f.traccar.versao}` : 'Traccar';
+  const itens: { tom: Tom; texto: ReactNode }[] = [];
+  const p = f.protocolo;
+  if (!p) itens.push({ tom: 'info', texto: `${versao} não informa os protocolos ativos (só a partir da 6.17). Confira no traccar.xml se ${m.protocolo} está na porta ${m.porta}.` });
+  else if (!p.ativo) itens.push({ tom: 'crit', texto: <>Protocolo <b>{m.protocolo}</b> não está ativo no {versao}: aparelhos deste modelo não conseguem conectar.</> });
+  else if (p.porta !== m.porta) itens.push({ tom: 'warn', texto: <>O {versao} escuta <b>{m.protocolo}</b> na porta <b>{p.porta ?? '?'}</b>, mas o modelo diz {m.porta}. Configure o aparelho para a porta do Traccar ou corrija o modelo.</> });
+  else itens.push({ tom: 'ok', texto: <>Protocolo <b>{m.protocolo}</b> ativo no {versao}, porta <b>{p.porta}</b>{p.transporte ? ` (${p.transporte})` : ''}.</> });
+  const c = f.comandos;
+  if (!c) itens.push({ tom: 'info', texto: 'Comandos aceitos: aparecem depois que um aparelho deste modelo mandar a primeira posição. O Traccar só informa os comandos de um aparelho conectado, não de um protocolo.' });
+  else {
+    const aceitos = Object.keys(COMANDO_ROTULO).filter((t) => c.tipos.includes(t));
+    const bloqueia = c.tipos.includes('engineStop') && c.tipos.includes('engineResume');
+    itens.push({ tom: bloqueia ? 'ok' : 'warn', texto: <>
+      {aceitos.length ? <>Comandos aceitos: <b>{aceitos.map((t) => COMANDO_ROTULO[t]).join(', ')}</b>.</> : 'Nenhum comando da plataforma é aceito.'}
+      {!bloqueia && <> O {versao} não sabe enviar bloqueio/desbloqueio pelo protocolo {m.protocolo}. Uma versão mais nova do Traccar pode ter adicionado: confira as notas de versão.</>}
+      <span className="block text-caption text-ink-2">Consultado no aparelho <span className="font-mono">{c.imei}</span>.</span>
+    </> });
+  }
+  return itens;
+}
+
+// Ficha do modelo: o que o Traccar diz agora (versão, protocolo ativo e porta, comandos aceitos).
+function FichaTraccarModelo({ modelo }: { modelo: AdminRastreadorModelo }) {
+  const { data, error, loading } = useAdminQuery(() => adminApi.fichaTraccarDoModelo(modelo.id), [modelo.id]);
+  return (
+    <section className="flex flex-col gap-tight rounded-ctl border border-line px-3 py-2">
+      <p className="text-small font-medium">No Traccar agora</p>
+      {loading && <p className="text-caption text-ink-2">Consultando o Traccar…</p>}
+      {error && <p className="text-caption text-crit-ink">{error}</p>}
+      {data && (
+        <ul className="flex flex-col gap-tight">
+          {itensDaFicha(modelo, data).map((i, k) => (
+            <li key={k} className="flex gap-2 text-small"><span aria-hidden className={`mt-[7px] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} /><span>{i.texto}</span></li>
+          ))}
+        </ul>
+      )}
+      <p className="text-caption text-ink-2">Não confere firewall nem portas publicadas no Docker/VPS: isso só aparece quando o aparelho tenta conectar.</p>
+    </section>
+  );
+}
+
+// Checklist do rastreador: cada etapa do caminho aparelho → Traccar → plataforma, com o que fazer quando não bate.
+function DiagnosticoModal({ rastreador, modelo, onClose, onEditarModelo, onTrocarModelo }: {
+  rastreador: AdminRastreador; modelo: AdminRastreadorModelo | null; onClose: () => void;
+  onEditarModelo: (m: AdminRastreadorModelo) => void; onTrocarModelo: () => void;
+}) {
+  const { data, error, loading, reload } = useAdminQuery(() => adminApi.diagnosticoRastreador(rastreador.id), [rastreador.id]);
+  const itens = data ? itensDoDiagnostico(data, modelo && { nome: nomeModelo(modelo), protocolo: modelo.protocolo, porta: modelo.porta }) : [];
+  const telemetriaIncompleta = itens.some((i) => i.etapa === 'Telemetria' && i.tom === 'warn');
+  const protocoloErrado = itens.some((i) => (i.etapa === 'Protocolo' || i.etapa === 'Modelo') && i.tom === 'crit');
+  return (
+    <Modal open onClose={onClose} title={`Diagnóstico · ${rastreador.imei}`} width="max-w-xl"
+      footer={<><Button variant="quiet" loading={loading} onClick={reload}>Consultar de novo</Button><Button onClick={onClose}>Fechar</Button></>}>
+      {loading && !data && <p className="text-small text-ink-2">Consultando a plataforma e o Traccar…</p>}
+      {error && <Callout tone="crit">{error}</Callout>}
+      {data && (
+        <ol className="flex flex-col gap-stack">
+          {itens.map((i) => (
+            <li key={i.etapa} className="flex gap-3 text-small">
+              <span aria-hidden className={`mt-[7px] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} />
+              <span><b className="font-medium">{i.etapa}</b><span className="block text-ink-2">{i.texto}</span></span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {data && (protocoloErrado || (telemetriaIncompleta && modelo)) && (
+        <div className="flex flex-wrap gap-3 border-t border-line pt-card-head">
+          {protocoloErrado && <TextButton onClick={onTrocarModelo}>{modelo ? 'Trocar modelo' : 'Definir modelo'}</TextButton>}
+          {telemetriaIncompleta && modelo && <TextButton onClick={() => onEditarModelo(modelo)}>Ver sugestões de mapeamento</TextButton>}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // O que os aparelhos do modelo mandaram de verdade (último valor de cada atributo): base para preencher o mapeamento.
-function AtributosRecebidosLista({ modeloId }: { modeloId: string }) {
+// Com sugestões de mapeamento tiradas do aparelho mais recente (só sugestão: "Usar" preenche o campo, salvar é do admin).
+const CAMPO_ROTULO = { atributoTensao: 'Tensão', sinalMax: 'Sinal máximo', atributoBloqueio: 'Bloqueio' } as const;
+function AtributosRecebidosLista({ modeloId, atual, onUsar }: {
+  modeloId: string;
+  atual: Parameters<typeof sugerirMapeamento>[1];
+  onUsar: (campo: keyof typeof CAMPO_ROTULO, valor: string) => void;
+}) {
   const { data, error, loading } = useAdminQuery(() => adminApi.atributosDoModelo(modeloId), [modeloId]);
   if (loading) return <p className="text-caption text-ink-2">Carregando atributos recebidos…</p>;
   if (error) return <p className="text-caption text-crit-ink">{error}</p>;
   if (!data?.length) return <p className="text-caption text-ink-2">Nenhum rastreador deste modelo mandou dados ainda.</p>;
+  const sugestoes = sugerirMapeamento(data[0].atributos, atual);
   return (
     <div className="flex flex-col gap-tight">
+      {sugestoes.length > 0 && (
+        <div className="flex flex-col gap-tight rounded-ctl border border-line px-3 py-2">
+          <p className="text-small font-medium">Sugestões a partir do aparelho <span className="font-mono">{data[0].imei}</span></p>
+          {sugestoes.map((s) => (
+            <p key={s.campo} className="text-small">
+              <b className="font-medium">{CAMPO_ROTULO[s.campo]}: <span className="font-mono">{s.valor}</span></b> <span className="text-ink-2">({s.motivo})</span>{' '}
+              <TextButton className="text-small" onClick={() => onUsar(s.campo, s.valor)}>Usar</TextButton>
+            </p>
+          ))}
+        </div>
+      )}
       <p className="text-small font-medium">Atributos recebidos</p>
       {data.map((r) => (
         <div key={r.imei} className="rounded-ctl bg-surface-muted px-3 py-2">

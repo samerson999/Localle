@@ -33,6 +33,13 @@ async function motivo(response: Response): Promise<string> {
   return texto ? ` — ${texto}` : '';
 }
 
+/** Protocolo de `GET /api/protocols`: transporte 'DISABLED' | 'TCP' | 'UDP' | 'ALL'. */
+export interface TraccarProtocolo {
+  protocolo: string;
+  porta: number | null;
+  transporte: string | null;
+}
+
 /** Campos de um evento de `GET /api/reports/events` usados na conciliação de comandos. */
 export interface TraccarEventoComando {
   id: number;
@@ -97,6 +104,28 @@ export class TraccarClient {
   async commandTypes(config: TraccarConfig, deviceId: number): Promise<string[]> {
     const tipos = await this.request<{ type?: unknown }[]>(config, 'GET', `/api/commands/types?deviceId=${deviceId}`);
     return tipos.map((t) => t.type).filter((t): t is string => typeof t === 'string');
+  }
+
+  /** Versão do servidor (`GET /api/server`); null se o Traccar não informar. */
+  async serverVersion(config: TraccarConfig): Promise<string | null> {
+    const s = await this.request<{ version?: unknown }>(config, 'GET', '/api/server');
+    return typeof s.version === 'string' ? s.version : null;
+  }
+
+  /**
+   * Protocolos ativos no servidor, com porta e transporte (`GET /api/protocols`, Traccar 6.17+). null = versão sem
+   * esse endpoint (404) — os protocolos ficam só no traccar.xml/default.xml dele.
+   */
+  async protocols(config: TraccarConfig): Promise<TraccarProtocolo[] | null> {
+    try {
+      const lista = await this.request<{ protocol?: unknown; port?: unknown; transport?: unknown }[]>(config, 'GET', '/api/protocols');
+      return lista
+        .filter((p) => typeof p.protocol === 'string')
+        .map((p) => ({ protocolo: p.protocol as string, porta: typeof p.port === 'number' ? p.port : null, transporte: typeof p.transport === 'string' ? p.transport : null }));
+    } catch (err) {
+      if (/falhou: 404\b/.test((err as Error).message)) return null;
+      throw err;
+    }
   }
 
   /** Situação da conexão do device no Traccar (`online` = socket aberto agora); null se o device não existe. */

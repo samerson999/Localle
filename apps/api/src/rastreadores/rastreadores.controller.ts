@@ -6,6 +6,7 @@ import { CreateSimCardDto } from './dto/create-sim-card.dto';
 import { parseUpdateRastreador, type UpdateRastreadorDto } from './dto/update-rastreador.dto';
 import { RastreadoresRepository } from './rastreadores.repository';
 import { RastreadoresService } from './rastreadores.service';
+import { RastreadorModelosService } from './rastreador-modelos.service';
 import { SimCardsRepository } from './sim-cards.repository';
 
 /**
@@ -20,6 +21,7 @@ export class RastreadoresController {
     private readonly service: RastreadoresService,
     private readonly rastreadores: RastreadoresRepository,
     private readonly simCards: SimCardsRepository,
+    private readonly modelos: RastreadorModelosService,
   ) {}
 
   @Get()
@@ -32,6 +34,12 @@ export class RastreadoresController {
     const rastreador = await this.rastreadores.findById(id);
     if (!rastreador) throw new NotFoundException('Rastreador não encontrado');
     return rastreador;
+  }
+
+  /** Checklist do rastreador: modelo, Traccar (protocolo/porta, conexão, comandos) e telemetria recebida. */
+  @Get(':id/diagnostico')
+  diagnostico(@Param('id', ParseUUIDPipe) id: string) {
+    return this.modelos.diagnostico(id);
   }
 
   @Get(':id/instalacoes')

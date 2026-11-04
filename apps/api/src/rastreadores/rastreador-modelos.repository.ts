@@ -66,4 +66,39 @@ export class RastreadorModelosRepository {
     );
     return rows;
   }
+
+  /** Rastreador com o modelo e a última comunicação — base do diagnóstico (checklist da tela). */
+  async estadoDoRastreador(rastreadorId: string) {
+    const { rows } = await this.pool.query<{
+      id: string; imei: string; status: string; protocolo: string | null; traccar_device_id: string | null; modelo_id: string | null;
+      ultimo_pacote_em: Date | null; ultimos_atributos: Record<string, unknown> | null; atributos_em: Date | null;
+      atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
+    }>(
+      `select r.id, r.imei, r.status, r.protocolo, r.traccar_device_id, r.modelo_id,
+              rc.ultimo_pacote_em, rc.ultimos_atributos, rc.atributos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio
+         from rastreadores r
+         left join rastreador_comunicacao rc on rc.rastreador_id = r.id
+         left join rastreador_modelos m on m.id = r.modelo_id
+        where r.id = $1`,
+      [rastreadorId],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Um aparelho do modelo que o Traccar já conhece pelo protocolo certo (cadastrado lá e com posição recebida nesse
+   * protocolo): sem posição, o Traccar não sabe o protocolo do device e responde só `custom` em /api/commands/types.
+   */
+  async aparelhoDeReferencia(id: string) {
+    const { rows } = await this.pool.query<{ imei: string; traccar_device_id: string }>(
+      `select r.imei, r.traccar_device_id
+         from rastreadores r
+         join rastreador_modelos m on m.id = r.modelo_id
+         left join rastreador_comunicacao rc on rc.rastreador_id = r.id
+        where r.modelo_id = $1 and r.status <> 'desativado' and r.traccar_device_id is not null and r.protocolo = m.protocolo
+        order by rc.atributos_em desc nulls last limit 1`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
 }

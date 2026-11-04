@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AssetsRepository } from '../assets/assets.repository';
 import { AuditLogRepository } from '../audit/audit-log.repository';
-import { TraccarClient, type TraccarConfig, type TraccarDevice } from '../ingest/traccar-client';
+import { TraccarClient, type TraccarConfig, type TraccarDevice, type TraccarProtocolo } from '../ingest/traccar-client';
 import { InstalacoesRepository } from './instalacoes.repository';
 import { RastreadoresRepository } from './rastreadores.repository';
 import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
@@ -42,6 +42,26 @@ class FakeTraccar extends TraccarClient {
     this.devices.set(device.uniqueId, criado);
     return criado;
   }
+  // ficha do modelo: versão, protocolos (null = Traccar anterior à 6.17) e comandos por device
+  versao = '6.17.0';
+  protocolos: TraccarProtocolo[] | null = [];
+  tiposPorDevice = new Map<number, string[]>();
+  consultados: number[] = [];
+  async serverVersion() {
+    if (this.falhar) throw new Error('Traccar fora do ar');
+    return this.versao;
+  }
+  async protocols() {
+    return this.protocolos;
+  }
+  online = new Set<number>();
+  async deviceStatus(_: TraccarConfig, deviceId: number) {
+    return this.online.has(deviceId) ? 'online' : 'offline';
+  }
+  async commandTypes(_: TraccarConfig, deviceId: number) {
+    this.consultados.push(deviceId);
+    return this.tiposPorDevice.get(deviceId) ?? ['custom'];
+  }
 }
 
 describe('RastreadoresService', () => {
@@ -54,7 +74,7 @@ describe('RastreadoresService', () => {
   const traccar = new FakeTraccar();
   const vinculosRepo = new RastreadorVinculosRepository(pool);
   const modelosRepo = new RastreadorModelosRepository(pool);
-  const modelos = new RastreadorModelosService(modelosRepo, audit);
+  const modelos = new RastreadorModelosService(modelosRepo, audit, traccar);
   const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, vinculosRepo, assetsRepo, audit, pool, traccar, modelosRepo);
   // modelo de teste com identificador livre: os testes antigos usam IMEI aleatório em hexadecimal
   const sufixo = randomUUID().slice(0, 8);
@@ -465,6 +485,97 @@ describe('RastreadoresService', () => {
       );
       expect(await modelos.atributosRecebidos(modeloImei)).toEqual([expect.objectContaining({ imei: r.imei, atributos: { adc1: 13.3, rssi: 4 } })]);
       await expect(modelos.atributosRecebidos(randomUUID())).rejects.toMatchObject({ status: 404 });
+    });
+
+    // Catálogo pronto (migration 1793160000000): os três modelos da HML e os de mercado, com dados da lista do Traccar.
+    it('catálogo pronto: modelos do seed com protocolo e porta do Traccar; cadastrado pela tela é manual', async () => {
+      const lista = await modelos.listar();
+      const doCatalogo = lista.filter((m) => m.origem === 'catalogo');
+      expect(doCatalogo.length).toBeGreaterThanOrEqual(17);
+      // o JR12 pode já existir pela tela (não é sobrescrito): se é do catálogo, é com os dados da lista do Traccar
+      const jr12 = lista.find((m) => m.fabricante === 'JMAK' && m.nome === 'JR12');
+      expect(jr12).toBeDefined();
+      if (jr12!.origem === 'catalogo') expect(jr12).toMatchObject({ protocolo: 'jmak', porta: 5259 });
+      expect(doCatalogo.find((m) => m.fabricante === 'Concox' && m.nome === 'GT06N')).toMatchObject({ protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei' });
+      expect(doCatalogo.find((m) => m.fabricante === 'Suntech' && m.nome === 'ST4315')).toMatchObject({ protocolo: 'suntech', porta: 5011, tipo_identificador: 'outro' });
+      expect(lista.find((m) => m.id === modeloImei)?.origem).toBe('manual');
+    });
+
+    describe('ficha do modelo no Traccar', () => {
+      const cfg = { url: 'http://traccar.fake', user: 'u', password: 'p' };
+      afterAll(() => {
+        traccar.cfg = null;
+        traccar.falhar = false;
+      });
+
+      it('sem Traccar configurado ou fora do ar: diz isso, sem lançar; modelo inexistente: 404', async () => {
+        traccar.cfg = null;
+        expect(await modelos.fichaTraccar(modeloImei)).toEqual({ traccar: { configurado: false, versao: null, erro: null }, protocolo: null, comandos: null });
+        traccar.cfg = cfg;
+        traccar.falhar = true;
+        expect((await modelos.fichaTraccar(modeloImei)).traccar).toMatchObject({ configurado: true, erro: expect.stringMatching(/não respondeu/) });
+        traccar.falhar = false;
+        await expect(modelos.fichaTraccar(randomUUID())).rejects.toMatchObject({ status: 404 });
+      });
+
+      it('protocolo: ativo e porta vindos de /api/protocols; desabilitado ou ausente = inativo; Traccar antigo = null', async () => {
+        traccar.cfg = cfg;
+        traccar.protocolos = [{ protocolo: 'gt06', porta: 5023, transporte: 'TCP' }];
+        expect(await modelos.fichaTraccar(modeloImei)).toMatchObject({ traccar: { versao: '6.17.0' }, protocolo: { ativo: true, porta: 5023, transporte: 'TCP' } });
+        traccar.protocolos = [{ protocolo: 'gt06', porta: 5023, transporte: 'DISABLED' }];
+        expect((await modelos.fichaTraccar(modeloImei)).protocolo).toMatchObject({ ativo: false });
+        expect((await modelos.fichaTraccar(modeloJt808)).protocolo).toEqual({ ativo: false, porta: null, transporte: null });
+        traccar.protocolos = null;
+        expect((await modelos.fichaTraccar(modeloImei)).protocolo).toBeNull();
+      });
+
+      it('comandos: só de aparelho do modelo com posição no protocolo do modelo; sem ele, null', async () => {
+        traccar.cfg = cfg;
+        const m = (await modelos.criar(superadminId, { fabricante: `Teste ${sufixo}`, nome: 'Ficha', protocolo: 'jmak', porta: 5259, tipo_identificador: 'imei' })).id;
+        modelosCriados.push(m);
+        const r = await service.cadastrarRastreador(superadminId, { modeloId: m, imei: digitos(15) });
+        rastreadoresCriados.push(r.id);
+        const deviceId = Number(r.traccar_device_id);
+        traccar.tiposPorDevice.set(deviceId, ['engineStop', 'engineResume', 'custom']);
+        // sem posição o Traccar não sabe o protocolo do device: não serve de referência
+        expect((await modelos.fichaTraccar(m)).comandos).toBeNull();
+        await pool.query("update rastreadores set protocolo = 'huabao' where id = $1", [r.id]);
+        expect((await modelos.fichaTraccar(m)).comandos).toBeNull();
+        await pool.query("update rastreadores set protocolo = 'jmak' where id = $1", [r.id]);
+        expect((await modelos.fichaTraccar(m)).comandos).toEqual({ tipos: ['engineStop', 'engineResume', 'custom'], imei: r.imei });
+        expect(traccar.consultados.at(-1)).toBe(deviceId);
+      });
+
+      it('diagnóstico do rastreador: conexão, comandos do próprio aparelho, atributos e ficha do modelo; 404 se não existe', async () => {
+        traccar.cfg = cfg;
+        traccar.protocolos = [{ protocolo: 'gt06', porta: 5023, transporte: 'ALL' }];
+        const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+        rastreadoresCriados.push(r.id);
+        const deviceId = Number(r.traccar_device_id);
+        traccar.tiposPorDevice.set(deviceId, ['engineStop', 'engineResume', 'custom']);
+
+        // recém-cadastrado: sem posição, comandos não são consultados (o Traccar responderia só `custom`)
+        const antes = await modelos.diagnostico(r.id);
+        expect(antes).toMatchObject({ imei: r.imei, modeloId: modeloImei, protocoloDetectado: null, online: false, comandos: null, atributos: {}, ultimoPacoteEm: null });
+        expect(antes.ficha?.protocolo).toMatchObject({ ativo: true, porta: 5023 });
+
+        traccar.online.add(deviceId);
+        await pool.query("update rastreadores set protocolo = 'gt06' where id = $1", [r.id]);
+        await pool.query(
+          `insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em, ultimos_atributos, atributos_em) values ($1, now(), '{"versionFw": "1.2", "power": 12.6}', now())`,
+          [r.id],
+        );
+        const depois = await modelos.diagnostico(r.id);
+        expect(depois).toMatchObject({ protocoloDetectado: 'gt06', online: true, comandos: ['engineStop', 'engineResume', 'custom'], atributos: { versionFw: '1.2', power: 12.6 } });
+        expect(depois.ultimoPacoteEm).toBeInstanceOf(Date);
+        expect(depois.telemetria).toMatchObject({ tensaoV: 12.6, bloqueado: null });
+
+        // Traccar fora do ar: a ficha diz o erro e o resto não é consultado
+        traccar.falhar = true;
+        expect(await modelos.diagnostico(r.id)).toMatchObject({ online: null, comandos: null, ficha: { traccar: { erro: expect.any(String) } } });
+        traccar.falhar = false;
+        await expect(modelos.diagnostico(randomUUID())).rejects.toMatchObject({ status: 404 });
+      });
     });
   });
 
