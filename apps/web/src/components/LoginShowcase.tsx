@@ -2,24 +2,26 @@ import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import IconVelocidade from '~icons/solar/speedometer-middle-bold-duotone';
 import IconCerca from '~icons/solar/map-point-remove-bold-duotone';
 import IconParada from '~icons/solar/stop-circle-bold-duotone';
-import iluTelemetria from '../images/ilustracoes/web/ilu-telemetria-page.webp';
-import iluErro from '../images/ilustracoes/web/ilu-erro-page.webp';
-import iluTudoEmDia from '../images/ilustracoes/web/ilu-tudo-em-dia-page.webp';
-import caminhao from '../images/png-tight/11-truck-6x2.png';
-import iluCombustivel from '../images/ilustracoes/web/ilu-combustivel-page.webp';
-import iluManutencao from '../images/ilustracoes/web/ilu-manutencao-page.webp';
 import IconPosto from '~icons/solar/gas-station-bold-duotone';
 import IconOficina from '~icons/solar/toolbox-bold-duotone';
 import IconMulta from '~icons/solar/ticket-bold-duotone';
 import IconPneu from '~icons/solar/wheel-bold-duotone';
+import iluTelemetria from '../images/ilustracoes/web/ilu-telemetria-hero.webp';
+import iluRastreador from '../images/ilustracoes/web/ilu-rastreador-hero.webp';
+import iluErro from '../images/ilustracoes/web/ilu-erro-hero.webp';
+import iluTudoEmDia from '../images/ilustracoes/web/ilu-tudo-em-dia-hero.webp';
+import iluCombustivel from '../images/ilustracoes/web/ilu-combustivel-hero.webp';
+import iluManutencao from '../images/ilustracoes/web/ilu-manutencao-hero.webp';
 
 // Painel ao lado do login (pages/Login.tsx): carrossel de destaques no molde do login do Visor
-// (dashboard.visorfinance.app/login, 04/11/2026) — cada slide é o produto em miniatura, montado com as peças da
-// própria interface (marcador do mapa, card do "Precisa de você"), e as partes entram em sequência quando o slide
-// fica ativo. Sem dado fictício: nada de placa nem número, só a forma. Animação toda em CSS (base.css › tela de
-// login); o slide ativo recebe data-run e o anterior guarda o atributo até terminar de sumir, para não "pular".
-// A barra de progresso dita o tempo: quando ela termina (animationend), passa para o próximo; pausa com o mouse
-// em cima ou com foco no painel; com movimento reduzido ela não anda e a troca é só pelo clique.
+// (dashboard.visorfinance.app/login). O motion segue o que o hook do carrossel e o CSS deles fazem (lidos em
+// 04/11/2026): troca a cada 7 s com fade de 300 ms, pausa com o ponteiro em cima, e cada cena assenta em ~1,5 s com
+// movimentos curtos e sincronizados; peças 3D saltam com overshoot e ficam paradas, com a sombra de contato como peça
+// separada que aparece logo depois do pouso. Cada slide é o produto em miniatura, montado com as peças da interface e
+// da biblioteca 3D (images/ilustracoes). Sem dado fictício: nada de placa nem número, só a forma.
+// Animação toda em CSS (base.css › tela de login): o slide ativo recebe data-run (as animações recomeçam do zero a
+// cada visita) e o anterior guarda o atributo até terminar de sumir. A barra de progresso dita o tempo: quando ela
+// termina (animationend), passa para o próximo; com movimento reduzido ela não anda e a troca é só pelo clique.
 
 type Slide = { titulo: ReactNode; apoio: string; arte: ReactNode };
 
@@ -34,14 +36,14 @@ export default function LoginShowcase({ tagline }: { tagline?: string }) {
   const ir = (i: number) => {
     if (i === cur) return;
     setPrev(cur); setCur(i);
-    window.setTimeout(() => setPrev((p) => (p === cur ? null : p)), 450);
+    window.setTimeout(() => setPrev((p) => (p === cur ? null : p)), 350);
   };
   return (
     <div className="login-show relative w-full flex flex-col items-center">
       <div className="login-stage relative shrink-0" aria-hidden="true">
         {slides.map((s, i) => <div key={i} className="login-slide" data-on={i === cur || undefined} data-run={i === cur || i === prev || undefined}>{s.arte}</div>)}
       </div>
-      <div className="relative w-full max-w-[460px] h-[132px] mt-8">
+      <div className="relative w-full max-w-[520px] h-[132px] mt-8">
         {slides.map((s, i) => (
           <div key={i} className="login-slide login-copy text-center" data-on={i === cur || undefined} data-run={i === cur || i === prev || undefined} aria-hidden={i !== cur}>
             <h2 className="text-[clamp(24px,2.3vw,32px)] leading-[1.2] tracking-[var(--ls-title)] font-semibold text-ink">{s.titulo}</h2>
@@ -77,14 +79,23 @@ function Rota({ children }: { children: ReactNode }) {
   );
 }
 
-// peça da biblioteca 3D (images/ilustracoes, png-tight): entra com um leve quique e depois flutua devagar
+// peça 3D: a sombra de contato fica fora da peça (não gira nem salta com ela) e aparece logo depois do pouso.
+// --d é o início do salto; --r, a inclinação em que a peça assenta.
 function Peca3d({ src, style, className = '' }: { src: string; style: CSSProperties; className?: string }) {
-  return <div className={`login-3d login-pop ${className}`} style={style}><span className="login-flutua block"><img src={src} alt="" className="block w-full h-auto" draggable={false} /></span></div>;
+  return (
+    <div className={`login-3d ${className}`} style={style}>
+      <span className="login-sombra" />
+      <div className="login-3d-peca"><img src={src} alt="" className="block w-full h-auto" draggable={false} /></div>
+    </div>
+  );
 }
+const v = (o: Record<string, string>) => o as CSSProperties;
 
 // trajeto do veículo pelas ruas do mapa (viewBox 400×300); o mesmo d vira o offset-path do marcador em base.css
 const TRAJETO = 'M60 240 H146 Q160 240 160 226 V144 Q160 130 174 130 H276 Q290 130 290 116 V90';
 
+// slide 1 (ms): mapa 0 · rota prevista 250 · origem 300 · pino do destino cai 350 · veículo aparece 380 e anda de
+// 450 a 1550 · chegada 1550: pino pula, ondas, chip troca e o veículo fica pulsando (posição ao vivo, lento)
 function ArteMapa() {
   return <>
     <div className="login-mapa">
@@ -99,7 +110,8 @@ function ArteMapa() {
         <path className="login-previsto" d={TRAJETO} fill="none" strokeWidth="3" strokeLinecap="round" strokeDasharray="0.5 9" />
         <path className="login-rastro" d={TRAJETO} pathLength={1} fill="none" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
         <g className="login-origem"><circle cx="60" cy="240" r="7" /><circle cx="60" cy="240" r="3" className="login-origem-miolo" /></g>
-        <g className="login-destino" transform="translate(290 64)">
+        <g transform="translate(290 64)">
+          <ellipse className="login-pino-sombra" cx="0" cy="1" rx="6" ry="2.2" />
           <circle className="login-onda" r="10" /><circle className="login-onda dois" r="10" />
           <g className="login-pino"><path d="M0 0 C -2 -6, -11 -10, -11 -19 a11 11 0 0 1 22 0 C 11 -10, 2 -6, 0 0 Z" /><circle cy="-19" r="4.2" className="login-pino-miolo" /></g>
         </g>
@@ -110,17 +122,19 @@ function ArteMapa() {
         </g>
       </svg>
     </div>
-    <div className="login-chip login-pop" style={{ right: '6%', bottom: '16%', ['--d' as string]: '900ms' }}>
+    <div className="login-chip login-pop" style={v({ right: '6%', bottom: '16%', '--d': '500ms' })}>
       <span className="login-chip-troca">
         <span className="login-chip-a"><i className="bg-mov" />Em movimento</span>
         <span className="login-chip-b"><i className="bg-warn" />Parado no destino</span>
       </span>
     </div>
-    <Peca3d src={caminhao} style={{ left: '-3%', bottom: '10%', width: '28%', ['--r' as string]: '-6deg', ['--d' as string]: '650ms' }} />
-    <Peca3d src={iluTelemetria} style={{ right: '-4%', top: '-2%', width: '30%', ['--r' as string]: '8deg', ['--d' as string]: '400ms', ['--f' as string]: '-3s' }} />
+    <Peca3d src={iluRastreador} style={v({ left: '-4%', bottom: '6%', width: '30%', '--r': '-6deg', '--d': '200ms' })} />
+    <Peca3d src={iluTelemetria} style={v({ right: '-5%', top: '-4%', width: '29%', '--r': '7deg', '--d': '340ms' })} />
   </>;
 }
 
+// slide 2 (ms): painel 0 · cone 150 · alertas caem em 250, 630 e 1010 (380 cada, empurrando os anteriores) ·
+// "Tratar" do mais novo é pressionado em 1600 e vira "Tratado" em 1700 · contador 1→2→3→2 · escudo 1850
 function ArteAlertas() {
   const cards = [
     { cls: 'a', Icone: IconParada, titulo: 'Parada fora da rota' },
@@ -138,20 +152,23 @@ function ArteAlertas() {
           <div key={cls} className={`login-alerta ${cls}`}>
             <span className="login-alerta-icone"><Icone /></span>
             <span className="login-alerta-texto"><b>{titulo}</b><span>Veículo da frota · agora</span></span>
-            <span className="login-alerta-acao">Tratar</span>
+            {cls === 'c'
+              ? <span className="login-alerta-acao login-tratar"><span className="login-tratar-a">Tratar</span><span className="login-tratar-b">Tratado</span></span>
+              : <span className="login-alerta-acao">Tratar</span>}
           </div>
         ))}
       </div>
     </div>
-    <Peca3d src={iluErro} className="login-cone" style={{ right: '-11%', top: '-13%', width: '30%', ['--r' as string]: '6deg', ['--d' as string]: '350ms' }} />
-    <Peca3d src={iluTudoEmDia} style={{ left: '-5%', bottom: '2%', width: '28%', ['--r' as string]: '-8deg', ['--d' as string]: '3000ms', ['--f' as string]: '-2s' }} />
+    <Peca3d src={iluErro} className="login-cone" style={v({ right: '-10%', top: '-12%', width: '29%', '--r': '6deg', '--d': '150ms' })} />
+    <Peca3d src={iluTudoEmDia} style={v({ left: '-6%', bottom: '0%', width: '28%', '--r': '-7deg', '--d': '1850ms' })} />
   </>;
 }
 
 // geometria do slide 3 em cqw (base.css › slide 3): cada barra de categoria voa da sua linha para o seu trecho na barra
 // empilhada do total. A barra do total tem a largura da trilha (W), então cada trecho é a barra encolhida por 1/S.
 // Os comprimentos são só forma (sem valor): proporções fixas, na ordem da escala categórica.
-const CUSTO = { W: 36, linha: 9.5, barraTopo: 1.7, totalTopo: 41.5, voo: 1900, passo: 120, duracaoVoo: 700 };
+// Tempos (ms): linhas 150 + 60/linha · barras crescem 300 + 45/linha · voos 850 + 90/linha, 520 cada · check 1700
+const CUSTO = { W: 36, linha: 9.5, barraTopo: 1.7, totalTopo: 41.5, voo: 850, passo: 90, duracaoVoo: 520 };
 const CATEGORIAS = [
   { Icone: IconPosto, nome: 'Combustível', p: 0.86, fill: 'fill-cat-1' },
   { Icone: IconOficina, nome: 'Manutenção', p: 0.58, fill: 'fill-cat-2' },
@@ -168,9 +185,8 @@ function ArteCustos() {
     const voo = CUSTO.voo + k * CUSTO.passo;
     return { ...c, k, dx, dy: CUSTO.totalTopo - topo, voo, pousa: voo + CUSTO.duracaoVoo };
   });
-  const v = (o: Record<string, string>) => o as CSSProperties;
   return <>
-    <div className="login-custos" style={v({ '--W': CUSTO.W + 'cqw', '--s': String(1 / S) })}>
+    <div className="login-custos" style={v({ '--W': CUSTO.W + 'cqw', '--s': String(1 / S), '--voo-dur': CUSTO.duracaoVoo + 'ms' })}>
       <div className="login-painel-topo"><span>Custo do mês</span></div>
       <div className="login-custos-linhas">
         {linhas.map(({ Icone, nome, p, fill, k, dx, dy, voo }) => (
@@ -190,7 +206,7 @@ function ArteCustos() {
         </div>
       </div>
     </div>
-    <Peca3d src={iluCombustivel} style={{ right: '-6%', top: '-3%', width: '28%', ['--r' as string]: '7deg', ['--d' as string]: '400ms', ['--f' as string]: '-3s' }} />
-    <Peca3d src={iluManutencao} style={{ left: '-6%', bottom: '0%', width: '28%', ['--r' as string]: '-7deg', ['--d' as string]: '700ms', ['--f' as string]: '-1.5s' }} />
+    <Peca3d src={iluCombustivel} style={v({ right: '-6%', top: '-5%', width: '28%', '--r': '7deg', '--d': '200ms' })} />
+    <Peca3d src={iluManutencao} style={v({ left: '-6%', bottom: '-1%', width: '28%', '--r': '-7deg', '--d': '370ms' })} />
   </>;
 }
