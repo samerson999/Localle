@@ -14,7 +14,7 @@ const TIPOS: Record<Tipo, { consultar: (t: string) => Promise<{ email: string; c
   localle: { consultar: consultarConviteLocalle, aceitar: aceitarConviteLocalle, role: 'locale', titulo: 'Criar sua senha', botao: 'Criar senha e entrar', indisponivel: 'Convite indisponível' },
   redefinir: { consultar: consultarRedefinicao, aceitar: redefinirSenha, role: 'gestor', titulo: 'Nova senha', botao: 'Salvar senha e entrar', indisponivel: 'Link indisponível' },
 };
-import { Button, Input, Field } from '../components/ui';
+import { Button, Input, Field, Illustration } from '../components/ui';
 
 export default function Convite({ tipo = 'cliente' }: { tipo?: Tipo }) {
   const t = TIPOS[tipo];
@@ -52,6 +52,7 @@ export default function Convite({ tipo = 'cliente' }: { tipo?: Tipo }) {
         <div className="flex items-center gap-3"><BrandMark size={48} /><div className="flex flex-col"><span className="text-h3 font-semibold">{b.name}</span><span className="text-small text-ink-2">Gestão de frotas e rastreamento</span></div></div>
         {erroConvite ? (
           <>
+            <Illustration id="ilu-link-expirado" className="self-center" />
             <h1 className="text-h2 font-semibold">{t.indisponivel}</h1>
             <p role="alert" className="text-body text-ink-2">{erroConvite}</p>
             <Button variant="secondary" onClick={() => nav('/login')}>Ir para o login</Button>

@@ -120,7 +120,7 @@ export default function RelatorioUso() {
         <Card title="Uso por veículo" subtitle={api.loading ? 'Carregando os dados do período…' : 'Ordenado pelo km rodado.'}
           actions={<div className="w-56"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por veículo ou placa…" /></div>}>
           <Table head={head}
-            emptyState={<EmptyState icon="odometro" title="Nenhum veículo com posições no período" detail="Ajuste o período ou os filtros." />}
+            emptyState={<EmptyState illustration="ilu-periodo-vazio" title="Nenhum veículo com posições no período" detail="Ajuste o período ou os filtros." />}
             rows={filtrados.map((x: any) => { const l = linha(x); return [<AssetName name={x.a.name} />, ...l.slice(1).map((v: any, i: number) => <span key={i} className={i > 0 ? 'num' : ''}>{i === 1 ? `${v} km` : v}</span>)]; })} />
         </Card>
       </Stack>

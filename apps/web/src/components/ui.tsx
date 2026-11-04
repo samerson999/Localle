@@ -1141,6 +1141,7 @@ export function Empty({ children }: { children: React.ReactNode }) {
 // entregue; inventário em docs/INVENTARIO-ASSETS.md). Sem o arquivo, aparece um marcador do mesmo tamanho.
 // Versões WebP no tamanho de uso (2x): page 320×256 para 160×128, panel 192×154 para 96×77, em images/ilustracoes/web.
 // O PNG de 640×512 fica só como alternativa para navegador sem WebP (o <picture> não baixa os dois).
+// Sombra feita aqui, igual para todas (os mestres em alta vêm sem sombra de chão, docs/ASSETS-3D-PROMPTS.md).
 const ILU = import.meta.glob('../images/ilustracoes/ilu-*.png', { eager: true, import: 'default' }) as Record<string, string>;
 const ILU_WEB = import.meta.glob('../images/ilustracoes/web/ilu-*.webp', { eager: true, import: 'default' }) as Record<string, string>;
 export const ILLUSTRATION_IDS = Object.keys(ILU).map((p) => p.replace(/^.*\/(ilu-[^/]+)\.png$/, '$1')).sort();
@@ -1149,7 +1150,7 @@ const iluWeb = (id: string, size: 'page' | 'panel') => Object.entries(ILU_WEB).f
 export function Illustration({ id, size = 'page', className = '' }: { id: string; size?: 'page' | 'panel'; className?: string }) {
   const dim = size === 'page' ? 'w-40 h-32' : 'w-24 h-[77px]';
   const url = iluUrl(id), web = iluWeb(id, size);
-  const img = url && <img src={url} alt="" draggable={false} loading="lazy" decoding="async" width={size === 'page' ? 160 : 96} height={size === 'page' ? 128 : 77} className={cx(dim, 'object-contain shrink-0', className)} />;
+  const img = url && <img src={url} alt="" draggable={false} loading="lazy" decoding="async" width={size === 'page' ? 160 : 96} height={size === 'page' ? 128 : 77} className={cx(dim, 'object-contain shrink-0 [filter:drop-shadow(0_6px_8px_rgba(17,24,39,0.12))]', className)} />;
   if (url && web) return <picture className="contents"><source type="image/webp" srcSet={web} />{img}</picture>;
   if (url) return img;
   return <span aria-hidden="true" className={cx(dim, 'shrink-0 rounded-card border border-dashed border-line-strong bg-card-2 flex flex-col items-center justify-center gap-1 text-ink-3', className)}><Icon name="camera" size={size === 'page' ? 22 : 18} /><span className="text-caption font-mono">{id}</span></span>;

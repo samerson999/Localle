@@ -3,6 +3,8 @@
 Levantamento feito no código em 20/10/2026, rota por rota, antes da Fase A da migração visual.
 Prioridade segue a fase em que o asset é necessário: **A** fundamentos, **B** componentes base, **C** telas, **D** revisão.
 
+> **04/11/2026:** varredura nova, especificação em alta (2048 px, sem fundo, uma peça por arquivo, sombra feita em código) e prompts de cada peça em `docs/ASSETS-3D-PROMPTS.md`.
+
 ## Decisões (20/10/2026)
 
 - **Mapa:** disco com seta em qualquer zoom; o marcador 3D isométrico (`png-tight`) sai do mapa. O visual do veículo aparece no card ou popup da seleção, com a silhueta. Com isso, o `dolly` 3D deixa de ser necessário.

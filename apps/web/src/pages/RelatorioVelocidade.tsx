@@ -159,7 +159,7 @@ export default function RelatorioVelocidade() {
         <Card title="Trechos acima do limite" subtitle="Lista dos trechos contínuos acima da velocidade mínima, com pico e média."
           actions={<div className="w-56"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por veículo ou placa…" /></div>}>
           <Table minWidth={760} pageSize={10} align={['left', 'left', 'left', 'right', 'right', 'left']}
-            emptyState={<EmptyState icon="velocimetro" layout="row" title="Nenhum excesso de velocidade no período" detail="Troque o período, os veículos ou a velocidade mínima." />}
+            emptyState={<EmptyState illustration="ilu-tudo-em-dia" layout="row" title="Nenhum excesso de velocidade no período" detail="Troque o período, os veículos ou a velocidade mínima." />}
             head={['Veículo', 'Início', 'Fim', 'Vel. máxima', 'Vel. média', 'Local do pico']}
             rows={filtrados.map(({ a, leg }: any) => [
               <AssetName name={a.name} />, <time className="num">{fmtDT(leg.start)}</time>, <time className="num">{fmtDT(leg.end)}</time>,

@@ -83,7 +83,7 @@ export default function Faturamento() {
           <Card>
             <Table minWidth={1000} loading={loading && !data} align={['left', 'left', 'right', 'right', 'left', 'right']}
               head={['Cliente', 'Cobrança', 'Veículos-dia (média)', 'Apurado', 'Pagamento', '']}
-              emptyState={<EmptyState title="Nenhum contrato para faturar" detail="Cadastre o contrato do cliente em Contratos." />}
+              emptyState={<EmptyState illustration="ilu-faturamento" title="Nenhum contrato para faturar" detail="Cadastre o contrato do cliente em Contratos." />}
               rows={rows.map((r) => [
                 <span className="font-medium">{r.clientName}</span>,
                 BILLING_LABEL[r.billingType],

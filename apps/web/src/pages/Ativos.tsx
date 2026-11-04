@@ -93,7 +93,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
         </div>
         <Table minWidth={1160} onRow={(i) => onOpen(list[i])}
           emptyState={all.length ? <EmptyState illustration="ilu-busca-veiculo" layout="row" title="Nenhum ativo com esses filtros" detail="Tente outra busca ou limpe os filtros." action={<Button variant="dark" size="sm" onClick={() => { setCat(''); setNoTracker(false); setDocDue(false); setQ(''); }}>Limpar filtros</Button>} />
-            : <EmptyState icon="ativos" title="Nenhum ativo cadastrado" detail="Cadastre o primeiro ativo ou importe a sua frota por planilha." />}
+            : <EmptyState illustration="ilu-onboarding-frota" title="Nenhum ativo cadastrado" detail="Cadastre o primeiro ativo ou importe a sua frota por planilha." />}
           card={(i) => { const a = list[i]; const d = worstDoc(a); return (
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0 flex flex-col gap-1">

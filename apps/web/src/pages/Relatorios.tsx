@@ -74,7 +74,7 @@ export default function Relatorios() {
                   <span className="text-small font-medium">{r.formato.toUpperCase()}</span>,
                 ];
               })}
-              emptyState={<EmptyState icon="relogio" title="Nenhum relatório gerado ainda" detail="Abra um dos tipos acima e exporte em PDF, Excel ou CSV: ele aparece aqui." />}
+              emptyState={<EmptyState illustration="ilu-relatorios" title="Nenhum relatório gerado ainda" detail="Abra um dos tipos acima e exporte em PDF, Excel ou CSV: ele aparece aqui." />}
             />
           )}
         </Card>

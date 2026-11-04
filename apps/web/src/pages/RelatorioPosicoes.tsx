@@ -161,7 +161,7 @@ export default function RelatorioPosicoes() {
           actions={<div className="w-56"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por veículo ou placa…" /></div>}>
           {filtrados.length ? (
             <Stack gap="grid">{filtrados.map((b) => <BlocoPosicoes key={b.a.id} b={b} />)}</Stack>
-          ) : <EmptyState icon="rota" layout="row" title="Nenhuma posição no período" detail="Troque o período ou os veículos." />}
+          ) : <EmptyState illustration="ilu-periodo-vazio" layout="row" title="Nenhuma posição no período" detail="Troque o período ou os veículos." />}
         </Card>
 
         <Card title="Resumo por veículo" subtitle="Distância percorrida e velocidade máxima de cada veículo no período.">

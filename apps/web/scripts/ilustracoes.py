@@ -1,9 +1,11 @@
 """Normaliza as ilustrações 3D (vazio, erro, onboarding) para o mesmo peso visual.
 
-Lê src/images/ilustracoes/NN-nome.png (o arquivo entregue), recorta a margem transparente e
-reposiciona o objeto num canvas de 640x512 com a mesma altura útil (70% = 358 px, largura no
-máximo 90% = 576 px), centralizado. Grava src/images/ilustracoes/ilu-<id>.png, que é o que a
-interface usa (componente Illustration em src/components/ui.tsx).
+Lê os mestres em alta de src/images/ilustracoes/fonte/ilu-<id>.png (2048x1638, especificação em
+docs/ASSETS-3D-PROMPTS.md) e, para o que ainda não tem mestre, a entrega antiga NN-nome.png. Recorta a
+margem transparente e reposiciona o objeto num canvas de 640x512 com a mesma altura útil (70% = 358 px,
+largura no máximo 90% = 576 px), centralizado. Grava src/images/ilustracoes/ilu-<id>.png, que é o que a
+interface usa (componente Illustration em src/components/ui.tsx), e as versões WebP de uso em
+ilustracoes/web/ (página, painel e a maior, do login).
 
 Também limpa a franja (pixels com alfa <= 3 viram transparência pura, sem borda clara sobre fundo
 escuro) e descarta pontos soltos fora do objeto, que desalinhariam o recorte.
@@ -52,15 +54,35 @@ def normalize(src: Path) -> Image.Image:
     return out
 
 
+# Versões WebP no tamanho de uso (2x), lidas pelo componente Illustration e pelo login (components/LoginShowcase.tsx)
+WEB = {'page': (320, 256), 'panel': (192, 154), 'hero': (640, 512)}
+
+
+def export(img: Image.Image, ident: str, origem: str):
+    img.save(DIR / f'ilu-{ident}.png', optimize=True)
+    (DIR / 'web').mkdir(exist_ok=True)
+    for nome, size in WEB.items():
+        # alfa pré-multiplicado também na redução: sem halo na borda
+        img.convert('RGBa').resize(size, Image.LANCZOS).convert('RGBA').save(DIR / 'web' / f'ilu-{ident}-{nome}.webp', 'WEBP', quality=90, method=6)
+    print(f'{origem} -> ilu-{ident}.png + web/ilu-{ident}-{{{",".join(WEB)}}}.webp')
+
+
 def main():
+    # 1) mestres em alta (docs/ASSETS-3D-PROMPTS.md, 04/11/2026): ilustracoes/fonte/ilu-<id>.png, 2048x1638, sem sombra
+    feitos = set()
+    for src in sorted((DIR / 'fonte').glob('ilu-*.png')):
+        ident = src.stem[4:]
+        export(normalize(src), ident, f'fonte/{src.name}')
+        feitos.add(ident)
+    # 2) entregas antigas (NN-nome.png, 640x512) só para o que ainda não tem mestre em alta
     for src in sorted(DIR.glob('[0-9][0-9]-*.png')):
         num = src.name[:2]
         if num not in IDS:
             print(f'ignorado (sem identificador): {src.name}')
             continue
-        dst = DIR / f'ilu-{IDS[num]}.png'
-        normalize(src).save(dst, optimize=True)
-        print(f'{src.name} -> {dst.name}')
+        if IDS[num] in feitos:
+            continue
+        export(normalize(src), IDS[num], src.name)
 
 
 if __name__ == '__main__':

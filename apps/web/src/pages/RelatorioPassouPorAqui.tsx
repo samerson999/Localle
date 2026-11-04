@@ -159,7 +159,7 @@ export default function RelatorioPassouPorAqui() {
         <Card title="Passagens pelo ponto" subtitle="Lista de veículos que passaram dentro do raio escolhido, com a distância mínima atingida."
           actions={<div className="w-56"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por veículo ou placa…" /></div>}>
           <Table minWidth={760} pageSize={10} align={['left', 'left', 'left', 'right', 'right']}
-            emptyState={<EmptyState icon="alvo" layout="row" title={centro ? 'Nenhuma passagem no período' : 'Escolha um ponto no mapa'} detail={centro ? 'Troque o período, o raio ou os veículos.' : 'Clique no mapa acima para definir onde buscar.'} />}
+            emptyState={<EmptyState icon="alvo" illustration={centro ? 'ilu-periodo-vazio' : undefined} layout="row" title={centro ? 'Nenhuma passagem no período' : 'Escolha um ponto no mapa'} detail={centro ? 'Troque o período, o raio ou os veículos.' : 'Clique no mapa acima para definir onde buscar.'} />}
             head={['Veículo', 'Entrada', 'Saída', 'Distância mínima', 'Velocidade']}
             rows={filtradas.map(({ a, p }: any) => [
               <AssetName name={a.name} />, <time className="num">{fmtDT(p.enter)}</time>, <time className="num">{fmtDT(p.exit)}</time>,

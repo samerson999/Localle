@@ -42,7 +42,7 @@ export default function Clientes() {
           <Card>
             <Table minWidth={980} loading={loading && !data} align={['left', 'left', 'right', 'left', 'right', 'left', 'right']}
               head={['Cliente', 'Situação', 'Veículos', 'Acesso', 'Rastreadores instalados', 'Cadastrado em', '']}
-              emptyState={<EmptyState title="Nenhum cliente cadastrado" detail="Cadastre o primeiro cliente com o e-mail do administrador dele." action={<Button onClick={() => setCreating(true)}>Novo cliente</Button>} />}
+              emptyState={<EmptyState illustration="ilu-clientes" title="Nenhum cliente cadastrado" detail="Cadastre o primeiro cliente com o e-mail do administrador dele." action={<Button onClick={() => setCreating(true)}>Novo cliente</Button>} />}
               rows={clients.map((c) => [
                 <span className="font-medium">{c.name}</span>,
                 c.contrato_status ? <Badge tone={CONTRACT_BADGE[c.contrato_status].tone}>{CONTRACT_BADGE[c.contrato_status].label}</Badge> : <span className="text-small text-ink-2">Sem contrato</span>,
