@@ -3,9 +3,9 @@ import { opAssets } from '../lib/assetLifecycle';
 import { useMemo, useState } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import { useStore, assetKm } from '../lib/store';
-import { cancelarViagem, criarViagem, removerMatrizViagem, salvarMatrizViagem } from '../lib/localleApi';
+import { cancelarViagem, criarViagem, removerMatrizViagem, salvarMatrizViagem, useCarregando } from '../lib/localleApi';
 import { registerGate } from '../lib/gate';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, EmptyState, Progress, TabPanel, toast, Check, DescList, DescRow, confirmAction, Grid, Stack } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, EmptyState, Progress, TabPanel, toast, Check, DescList, DescRow, confirmAction, Grid, Stack, useUrlTab } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, StatusDot, StatusGlyph, Num, AssetName } from '../components/story';
@@ -17,7 +17,8 @@ import { TRIP_PARAMS, noTripPriority, STAGES, WEEKDAYS, lastGate, nextGateKind, 
 import { fmtD, fmtDT, fmtT, hm, num, pct, sum, uid, isPlate, abbr, DAY } from '@localle/shared/utils';
 
 export default function Viagens() {
-  const [tab, setTab] = useState('visao');
+  const [tab, setTab] = useUrlTab('visao');
+  const carregando = useCarregando('viagens');
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[0], 'anterior'));
   return (
     <div>
@@ -27,7 +28,7 @@ export default function Viagens() {
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'visao', label: 'Visão geral' }, { key: 'portaria', label: 'Portaria' }, { key: 'rua', label: 'Quem está na rua' }, { key: 'externas', label: 'Viagens externas' }, { key: 'recorrentes', label: 'Viagens recorrentes' }]} />
         {tab === 'visao' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}
       </div>
-      <TabPanel id={tab}>
+      <TabPanel id={tab} loading={carregando}>
         {tab === 'visao' && <Visao period={period} />}
         {tab === 'portaria' && <Portaria />}
         {tab === 'rua' && <NaRua />}
@@ -214,7 +215,7 @@ function Externas() {
         <Table minWidth={1180} emptyState={<EmptyState illustration="ilu-viagens" layout="row" title="Nenhuma viagem nesta lista" detail="Troque o filtro ou cadastre uma nova viagem." />} head={['Viagem', 'Veículo', 'Carga', 'Etapas', 'Situação', 'Duração', '']} rows={list.slice(0, more).map((x: any) => [
           <span className="font-medium">{x.name || '—'}</span>, <Plate name={N.a(x.assetId)} />, <span className="text-small">{x.cargo || '—'}{x.status === 'em_andamento' && <span className="block text-caption text-ink-2">{isLoaded(x) ? 'com carga' : x.unloadedAt ? 'descarregado' : 'sem carga'}</span>}</span>, <Stepper t={x} />,
           <StatusDot kind={TRIP_DOT[x.status].kind} label={TRIP_DOT[x.status].label} />, x.startedAt ? <span className="num">{hm((x.endedAt || Date.now()) - x.startedAt)}</span> : '—',
-          ['aguardando', 'em_andamento'].includes(x.status) ? <TextButton tone="danger" className="whitespace-nowrap" onClick={async () => { try { await cancelarViagem(x.id); toast('Viagem cancelada.'); } catch (e: any) { toast('Não foi possível cancelar: ' + (e.message || e), { tone: 'crit' }); } }}>Cancelar</TextButton> : null])} />
+          ['aguardando', 'em_andamento'].includes(x.status) ? <TextButton tone="danger" className="whitespace-nowrap" onClick={async () => { if (!(await confirmAction({ title: 'Cancelar esta viagem?', detail: x.status === 'em_andamento' ? 'A viagem está em andamento e fica registrada como cancelada. Para seguir, será preciso criar outra.' : 'A viagem fica registrada como cancelada. Para seguir, será preciso criar outra.', confirmLabel: 'Cancelar viagem', cancelLabel: 'Manter' }))) return; try { await cancelarViagem(x.id); toast('Viagem cancelada.'); } catch (e: any) { toast('Não foi possível cancelar: ' + (e.message || e), { tone: 'crit' }); } }}>Cancelar</TextButton> : null])} />
         {list.length > more && <div className="mt-3 flex items-center gap-3"><Button variant="ghost" size="sm" onClick={() => setMore(more + 50)}>Mostrar mais</Button><span className="text-caption text-ink-2 num">{more} de {list.length}</span></div>}
       </Card>
       {t && <TripForm t={t} setT={setT} />}

@@ -1,8 +1,8 @@
 // Central de alertas "Precisa de você" (sidebar e botão do topo). Duas abas para não misturar o que pede ação com o
 // registro do que já aconteceu: "Para resolver" (críticos, contados por tipo, numa lista só, do que espera há mais
 // tempo para o mais recente) e "Histórico" (todos os alertas, com busca, filtro e lido/não lido).
-import { marcarAlertasLidos } from '../lib/localleApi';
-import { toast } from '../components/ui';
+import { marcarAlertasLidos, useCarregando } from '../lib/localleApi';
+import { toast, LoadingBlock } from '../components/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { auditEntry } from '@localle/shared/audit';
 import { useStore } from '../lib/store';
@@ -24,6 +24,7 @@ export default function PrecisaDeVoce() {
   const unread = useStore((s) => s.alerts.filter((a: any) => !a.read).length);
   const [params, setParams] = useSearchParams();
   const tab = params.get('aba') === 'historico' ? 'historico' : 'resolver';
+  const carregando = useCarregando('frota', 'manutenção', 'multas', 'motoristas');
   return (
     <div>
       <PageHeader title="Precisa de você" subtitle="O que pede ação agora, por tipo, e o histórico de alertas." />
@@ -31,7 +32,7 @@ export default function PrecisaDeVoce() {
         <Stack gap="grid">
           <Tabs value={tab} onChange={(k) => setParams(k === 'historico' ? { aba: 'historico' } : {}, { replace: true })}
             tabs={[{ key: 'resolver', label: 'Para resolver', count: needs.length }, { key: 'historico', label: 'Histórico', count: unread || undefined }]} />
-          {tab === 'resolver' ? <ParaResolver needs={needs} /> : <AlertHistory />}
+          {carregando ? <LoadingBlock /> : tab === 'resolver' ? <ParaResolver needs={needs} /> : <AlertHistory />}
         </Stack>
       </PageBody>
     </div>

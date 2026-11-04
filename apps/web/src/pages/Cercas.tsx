@@ -3,7 +3,7 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, Circle, Polygon, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { useSearchParams } from 'react-router-dom';
 import { useStore, useStoreData } from '../lib/store';
-import { Button, Card, Field, FormGroup, Input, Select, Table, Check, cx, TextButton, Slider, confirmAction, toast, Pills, Tabs, EmptyState, PageBody } from '../components/ui';
+import { Button, Card, Field, FormGroup, Input, Select, Table, Check, cx, TextButton, Slider, confirmAction, toast, Pills, Tabs, EmptyState, PageBody, Missing } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { FenceShapes, fenceColor, TILE, ATTR, MapControls } from '../components/MapBits';
 import { tv } from '../lib/tokens';
@@ -93,7 +93,7 @@ export default function Cercas() {
         </section>
         <Card title={f.id ? 'Editar cerca' : 'Nova cerca'} className="flex-[1_1_340px] max-w-[440px] self-stretch"
           footer={<div className="flex flex-col gap-tight w-full">
-            {!valid && <span className="text-caption text-ink-2">Para salvar, falta: {missing.join(' e ')}.</span>}
+            <Missing items={missing} />
             <div className="flex gap-tight w-full"><Button size="lg" disabled={!valid} onClick={save} className="flex-1">Salvar cerca</Button>{(f.id || dirty) && <Button size="lg" variant="quiet" onClick={reset}>{f.id ? 'Cancelar' : 'Limpar'}</Button>}</div>
           </div>}>
           <div className="flex flex-col gap-group">

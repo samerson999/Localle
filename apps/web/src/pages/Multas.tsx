@@ -2,8 +2,8 @@ import { RetiredToggle } from '../components/RetiredToggle';
 import { opAssets } from '../lib/assetLifecycle';
 import { useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { indicarCondutor, salvarMulta } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, TabPanel, TextButton, Progress, DateInput, Callout, cx, toast, Panel, SearchInput, EmptyState, Stack, Grid } from '../components/ui';
+import { indicarCondutor, salvarMulta, useCarregando } from '../lib/localleApi';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, TabPanel, TextButton, Progress, DateInput, Callout, cx, toast, Panel, SearchInput, EmptyState, Stack, Grid, useUrlTab, useUrlItem } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, StatusDot, NeedsList, Num, AssetName, IdChip, type StatusKind } from '../components/story';
 import { ColumnChart, TipItem } from '../components/charts';
@@ -23,8 +23,12 @@ const leftText = (t: number) => { const d = daysLeft(t); return d < 0 ? `venceu 
 const Plate = ({ name }: { name: string }) => <AssetName name={name} />;
 
 export default function Multas() {
-  const [tab, setTab] = useState('visao');
+  const [tab, setTab] = useUrlTab('visao');
+  const carregando = useCarregando('multas');
   const [edit, setEdit] = useState<any>(null);
+  const fines = useStore((s) => s.fines);
+  // link direto (ex.: "Precisa de você"): ?multa= abre a multa
+  useUrlItem('multa', (id) => (fines || []).find((f: any) => f.id === id), (f: any) => setEdit(toForm(f)), [fines]);
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS.find((p) => p.key === '12m') || BI_PRESETS[0], 'anterior'));
   return (
     <div>
@@ -34,7 +38,7 @@ export default function Multas() {
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'visao', label: 'Visão geral' }, { key: 'lista', label: 'Multas' }, { key: 'cnh', label: 'Pontos na CNH' }]} />
         {tab === 'visao' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}
       </div>
-      <TabPanel id={tab}>
+      <TabPanel id={tab} loading={carregando}>
         {tab === 'visao' && <Visao onOpen={setEdit} period={period} />}
         {tab === 'lista' && <Lista onOpen={setEdit} />}
         {tab === 'cnh' && <Cnh />}

@@ -3,8 +3,8 @@ import { opAssets } from '../lib/assetLifecycle';
 import { auditEntry } from '@localle/shared/audit';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { removerPlano, salvarOs, salvarPlano } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Badge, Tabs, Modal, PageHeader, Textarea, FilePick, EmptyState, ErrorState, Skeleton, Panel, InlineInput, cx, TextButton, toast, confirmAction, Grid, Stack, FormGroup, IconButton } from '../components/ui';
+import { removerPlano, salvarOs, salvarPlano, useCarregando } from '../lib/localleApi';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Badge, Tabs, Modal, PageHeader, Textarea, FilePick, EmptyState, ErrorState, Skeleton, Panel, InlineInput, cx, TextButton, toast, confirmAction, Grid, Stack, FormGroup, IconButton, useUrlTab, useUrlItem, LoadingBlock, Missing } from '../components/ui';
 import { planStatus, generateDueOrders, SERVICES, OS_STATUS, CRIT_DEFAULT } from '@localle/shared/maint';
 import { brl, fmtD, fmtDT, num, HOUR, uid, isPlate, sum } from '@localle/shared/utils';
 import { BIDono, BIGestor, useMaintKpis } from '../components/BIManut';
@@ -24,8 +24,11 @@ const BI_TABS = ['geral', 'dono', 'gestor'];
 
 function ManutencaoLocal() {
   const s = useStoreData();
-  const [tab, setTab] = useState('geral');
+  const [tab, setTab] = useUrlTab('geral');
+  const carregando = useCarregando('manutenção');
   const [os, setOs] = useState<any>(null);
+  // link direto (ex.: "Precisa de você"): ?os= abre a ordem de serviço
+  useUrlItem('os', (id) => s.workOrders.find((w: any) => w.id === id), setOs, [s.workOrders]);
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[2], 'anterior'));
   const [grp, setGrp] = useState('');
   useEffect(() => { const st = useStore.getState(); const add = generateDueOrders(st); if (add.length) st.patch((x: any) => ({ workOrders: [...x.workOrders, ...add], ...auditEntry({ session: { name: 'Sistema' } }, { coll: 'workOrders', refId: '', label: 'Preventivas vencidas', action: `gerou ${add.length} OS preventivas automaticamente`, count: add.length, note: add.map((o: any) => o.title).join(', ') }) })); }, []);
@@ -41,12 +44,14 @@ function ManutencaoLocal() {
         {(tab === 'dono' || tab === 'gestor') && <div className="w-44"><Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Frota inteira' }, ...s.groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></div>}
         {isBI && <PeriodCompare value={period} onChange={setPeriod} />}
       </div>
+      {carregando ? <LoadingBlock /> : <>
       {tab === 'geral' && <VisaoGeral period={period} openOs={setOs} goTab={setTab} />}
       {tab === 'preventivas' && <Preventivas openOs={setOs} />}
       {tab === 'os' && <OsList openOs={setOs} />}
       {tab === 'planos' && <Planos />}
       {tab === 'emails' && <Escalonamento />}
       {(tab === 'dono' || tab === 'gestor') && <BITab view={tab} period={period} grp={grp} openWos={openWos} />}
+      </>}
       {os && <OsModal init={os} onClose={() => setOs(null)} />}
     </div>
   );
@@ -410,6 +415,7 @@ function Escalonamento() {
             {r.level === 'sem_acao' ? <Field label="Avisar após (h)"><Input type="number" className="w-28" value={r.waitHours} onChange={(e) => setR({ ...r, waitHours: e.target.value as any })} /></Field> : <span />}
             <Button disabled={!valid} onClick={add}><Icon name="mais" size={16} />Adicionar</Button>
           </div>
+          {(r.name || r.email) && <Missing items={[!r.name.trim() && 'o nome', !/^\S+@\S+\.\S+$/.test(r.email.trim()) && 'um e-mail válido', r.level === 'sem_acao' && !(+r.waitHours > 0) && 'as horas para avisar']} />}
         </div>
         <Table minWidth={720} empty="Ninguém recebe e-mail ainda." head={['Nível', 'Nome', 'E-mail', 'Quando', '']} rows={recipients.map((x) => [
           <StatusDot kind={ESC_DOT[x.level]} label={ESC_LEVELS[x.level]} />, <span><span className="font-medium">{x.name}</span>{x.role && <span className="block text-caption text-ink-2">{x.role}</span>}</span>, x.email,

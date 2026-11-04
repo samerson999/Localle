@@ -99,7 +99,7 @@ export default function Rastreadores() {
                   <div className="flex gap-3 justify-end">
                     {s !== 'desativado' && <TextButton onClick={() => setDiagnosticando(r)}>Diagnóstico</TextButton>}
                     {s !== 'desativado' && (r.sim_card_id
-                      ? <TextButton onClick={() => acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.')}>Desvincular chip</TextButton>
+                      ? <TextButton onClick={async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); }}>Desvincular chip</TextButton>
                       : <TextButton onClick={() => setVinculando(r)}>Vincular chip</TextButton>)}
                     {s === 'instalado' && <TextButton onClick={() => desinstalar(r)}>Desinstalar</TextButton>}
                     {s === 'vinculado' && <TextButton onClick={() => desvincular(r)}>Desvincular do cliente</TextButton>}

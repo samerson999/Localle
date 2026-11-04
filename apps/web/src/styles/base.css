@@ -117,6 +117,10 @@ a { text-underline-offset: 3px; }
 @keyframes sheet-out { to { translate: 0 100%; } }
 .sheet-in { animation: sheet-in 280ms var(--ease-out) backwards; }
 .sheet-out { animation: sheet-out 180ms var(--ease-in) forwards; pointer-events: none; }
+/* abas que rolam de lado (ui.tsx › useSlider): esmaece a borda do lado onde há mais opções */
+[data-fade="r"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+[data-fade="l"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+[data-fade="lr"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
 /* barra inferior do celular (Sidebar.tsx › SidebarDock), valores do #mobile-bottom-nav do Visor (03/11/2026): a gaveta
    cresce da pílula (escala a partir da base, 500 ms na abertura e 200 ms no fechamento) e a pílula se recolhe na
    horizontal. O fundo é transparente: só captura o toque fora. Flutua, então leva sombra; o vidro deixa o mapa e as
@@ -141,6 +145,7 @@ a { text-underline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
   .anim-page, .grow-y, .grow-x, .panel-in, .toast-in { animation: fade-in 150ms ease both !important; transform: none !important; }
+  .anim-page { animation-fill-mode: backwards !important; } /* mesmo motivo do .anim-page acima: sem contexto de empilhamento depois de entrar */
   .anim-out, .panel-out, .toast-out, .sheet-out { animation: fade-out var(--t-exit) ease both !important; }
   .sheet-in { animation: fade-in 150ms ease both !important; }
   .dock-drawer, .dock-pill { transition: none !important; }

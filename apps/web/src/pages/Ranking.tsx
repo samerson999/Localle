@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { lancarEventoRanking, salvarMatrizRanking } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack } from '../components/ui';
+import { lancarEventoRanking, salvarMatrizRanking, useCarregando } from '../lib/localleApi';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack, useUrlTab } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, DeltaChip, StatusDot, Num } from '../components/story';
 import { Icon } from '../components/icons';
@@ -27,13 +27,14 @@ function useMatrix() {
 }
 
 export default function Ranking() {
-  const [tab, setTab] = useState('ranking');
+  const [tab, setTab] = useUrlTab('ranking');
+  const carregando = useCarregando('ranking');
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[0], 'anterior'));
   return (
     <div>
       <PageHeader title="Ranking de motoristas" subtitle="Eventos do rastreador, telemetria, regras da empresa e jornada" />
       <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'ranking', label: 'Ranking' }, { key: 'matriz', label: 'Matriz de eventos e pesos' }, { key: 'campanhas', label: 'Campanhas' }]} />{tab === 'ranking' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
-      <TabPanel id={tab}>
+      <TabPanel id={tab} loading={carregando}>
         {tab === 'ranking' && <Board period={period} />}
         {tab === 'matriz' && <Matriz />}
         {tab === 'campanhas' && <Campanhas />}

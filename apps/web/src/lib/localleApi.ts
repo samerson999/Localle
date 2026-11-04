@@ -370,8 +370,13 @@ export function useAdminQuery<T>(load: () => Promise<T>, deps: unknown[] = []) {
 }
 
 // ---------- sincronização ----------
-interface SyncState { status: 'off' | 'ok' | 'erro'; ts: number; count: number; error: string; modulosFalhos: string[] }
-export const useLocalle = create<SyncState>(() => ({ status: 'off', ts: 0, count: 0, error: '', modulosFalhos: [] }));
+// prontos: o que já terminou a primeira carga nesta sessão (deu certo ou não); null = nada a carregar (sem sessão de
+// cliente). Sem isso a tela mostrava "Nenhuma multa…" enquanto os dados ainda vinham — vazio e "ainda não sei" iguais.
+interface SyncState { status: 'off' | 'ok' | 'erro'; ts: number; count: number; error: string; modulosFalhos: string[]; prontos: string[] | null }
+export const useLocalle = create<SyncState>(() => ({ status: 'off', ts: 0, count: 0, error: '', modulosFalhos: [], prontos: null }));
+const marcarPronto = (...nomes: string[]) => useLocalle.setState((st) => (st.prontos ? { prontos: [...new Set([...st.prontos, ...nomes])] } : st));
+/** true enquanto a primeira carga do módulo (nome de syncModulos, ou 'frota') não terminou; a tela mostra esqueleto. */
+export const useCarregando = (...nomes: string[]) => useLocalle((st) => !!st.prontos && nomes.some((n) => !st.prontos!.includes(n)));
 
 const LIVE_HISTORY = 120;
 
@@ -523,12 +528,15 @@ export function useLocalleSync() {
     // sessão persistida no navegador sem token (aba nova, token expirado): volta para o login
     if (email && !getToken()) { useStore.getState().patch(() => ({ session: null })); return; }
     // só usuário de cliente tem frota; superadmin não tem client_id
-    if (!email || role !== 'gestor') { purgeLocalleData(); return; }
+    if (!email || role !== 'gestor') { purgeLocalleData(); useLocalle.setState({ prontos: null }); return; }
     const ctrl = new AbortController();
+    useLocalle.setState({ prontos: [] });
     Promise.all([syncFrota(), syncCercas(), syncAlertas(), syncRegras()])
-      .then(() => syncModulos())
+      .then(() => { marcarPronto('frota'); return syncModulos(); })
       .then(() => runStream(ctrl.signal))
-      .catch((e) => useLocalle.setState({ status: 'erro', ts: Date.now(), error: mensagemDeErro(e) }));
+      // a frota falhou e os módulos nem foram pedidos: nada mais vai chegar, então nenhuma tela fica "carregando"; o aviso
+      // do topo (AvisoBackend) é quem diz que não carregou
+      .catch((e) => { useLocalle.setState({ status: 'erro', ts: Date.now(), error: mensagemDeErro(e) }); marcarPronto('frota', ...MODULOS_SYNC); });
     // enquanto houver comando aguardando o rastreador, confere no backend (só consulta se houver pendente)
     const conferir = setInterval(() => void syncComandos().catch(() => { /* próxima volta tenta de novo */ }), COMANDOS_SYNC_MS);
     void syncComandos().catch(() => {});
@@ -741,12 +749,13 @@ export async function etapaViagem(id: string, etapa: 'iniciada' | 'carregada' | 
 export async function cancelarViagem(id: string) { await apiSend('POST', `/viagens/${id}/cancelar`); await syncViagens(); }
 
 /** Carga inicial de todos os módulos depois do login (cada um independente: um erro não derruba os outros). */
+const MODULOS_SYNC = ['motoristas', 'grupos', 'jornada', 'multas', 'combustível', 'manutenção', 'checklist', 'ranking', 'viagens'];
 export async function syncModulos() {
   const partes: [string, () => Promise<unknown>][] = [
     ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],
     ['manutenção', syncManutencao], ['checklist', syncChecklist], ['ranking', syncRanking], ['viagens', syncViagens],
   ];
-  const r = await Promise.allSettled(partes.map(([, f]) => f()));
+  const r = await Promise.allSettled(partes.map(([nome, f]) => f().finally(() => marcarPronto(nome))));
   const falhas = r.map((x, i) => (x.status === 'rejected' ? { nome: partes[i][0], motivo: mensagemDeErro(x.reason) } : null)).filter((x): x is { nome: string; motivo: string } => !!x);
   // a tela mostra "não carregou: motoristas, multas" com botão de tentar de novo; a lista vazia não pode passar por "sem dados"
   useLocalle.setState({ modulosFalhos: falhas.map((f) => f.nome), error: falhas.length ? falhas[0].motivo : '' });

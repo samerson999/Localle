@@ -3,9 +3,9 @@ import { opAssets } from '../lib/assetLifecycle';
 import { auditEntry } from '@localle/shared/audit';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { salvarOs } from '../lib/localleApi';
+import { salvarOs, useCarregando } from '../lib/localleApi';
 import { assetKm } from '@localle/shared/km';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, FilePick, EmptyState, ErrorState, Skeleton, Check, Textarea, cx, TextButton, Callout, Panel, IconButton, FilterChip, DescList, DescRow, confirmAction, toast, Grid, Stack } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, FilePick, EmptyState, ErrorState, Skeleton, Check, Textarea, cx, TextButton, Callout, Panel, IconButton, FilterChip, DescList, DescRow, confirmAction, toast, Grid, Stack, LoadingBlock, useUrlTab } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { Icon } from '../components/icons';
@@ -21,7 +21,8 @@ export { occurrences };
 export default function Checklist() { return <CkProvider><Inner /></CkProvider>; }
 
 function Inner() {
-  const [tab, setTab] = useState('bi');
+  const [tab, setTab] = useUrlTab('bi');
+  const carregando = useCarregando('checklist');
   const R = useCk();
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[0], 'anterior'));
   return (
@@ -29,11 +30,13 @@ function Inner() {
       <PageHeader icon="checklist" title="Checklist" subtitle="Modelos, grupos de respondentes, adesão e painel de respostas" />
       <div className="flex flex-wrap items-center gap-tight mb-card-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'bi', label: 'BI e adesão' }, { key: 'modelos', label: 'Modelos' }, { key: 'grupos', label: 'Grupos e pessoas' }, { key: 'preencher', label: 'Preencher (app)' }, { key: 'respostas', label: 'Respostas' }]} />{tab === 'bi' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
       {R.error && <Callout tone="crit" className="mb-card-head">{R.error}</Callout>}
+      {carregando ? <LoadingBlock /> : <>
       {tab === 'bi' && <BI period={period} />}
       {tab === 'modelos' && <Modelos />}
       {tab === 'grupos' && <Grupos />}
       {tab === 'preencher' && <Preencher onDone={() => setTab('respostas')} />}
       {tab === 'respostas' && <Respostas />}
+      </>}
     </div>
   );
 }

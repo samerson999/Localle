@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { registrarMarcacao, removerMarcacao } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid } from '../components/ui';
+import { registrarMarcacao, removerMarcacao, useCarregando } from '../lib/localleApi';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid, useUrlTab } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { ColumnChart, CompareBars } from '../components/charts';
 import { computeDays, HARDEN, clampLegal, jornadaLimits } from '@localle/shared/jornada';
@@ -14,7 +14,8 @@ import { JOURNEY_TYPES } from '@localle/shared/catalog';
 import { fmtD, fmtDT, fmtT, hm, num, pct, toInputDT, toInputD, DAY, sum } from '@localle/shared/utils';
 
 export default function Jornada() {
-  const [tab, setTab] = useState('painel');
+  const [tab, setTab] = useUrlTab('painel');
+  const carregando = useCarregando('jornada', 'motoristas');
   const s = useStoreData(); const cfg = useCfg();
   const company = { name: cfg.companyName || s.revenda.clientName, cnpj: cfg.companyCnpj, address: cfg.companyAddress };
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[0], 'anterior'));
@@ -22,7 +23,7 @@ export default function Jornada() {
     <div>
       <PageHeader icon="jornada" title="Gestão de jornada" subtitle="Controle de ponto do motorista conforme a Lei 13.103/2015" />
       <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'painel', label: 'Visão geral' }, { key: 'marcacoes', label: 'Marcações' }, { key: 'folha', label: 'Folha de ponto' }, { key: 'termo', label: 'Termo de orientação' }, { key: 'documentos', label: 'Termos e medidas' }, { key: 'regras', label: 'Regras' }]} />{tab === 'painel' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
-      <TabPanel id={tab}>
+      <TabPanel id={tab} loading={carregando}>
       {tab === 'painel' && <Painel goDocs={() => setTab('documentos')} period={period} />}
       {tab === 'marcacoes' && <Marcacoes />}
       {tab === 'folha' && <Folha />}

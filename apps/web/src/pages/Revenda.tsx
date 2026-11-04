@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { Button, Card, Field, Input, Table, Badge, Tabs, PageHeader, Pills, cx, TextButton, Switch, TabPanel, EmptyState, toast, Grid, Stack } from '../components/ui';
+import { Button, Card, Field, Input, Table, Badge, Tabs, PageHeader, Pills, cx, TextButton, Switch, TabPanel, EmptyState, toast, Grid, Stack, useUrlTab } from '../components/ui';
 import { Icon } from '../components/icons';
 import { Dropzone } from '../components/Dropzone';
 import SupportAccess from '../components/SupportAccess';
@@ -13,7 +13,7 @@ import { ColumnChart } from '../components/charts';
 
 export default function Revenda() {
   const session = useStore((s) => s.session);
-  const [tab, setTab] = useState('cliente');
+  const [tab, setTab] = useUrlTab('cliente');
   if (session?.role !== 'revenda' && session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito ao administrador da rastreadora" detail="Entre com revenda@demo.com para ver este painel." /></Card>;
   return (
     <div>

@@ -2,8 +2,8 @@
 // Ação necessária = críticos de toda a plataforma (lib/needs); Atualizações = alertas recentes, com lido/não lido.
 // No computador abre como popover preso ao botão do topo; no celular, como folha inferior (Sheet), o padrão do celular.
 // O detalhe completo (filtros por tipo, histórico com busca) fica na página /precisa-de-voce.
-import { marcarAlertasLidos } from '../lib/localleApi';
-import { toast } from '../components/ui';
+import { marcarAlertasLidos, useCarregando } from '../lib/localleApi';
+import { toast, Skeleton } from '../components/ui';
 import { auditEntry } from '@localle/shared/audit';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
@@ -64,6 +64,7 @@ function Body({ onClose, closeRef, sheet }: { onClose: () => void; closeRef?: Re
   const patch = useStore((s) => s.patch);
   const [treat, setTreat] = useState<any>(null);
   const unread = alerts.filter((a: any) => !a.read).length;
+  const carregando = useCarregando('frota', 'manutenção', 'multas', 'motoristas');
   const [tab, setTab] = useState(() => (needs.length || !unread ? 'acao' : 'atual'));
   const recent = useMemo(() => [...alerts].reverse().slice(0, MAX_ALERTS), [alerts]);
   // mais antigos primeiro: é o que está esperando há mais tempo
@@ -82,7 +83,8 @@ function Body({ onClose, closeRef, sheet }: { onClose: () => void; closeRef?: Re
       </header>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-2">
         {tab === 'acao' ? (
-          needs.length === 0 ? <EmptyState illustration="ilu-tudo-em-dia" title="Nada pedindo ação agora" detail="Quando algo crítico acontecer na frota, aparece aqui primeiro." />
+          carregando ? <div aria-busy="true" className="flex flex-col gap-stack py-2"><span className="sr-only" role="status">Carregando…</span>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          : needs.length === 0 ? <EmptyState illustration="ilu-tudo-em-dia" title="Nada pedindo ação agora" detail="Quando algo crítico acontecer na frota, aparece aqui primeiro." />
             : <>
               <NeedsList onNavigate={onClose} items={sorted.slice(0, MAX_NEEDS).map((n: NeedItem) => ({ id: n.id, icon: needIcon(n.kind), tone: 'crit', title: n.title, context: [n.detail, needAge(n.since)].filter(Boolean).join(' · '), to: n.to }))} />
               {needs.length > MAX_NEEDS && <p className="text-small text-ink-2 py-2">E mais {needs.length - MAX_NEEDS} na central.</p>}

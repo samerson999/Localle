@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { atualizarIconeAtivo, atualizarPlacaAtivo, criarAtivo, definirMotoristaDoAtivo, desativarMotorista, desinstalarRastreador, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador } from '../lib/localleApi';
+import { atualizarIconeAtivo, atualizarPlacaAtivo, criarAtivo, definirMotoristaDoAtivo, desativarMotorista, desinstalarRastreador, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
 import { backendIdOf } from '../lib/localleMap';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem } from '../components/ui';
 import { couplingsOf, currentCoupling, compositionOf, compositionName, compositionError, setComposition, tractorHistory, TRAILER_TYPE, MAX_ITEMS, type TrailerType } from '@localle/shared/couplings';
 import { Num, StatusDot, AssetName, IdChip, KpiTile, type StatusKind } from '../components/story';
 import { Icon } from '../components/icons';
@@ -23,17 +23,12 @@ import { DOC_TYPES, docTypesFor, docLabel, docState, docWhen, worstDoc, DOC_PARA
 const blank = (kind = 'veiculo') => ({ id: '', kind, name: '', plate: '', brand: '', model: '', year: '', specs: {} as any, photo: '', icon: '', groupIds: [] as string[], operationId: '', driverId: '', kmSource: kind === 'veiculo' ? 'mescla' : kind === 'implemento' ? 'engate' : 'rastreador', kmOffset: 0, initialKm: '', fuelGoal: '', fuelBudget: '', meter: kind === 'veiculo' || kind === 'implemento' ? 'km' : kind === 'linha_amarela' || kind === 'maquina' ? 'horimetro' : 'nenhum', customFields: [] as any[], journeySource: 'teclado', serial: '', tracker: null as any, active: true, documents: [] as any[] });
 
 export default function Ativos() {
-  const [tab, setTab] = useState('ativos');
+  const [tab, setTab] = useUrlTab('ativos');
+  const carregando = useCarregando('frota', 'motoristas', 'grupos');
   const [edit, setEdit] = useState<any>(null);
-  // ?ativo=<id> (vindo do "Precisa de você") abre a ficha direto
-  const [sp, setSp] = useSearchParams();
+  // ?ativo=<id> (vindo do "Precisa de você") abre a ficha direto, também quando a frota chega depois da tela
   const assets = useStore((s) => s.assets);
-  useEffect(() => {
-    const aba = sp.get('aba');
-    if (aba) { setTab(aba); setEdit(null); setSp({}, { replace: true }); return; }
-    const a = assets.find((x: any) => x.id === sp.get('ativo'));
-    if (a) { setTab('ativos'); setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) }))); setSp({}, { replace: true }); }
-  }, [sp]);
+  useUrlItem('ativo', (id) => assets.find((x: any) => x.id === id), (a: any) => { setTab('ativos'); setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) }))); }, [assets]);
   const tabs = <Tabs value={tab} onChange={setTab} tabs={[{ key: 'ativos', label: 'Ativos' }, { key: 'grupos', label: 'Grupos' }, { key: 'motoristas', label: 'Motoristas' }, { key: 'operacoes', label: 'Operações' }, { key: 'alteracoes', label: 'Alterações' }]} />;
   return (
     <div>
@@ -42,7 +37,7 @@ export default function Ativos() {
         {tabs}
         {tab === 'ativos' && <Button onClick={() => setEdit(blank())}><Icon name="mais" size={18} />Novo ativo</Button>}
       </div>
-      <TabPanel id={tab}>
+      <TabPanel id={tab} loading={carregando}>
         {tab === 'ativos' && <AssetList onOpen={(a: any) => setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) })))} />}
         {tab === 'grupos' && <SimpleList coll="groups" title="Grupos de veículos" placeholder="Ex.: Frota Caruaru" />}
         {tab === 'operacoes' && <SimpleList coll="operations" title="Operações" placeholder="Ex.: Contrato Prefeitura" />}

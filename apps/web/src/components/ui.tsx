@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { fileToDataURL } from '../lib/fileData';
 import { Icon } from './icons';
 import { AssetSilhouette, silhouetteOf } from './assetArt';
@@ -115,6 +115,33 @@ export function FloatingPanel({ side = 'right', label, title, subtitle, header, 
     </aside>
   );
 }
+
+// Aba da tela na URL (?aba=): recarregar, Voltar de outra tela e link direto (ex.: "Precisa de você") caem na mesma aba.
+// Trocar de aba substitui a entrada do histórico em vez de empilhar — Voltar sai da tela, não percorre as abas.
+export function useUrlTab(def: string): [string, (k: string) => void] {
+  const [sp, setSp] = useSearchParams();
+  const tab = sp.get('aba') || def;
+  const set = (k: string) => setSp((cur) => { const n = new URLSearchParams(cur); if (k === def) n.delete('aba'); else n.set('aba', k); return n; }, { replace: true });
+  return [tab, set];
+}
+
+// Item pedido pela URL (?os=, ?multa=, ?pneu=): abre quando o registro existir (os dados podem chegar depois da tela) e
+// some da URL em seguida, para fechar o item não reabri-lo ao recarregar.
+export function useUrlItem<T>(name: string, find: (id: string) => T | undefined, open: (item: T) => void, deps: unknown[]) {
+  const [sp, setSp] = useSearchParams();
+  const id = sp.get(name);
+  useEffect(() => {
+    if (!id) return;
+    const item = find(id);
+    if (item === undefined) return;
+    open(item);
+    setSp((cur) => { const n = new URLSearchParams(cur); n.delete(name); return n; }, { replace: true });
+  }, [id, ...deps]);
+}
+
+// Campo próprio (sem <input> nativo) avisa que o usuário escolheu algo, para o Modal saber que há o que perder.
+const EDIT_EVENT = 'localle-edit';
+const signalEdit = (el?: Element | null) => el?.dispatchEvent(new Event(EDIT_EVENT, { bubbles: true }));
 
 // Régua do celular: abaixo de md (768 px), a mesma do Tailwind e da barra lateral.
 const MOBILE_MQ = '(max-width: 767px)';
@@ -440,7 +467,7 @@ export function Select({ className = '', options, value, onChange, disabled, id,
     setPos(up ? { left: r.left, bottom: vh - r.top + 4, width: r.width } : { left: r.left, top: r.bottom + 4, width: r.width });
     setAct(Math.max(0, sel)); setOpen(true);
   };
-  const pick = (i: number) => { setOpen(false); btn.current?.focus(); if (opts[i] && i !== sel) onChange?.({ target: { value: opts[i].value } }); };
+  const pick = (i: number) => { setOpen(false); btn.current?.focus(); if (opts[i] && i !== sel) { signalEdit(btn.current); onChange?.({ target: { value: opts[i].value } }); } };
   useEffect(() => {
     if (!open) return;
     const out = (e: Event) => { if (!list.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false); };
@@ -524,7 +551,7 @@ export function SearchSelect({ options, value, onChange, onQuery, placeholder = 
 
   const place = () => { const r = rectUi(box.current!), vh = viewportUi().h; const up = r.bottom + 296 > vh && r.top > vh - r.bottom; setPos(up ? { left: r.left, bottom: vh - r.top + 4, width: r.width } : { left: r.left, top: r.bottom + 4, width: r.width }); };
   const show = () => { place(); setOpen(true); };
-  const pick = (o: SearchSelectOption | null) => { setOpen(false); onChange(o?.value ?? ''); setQuery(o?.label ?? ''); input.current?.focus(); };
+  const pick = (o: SearchSelectOption | null) => { setOpen(false); signalEdit(input.current); onChange(o?.value ?? ''); setQuery(o?.label ?? ''); input.current?.focus(); };
   useEffect(() => {
     if (!open) return;
     const out = (e: Event) => { if (!list.current?.contains(e.target as Node) && !box.current?.contains(e.target as Node)) setOpen(false); };
@@ -638,6 +665,18 @@ export function Badge({ tone = 'tag', children, className = '' }: { tone?: strin
 function useSlider(value: string) {
   const box = useRef<HTMLDivElement>(null);
   const indicator = useRef<HTMLSpanElement>(null);
+  // trilho rolando de lado (celular): a borda do lado onde há mais opções esmaece (data-fade, base.css) — sem barra de
+  // rolagem, as abas fora da tela não davam nenhum sinal de que existiam
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const cue = () => { const max = el.scrollWidth - el.clientWidth; el.dataset.fade = max <= 1 ? '' : el.scrollLeft <= 1 ? 'r' : el.scrollLeft >= max - 1 ? 'l' : 'lr'; };
+    cue();
+    el.addEventListener('scroll', cue, { passive: true });
+    const ro = new ResizeObserver(cue);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', cue); ro.disconnect(); };
+  }, []);
   const prev = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const [rect, setRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   useLayoutEffect(() => {
@@ -785,8 +824,28 @@ export function FilterChip({ label, onRemove }: { label: React.ReactNode; onRemo
   );
 }
 // Conteúdo da aba: fade curto (--t-swap) a cada troca, sem deslocamento. Use com a mesma key da aba.
-export function TabPanel({ id, className = '', children }: { id: string; className?: string; children: React.ReactNode }) {
-  return <div key={id} role="tabpanel" className={cx('anim-swap', className)}>{children}</div>;
+// "Para salvar, falta: …" ao lado do botão desabilitado (padrão nascido na Cercas): botão cinza sozinho não diz o que fazer.
+export function Missing({ items, className = '' }: { items: (string | false | null | undefined | 0 | '')[]; className?: string }) {
+  const l = items.filter(Boolean) as string[];
+  if (!l.length) return null;
+  const txt = l.length > 1 ? `${l.slice(0, -1).join(', ')} e ${l[l.length - 1]}` : l[0];
+  return <span role="status" className={cx('text-caption text-ink-2', className)}>Para salvar, falta: {txt}.</span>;
+}
+
+// loading: primeira carga do módulo ainda vindo da API (lib/localleApi › useCarregando) — esqueleto no lugar do conteúdo,
+// para a lista vazia ("Nenhuma multa…") não aparecer antes dos dados
+export function TabPanel({ id, loading, className = '', children }: { id: string; loading?: boolean; className?: string; children: React.ReactNode }) {
+  return <div key={id} role="tabpanel" aria-busy={loading || undefined} className={cx('anim-swap', className)}>{loading ? <LoadingBlock /> : children}</div>;
+}
+
+export function LoadingBlock() {
+  return (
+    <div className="flex flex-col gap-grid">
+      <span className="sr-only" role="status">Carregando…</span>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-grid">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
+      <Skeleton className="h-72 w-full" />
+    </div>
+  );
 }
 
 export function Modal({ open, onClose, title, children, width = 'max-w-2xl', footer }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; width?: string; footer?: React.ReactNode }) {
@@ -797,26 +856,43 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   if (open) last.current = { title, children, footer };
   // Esc fecha só o diálogo do topo; popovers internos (lista, calendário) tratam o Esc antes e marcam defaultPrevented
   const box = useRef<HTMLDivElement>(null);
+  // Formulário com algo preenchido não fecha por acidente: toque fora e arrasto para baixo não fecham, e X/Esc perguntam
+  // antes de descartar. "Preenchido" = qualquer digitação ou escolha dentro do modal (evento input dos campos nativos e
+  // EDIT_EVENT dos campos próprios: Select, SearchSelect, DateInput). Os botões do rodapé (Cancelar, Salvar) chamam o
+  // onClose de quem abriu direto, sem pergunta: ali a intenção é explícita.
   const closeRef = useRef(onClose); closeRef.current = onClose;
+  const touched = useRef(false);
   useEffect(() => {
     if (!open) return;
-    const k = (e: KeyboardEvent) => { if (e.key !== 'Escape' || e.defaultPrevented) return; const all = document.querySelectorAll('[aria-modal="true"]'); if (all[all.length - 1] === box.current) { e.preventDefault(); closeRef.current(); } };
+    touched.current = false;
+    const el = box.current;
+    const mark = () => { touched.current = true; };
+    el?.addEventListener('input', mark); el?.addEventListener(EDIT_EVENT, mark);
+    return () => { el?.removeEventListener('input', mark); el?.removeEventListener(EDIT_EVENT, mark); };
+  }, [open, mounted]);
+  const requestClose = async () => {
+    if (touched.current && !(await confirmAction({ title: 'Descartar o que foi preenchido?', detail: 'As informações deste formulário ainda não foram salvas e serão perdidas.', confirmLabel: 'Descartar', cancelLabel: 'Continuar editando' }))) return;
+    closeRef.current();
+  };
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => { if (e.key !== 'Escape' || e.defaultPrevented) return; const all = document.querySelectorAll('[aria-modal="true"]'); if (all[all.length - 1] === box.current) { e.preventDefault(); void requestClose(); } };
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
   }, [open]);
   const mobile = useIsMobile();
-  const drag = useSheetDrag(box, (dy, vy) => { if (dy > 64 || vy > 0.5) onClose(); });
+  const drag = useSheetDrag(box, (dy, vy) => { if (dy > 64 || vy > 0.5) void requestClose(); });
   if (!mounted) return null;
   const c = last.current;
   // portal no body: o modal não fica preso a painéis com transform/z-index de quem o abriu.
   // Celular: folha inferior (mesma linguagem do Sheet) — encosta embaixo, sobe de baixo, alça e cabeçalho arrastam para
   // fechar; formulário longo rola o fundo inteiro e o mt-auto mantém o topo alcançável (items-end cortaria o topo).
   return createPortal(
-    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !touched.current && onClose()}>
       <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} className={cx('w-full bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] transition-[translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]', closing ? 'anim-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-page max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
         <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
           <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />
-          <div className="flex items-center gap-stack mb-card-head"><h2 className="text-h2 font-semibold mr-auto">{c.title}</h2><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={onClose}><Icon name="fechar" /></IconButton></div>
+          <div className="flex items-center gap-stack mb-card-head"><h2 className="text-h2 font-semibold mr-auto">{c.title}</h2><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={() => void requestClose()}><Icon name="fechar" /></IconButton></div>
         </div>
         <HeadingLevel level={3}><div className="flex flex-col gap-field min-w-0">{c.children}</div></HeadingLevel>
         {/* celular: formulário longo não esconde as ações lá embaixo; o rodapé gruda no fim da tela enquanto o modal rola */}
@@ -1156,7 +1232,7 @@ export function DateInput({ type, value, defaultValue, onChange, min, max, disab
   const pres = usePresence(open);
   const btn = useRef<HTMLButtonElement>(null);
   const pop = useRef<HTMLDivElement>(null);
-  const emit = (s: string) => { if (value === undefined) setOwn(s); onChange?.({ target: { value: s } }); };
+  const emit = (s: string) => { signalEdit(btn.current); if (value === undefined) setOwn(s); onChange?.({ target: { value: s } }); };
   const cut = type === 'month' ? 7 : 10;
   const lo = min?.slice(0, cut), hi = max?.slice(0, cut);
   const ok = (s: string) => (!lo || s >= lo) && (!hi || s <= hi);

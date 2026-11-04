@@ -1,7 +1,7 @@
-import { removerRegra, salvarRegra } from '../lib/localleApi';
+import { removerRegra, salvarRegra, useCarregando } from '../lib/localleApi';
 import { useState } from 'react';
 import { useStore } from '../lib/store';
-import { Button, Card, Field, FormGroup, Input, Select, Table, Check, Badge, PageTabs, Modal, TextButton, TabPanel, confirmAction, toast, IconButton, EmptyState, Stack, Cluster } from '../components/ui';
+import { Button, Card, Field, FormGroup, Input, Select, Table, Check, Badge, PageTabs, Modal, TextButton, TabPanel, confirmAction, toast, IconButton, EmptyState, Stack, Cluster, Missing, useUrlTab } from '../components/ui';
 import { StatusDot, AssetName, IdChip, priorityKind } from '../components/story';
 import { Icon } from '../components/icons';
 import { MonitorHeader } from '../components/MonitorTabs';
@@ -16,13 +16,14 @@ const Prio = ({ p }: { p: string }) => <StatusDot kind={priorityKind(p)} label={
 const blankRule = () => ({ id: '', name: '', active: true, priority: 'media', groupId: '', conditions: [{ field: 'velocidade', op: '>', value: '80' }], actions: { painel: true, email: false, whatsapp: false, motorista: false, bloqueio: false, ranking: false } });
 
 export default function Alertas() {
-  const [tab, setTab] = useState('alertas');
+  const [tab, setTab] = useUrlTab('alertas');
+  const carregando = useCarregando('frota');
   return (
     <div>
       <MonitorHeader title="Alertas e comandos" subtitle="Regras que disparam alertas e o histórico de comandos enviados." />
       <Stack gap="card-head">
       <PageTabs value={tab} onChange={setTab} tabs={[{ key: 'alertas', label: 'Central de alertas' }, { key: 'regras', label: 'Regras de alerta' }, { key: 'comandos', label: 'Comandos cadastrados' }, { key: 'historico', label: 'Histórico de comandos' }]} />
-      <TabPanel id={tab}>
+      <TabPanel id={tab} loading={carregando}>
         {tab === 'alertas' && <AlertLog />}
         {tab === 'regras' && <Rules />}
         {tab === 'comandos' && <CmdDefs />}
@@ -63,7 +64,7 @@ function Rules() {
         <Table head={['Regra', 'Condições', 'Escopo', 'Prioridade', 'Disparos', 'Ativa', '']} rows={rules.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="text-small">{describe(x)}</span>, 'Todos', <Prio p={x.priority} />, <span className="num">{x.disparos30d ?? alerts.filter((a: any) => a.ruleId === x.id).length}</span>,
           <Check aria-label={`Regra ${x.name} ativa`} checked={x.active} onChange={(v) => salvarRegra({ ...x, active: v }).then(() => toast(v ? `Regra "${x.name}" ativada.` : `Regra "${x.name}" desativada.`), falhou)} />, <div className="flex gap-3"><TextButton onClick={() => setR(JSON.parse(JSON.stringify(x)))}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir a regra "${x.name}"?`, detail: 'Ela para de gerar alertas. Os alertas já gerados continuam no histórico.' })) { removerRegra(x.id).then(() => toast('Regra excluída.', { action: { label: 'Desfazer', onClick: () => salvarRegra({ ...x, id: undefined }).catch(falhou) } }), falhou); } }}>Excluir</TextButton></div>])} />
       </Card>
-      <Modal open={!!r} onClose={() => setR(null)} title={r?.id ? 'Editar regra' : 'Nova regra de alerta'} width="max-w-3xl" footer={<><Button variant="quiet" onClick={() => setR(null)}>Cancelar</Button><Button disabled={!r?.name} onClick={() => { salvarRegra(r).then(() => { setR(null); toast(r.id ? 'Regra salva.' : 'Regra incluída.'); }, falhou); }}>Salvar regra</Button></>}>
+      <Modal open={!!r} onClose={() => setR(null)} title={r?.id ? 'Editar regra' : 'Nova regra de alerta'} width="max-w-3xl" footer={<><Missing className="mr-auto self-center" items={[!r?.name && 'o nome da regra']} /><Button variant="quiet" onClick={() => setR(null)}>Cancelar</Button><Button disabled={!r?.name} onClick={() => { salvarRegra(r).then(() => { setR(null); toast(r.id ? 'Regra salva.' : 'Regra incluída.'); }, falhou); }}>Salvar regra</Button></>}>
         {r && <Stack gap="group">
           <Field label="Nome da regra"><Input value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} placeholder="Ex.: Veículo só pode rodar até as 22h" /></Field>
           <FormGroup title="Condições (todas precisam ser verdadeiras)">

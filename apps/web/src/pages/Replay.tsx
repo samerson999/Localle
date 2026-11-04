@@ -35,10 +35,12 @@ export default function Replay() {
   const fences = useStore((s) => s.fences);
   const revenda = useStore((s) => s.revenda);
   const session = useStore((s) => s.session);
-  const [aid, setAid] = useState(sp.get('a') || 'a1');
+  // veículo da URL (?a=, vindo do mapa) ou o primeiro da frota quando ela chegar; antes abria num id de demonstração ('a1')
+  const [aid, setAid] = useState(sp.get('a') || '');
   const [from, setFrom] = useState(toInputDT(Date.now() - 8 * HOUR));
   const [to, setTo] = useState(toInputDT(Date.now()));
   const [loaded, setLoaded] = useState({ aid, from, to, n: 0 });
+  useEffect(() => { if (!aid && assets[0]) { setAid(assets[0].id); setLoaded((l) => ({ ...l, aid: assets[0].id })); } }, [assets]);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [mult, setMult] = useState(4);

@@ -2,9 +2,9 @@ import { RetiredToggle } from '../components/RetiredToggle';
 import { opAssets, operatedIn } from '../lib/assetLifecycle';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { salvarAbastecimento } from '../lib/localleApi';
+import { salvarAbastecimento, useCarregando } from '../lib/localleApi';
 import { registerOdometer } from '../lib/odometer';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack, Missing, useUrlTab } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, DeltaChip, StatusDot, Num, AssetName } from '../components/story';
@@ -19,12 +19,13 @@ const NF_DOT: Record<string, { kind: 'mov' | 'crit' | 'off'; label: string }> = 
 const brlShort = (v: number) => `R$ ${abbr(v)}`;
 
 export default function Combustivel() {
-  const [tab, setTab] = useState('lanc');
+  const [tab, setTab] = useUrlTab('lanc');
+  const carregando = useCarregando('combustível');
   return (
     <div>
       <PageHeader icon="combustivel" title="Gestão de combustível" subtitle="Abastecimentos, notas fiscais, confiabilidade, metas e BI de consumo" />
       <div className="flex flex-wrap items-center gap-tight mb-card-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'lanc', label: 'Abastecimentos' }, { key: 'notas', label: 'Notas fiscais' }, { key: 'bi', label: 'BI de abastecimento' }, { key: 'metas', label: 'Metas' }]} /></div>
-      <TabPanel id={tab}>
+      <TabPanel id={tab} loading={carregando}>
         {tab === 'lanc' && <Lancamentos />}
         {tab === 'notas' && <Notas />}
         {tab === 'bi' && <BI />}
@@ -88,7 +89,7 @@ function FuelForm({ onClose }: any) {
     onClose();
   };
   return (
-    <Modal open onClose={onClose} title="Lançar abastecimento" width="max-w-3xl" footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button disabled={!ok} onClick={save}>Salvar abastecimento</Button></>}>
+    <Modal open onClose={onClose} title="Lançar abastecimento" width="max-w-3xl" footer={<><Missing className="mr-auto self-center" items={[err ? 'corrigir o km' : !odo && 'o km do odômetro', !(+f.liters > 0) && 'os litros', !(+f.total > 0) && 'o valor total']} /><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button disabled={!ok} onClick={save}>Salvar abastecimento</Button></>}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
         <Field label="Veículo"><SearchSelect value={f.assetId} onChange={(v) => setF({ ...init(v), liters: f.liters, total: f.total, photos: f.photos })} options={vehs.map((a: any) => ({ value: a.id, label: a.name }))} /></Field>
         <Field label="Litros"><Input type="number" step="0.01" inputMode="decimal" autoFocus value={f.liters} onChange={(e) => setF({ ...f, liters: e.target.value })} /></Field>

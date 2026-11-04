@@ -3,7 +3,7 @@ import { opAssets, isOut } from '../lib/assetLifecycle';
 import { useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { TireProvider, useTires } from '../lib/tireRepo';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, Panel, EmptyState, ErrorState, Progress, TabPanel, toast, confirmAction, DescList, DescRow, SearchInput, Grid, Stack } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, Panel, EmptyState, ErrorState, Progress, TabPanel, toast, confirmAction, DescList, DescRow, SearchInput, Grid, Stack, useUrlTab, useUrlItem, Missing } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, StatusDot, StatusGlyph, Num, IdChip, AssetName, numSizeClass } from '../components/story';
@@ -21,8 +21,11 @@ const brlShort = (v: number) => `R$ ${abbr(v)}`;
 
 
 function PneusInner() {
-  const [tab, setTab] = useState('visao');
+  const [tab, setTab] = useUrlTab('visao');
   const [open, setOpen] = useState<string | null>(null);
+  const tires = useStore((s) => s.tires);
+  // link direto (ex.: "Precisa de você"): ?pneu= abre o pneu
+  useUrlItem('pneu', (id) => (tires || []).find((t: any) => t.id === id)?.id, setOpen, [tires]);
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[3], 'anterior'));
   return (
     <div>
@@ -347,7 +350,7 @@ function Lista({ onOpen }: any) {
           head={['Pneu', 'Marca / modelo', 'Medida', 'Situação', 'Onde', 'Sulco', 'Vida', 'Km rodados', 'Gasto total', 'R$/1.000 km', '']} rows={list.slice(0, more).map(({ t, st: x }: any) => [<TireTag t={t} />, `${t.brand} ${t.model}`, t.size, <StatusDot kind={STATUS_DOT[t.status]} label={TIRE_STATUS[t.status].label} />, t.status === 'montado' ? <span className="text-small inline-flex items-center gap-tight whitespace-nowrap"><AssetName name={aName(s, t.assetId)} /> · {t.position}</span> : <span className="text-small text-ink-2">{t.location || '—'}</span>, <Level st={x} />, <span className="text-small">{lifeLabel(x.lifeNo)}<span className="text-ink-2 num"> · {x.lifeNo}/{t.maxLives}</span></span>, <Num value={x.kmAll} size="body" />, <Money v={x.cost} />, x.cpk ? <Money v={x.cpk * 1000} /> : '—', <TextButton onClick={() => onOpen(t.id)}>Abrir</TextButton>])} />
         {list.length > more && <div className="mt-3 flex items-center gap-3"><Button variant="ghost" size="sm" onClick={() => setMore(more + 50)}>Mostrar mais</Button><span className="text-caption text-ink-2 num">{more} de {list.length}</span></div>}
       </Card>
-      <Modal open={!!form} onClose={() => setForm(null)} title="Cadastrar pneu" width="max-w-3xl" footer={<><Button variant="ghost" onClick={() => setForm(null)}>Cancelar</Button><Button disabled={!form?.number || !form?.cost || dup} onClick={async () => { await R.create({ fire: fire(form.number), brand: form.brand, model: form.model, size: form.size, dot: form.dot, recappable: form.recappable, maxLives: +form.maxLives, cost: +form.cost, supplier: form.supplier, tread: +form.tread, purchasedAt: new Date(form.purchaseDate + 'T12:00').getTime(), location: form.location }); toast(`Pneu ${fire(form.number)} cadastrado no estoque.`); setForm(null); }}>Salvar pneu</Button></>}>
+      <Modal open={!!form} onClose={() => setForm(null)} title="Cadastrar pneu" width="max-w-3xl" footer={<><Button variant="ghost" onClick={() => setForm(null)}>Cancelar</Button><Missing className="mr-auto self-center" items={[!form?.number && 'o número de fogo', !form?.cost && 'o custo', dup && 'um número de fogo que ainda não exista']} /><Button disabled={!form?.number || !form?.cost || dup} onClick={async () => { await R.create({ fire: fire(form.number), brand: form.brand, model: form.model, size: form.size, dot: form.dot, recappable: form.recappable, maxLives: +form.maxLives, cost: +form.cost, supplier: form.supplier, tread: +form.tread, purchasedAt: new Date(form.purchaseDate + 'T12:00').getTime(), location: form.location }); toast(`Pneu ${fire(form.number)} cadastrado no estoque.`); setForm(null); }}>Salvar pneu</Button></>}>
         {form && <>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
             <Field label="Número gravado no pneu" hint={dup ? 'Já existe um pneu com este número.' : `Fica ${fire(form.number || '1024')}, com o logo da empresa`}><div className="flex items-center gap-2">{mark && <span className="font-mono font-semibold text-ink-2">{mark}-</span>}<Input className="font-mono" inputMode="numeric" aria-invalid={!!dup} value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value.replace(/\s/g, '') })} placeholder="1024" /></div></Field>
