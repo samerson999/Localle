@@ -1,6 +1,6 @@
 // Checklist do rastreador (Console › Rastreadores › Diagnóstico) e sugestões de mapeamento da telemetria, a partir do
 // que a API devolve em /superadmin/rastreadores/:id/diagnostico. Só leitura: nada aqui é aplicado sem o admin confirmar.
-import type { DiagnosticoRastreador } from './localleApi';
+import type { DiagnosticoRastreador, SinaisMotorDiagnostico, SinalMotor, SuporteCan } from './localleApi';
 
 export type Tom = 'ok' | 'warn' | 'crit' | 'info';
 export interface ItemChecklist { etapa: string; tom: Tom; texto: string }
@@ -137,4 +137,53 @@ export function sugerirMapeamento(
     if (k) out.push({ campo: 'atributoBloqueio', valor: k, motivo: `o aparelho não manda "blocked"; "${k}" é saída digital: confirme bloqueando e vendo o valor mudar` });
   }
   return out;
+}
+
+// Dados do painel (rede CAN): o estado de cada sinal na instalação vigente vem da API (regras em
+// apps/api/src/telemetria/sinais-motor.ts); aqui só vira texto com o que conferir. Docs: docs/PESQUISA-REDE-CAN.md § 4.2.
+export const SINAIS_MOTOR: SinalMotor[] = ['rpm', 'odometro', 'combustivel', 'horimetro'];
+export const ROTULO_SINAL: Record<SinalMotor, string> = { rpm: 'RPM', odometro: 'Odômetro do painel', combustivel: 'Combustível', horimetro: 'Horímetro' };
+export const ROTULO_SUPORTE_CAN: Record<SuporteCan, string> = {
+  nativo: 'Lê a rede CAN direto',
+  com_acessorio: 'Lê a rede CAN com adaptador',
+  nao: 'Não lê a rede CAN',
+  nao_informado: 'Não informado',
+};
+
+/** Valor na unidade do Traccar convertido para leitura: odômetro em metros, horímetro `hours` em ms. */
+export function valorDoSinal(sinal: SinalMotor, valor: number, atributo: string | null): string {
+  const n = (v: number, casas = 0) => v.toLocaleString('pt-BR', { maximumFractionDigits: casas });
+  if (sinal === 'rpm') return `${n(valor)} rpm`;
+  if (sinal === 'odometro') return `${n(valor / 1000, 1)} km`;
+  if (sinal === 'combustivel') return atributo === 'fuel' ? `${n(valor, 1)} L` : atributo === 'fuelLevel' ? `${n(valor, 1)}%` : n(valor, 1);
+  return atributo === 'hours' ? `${n(valor / 3_600_000, 1)} h` : n(valor, 1);
+}
+
+function dicaNaoRecebido(suporte: SuporteCan, parou: boolean): string {
+  if (parou) return 'Veja se o chicote ou o adaptador foi mexido (oficina) ou se outro aparelho entrou na rede CAN.';
+  if (suporte === 'com_acessorio') return 'Confira se o adaptador CAN está ligado ao aparelho e com o programa do veículo configurado.';
+  if (suporte === 'nativo') return 'Confira a ligação do fio CAN no chicote e se a leitura deste dado está habilitada na configuração do aparelho.';
+  return 'O veículo pode não expor este dado na rede CAN.';
+}
+
+/**
+ * Um item por sinal prometido pelo modelo ou já avaliado na instalação. Sinal prometido sem avaliação = "não verificado"
+ * (a conferência só começa instalado e com o veículo em movimento); nada é cobrado de modelo sem ficha.
+ */
+export function itensDosSinaisMotor(s: SinaisMotorDiagnostico, agora = Date.now()): ItemChecklist[] {
+  const avaliados = new Map(s.sinais.map((x) => [x.sinal, x]));
+  return SINAIS_MOTOR.filter((sinal) => s.esperados.includes(sinal) || avaliados.has(sinal)).map((sinal) => {
+    const etapa = ROTULO_SINAL[sinal];
+    const x = avaliados.get(sinal);
+    if (!x) return { etapa, tom: 'info', texto: 'Não verificado: a conferência começa com o rastreador instalado e o veículo em movimento.' };
+    const ultimo = x.ultimoValor !== null && x.ultimaLeituraEm
+      ? `${valorDoSinal(sinal, x.ultimoValor, x.atributo)} há ${haQuanto(x.ultimaLeituraEm, agora)}${x.atributo ? ` (${x.atributo})` : ''}`
+      : null;
+    if (x.status === 'recebido') return { etapa, tom: 'ok', texto: `Recebido: ${ultimo ?? x.motivo}.` };
+    if (x.status === 'aguardando') return { etapa, tom: 'info', texto: `${x.motivo}.` };
+    if (x.status === 'fora_do_esperado') {
+      return { etapa, tom: 'warn', texto: `${x.motivo}. Confira o perfil do aparelho para este veículo.${ultimo ? ` Última leitura válida: ${ultimo}.` : ''}` };
+    }
+    return { etapa, tom: 'crit', texto: `${x.motivo}. ${dicaNaoRecebido(s.suporteCan, !!x.ultimaLeituraEm)}${ultimo ? ` Última leitura: ${ultimo}.` : ''}` };
+  });
 }

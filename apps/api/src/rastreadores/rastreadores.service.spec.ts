@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
+import { NotFoundException } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AssetsRepository } from '../assets/assets.repository';
 import { AuditLogRepository } from '../audit/audit-log.repository';
@@ -13,6 +14,10 @@ import { RastreadorModelosRepository } from './rastreador-modelos.repository';
 import { RastreadorModelosService } from './rastreador-modelos.service';
 import { parseAtualizarModelo } from './dto/parse-rastreador-modelo';
 import { SimCardsRepository } from './sim-cards.repository';
+import type { ModeloDados } from './rastreador-modelos.repository';
+import { TraccarAparelhosRepository } from './traccar-aparelhos.repository';
+import { TraccarAparelhosService, type PreviaModelo } from './traccar-aparelhos.service';
+import { parseUpdateRastreador } from './dto/update-rastreador.dto';
 
 /**
  * Cobre a camada de aplicação de rastreadores/SIM cards que nasceu junto com este módulo (antes só
@@ -54,6 +59,12 @@ class FakeTraccar extends TraccarClient {
   async protocols() {
     return this.protocolos;
   }
+  apagados: number[] = [];
+  falharAoApagar = false;
+  async deleteDevice(_: TraccarConfig, deviceId: number) {
+    if (this.falharAoApagar) throw new Error('Traccar DELETE /api/devices falhou: 503 Service Unavailable');
+    this.apagados.push(deviceId);
+  }
   online = new Set<number>();
   async deviceStatus(_: TraccarConfig, deviceId: number) {
     return this.online.has(deviceId) ? 'online' : 'offline';
@@ -75,7 +86,17 @@ describe('RastreadoresService', () => {
   const vinculosRepo = new RastreadorVinculosRepository(pool);
   const modelosRepo = new RastreadorModelosRepository(pool);
   const modelos = new RastreadorModelosService(modelosRepo, audit, traccar);
-  const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, vinculosRepo, assetsRepo, audit, pool, traccar, modelosRepo);
+  // a lista do Traccar é trocada inteira pelo traccar-aparelhos.spec (roda em paralelo): a prévia vem daqui, a gravação é real
+  const previas = new Map<number, ModeloDados>();
+  class AparelhosDeTeste extends TraccarAparelhosService {
+    async previa(aparelhoId: number): Promise<PreviaModelo> {
+      const d = previas.get(aparelhoId);
+      if (!d) throw new NotFoundException('Aparelho não encontrado na lista do Traccar');
+      return (await modelosRepo.findByNome(d.fabricante, d.nome)) ?? { id: null, ...d };
+    }
+  }
+  const aparelhos = new AparelhosDeTeste(new TraccarAparelhosRepository(pool), modelosRepo, modelos, traccar, audit);
+  const service = new RastreadoresService(rastreadoresRepo, simCardsRepo, instalacoesRepo, vinculosRepo, assetsRepo, audit, pool, traccar, modelosRepo, aparelhos);
   // modelo de teste com identificador livre: os testes antigos usam IMEI aleatório em hexadecimal
   const sufixo = randomUUID().slice(0, 8);
   let modeloTeste: string;
@@ -547,6 +568,101 @@ describe('RastreadoresService', () => {
         await pool.query("update rastreadores set protocolo = 'jmak' where id = $1", [r.id]);
         expect((await modelos.fichaTraccar(m)).comandos).toEqual({ tipos: ['engineStop', 'engineResume', 'custom'], imei: r.imei });
         expect(traccar.consultados.at(-1)).toBe(deviceId);
+      });
+
+      it('aparelho da lista do Traccar: o modelo só nasce no cadastro do rastreador, e não nasce se o cadastro falhar', async () => {
+        const nomeAparelho = `Lista ${sufixo}`;
+        previas.set(1, { fabricante: nomeAparelho, nome: 'A1', protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei', origem: 'catalogo' });
+        const doCatalogo = () => modelosRepo.findByNome(nomeAparelho, 'A1');
+        // identificador inválido para o modelo: recusado antes de gravar qualquer coisa
+        await expect(service.cadastrarRastreador(superadminId, { aparelhoId: 1, imei: '123' })).rejects.toMatchObject({ status: 400 });
+        // IMEI já ativo: o cadastro desfaz e o modelo criado na mesma transação vai junto
+        const existente = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+        rastreadoresCriados.push(existente.id);
+        await expect(service.cadastrarRastreador(superadminId, { aparelhoId: 1, imei: existente.imei })).rejects.toMatchObject({ status: 409 });
+        expect(await doCatalogo()).toBeNull();
+
+        const r = await service.cadastrarRastreador(superadminId, { aparelhoId: 1, imei: digitos(15) });
+        rastreadoresCriados.push(r.id);
+        const m = (await doCatalogo())!;
+        modelosCriados.push(m.id);
+        expect(r).toMatchObject({ modelo_id: m.id, modelo: `${nomeAparelho} A1` });
+        // 2º rastreador do mesmo aparelho reaproveita o modelo
+        const r2 = await service.cadastrarRastreador(superadminId, { aparelhoId: 1, imei: digitos(15) });
+        rastreadoresCriados.push(r2.id);
+        expect(r2.modelo_id).toBe(m.id);
+        await expect(service.cadastrarRastreador(superadminId, { aparelhoId: 1, modeloId: m.id, imei: digitos(15) })).rejects.toMatchObject({ status: 400 });
+      });
+
+      it('trocar o modelo para um aparelho da lista do Traccar cria o modelo na troca', async () => {
+        previas.set(2, { fabricante: `Lista ${sufixo}`, nome: 'A2', protocolo: 'jmak', porta: 5259, tipo_identificador: 'imei', origem: 'catalogo' });
+        const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+        rastreadoresCriados.push(r.id);
+        const depois = await service.atualizar(superadminId, r.id, parseUpdateRastreador({ aparelhoId: 2 }));
+        const m = (await modelosRepo.findByNome(`Lista ${sufixo}`, 'A2'))!;
+        modelosCriados.push(m.id);
+        expect(depois).toMatchObject({ modelo_id: m.id, modelo: `Lista ${sufixo} A2` });
+        expect(() => parseUpdateRastreador({ aparelhoId: 2, modeloId: m.id })).toThrow(/não os dois/);
+        expect(() => parseUpdateRastreador({ aparelhoId: '2' })).toThrow(/aparelhoId/);
+      });
+
+      it('excluir rastreador: só cadastro errado; apaga o device no Traccar e libera o chip; auditado', async () => {
+        traccar.cfg = cfg;
+        const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+        rastreadoresCriados.push(r.id);
+        const chip = await service.cadastrarSimCard(superadminId, { iccid: randomUUID() });
+        simCardsCriados.push(chip.id);
+        await service.vincularSimCard(superadminId, chip.id, r.id);
+
+        // Traccar fora do ar: nada é excluído
+        traccar.falharAoApagar = true;
+        await expect(service.excluir(superadminId, r.id)).rejects.toMatchObject({ status: 502 });
+        expect(await rastreadoresRepo.findById(r.id)).not.toBeNull();
+        traccar.falharAoApagar = false;
+
+        await service.excluir(superadminId, r.id);
+        expect(await rastreadoresRepo.findById(r.id)).toBeNull();
+        expect(traccar.apagados).toContain(Number(r.traccar_device_id));
+        expect((await pool.query('select rastreador_id from sim_cards where id = $1', [chip.id])).rows[0].rastreador_id).toBeNull();
+        const { rows } = await pool.query("select before from audit_log where action = 'rastreador.excluir' and target = $1", [r.id]);
+        expect(rows[0].before).toMatchObject({ imei: r.imei, simCardId: chip.id });
+        await expect(service.excluir(superadminId, r.id)).rejects.toMatchObject({ status: 404 });
+      });
+
+      it('excluir rastreador: recusa quem já transmitiu ou já foi de cliente (desativado também), sem apagar no Traccar', async () => {
+        traccar.cfg = cfg;
+        const transmitiu = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+        const foiDeCliente = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+        rastreadoresCriados.push(transmitiu.id, foiDeCliente.id);
+        await pool.query('insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em) values ($1, now())', [transmitiu.id]);
+        await service.vincular(superadminId, clientA, foiDeCliente.id);
+        await service.desvincular(superadminId, foiDeCliente.id);
+        await service.desativar(superadminId, foiDeCliente.id);
+        const apagadosAntes = traccar.apagados.length;
+
+        await expect(service.excluir(superadminId, transmitiu.id)).rejects.toThrow(/já transmitiu.*Desativar/);
+        await expect(service.excluir(superadminId, foiDeCliente.id)).rejects.toThrow(/já foi vinculado a um cliente/);
+        expect(await rastreadoresRepo.findById(transmitiu.id)).not.toBeNull();
+        expect(await rastreadoresRepo.findById(foiDeCliente.id)).not.toBeNull();
+        expect(traccar.apagados.length).toBe(apagadosAntes);
+      });
+
+      it('excluir modelo: só sem nenhum rastreador, nem desativado; auditado', async () => {
+        const livre = (await modelos.criar(superadminId, { fabricante: `Teste ${sufixo}`, nome: 'Excluir', protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei' })).id;
+        modelosCriados.push(livre);
+        await modelos.excluir(superadminId, livre);
+        expect(await modelosRepo.findById(livre)).toBeNull();
+        const { rows } = await pool.query("select before from audit_log where action = 'rastreador_modelo.excluir' and target = $1", [livre]);
+        expect(rows[0].before).toMatchObject({ nome: 'Excluir' });
+        await expect(modelos.excluir(superadminId, livre)).rejects.toMatchObject({ status: 404 });
+
+        const usado = (await modelos.criar(superadminId, { fabricante: `Teste ${sufixo}`, nome: 'Usado', protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei' })).id;
+        modelosCriados.push(usado);
+        const r = await service.cadastrarRastreador(superadminId, { modeloId: usado, imei: digitos(15) });
+        rastreadoresCriados.push(r.id);
+        await service.desativar(superadminId, r.id);
+        await expect(modelos.excluir(superadminId, usado)).rejects.toThrow(/1 rastreador \(contando desativados\)/);
+        expect(await modelosRepo.findById(usado)).not.toBeNull();
       });
 
       it('transmissão: todos os não desativados, com cliente/placa, posição, telemetria e pacotes da última hora pelo server_time', async () => {

@@ -186,10 +186,18 @@ export interface AdminRastreadorModelo {
   origem: 'catalogo' | 'manual';
   /** Mapeamento da telemetria; null = chave padrão do Traccar. */
   atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
+  /** Dados do painel / CAN: capacidade do modelo, sinais que promete e onde manda cada um (null = chave padrão). */
+  suporte_can: SuporteCan; sinais_motor: SinalMotor[];
+  atributo_rpm: string | null; atributo_odometro: string | null; atributo_combustivel: string | null; atributo_horimetro: string | null;
 }
+export type SuporteCan = 'nativo' | 'com_acessorio' | 'nao' | 'nao_informado';
+export type SinalMotor = 'rpm' | 'odometro' | 'combustivel' | 'horimetro';
+export type StatusSinal = 'recebido' | 'aguardando' | 'nao_recebido' | 'fora_do_esperado';
 export interface ModeloBody {
   fabricante: string; nome: string; protocolo: string; porta: number; tipoIdentificador: TipoIdentificador;
   atributoTensao: string | null; sinalMax: number | null; atributoBloqueio: string | null;
+  suporteCan?: SuporteCan; sinaisMotor?: SinalMotor[];
+  atributoRpm?: string | null; atributoOdometro?: string | null; atributoCombustivel?: string | null; atributoHorimetro?: string | null;
 }
 /** O que o Traccar diz do modelo agora (GET /superadmin/rastreador-modelos/:id/traccar). */
 export interface FichaTraccar {
@@ -218,6 +226,12 @@ export interface DiagnosticoRastreador {
   ficha: FichaTraccar | null;
   /** Comandos deste aparelho; null antes da primeira posição. */
   comandos: string[] | null;
+  /** Estado dos sinais do painel na instalação vigente; sinal fora de `sinais` = ainda não verificado. */
+  sinaisMotor: SinaisMotorDiagnostico;
+}
+export interface SinaisMotorDiagnostico {
+  suporteCan: SuporteCan; esperados: SinalMotor[];
+  sinais: { sinal: SinalMotor; status: StatusSinal; motivo: string; ultimoValor: number | null; ultimaLeituraEm: string | null; ultimoRecebimentoEm: string | null; atributo: string | null; avaliadoAte: string }[];
 }
 export interface TelemetriaLida { tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null }
 export interface UltimaPosicao { em: string; latitude: number; longitude: number; velocidadeKmh: number | null; ignicao: boolean | null }
@@ -229,6 +243,12 @@ export interface TransmissaoRastreador {
   ultimaPosicao: UltimaPosicao | null; atributos: Record<string, unknown>; atributosEm: string | null; telemetria: TelemetriaLida;
 }
 export interface AtributosRecebidos { imei: string; protocolo: string | null; atributos: Record<string, unknown>; atributos_em: string }
+/**
+ * Modelo escolhido na busca do cadastro: do catálogo (`id`) ou da lista do Traccar ainda sem modelo (`id` null) — esse
+ * só entra no catálogo quando o rastreador é cadastrado (GET .../traccar-aparelhos/:id/previa não grava).
+ */
+export type PreviaModelo = Pick<AdminRastreadorModelo, 'fabricante' | 'nome' | 'protocolo' | 'porta' | 'tipo_identificador'> & { id: string | null };
+export type EscolhaDeModelo = { modeloId: string } | { aparelhoId: number };
 export interface AdminSimCard { id: string; iccid: string; operadora: string | null; numero: string | null; status: string; rastreador_id: string | null }
 export interface AdminAuditEntry { id: string; actor_type: 'user' | 'superadmin'; actor_email: string | null; client_name: string | null; action: string; target: string | null; before: unknown; after: unknown; created_at: string }
 
@@ -254,20 +274,23 @@ export const adminApi = {
   saude: () => apiGet<Saude>('/superadmin/saude'),
   renameClient: (id: string, name: string) => apiSend('PATCH', `/clients/${id}`, { name }),
   rastreadores: () => apiGet<AdminRastreador[]>('/superadmin/rastreadores'),
-  createRastreador: (body: { imei: string; modeloId: string }) => apiSend<AdminRastreador>('POST', '/superadmin/rastreadores', body),
+  createRastreador: (body: { imei: string } & EscolhaDeModelo) => apiSend<AdminRastreador>('POST', '/superadmin/rastreadores', body),
   transmissao: () => apiGet<TransmissaoRastreador[]>('/superadmin/rastreadores/transmissao'),
-  trocarModeloRastreador: (id: string, modeloId: string) => apiSend('PATCH', `/superadmin/rastreadores/${id}`, { modeloId }),
+  trocarModeloRastreador: (id: string, escolha: EscolhaDeModelo) => apiSend('PATCH', `/superadmin/rastreadores/${id}`, escolha),
   modelos: () => apiGet<AdminRastreadorModelo[]>('/superadmin/rastreador-modelos'),
   criarModelo: (body: ModeloBody) => apiSend<AdminRastreadorModelo>('POST', '/superadmin/rastreador-modelos', body),
   atualizarModelo: (id: string, body: Partial<ModeloBody> & { ativo?: boolean }) => apiSend<AdminRastreadorModelo>('PATCH', `/superadmin/rastreador-modelos/${id}`, body),
   atributosDoModelo: (id: string) => apiGet<AtributosRecebidos[]>(`/superadmin/rastreador-modelos/${id}/atributos`),
   buscarModelos: (q: string) => apiGet<BuscaModelos>(`/superadmin/traccar-aparelhos/busca?q=${encodeURIComponent(q)}`),
-  modeloDoAparelhoTraccar: (id: number) => apiSend<AdminRastreadorModelo>('POST', `/superadmin/traccar-aparelhos/${id}/modelo`),
+  previaDoAparelhoTraccar: (id: number) => apiGet<PreviaModelo>(`/superadmin/traccar-aparelhos/${id}/previa`),
   listaTraccar: () => apiGet<{ total: number; atualizado_em: string | null }>('/superadmin/traccar-aparelhos'),
   atualizarListaTraccar: () => apiSend<{ total: number; removidos: number }>('POST', '/superadmin/traccar-aparelhos/atualizar'),
   diagnosticoRastreador: (id: string) => apiGet<DiagnosticoRastreador>(`/superadmin/rastreadores/${id}/diagnostico`),
   fichaTraccarDoModelo: (id: string) => apiGet<FichaTraccar>(`/superadmin/rastreador-modelos/${id}/traccar`),
   desativarRastreador: (id: string) => apiSend('POST', `/superadmin/rastreadores/${id}/desativar`),
+  /** Só cadastro errado (nunca transmitiu nem foi de cliente); a API recusa com 409 o resto. */
+  excluirRastreador: (id: string) => apiSend('DELETE', `/superadmin/rastreadores/${id}`),
+  excluirModelo: (id: string) => apiSend('DELETE', `/superadmin/rastreador-modelos/${id}`),
   desinstalar: (instalacaoId: string) => apiSend('POST', `/superadmin/rastreadores/instalacoes/${instalacaoId}/desinstalar`),
   vincularCliente: (id: string, clientId: string) => apiSend('POST', `/superadmin/rastreadores/${id}/vincular/${clientId}`),
   desvincularCliente: (id: string) => apiSend('POST', `/superadmin/rastreadores/${id}/desvincular`),

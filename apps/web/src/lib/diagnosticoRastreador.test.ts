@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { firmwareDe, haQuanto, itensDoDiagnostico, semFixDeGps, situacaoTransmissao, sugerirMapeamento } from './diagnosticoRastreador';
-import type { DiagnosticoRastreador } from './localleApi';
+import { firmwareDe, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, semFixDeGps, situacaoTransmissao, sugerirMapeamento, valorDoSinal } from './diagnosticoRastreador';
+import type { DiagnosticoRastreador, SinaisMotorDiagnostico } from './localleApi';
 
 const agora = Date.parse('2026-11-04T12:00:00Z');
 const modelo = { nome: 'JMAK JR12', protocolo: 'jmak', porta: 5259 };
@@ -11,6 +11,7 @@ const base: DiagnosticoRastreador = {
   ultimaPosicao: { em: '2026-11-04T11:55:00Z', latitude: -3.731862, longitude: -38.526669, velocidadeKmh: 0, ignicao: false },
   ficha: { traccar: { configurado: true, versao: '6.17.0', erro: null }, protocolo: { ativo: true, porta: 5259, transporte: 'ALL' }, comandos: null },
   comandos: ['engineStop', 'engineResume', 'custom'],
+  sinaisMotor: { suporteCan: 'nao_informado', esperados: [], sinais: [] },
 };
 const tom = (d: DiagnosticoRastreador, m = modelo) => Object.fromEntries(itensDoDiagnostico(d, m, agora).map((i) => [i.etapa, i.tom]));
 
@@ -103,5 +104,46 @@ describe('situacaoTransmissao', () => {
   });
   it('haQuanto: abaixo de 1 min não vira "0 min"', () => {
     expect(haQuanto('2026-11-04T11:59:50Z', agora)).toBe('menos de 1 min');
+  });
+});
+
+describe('itensDosSinaisMotor (dados do painel)', () => {
+  const sinal = (o: Partial<SinaisMotorDiagnostico['sinais'][number]>): SinaisMotorDiagnostico['sinais'][number] => ({
+    sinal: 'rpm', status: 'recebido', motivo: 'Recebido em rpm', ultimoValor: 1850, ultimaLeituraEm: '2026-11-04T11:58:00Z',
+    ultimoRecebimentoEm: '2026-11-04T11:58:01Z', atributo: 'rpm', avaliadoAte: '2026-11-04T11:58:00Z', ...o,
+  });
+
+  it('modelo sem ficha e nada avaliado: nenhum item (nada é cobrado)', () => {
+    expect(itensDosSinaisMotor({ suporteCan: 'nao_informado', esperados: [], sinais: [] }, agora)).toEqual([]);
+  });
+
+  it('sinal prometido sem avaliação é "não verificado"; avaliado sem ser prometido também aparece', () => {
+    const itens = itensDosSinaisMotor({ suporteCan: 'nativo', esperados: ['rpm', 'combustivel'], sinais: [sinal({ sinal: 'odometro', ultimoValor: 40764145, atributo: 'obdOdometer' })] }, agora);
+    expect(itens.map((i) => [i.etapa, i.tom])).toEqual([['RPM', 'info'], ['Odômetro do painel', 'ok'], ['Combustível', 'info']]);
+    expect(itens[0].texto).toMatch(/^Não verificado/);
+    expect(itens[1].texto).toBe('Recebido: 40.764,1 km há 2 min (obdOdometer).');
+  });
+
+  it('não recebido: dica conforme a capacidade do modelo e se o dado já chegava antes', () => {
+    const nunca = sinal({ status: 'nao_recebido', motivo: 'Não chegou em 5 posições com o veículo em movimento (atributo rpm)', ultimoValor: null, ultimaLeituraEm: null });
+    expect(itensDosSinaisMotor({ suporteCan: 'com_acessorio', esperados: ['rpm'], sinais: [nunca] }, agora)[0]).toMatchObject({ tom: 'crit', texto: expect.stringMatching(/adaptador CAN/) });
+    expect(itensDosSinaisMotor({ suporteCan: 'nativo', esperados: ['rpm'], sinais: [nunca] }, agora)[0].texto).toMatch(/fio CAN no chicote/);
+    const parou = sinal({ status: 'nao_recebido', motivo: 'Parou de chegar: 5 posições em movimento sem rpm' });
+    expect(itensDosSinaisMotor({ suporteCan: 'nativo', esperados: ['rpm'], sinais: [parou] }, agora)[0].texto)
+      .toBe('Parou de chegar: 5 posições em movimento sem rpm. Veja se o chicote ou o adaptador foi mexido (oficina) ou se outro aparelho entrou na rede CAN. Última leitura: 1.850 rpm há 2 min (rpm).');
+  });
+
+  it('fora do esperado e aguardando', () => {
+    const fora = sinal({ status: 'fora_do_esperado', motivo: 'Valor fora do esperado em rpm: 65535' });
+    expect(itensDosSinaisMotor({ suporteCan: 'nativo', esperados: ['rpm'], sinais: [fora] }, agora)[0]).toMatchObject({ tom: 'warn', texto: expect.stringMatching(/Última leitura válida: 1\.850 rpm/) });
+    const aguardando = sinal({ status: 'aguardando', motivo: 'Aguardando o veículo em movimento para conferir', ultimoValor: null, ultimaLeituraEm: null });
+    expect(itensDosSinaisMotor({ suporteCan: 'nativo', esperados: ['rpm'], sinais: [aguardando] }, agora)[0]).toEqual({ etapa: 'RPM', tom: 'info', texto: 'Aguardando o veículo em movimento para conferir.' });
+  });
+
+  it('unidades: combustível pelo atributo, horímetro do Traccar em ms', () => {
+    expect(valorDoSinal('combustivel', 62.5, 'fuelLevel')).toBe('62,5%');
+    expect(valorDoSinal('combustivel', 48, 'fuel')).toBe('48 L');
+    expect(valorDoSinal('combustivel', 48, 'io89')).toBe('48');
+    expect(valorDoSinal('horimetro', 7_200_000, 'hours')).toBe('2 h');
   });
 });

@@ -84,6 +84,13 @@ export class TraccarClient {
     return this.request<TraccarDevice>(config, 'POST', '/api/devices', device);
   }
 
+  /** `DELETE /api/devices/:id` (responde sem corpo). Device que já não existe (404) conta como apagado. */
+  async deleteDevice(config: TraccarConfig, deviceId: number): Promise<void> {
+    const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
+    const response = await fetch(`${config.url}/api/devices/${deviceId}`, { method: 'DELETE', headers: { Authorization: `Basic ${auth}` } });
+    if (!response.ok && response.status !== 404) throw new Error(`Traccar DELETE /api/devices falhou: ${response.status} ${response.statusText}${await motivo(response)}`);
+  }
+
   /**
    * `POST /api/commands/send` (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 1.4): 200 = entregue ao socket do
    * aparelho agora; 202 = enfileirado no Traccar até o aparelho conectar. Nenhum dos dois é execução.

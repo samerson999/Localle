@@ -25,9 +25,9 @@ export class TraccarAparelhosController {
     return this.service.atualizar(superadminId);
   }
 
-  /** Modelo do catálogo para o aparelho escolhido (cria na primeira vez). */
-  @Post(':id/modelo')
-  modelo(@CurrentUserId() superadminId: string, @Param('id', ParseIntPipe) id: number) {
-    return this.service.modeloDoAparelho(superadminId, id);
+  /** Modelo que o aparelho escolhido vira no cadastro, sem gravar (quem grava é o cadastro do rastreador). */
+  @Get(':id/previa')
+  previa(@Param('id', ParseIntPipe) id: number) {
+    return this.service.previa(id);
   }
 }

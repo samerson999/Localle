@@ -48,6 +48,29 @@ export class RastreadoresRepository {
     return rows;
   }
 
+  /**
+   * O que impede excluir de vez (cadastro errado): já transmitiu (posição, evento, pacote) ou já foi de algum cliente
+   * (vínculo, instalação, comando). Qualquer um desses é histórico que precisa continuar apontando para o rastreador.
+   */
+  async historicoQueImpedeExcluir(id: string, executor: Queryable = this.pool): Promise<{ transmitiu: boolean; teveCliente: boolean }> {
+    const { rows } = await executor.query<{ transmitiu: boolean; teve_cliente: boolean }>(
+      `select exists (select 1 from rastreador_comunicacao where rastreador_id = $1)
+                or exists (select 1 from ingest_posicoes_recebidas where rastreador_id = $1)
+                or exists (select 1 from posicoes where rastreador_id = $1)
+                or exists (select 1 from eventos where rastreador_id = $1) as transmitiu,
+              exists (select 1 from rastreador_vinculos where rastreador_id = $1)
+                or exists (select 1 from instalacoes where rastreador_id = $1)
+                or exists (select 1 from comandos where rastreador_id = $1) as teve_cliente`,
+      [id],
+    );
+    return { transmitiu: rows[0].transmitiu, teveCliente: rows[0].teve_cliente };
+  }
+
+  /** Só depois de `historicoQueImpedeExcluir`; o chip vinculado fica livre (`on delete set null`). */
+  async excluir(id: string, executor: Queryable = this.pool): Promise<void> {
+    await executor.query('delete from rastreadores where id = $1', [id]);
+  }
+
   async findById(id: string, executor: Queryable = this.pool): Promise<RastreadorEntity | null> {
     const { rows } = await executor.query<RastreadorEntity>(
       'select * from rastreadores where id = $1',

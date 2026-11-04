@@ -4,7 +4,8 @@ import { AuditLogRepository } from '../audit/audit-log.repository';
 import { TraccarClient, type TraccarProtocolo } from '../ingest/traccar-client';
 import { type AparelhoTraccar, lerListaTraccar, MINIMO_ESPERADO, separarNome, URL_LISTA_TRACCAR } from './lista-traccar';
 import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
-import { RastreadorModelosRepository } from './rastreador-modelos.repository';
+import { type ModeloDados, RastreadorModelosRepository } from './rastreador-modelos.repository';
+import type { Queryable } from '../db/queryable';
 import { RastreadorModelosService } from './rastreador-modelos.service';
 import snapshot from './traccar-aparelhos.snapshot.json';
 import { termoLike, TraccarAparelhosRepository, type TraccarAparelhoRow } from './traccar-aparelhos.repository';
@@ -15,6 +16,9 @@ const PROTOCOLOS_TTL_MS = 5 * 60_000;
 
 /** Situação do protocolo no Traccar desta plataforma; null = o Traccar não informa (sem config, fora, anterior à 6.17). */
 export type SituacaoProtocolo = { ativo: boolean; porta: number | null } | null;
+
+/** Modelo existente, ou os dados do que será criado (`id` null) no cadastro do rastreador. */
+export type PreviaModelo = RastreadorModeloEntity | (ModeloDados & { id: null });
 
 export interface ResultadoBusca {
   /** Modelos em uso (catálogo). */
@@ -84,11 +88,13 @@ export class TraccarAparelhosService implements OnModuleInit {
   }
 
   /**
-   * Modelo do catálogo para um aparelho da lista: o que já existe com o mesmo nome e protocolo, ou um novo com
-   * protocolo e porta do Traccar. Identificador: o mais comum entre os modelos do mesmo protocolo; sem nenhum,
-   * "outro" (aceita IMEI também) — corrigível no modelo.
+   * O modelo do catálogo que um aparelho da lista vira, sem gravar nada (a busca do cadastro mostra; só o cadastro do
+   * rastreador cria, na mesma transação — escolher na busca e desistir não deixa modelo sobrando no catálogo).
+   * Já existe com o mesmo nome e protocolo: esse. Senão, os dados do novo, com protocolo e porta do Traccar e o
+   * identificador mais comum entre os modelos do mesmo protocolo; sem nenhum, "outro" (aceita IMEI também) —
+   * corrigível no modelo.
    */
-  async modeloDoAparelho(superadminId: string, aparelhoId: number): Promise<RastreadorModeloEntity> {
+  async previa(aparelhoId: number): Promise<PreviaModelo> {
     const a = await this.repo.findById(aparelhoId);
     if (!a) throw new NotFoundException('Aparelho não encontrado na lista do Traccar');
     const { fabricante, nome } = separarNome(a.nome);
@@ -101,16 +107,14 @@ export class TraccarAparelhosService implements OnModuleInit {
       return existente;
     }
     const tipo = (await this.modelosRepo.identificadorDoProtocolo(a.protocolo)) ?? 'outro';
-    try {
-      return await this.modelos.criar(superadminId, { fabricante, nome, protocolo: a.protocolo, porta: a.porta, tipo_identificador: tipo, origem: 'catalogo' });
-    } catch (err) {
-      // dois cadastros ao mesmo tempo do mesmo modelo: o outro criou primeiro
-      if (err instanceof ConflictException) {
-        const criado = await this.modelosRepo.findByNome(fabricante, nome);
-        if (criado?.protocolo === a.protocolo) return criado;
-      }
-      throw err;
-    }
+    return { id: null, fabricante, nome, protocolo: a.protocolo, porta: a.porta, tipo_identificador: tipo, origem: 'catalogo' };
+  }
+
+  /** Grava o modelo da prévia na transação do cadastro do rastreador (prévia de modelo existente: devolve ele). */
+  async criarModelo(superadminId: string, previa: PreviaModelo, executor: Queryable): Promise<RastreadorModeloEntity> {
+    if (previa.id !== null) return previa;
+    const { id: _, ...dados } = previa;
+    return this.modelos.criar(superadminId, dados, executor);
   }
 
   /** Baixa a página do Traccar e troca a lista. Falhou ou veio pequena demais: a lista anterior continua valendo. */

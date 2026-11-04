@@ -14,6 +14,11 @@ export class SimCardsRepository {
     return rows;
   }
 
+  async findByRastreador(rastreadorId: string, executor: Queryable = this.pool): Promise<SimCardEntity | null> {
+    const { rows } = await executor.query<SimCardEntity>('select * from sim_cards where rastreador_id = $1', [rastreadorId]);
+    return rows[0] ?? null;
+  }
+
   async findById(id: string): Promise<SimCardEntity | null> {
     const { rows } = await this.pool.query<SimCardEntity>('select * from sim_cards where id = $1', [id]);
     return rows[0] ?? null;

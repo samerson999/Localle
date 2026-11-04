@@ -1,10 +1,12 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuditLogRepository } from '../audit/audit-log.repository';
-import { UNIQUE, violouUnique } from '../db/pg-errors';
+import { isPgError, PG_FOREIGN_KEY_VIOLATION, UNIQUE, violouUnique } from '../db/pg-errors';
+import type { Queryable } from '../db/queryable';
 import type { Telemetria } from '@localle/shared/realtime';
 import { nomeDoModelo } from '@localle/shared/rastreadorModelos';
 import { TraccarClient } from '../ingest/traccar-client';
 import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
+import type { SinalMotor, StatusSinal, SuporteCan } from '../telemetria/sinais-motor';
 import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
 import { type EstadoRastreadorRow, type ModeloDados, RastreadorModelosRepository } from './rastreador-modelos.repository';
 
@@ -42,6 +44,25 @@ export interface DiagnosticoRastreador {
   ultimaPosicao: UltimaPosicao | null;
   ficha: FichaTraccar | null;
   comandos: string[] | null;
+  /** Sinais de motor / CAN: o que o modelo promete e o estado de cada sinal na instalação vigente. */
+  sinaisMotor: SinaisMotorDiagnostico;
+}
+
+export interface SinaisMotorDiagnostico {
+  suporteCan: SuporteCan;
+  /** Sinais que o modelo promete (catálogo). */
+  esperados: SinalMotor[];
+  /** Um por sinal já avaliado na instalação vigente; sinal ausente da lista = ainda não verificado. */
+  sinais: {
+    sinal: SinalMotor;
+    status: StatusSinal;
+    motivo: string;
+    ultimoValor: number | null;
+    ultimaLeituraEm: Date | null;
+    ultimoRecebimentoEm: Date | null;
+    atributo: string | null;
+    avaliadoAte: Date;
+  }[];
 }
 
 export interface UltimaPosicao { em: Date; latitude: number; longitude: number; velocidadeKmh: number | null; ignicao: boolean | null }
@@ -133,6 +154,7 @@ export class RastreadorModelosService {
     const r = await this.repo.estadoDoRastreador(rastreadorId);
     if (!r) throw new NotFoundException('Rastreador não encontrado');
     const ficha = r.modelo_id ? await this.fichaTraccar(r.modelo_id) : null;
+    const [modelo, sinais] = await Promise.all([r.modelo_id ? this.repo.findById(r.modelo_id) : null, this.repo.sinaisDaInstalacaoVigente(rastreadorId)]);
     const config = this.traccar.config();
     // ficha com erro = Traccar fora: não insiste nas outras consultas
     const consultar = !!config && !!r.traccar_device_id && !ficha?.traccar.erro;
@@ -165,6 +187,20 @@ export class RastreadorModelosService {
       ultimaPosicao: ultimaPosicaoDaLinha(r),
       ficha,
       comandos,
+      sinaisMotor: {
+        suporteCan: modelo?.suporte_can ?? 'nao_informado',
+        esperados: modelo?.sinais_motor ?? [],
+        sinais: sinais.map((s) => ({
+          sinal: s.sinal,
+          status: s.status,
+          motivo: s.motivo,
+          ultimoValor: s.ultimo_valor,
+          ultimaLeituraEm: s.ultima_leitura_em,
+          ultimoRecebimentoEm: s.ultimo_recebimento_em,
+          atributo: s.atributo_origem,
+          avaliadoAte: s.avaliado_ate,
+        })),
+      },
     };
   }
 
@@ -191,17 +227,40 @@ export class RastreadorModelosService {
     }));
   }
 
-  async criar(superadminId: string, d: ModeloDados): Promise<RastreadorModeloEntity> {
+  /** `executor`: transação de quem chamou (cadastro do rastreador cria o modelo junto, e desfaz junto se falhar). */
+  async criar(superadminId: string, d: ModeloDados, executor?: Queryable): Promise<RastreadorModeloEntity> {
     let criado: RastreadorModeloEntity;
     try {
-      criado = await this.repo.criar(d);
+      criado = await this.repo.criar(d, executor);
     } catch (err) {
       if (violouUnique(err, UNIQUE.modeloRastreador)) throw new ConflictException(`Já existe o modelo ${d.fabricante} ${d.nome}`);
       throw err;
     }
-    await this.audit.record({ actorType: 'superadmin', actorId: superadminId, clientId: null, action: 'rastreador_modelo.criar', target: criado.id, after: d });
+    await this.audit.record({ actorType: 'superadmin', actorId: superadminId, clientId: null, action: 'rastreador_modelo.criar', target: criado.id, after: d }, executor);
     this.logger.log(`Modelo de rastreador ${criado.fabricante} ${criado.nome} criado (${criado.protocolo}:${criado.porta}) por ${superadminId}`);
     return criado;
+  }
+
+  /**
+   * Excluir do catálogo: só modelo que nenhum rastreador usa, nem desativado. Usado, o caminho é desativar. Escolher de
+   * novo o aparelho na lista do Traccar recria o modelo (com o mapeamento da telemetria vazio).
+   */
+  async excluir(superadminId: string, id: string): Promise<void> {
+    const modelo = await this.repo.findById(id);
+    if (!modelo) throw new NotFoundException('Modelo não encontrado');
+    const usados = await this.repo.totalDeRastreadores(id);
+    if (usados > 0) {
+      throw new ConflictException(`O modelo ${nomeDoModelo(modelo)} é de ${usados} rastreador${usados > 1 ? 'es' : ''} (contando desativados). Use Desativar.`);
+    }
+    try {
+      await this.repo.excluir(id);
+    } catch (err) {
+      // rastreador cadastrado com o modelo entre a contagem e o delete (`on delete restrict`)
+      if (isPgError(err, PG_FOREIGN_KEY_VIOLATION)) throw new ConflictException(`O modelo ${nomeDoModelo(modelo)} acabou de ganhar um rastreador. Use Desativar.`);
+      throw err;
+    }
+    await this.audit.record({ actorType: 'superadmin', actorId: superadminId, clientId: null, action: 'rastreador_modelo.excluir', target: id, before: modelo });
+    this.logger.log(`Modelo de rastreador ${nomeDoModelo(modelo)} excluído do catálogo por ${superadminId}`);
   }
 
   async atualizar(superadminId: string, id: string, d: Partial<ModeloDados & { ativo: boolean }>): Promise<RastreadorModeloEntity> {

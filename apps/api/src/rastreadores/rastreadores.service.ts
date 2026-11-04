@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   Inject,
@@ -21,10 +22,11 @@ import type { SimCardEntity } from './sim-card.entity';
 import { SimCardsRepository } from './sim-cards.repository';
 import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
 import type { RastreadorVinculoEntity } from './rastreador-vinculo.entity';
-import { isPgError, PG_EXCLUSION_VIOLATION, UNIQUE, violouUnique } from '../db/pg-errors';
+import { isPgError, PG_EXCLUSION_VIOLATION, PG_FOREIGN_KEY_VIOLATION, UNIQUE, violouUnique } from '../db/pg-errors';
 import { nomeDoModelo, normalizarIdentificador, validarIdentificador } from '@localle/shared/rastreadorModelos';
 import { parseUuid } from '../common/parse-uuid';
 import { RastreadorModelosRepository } from './rastreador-modelos.repository';
+import { type PreviaModelo, TraccarAparelhosService } from './traccar-aparelhos.service';
 
 /** Quem executa: superadmin (Painel da Locale) ou usuário do próprio cliente (Gestão de ativos). */
 export interface Ator {
@@ -54,6 +56,7 @@ export class RastreadoresService {
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly traccar: TraccarClient,
     private readonly modelos: RastreadorModelosRepository,
+    private readonly aparelhos: TraccarAparelhosService,
   ) {}
 
   /**
@@ -64,16 +67,18 @@ export class RastreadoresService {
    */
   async cadastrarRastreador(
     superadminId: string,
-    data: { imei: string; modeloId: string; traccarDeviceId?: string },
+    data: { imei: string; modeloId?: string; aparelhoId?: number; traccarDeviceId?: string },
   ): Promise<RastreadorEntity> {
     // modelo obrigatório (catálogo, decisão de 28/10/2026): o identificador é validado pelo tipo que o modelo manda
-    const modelo = await this.modeloAtivo(data.modeloId);
+    const alvo = await this.modeloEscolhido(data);
     if (typeof data.imei !== 'string') throw new BadRequestException('Informe o identificador do aparelho');
     const imei = normalizarIdentificador(data.imei);
-    const invalido = validarIdentificador(modelo.tipo_identificador, imei);
+    const invalido = validarIdentificador(alvo.tipo_identificador, imei);
     if (invalido) throw new BadRequestException(invalido);
-    const nomeModelo = nomeDoModelo(modelo);
+    const nomeModelo = nomeDoModelo(alvo);
     return withTransaction(this.pool, async (client) => {
+      // aparelho da lista do Traccar sem modelo ainda: o modelo nasce aqui e some junto se o cadastro falhar
+      const modelo = await this.aparelhos.criarModelo(superadminId, alvo, client);
       let criado: RastreadorEntity;
       try {
         criado = await this.rastreadores.create({ imei, modelo: nomeModelo, modeloId: modelo.id }, client);
@@ -312,15 +317,17 @@ export class RastreadoresService {
   async atualizar(
     superadminId: string,
     rastreadorId: string,
-    data: { modeloId?: string; modelo?: string | null; protocolo?: string | null },
+    data: { modeloId?: string; aparelhoId?: number; modelo?: string | null; protocolo?: string | null },
   ): Promise<RastreadorEntity> {
     // trocar o modelo do catálogo também atualiza o nome exibido; o identificador já cadastrado não é revalidado
     // (o aparelho continua mandando o mesmo), só o protocolo esperado muda
-    const modelo = data.modeloId ? await this.modeloAtivo(data.modeloId) : null;
-    const dados = modelo ? { ...data, modelo: nomeDoModelo(modelo) } : data;
+    const { aparelhoId, ...campos } = data;
+    const alvo = data.modeloId !== undefined || aparelhoId !== undefined ? await this.modeloEscolhido(data) : null;
     return withTransaction(this.pool, async (client) => {
       const antes = await this.rastreadores.findById(rastreadorId, client);
       if (!antes) throw new NotFoundException('Rastreador não encontrado');
+      const modelo = alvo ? await this.aparelhos.criarModelo(superadminId, alvo, client) : null;
+      const dados = modelo ? { ...campos, modeloId: modelo.id, modelo: nomeDoModelo(modelo) } : campos;
       const depois = await this.rastreadores.updateDados(rastreadorId, dados, client);
       await this.audit.record(
         {
@@ -336,6 +343,58 @@ export class RastreadoresService {
       );
       return depois;
     });
+  }
+
+  /**
+   * Exclusão de vez, para cadastro errado (IMEI digitado errado, aparelho que nem chegou): só sem histórico — nunca
+   * transmitiu e nunca foi de cliente. Com histórico, o caminho é desativar. Apaga também o device no Traccar, por
+   * último e dentro da transação: Traccar fora do ar desfaz a exclusão (o rastreador continua, nada fica pela metade
+   * do lado da plataforma). O chip vinculado volta a ficar livre.
+   */
+  async excluir(superadminId: string, rastreadorId: string): Promise<void> {
+    await withTransaction(this.pool, async (client) => {
+      const { rows } = await client.query<RastreadorEntity>('select * from rastreadores where id = $1 for update', [rastreadorId]);
+      const r = rows[0];
+      if (!r) throw new NotFoundException('Rastreador não encontrado');
+      const { transmitiu, teveCliente } = await this.rastreadores.historicoQueImpedeExcluir(rastreadorId, client);
+      if (transmitiu || teveCliente) {
+        throw new ConflictException(`O rastreador ${r.imei} ${transmitiu ? 'já transmitiu' : 'já foi vinculado a um cliente'}: o histórico precisa dele. Use Desativar.`);
+      }
+      const chip = await this.simCards.findByRastreador(rastreadorId, client);
+      try {
+        await this.rastreadores.excluir(rastreadorId, client);
+      } catch (err) {
+        // referência nova ao rastreador (tabela criada depois desta regra): recusa em vez de 500
+        if (isPgError(err, PG_FOREIGN_KEY_VIOLATION)) {
+          this.logger.warn(`Exclusão do rastreador ${rastreadorId} barrada por referência não prevista: ${(err as Error).message}`);
+          throw new ConflictException(`O rastreador ${r.imei} tem histórico na plataforma. Use Desativar.`);
+        }
+        throw err;
+      }
+      await this.audit.record(
+        {
+          actorType: 'superadmin', actorId: superadminId, clientId: null, action: 'rastreador.excluir', target: rastreadorId,
+          before: { imei: r.imei, modeloId: r.modelo_id, modelo: r.modelo, traccarDeviceId: r.traccar_device_id, status: r.status, simCardId: chip?.id ?? null },
+        },
+        client,
+      );
+      if (r.traccar_device_id) await this.apagarNoTraccar(r.imei, Number(r.traccar_device_id));
+    });
+    this.logger.log(`Rastreador ${rastreadorId} excluído por ${superadminId}`);
+  }
+
+  private async apagarNoTraccar(imei: string, deviceId: number): Promise<void> {
+    const config = this.traccar.config();
+    if (!config) {
+      this.logger.warn(`TRACCAR_URL não configurado — device ${deviceId} do rastreador IMEI ${imei} não foi apagado no Traccar`);
+      return;
+    }
+    try {
+      await this.traccar.deleteDevice(config, deviceId);
+    } catch (err) {
+      this.logger.error(`Exclusão do rastreador IMEI ${imei} desfeita: o Traccar não apagou o device ${deviceId}: ${(err as Error).message}`);
+      throw new BadGatewayException('O Traccar não respondeu ao apagar o device. Nada foi excluído; tente de novo em instantes.');
+    }
   }
 
   /**
@@ -367,6 +426,16 @@ export class RastreadoresService {
       );
       return desativado;
     });
+  }
+
+  /** Modelo do catálogo (`modeloId`) ou aparelho da lista do Traccar (`aparelhoId`, prévia: ainda pode não existir). */
+  private async modeloEscolhido(data: { modeloId?: unknown; aparelhoId?: unknown }): Promise<PreviaModelo> {
+    if (data.aparelhoId === undefined) return this.modeloAtivo(data.modeloId);
+    if (data.modeloId !== undefined) throw new BadRequestException('Informe "modeloId" ou "aparelhoId", não os dois');
+    if (typeof data.aparelhoId !== 'number' || !Number.isSafeInteger(data.aparelhoId) || data.aparelhoId <= 0) {
+      throw new BadRequestException('"aparelhoId" precisa ser o id de um aparelho da lista do Traccar');
+    }
+    return this.aparelhos.previa(data.aparelhoId);
   }
 
   private async modeloAtivo(modeloId: unknown) {

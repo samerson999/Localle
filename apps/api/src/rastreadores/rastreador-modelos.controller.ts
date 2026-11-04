@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { SuperadminGuard } from '../auth/superadmin.guard';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { parseAtualizarModelo, parseCriarModelo } from './dto/parse-rastreador-modelo';
@@ -29,6 +29,13 @@ export class RastreadorModelosController {
   @Post()
   criar(@CurrentUserId() superadminId: string, @Body() body: unknown) {
     return this.service.criar(superadminId, parseCriarModelo(body));
+  }
+
+  /** Só modelo sem nenhum rastreador (nem desativado); usado, desativar. */
+  @Delete(':id')
+  @HttpCode(204)
+  async excluir(@CurrentUserId() superadminId: string, @Param('id', ParseUUIDPipe) id: string) {
+    await this.service.excluir(superadminId, id);
   }
 
   @Patch(':id')

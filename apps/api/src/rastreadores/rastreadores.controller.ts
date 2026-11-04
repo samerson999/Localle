@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { SuperadminGuard } from '../auth/superadmin.guard';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { CreateRastreadorDto } from './dto/create-rastreador.dto';
@@ -65,6 +65,13 @@ export class RastreadoresController {
     @Body() dto: UpdateRastreadorDto,
   ) {
     return this.service.atualizar(superadminId, id, parseUpdateRastreador(dto));
+  }
+
+  /** Só cadastro errado (nunca transmitiu nem foi de cliente); com histórico, desativar. */
+  @Delete(':id')
+  @HttpCode(204)
+  async excluir(@CurrentUserId() superadminId: string, @Param('id', ParseUUIDPipe) id: string) {
+    await this.service.excluir(superadminId, id);
   }
 
   @Post(':id/desativar')

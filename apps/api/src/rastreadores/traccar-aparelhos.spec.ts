@@ -121,26 +121,46 @@ describe('TraccarAparelhosService', () => {
     expect(rows.at(-1).after).toEqual({ total: 599, removidos: 1 });
   });
 
-  it('modelo a partir do aparelho: cria com nome do Traccar separado, protocolo/porta e identificador do protocolo; 2ª vez reaproveita', async () => {
+  it('prévia do aparelho: dados do modelo com nome do Traccar separado, protocolo/porta e identificador do protocolo, sem gravar', async () => {
     const s = novoServico();
     const [a] = await repo.buscar(nome(1), 1); // gt06
-    const m = await s.modeloDoAparelho(superadminId, a.id);
-    modelosCriados.push(m.id);
-    expect(m).toMatchObject({ fabricante: `Zt${sufixo}`, nome: 'M1', protocolo: 'gt06', porta: 6000, origem: 'catalogo' });
+    const p = await s.previa(a.id);
+    expect(p).toMatchObject({ id: null, fabricante: `Zt${sufixo}`, nome: 'M1', protocolo: 'gt06', porta: 6000, origem: 'catalogo' });
     // há modelo gt06 com IMEI no catálogo (EVOO-X GT06): o palpite segue o protocolo
-    expect(m.tipo_identificador).toBe(await modelosRepo.identificadorDoProtocolo('gt06'));
-    expect((await s.modeloDoAparelho(superadminId, a.id)).id).toBe(m.id);
-    await expect(s.modeloDoAparelho(superadminId, 999_999_999)).rejects.toMatchObject({ status: 404 });
+    expect(p.tipo_identificador).toBe(await modelosRepo.identificadorDoProtocolo('gt06'));
+    expect(await modelosRepo.findByNome(`Zt${sufixo}`, 'M1')).toBeNull();
+    await expect(s.previa(999_999_999)).rejects.toMatchObject({ status: 404 });
   });
 
-  it('modelo a partir do aparelho: nome já no catálogo com outro protocolo → 409; desativado → 409', async () => {
+  it('criarModelo: grava na transação de quem chama (rollback não deixa modelo); depois a prévia devolve o existente', async () => {
+    const s = novoServico();
+    const [a] = await repo.buscar(nome(1), 1);
+    const previa = await s.previa(a.id);
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await s.criarModelo(superadminId, previa, client);
+      await client.query('rollback');
+      expect(await modelosRepo.findByNome(`Zt${sufixo}`, 'M1')).toBeNull();
+      await client.query('begin');
+      const m = await s.criarModelo(superadminId, previa, client);
+      await client.query('commit');
+      modelosCriados.push(m.id);
+      expect(await s.previa(a.id)).toMatchObject({ id: m.id, nome: 'M1' });
+      expect(await s.criarModelo(superadminId, m, client)).toBe(m); // existente: nada a gravar
+    } finally {
+      client.release();
+    }
+  });
+
+  it('prévia do aparelho: nome já no catálogo com outro protocolo → 409; desativado → 409', async () => {
     const s = novoServico();
     const [a] = await repo.buscar(nome(2), 1); // jmak
     const outro = await modelosRepo.criar({ fabricante: `Zt${sufixo}`, nome: 'M2', protocolo: 'huabao', porta: 5015, tipo_identificador: 'imei' });
     modelosCriados.push(outro.id);
-    await expect(s.modeloDoAparelho(superadminId, a.id)).rejects.toThrow(/protocolo huabao/);
+    await expect(s.previa(a.id)).rejects.toThrow(/protocolo huabao/);
     await pool.query("update rastreador_modelos set protocolo = 'jmak', ativo = false where id = $1", [outro.id]);
-    await expect(s.modeloDoAparelho(superadminId, a.id)).rejects.toThrow(/desativado/);
+    await expect(s.previa(a.id)).rejects.toThrow(/desativado/);
   });
 
   it('busca: modelos em uso e aparelhos da lista, sem repetir o que já está no catálogo, com a situação do protocolo', async () => {
