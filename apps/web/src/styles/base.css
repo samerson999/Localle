@@ -143,7 +143,151 @@ a { text-underline-offset: 3px; }
 /* barra de progresso: recorte animado (mantém a ponta arredondada, sem animar largura) */
 .progress-fill { transition: clip-path var(--t-progress) var(--ease-out); }
 
+
+/* ---------- tela de login (pages/Login.tsx, components/LoginShowcase.tsx) ----------
+   Mecânica do login do Visor (04/11/2026): o slide ativo recebe data-run e cada peça entra no seu tempo (--d);
+   o estado de repouso de cada peça é o quadro final, então sem animação (movimento reduzido) a cena aparece pronta.
+   Medidas em cqw da própria cena, para tudo escalar junto. Curvas: entrada com o --ease-out; quique só nas peças
+   3D, no contador e no pino; queda dos alertas na curva de gaveta; o veículo anda em ease-in-out. */
+.login-visual { background: radial-gradient(circle at 50% 38%, var(--card) 0, transparent 58%), var(--canvas); }
+.login-stage { --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1); --ease-drop: cubic-bezier(0.32, 0.72, 0, 1); --ease-anda: cubic-bezier(0.65, 0, 0.35, 1); width: min(34vw, 460px, calc(100vh / var(--ui-zoom) - 420px)); aspect-ratio: 1 / 0.86; container-type: inline-size; }
+.login-slide { position: absolute; inset: 0; opacity: 0; transition: opacity 400ms ease; pointer-events: none; }
+.login-slide[data-on] { opacity: 1; pointer-events: auto; }
+@keyframes login-sobe { from { opacity: 0; transform: translateY(4cqw) scale(0.97); } }
+@keyframes login-sobe-txt { from { opacity: 0; transform: translateY(10px); } }
+@keyframes login-pop { from { opacity: 0; transform: rotate(var(--r, 0deg)) scale(0.8); } to { opacity: 1; transform: rotate(var(--r, 0deg)) scale(1); } }
+@keyframes login-pop-svg { from { opacity: 0; transform: scale(0.6); } }
+@keyframes login-aparece { from { opacity: 0; } }
+@keyframes login-flutua { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.2cqw); } }
+.login-pop { position: absolute; z-index: 3; transform: rotate(var(--r, 0deg)); }
+.login-slide[data-run] .login-pop { animation: login-pop 480ms var(--ease-pop) var(--d, 0ms) both; }
+.login-3d img { filter: drop-shadow(0 2.4cqw 3cqw rgba(29, 91, 234, 0.14)); user-select: none; }
+.login-slide[data-run] .login-flutua { animation: login-flutua 6s ease-in-out var(--f, 0s) infinite; }
+
+/* slide 1: mapa com a rota sendo percorrida */
+.login-mapa { position: absolute; left: 6%; top: 9%; width: 86%; aspect-ratio: 4 / 3; border-radius: 4.5cqw; overflow: hidden; box-shadow: var(--shadow-card), 0 4cqw 9cqw -4cqw rgba(17, 24, 39, 0.28); }
+.login-slide[data-run] .login-mapa { animation: login-sobe 700ms var(--ease-out) both; }
+.login-ruas path { stroke: var(--card); }
+.login-parque { fill: color-mix(in srgb, var(--mov) 14%, var(--map-bg)); }
+.login-previsto { stroke: color-mix(in srgb, var(--ink) 28%, transparent); }
+.login-slide[data-run] .login-previsto { animation: login-aparece 400ms ease 350ms both; }
+.login-rastro { stroke: var(--brand); stroke-dasharray: 1; stroke-dashoffset: 0; }
+.login-slide[data-run] .login-rastro { animation: login-rastro 2400ms var(--ease-anda) 900ms both; }
+@keyframes login-rastro { from { stroke-dashoffset: 1; } }
+.login-origem circle { fill: var(--card); stroke: var(--graphite); stroke-width: 2.5; }
+.login-origem .login-origem-miolo { fill: var(--graphite); stroke: none; }
+.login-origem, .login-pino, .login-onda { transform-box: fill-box; transform-origin: center; }
+.login-pino { transform-origin: 50% 100%; }
+.login-slide[data-run] .login-origem { animation: login-pop-svg 400ms var(--ease-pop) 450ms both; }
+.login-pino path { fill: var(--brand); }
+.login-pino-miolo { fill: var(--card); }
+.login-slide[data-run] .login-pino { animation: login-pop-svg 450ms var(--ease-pop) 600ms both, login-pulo 500ms var(--ease-out) 3300ms; }
+@keyframes login-pulo { 40% { transform: translateY(-6px); } }
+.login-onda { fill: none; stroke: var(--brand); stroke-width: 2; opacity: 0; }
+.login-slide[data-run] .login-onda { animation: login-onda 1200ms var(--ease-out) 3300ms; }
+.login-slide[data-run] .login-onda.dois { animation-delay: 3550ms; }
+@keyframes login-onda { from { opacity: 0.6; transform: scale(1); } to { opacity: 0; transform: scale(3.4); } }
+.login-veiculo { offset-path: path('M60 240 H146 Q160 240 160 226 V144 Q160 130 174 130 H276 Q290 130 290 116 V90'); offset-rotate: auto; offset-distance: 100%; }
+.login-slide[data-run] .login-veiculo { animation: login-aparece 300ms ease 550ms both, login-anda 2400ms var(--ease-anda) 900ms both; }
+@keyframes login-anda { from { offset-distance: 0%; } }
+.login-veiculo-halo { fill: var(--brand-halo); }
+.login-veiculo-disco { fill: var(--status-parado); stroke: var(--card); stroke-width: 3; }
+.login-slide[data-run] .login-veiculo-disco { animation: login-para 300ms ease 3300ms both; }
+@keyframes login-para { from { fill: var(--status-mov); } }
+.login-veiculo-seta { fill: var(--card); }
+.login-chip { display: grid; padding: 1.8cqw 3cqw; border-radius: var(--r-pill); background: var(--card); box-shadow: var(--shadow-card), 0 2cqw 5cqw -2cqw rgba(17, 24, 39, 0.25); font-size: 2.9cqw; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.login-chip-troca { display: grid; }
+.login-chip-troca > span { grid-area: 1 / 1; display: flex; align-items: center; gap: 1.6cqw; }
+.login-chip-troca i { width: 1.8cqw; height: 1.8cqw; border-radius: 50%; }
+.login-chip-a { opacity: 0; }
+.login-slide[data-run] .login-chip-a { animation: login-chip-sai 260ms ease 3300ms both; }
+.login-slide[data-run] .login-chip-b { animation: login-chip-entra 320ms var(--ease-out) 3380ms both; }
+@keyframes login-chip-sai { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-40%); } }
+@keyframes login-chip-entra { from { opacity: 0; transform: translateY(40%); } }
+
+/* slide 2: alertas chegando no "Precisa de você" (chegadas em 500, 1400 e 2300 ms; cada queda dura 450 ms) */
+.login-painel { --slot: 15.6cqw; position: absolute; left: 9%; top: 11%; width: 80%; padding: 4cqw; border-radius: 4.5cqw; background: var(--card); box-shadow: var(--shadow-card), 0 4cqw 9cqw -4cqw rgba(17, 24, 39, 0.28); }
+.login-slide[data-run] .login-painel { animation: login-sobe 700ms var(--ease-out) both; }
+.login-painel-topo { display: flex; align-items: center; justify-content: space-between; font-size: 3.4cqw; font-weight: 600; color: var(--ink); }
+.login-contador { height: 4.6cqw; min-width: 4.6cqw; border-radius: var(--r-pill); background: var(--counter-crit-bg); color: var(--counter-crit-ink); font-size: 2.6cqw; overflow: hidden; }
+.login-contador-fita { display: flex; flex-direction: column; transform: translateY(-9.2cqw); }
+.login-contador-fita b { height: 4.6cqw; line-height: 4.6cqw; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.login-slide[data-run] .login-contador { animation: login-pop-svg 420ms var(--ease-pop) 500ms both, login-pulso 700ms var(--ease-out) 1400ms, login-pulso 700ms var(--ease-out) 2300ms; }
+.login-slide[data-run] .login-contador-fita { animation: login-fita 2900ms var(--ease-out) both; }
+@keyframes login-pulso { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--counter-crit-bg) 45%, transparent); } to { box-shadow: 0 0 0 2.4cqw transparent; } }
+@keyframes login-fita { 0%, 48.28% { transform: translateY(0); } 63.79%, 79.31% { transform: translateY(-4.6cqw); } 94.83%, 100% { transform: translateY(-9.2cqw); } }
+.login-lista { position: relative; margin-top: 3.4cqw; height: calc(var(--slot) * 3 - 2cqw); }
+.login-alerta { position: absolute; inset: 0 0 auto 0; height: 13.6cqw; display: flex; align-items: center; gap: 2.6cqw; padding: 0 2.6cqw; border-radius: 3cqw; background: var(--card); box-shadow: var(--shadow-card), 0 1.4cqw 3cqw -1.4cqw rgba(17, 24, 39, 0.18); }
+.login-alerta.a { transform: translateY(calc(var(--slot) * 2)); opacity: 0.55; }
+.login-alerta.b { transform: translateY(var(--slot)); }
+.login-alerta.c { z-index: 1; }
+.login-slide[data-run] .login-alerta.a { animation: login-alerta-a 2900ms var(--ease-drop) both; }
+.login-slide[data-run] .login-alerta.b { animation: login-alerta-b 2900ms var(--ease-drop) both; }
+.login-slide[data-run] .login-alerta.c { animation: login-alerta-c 2900ms var(--ease-drop) both; }
+@keyframes login-alerta-a { 0%, 17.24% { opacity: 0; transform: translateY(-40%) scale(0.96); } 32.76%, 48.28% { opacity: 1; transform: none; } 63.79%, 79.31% { opacity: 1; transform: translateY(var(--slot)); } 94.83%, 100% { opacity: 0.55; transform: translateY(calc(var(--slot) * 2)); } }
+@keyframes login-alerta-b { 0%, 48.28% { opacity: 0; transform: translateY(-40%) scale(0.96); } 63.79%, 79.31% { opacity: 1; transform: none; } 94.83%, 100% { opacity: 1; transform: translateY(var(--slot)); } }
+@keyframes login-alerta-c { 0%, 79.31% { opacity: 0; transform: translateY(-40%) scale(0.96); } 94.83%, 100% { opacity: 1; transform: none; } }
+.login-alerta-icone { flex: none; display: grid; place-items: center; width: 8.4cqw; height: 8.4cqw; border-radius: 2.4cqw; background: var(--crit-soft); color: var(--crit); }
+.login-alerta-icone svg { width: 5cqw; height: 5cqw; }
+.login-alerta-texto { display: flex; flex-direction: column; min-width: 0; }
+.login-alerta-texto b { font-size: 2.9cqw; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.login-alerta-texto span { font-size: 2.4cqw; color: var(--ink-3); }
+.login-alerta-acao { margin-left: auto; padding: 1.2cqw 2.4cqw; border-radius: var(--r-pill); background: var(--brand-fill); color: var(--brand-fill-ink); font-size: 2.4cqw; font-weight: 600; }
+.login-cone img { transform-origin: 50% 85%; }
+.login-slide[data-run] .login-cone img { animation: login-balanca 600ms var(--ease-out) 500ms, login-balanca 600ms var(--ease-out) 1400ms, login-balanca 600ms var(--ease-out) 2300ms; }
+@keyframes login-balanca { 15% { transform: rotate(9deg); } 35% { transform: rotate(-7deg); } 55% { transform: rotate(4deg); } 75% { transform: rotate(-2deg); } }
+
+/* slide 3: custos por categoria que se juntam no total por veículo. A barra cresce na sua linha; no voo, uma cópia
+   dela (login-custo-voo) viaja até o seu trecho na barra do total, encolhendo por 1/S (--s), e no pouso some enquanto
+   o trecho de verdade aparece — o trecho não herda a hachura achatada pela escala. --dx, --dy e --voo vêm do TSX. */
+.login-custos { position: absolute; left: 9%; top: 13%; width: 80%; padding: 4cqw; border-radius: 4.5cqw; background: var(--card); box-shadow: var(--shadow-card), 0 4cqw 9cqw -4cqw rgba(17, 24, 39, 0.28); }
+.login-slide[data-run] .login-custos { animation: login-sobe 700ms var(--ease-out) both; }
+.login-custos-linhas { position: relative; margin-top: 3.4cqw; height: 46.2cqw; }
+.login-custo, .login-custo-total { position: absolute; left: 0; right: 0; height: 6.4cqw; }
+.login-custo { z-index: 2; } /* a cópia em voo passa por cima da linha do total */
+.login-slide[data-run] .login-custo { animation: login-linha 450ms var(--ease-out) calc(250ms + var(--k) * 80ms) both; }
+@keyframes login-linha { from { opacity: 0; transform: translateY(1.5cqw); } }
+.login-custo-icone { position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 6.4cqw; height: 6.4cqw; border-radius: 2cqw; background: var(--surface-muted); color: var(--ink-2); }
+.login-custo-icone svg { width: 3.8cqw; height: 3.8cqw; }
+.login-custo-nome, .login-custo-total-nome { position: absolute; left: 8.4cqw; top: 0; line-height: 6.4cqw; font-size: 2.6cqw; color: var(--ink-2); white-space: nowrap; }
+.login-custo-total-nome { left: 0; font-size: 2.8cqw; font-weight: 600; color: var(--ink); }
+.login-custo-barra, .login-custo-voo { position: absolute; left: 28cqw; top: 1.7cqw; width: calc(var(--W) * var(--p)); height: 3cqw; border-radius: var(--r-pill); transform-origin: left center; }
+.login-custo-barra { opacity: 0.45; }
+.login-slide[data-run] .login-custo-barra { animation: login-cresce 600ms var(--ease-out) calc(450ms + var(--k) * 90ms) both, login-apaga 300ms ease var(--voo) both; }
+@keyframes login-cresce { from { transform: scaleX(0); } }
+@keyframes login-apaga { from { opacity: 1; } }
+.login-custo-voo { opacity: 0; z-index: 1; }
+.login-slide[data-run] .login-custo-voo { animation: login-voa 700ms cubic-bezier(0.77, 0, 0.175, 1) var(--voo) forwards; }
+@keyframes login-voa { 0% { opacity: 1; transform: none; } 99% { opacity: 1; transform: translate(var(--dx), var(--dy)) scaleX(var(--s)); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scaleX(var(--s)); } }
+.login-custo-total { top: 39.8cqw; }
+.login-custo-total::before { content: ""; position: absolute; left: 0; right: 0; top: -1.6cqw; height: 1px; background: var(--line); }
+.login-custo-trilha { position: absolute; left: 28cqw; top: 1.7cqw; width: var(--W); height: 3cqw; display: flex; border-radius: var(--r-pill); background: var(--surface-muted); overflow: hidden; }
+.login-slide[data-run] .login-custo-total-nome, .login-slide[data-run] .login-custo-trilha, .login-slide[data-run] .login-custo-total::before { animation: login-aparece 400ms ease 1600ms both; }
+.login-custo-trecho { width: calc(var(--W) * var(--p) * var(--s)); height: 100%; }
+.login-custo-trecho:not(:last-child) { box-shadow: inset -0.4cqw 0 0 var(--card); } /* fio entre os trechos */
+.login-slide[data-run] .login-custo-trecho { animation: login-pisca 1ms linear var(--pousa) both; }
+@keyframes login-pisca { from { opacity: 0; } }
+.login-custo-ok { position: absolute; left: calc(28cqw + var(--W) + 1.6cqw); top: 1.2cqw; width: 4cqw; height: 4cqw; border-radius: 50%; background: var(--mov); }
+.login-custo-ok::after { content: ""; position: absolute; left: 1.45cqw; top: 0.85cqw; width: 1.1cqw; height: 1.9cqw; border: solid var(--card); border-width: 0 0.5cqw 0.5cqw 0; transform: rotate(45deg); }
+.login-slide[data-run] .login-custo-ok { animation: login-pop-svg 360ms var(--ease-pop) 3100ms both; }
+
+/* título: a expressão sublinhada por uma rota tracejada que se desenha e termina num pino */
+.login-copy[data-on] h2 { animation: login-sobe-txt 600ms var(--ease-out) 120ms both; }
+.login-copy[data-on] p { animation: login-sobe-txt 600ms var(--ease-out) 220ms both; }
+.login-rota-mask { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.login-copy[data-on] .login-rota-mask { animation: login-rastro 800ms var(--ease-anda) 550ms both; }
+.login-copy[data-on] .login-rota-pino { animation: login-pop-svg 360ms var(--ease-pop) 1300ms both; }
+
+/* progresso do carrossel: dita a troca de slide; pausa com o mouse em cima ou com foco de teclado no painel */
+.login-seg-fill { transform-origin: left; animation: login-progresso 6500ms linear both; }
+@keyframes login-progresso { from { transform: scaleX(0); } }
+.login-show:hover .login-seg-fill, .login-show:has(:focus-visible) .login-seg-fill { animation-play-state: paused; }
+@media (hover: hover) and (pointer: fine) { .login-seg:hover > span { background: var(--line-hover); } }
+@media (min-width: 768px) and (max-height: 760px) { .login-stage { width: min(30vw, 340px, calc(100vh / var(--ui-zoom) - 360px)); } }
+
 @media (prefers-reduced-motion: reduce) {
+  /* login: a cena aparece pronta e o carrossel não troca sozinho (a troca é pelo clique) */
+  .login-stage *, .login-copy *, .login-seg-fill { animation: none !important; }
   .anim-page, .grow-y, .grow-x, .panel-in, .toast-in { animation: fade-in 150ms ease both !important; transform: none !important; }
   .anim-page { animation-fill-mode: backwards !important; } /* mesmo motivo do .anim-page acima: sem contexto de empilhamento depois de entrar */
   .anim-out, .panel-out, .toast-out, .sheet-out { animation: fade-out var(--t-exit) ease both !important; }

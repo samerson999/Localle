@@ -1,11 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import IconCadeado from '~icons/solar/lock-keyhole-bold-duotone';
+import IconCarta from '~icons/solar/letter-bold-duotone';
 import { useStore } from '../lib/store';
 import { BrandMark } from '../components/Layout';
 import { homeOf } from '../lib/support';
 import { esqueciSenha, login } from '../lib/localleApi';
 import { Button, Input, Field, TextButton, cx } from '../components/ui';
+import LoginShowcase from '../components/LoginShowcase';
+import logoLocalle from '../images/localle-logo.webp';
 
+// Estrutura da oratry.com.br/login (04/11/2026): formulário sem card, centralizado, com a marca centralizada acima; ao lado, o
+// carrossel de destaques (components/LoginShowcase.tsx). A posição da foto escolhida em Revenda continua valendo: lado
+// do painel, foto de fundo (formulário em card) ou sem painel; com foto, o painel mostra a foto no lugar do carrossel.
 export default function Login() {
   const b = useStore((s) => s.revenda.branding);
   const nav = useNavigate();
@@ -36,44 +43,73 @@ export default function Login() {
     } finally { setBusy(false); }
   };
   const pos = b.photoPos;
-  const photo = (
-    <div className={cx('relative overflow-hidden bg-ink p-10 md:p-14 flex items-end', pos === 'fundo' ? 'absolute inset-0' : 'flex-[999_1_520px] min-h-[320px] max-md:min-h-[136px] max-md:p-6')}>
-      {b.photo ? <img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" /> : (
-        <svg aria-hidden="true" viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-40"><g fill="none" stroke="var(--brand)" strokeWidth="2"><path d="M-20 620 C 160 560, 240 700, 420 610 S 700 520, 860 600" /><path d="M-20 300 C 120 360, 300 240, 460 330 S 720 420, 860 300" /><path d="M200 -20 C 240 200, 160 420, 260 640 S 300 860, 280 940" /><path d="M600 -20 C 560 220, 660 460, 580 700 S 620 860, 640 940" /></g></svg>
-      )}
-      {b.photo && <div className="absolute inset-0 bg-scrim" />}
-      {pos !== 'fundo' && <div className="relative max-w-md max-md:hidden"><h2 className="text-on-dark text-[clamp(28px,3.4vw,40px)] font-semibold leading-[1.1] tracking-[-0.025em]">{b.tagline}</h2></div>}
+  const voltar = (rotulo: string) => <button type="button" onClick={() => { setErr(''); setModo('entrar'); }} className="self-start text-small text-ink-2 hover:text-ink mb-3">← {rotulo}</button>;
+  const selo = (Icone: typeof IconCadeado) => <span aria-hidden="true" className="mx-auto grid place-items-center size-12 rounded-ctl border border-brand-soft-line bg-brand-soft text-brand-link"><Icone className="size-6" /></span>;
+  const erro = err && <p role="alert" className="text-small font-medium text-crit-ink text-left">{err}</p>;
+
+  const visual = (
+    <div aria-hidden={b.photo ? true : undefined} className={cx('relative isolate overflow-hidden flex-1 min-h-screen flex flex-col items-center justify-center px-8 py-16 max-md:hidden', pos === 'direita' ? 'border-l' : 'border-r', 'border-line', !b.photo && 'login-visual')}>
+      {b.photo ? <>
+        <img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-scrim" />
+        {b.tagline && <h2 className="absolute left-12 right-12 bottom-12 text-on-dark text-[clamp(28px,3.4vw,40px)] font-semibold leading-[1.1] tracking-[-0.025em]">{b.tagline}</h2>}
+      </> : <LoginShowcase tagline={b.tagline} />}
     </div>
   );
+
+  // marca: o logo da revenda; revenda sem logo, o símbolo com o nome dela; senão o logo com nome da Localle. Fica
+  // centralizada acima do formulário (e no topo do card, com foto de fundo).
+  const marca = b.logo ? <BrandMark size={32} /> : b.name && b.name !== 'Localle' ? <span className="flex items-center gap-2"><BrandMark size={28} /><span className="text-h3 font-semibold">{b.name}</span></span> : <img src={logoLocalle} alt="Localle" className="h-8 w-auto" />;
+
   const form = (
-    <div className={cx('relative flex items-center p-6 md:p-10', pos === 'fundo' ? 'w-full min-h-screen justify-end md:pr-20' : pos === 'centro' ? 'w-full min-h-screen justify-center' : 'flex-[1_1_460px] justify-center')}>
-      <form onSubmit={(e) => { e.preventDefault(); void (modo === 'esqueci' ? pedirLink() : enter()); }} className="w-full max-w-[400px] bg-card rounded-card p-6 sm:p-8 md:p-10 flex flex-col gap-5">
-        <div className="flex items-center gap-3"><BrandMark size={48} /><div className="flex flex-col"><span className="text-h3 font-semibold">{b.name}</span><span className="text-small text-ink-2">Gestão de frotas e rastreamento</span></div></div>
+    <div className={cx('relative flex-1 min-h-screen flex items-center', pos === 'fundo' ? 'justify-end p-6 md:pr-20' : 'justify-center')}>
+      <form onSubmit={(e) => { e.preventDefault(); void (modo === 'esqueci' ? pedirLink() : enter()); }}
+        className={cx('flex flex-col text-center anim-fade', pos === 'fundo' ? 'w-full max-w-[400px] bg-card rounded-card shadow-modal p-8' : 'w-[min(370px,calc(100%-48px))] pt-24 pb-16')}>
+        <div className="flex justify-center mb-10">{marca}</div>
         {modo === 'entrar' ? <>
-          <div><h1 className="text-h2 font-semibold">Entrar</h1><p className="text-body text-ink-2 mt-1">Use o e-mail cadastrado pela sua central.</p></div>
-          <Field label="E-mail ou usuário"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" /></Field>
-          <Field label="Senha"><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} className="h-ctl-lg" autoComplete="current-password" /></Field>
-          {err && <p role="alert" className="text-small font-medium text-crit-ink">{err}</p>}
-          <Button type="submit" size="lg" disabled={busy}>{busy ? 'Entrando…' : 'Acessar plataforma'}</Button>
-          <TextButton type="button" className="self-start" onClick={() => { setErr(''); setModo('esqueci'); }}>Esqueci minha senha</TextButton>
+          <h1 className="text-title font-semibold">Bem-vindo de volta</h1>
+          <p className="text-body text-ink-2 mt-3 mb-8">Use o e-mail cadastrado pela sua central.</p>
+          <div className="flex flex-col gap-4 text-left">
+            <Field label="E-mail ou usuário"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" placeholder="voce@empresa.com.br" /></Field>
+            <Field label="Senha"><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} className="h-ctl-lg" autoComplete="current-password" placeholder="Sua senha" /></Field>
+            {erro}
+            <Button type="submit" size="lg" disabled={busy} className="w-full mt-1">{busy ? 'Entrando…' : 'Acessar plataforma'}</Button>
+          </div>
+          <TextButton type="button" className="self-center mt-4" onClick={() => { setErr(''); setModo('esqueci'); }}>Esqueci minha senha</TextButton>
         </> : modo === 'esqueci' ? <>
-          <div><h1 className="text-h2 font-semibold">Esqueci minha senha</h1><p className="text-body text-ink-2 mt-1">Enviamos um link para você criar uma nova senha.</p></div>
-          <Field label="E-mail"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" autoFocus /></Field>
-          {err && <p role="alert" className="text-small font-medium text-crit-ink">{err}</p>}
-          <Button type="submit" size="lg" loading={busy}>Enviar link</Button>
-          <TextButton type="button" className="self-start" onClick={() => { setErr(''); setModo('entrar'); }}>Voltar para o login</TextButton>
+          {voltar('Voltar para entrar')}
+          {selo(IconCadeado)}
+          <h1 className="mt-3 text-h2 font-semibold">Recupere seu acesso</h1>
+          <p className="text-body text-ink-2 mt-2 mb-6">Digite seu e-mail e enviaremos um link para criar uma nova senha.</p>
+          <div className="flex flex-col gap-4 text-left">
+            <Field label="E-mail"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" placeholder="voce@empresa.com.br" autoFocus /></Field>
+            {erro}
+            <Button type="submit" size="lg" loading={busy} className="w-full mt-1">Enviar link</Button>
+          </div>
         </> : <>
-          <div><h1 className="text-h2 font-semibold">Confira seu e-mail</h1><p className="text-body text-ink-2 mt-1">Se <span className="font-medium text-ink">{email.trim()}</span> estiver cadastrado, enviamos um link para criar uma nova senha. Ele vale 30 minutos e só pode ser usado uma vez.</p></div>
-          <Button type="button" variant="secondary" onClick={() => setModo('entrar')}>Voltar para o login</Button>
+          {selo(IconCarta)}
+          <h1 className="mt-3 text-h2 font-semibold">Confira seu e-mail</h1>
+          <p className="text-body text-ink-2 mt-2 mb-6">Se <span className="font-medium text-ink">{email.trim()}</span> estiver cadastrado, enviamos um link para criar uma nova senha. Ele vale 30 minutos e só pode ser usado uma vez.</p>
+          <Button type="button" variant="secondary" size="lg" className="w-full" onClick={() => setModo('entrar')}>Voltar para o login</Button>
         </>}
-        <div className="text-small text-ink-2 border-t border-line pt-4">Suporte: <span className="num">{b.supportPhone}</span></div>
+        <footer className="mt-10 flex flex-col items-center gap-1 text-caption text-ink-3">
+          <p>Gestão de frotas e rastreamento</p>
+          {b.supportPhone && <p className="text-small text-ink-2">Suporte: <span className="num">{b.supportPhone}</span></p>}
+        </footer>
       </form>
     </div>
   );
-  if (pos === 'centro') return <div className="min-h-screen relative bg-canvas">{form}</div>;
+
+  if (pos === 'centro') return <div className="min-h-screen relative bg-card flex">{form}</div>;
+  if (pos === 'fundo') return (
+    <div className="min-h-screen relative bg-canvas flex">
+      {b.photo ? <><img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" /><div className="absolute inset-0 bg-scrim" /></> : <div className="login-visual absolute inset-0" />}
+      {form}
+    </div>
+  );
   return (
-    <div className={cx('min-h-screen relative flex flex-wrap bg-canvas', pos === 'direita' && 'flex-row-reverse')}>
-      {photo}{form}
+    <div className={cx('min-h-screen relative flex bg-card', pos === 'esquerda' && 'flex-row-reverse')}>
+      {form}{visual}
     </div>
   );
 }
