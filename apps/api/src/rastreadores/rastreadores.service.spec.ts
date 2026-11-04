@@ -116,6 +116,8 @@ describe('RastreadoresService', () => {
   afterAll(async () => {
     for (const rastreadorId of rastreadoresCriados) {
       await pool.query('delete from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
+      await pool.query('delete from ultima_posicao where rastreador_id = $1', [rastreadorId]);
+      await pool.query('delete from posicoes where rastreador_id = $1', [rastreadorId]);
       await pool.query('delete from instalacoes where rastreador_id = $1', [rastreadorId]);
       await pool.query('delete from rastreador_vinculos where rastreador_id = $1', [rastreadorId]);
     }
@@ -547,6 +549,45 @@ describe('RastreadoresService', () => {
         expect(traccar.consultados.at(-1)).toBe(deviceId);
       });
 
+      it('transmissão: todos os não desativados, com cliente/placa, posição, telemetria e pacotes da última hora pelo server_time', async () => {
+        const [mudo, fala, desativado] = await Promise.all([0, 1, 2].map(() => service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) })));
+        rastreadoresCriados.push(mudo.id, fala.id, desativado.id);
+        // o fluxo de desativar tem teste próprio: aqui só importa o status
+        await pool.query("update rastreadores set status = 'desativado' where id = $1", [desativado.id]);
+        await service.vincular(superadminId, clientA, fala.id);
+        await pool.query(
+          `insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em, ultima_posicao_valida_em, ultimos_atributos, atributos_em)
+           values ($1, now(), now(), '{"power": 12.4, "rssi": 4}', now())`,
+          [fala.id],
+        );
+        await pool.query(
+          `insert into ultima_posicao (rastreador_id, posicao_id, fix_time, geom, speed_kmh, ignition)
+           values ($1, 1, now(), st_setsrid(st_makepoint(-38.5, -3.7), 4326), 0, false)`,
+          [fala.id],
+        );
+        // 2 pacotes recebidos agora (um com fix_time de 3 h atrás, descarregado da memória do aparelho) e 1 de duas horas atrás
+        await pool.query(
+          `insert into posicoes (rastreador_id, traccar_position_id, fix_time, server_time, valid, geom)
+           values ($1, 1, now() - interval '3 hours', now(), true, st_setsrid(st_makepoint(-38.5, -3.7), 4326)),
+                  ($1, 2, now(), now(), true, st_setsrid(st_makepoint(-38.5, -3.7), 4326)),
+                  ($1, 3, now() - interval '2 hours', now() - interval '2 hours', true, st_setsrid(st_makepoint(-38.5, -3.7), 4326))`,
+          [fala.id],
+        );
+
+        const lista = await modelos.transmissao();
+        expect(lista.find((t) => t.id === desativado.id)).toBeUndefined();
+        expect(lista.find((t) => t.id === mudo.id)).toMatchObject({
+          imei: mudo.imei, modeloId: modeloImei, modelo: `Teste ${sufixo} IMEI`, modeloProtocolo: 'gt06', modeloPorta: 5023,
+          ultimoPacoteEm: null, pacotesUltimaHora: 0, ultimaPosicao: null, atributos: {}, cliente: null, placa: null,
+        });
+        const t = lista.find((x) => x.id === fala.id)!;
+        expect(t).toMatchObject({ cliente: expect.any(String), pacotesUltimaHora: 2, atributos: { power: 12.4, rssi: 4 } });
+        expect(t.telemetria).toMatchObject({ tensaoV: 12.4, sinalGsm: 4 });
+        expect(t.ultimaPosicao).toMatchObject({ latitude: -3.7, longitude: -38.5, velocidadeKmh: 0, ignicao: false });
+        // quem transmite vem antes de quem nunca transmitiu
+        expect(lista.findIndex((x) => x.id === fala.id)).toBeLessThan(lista.findIndex((x) => x.id === mudo.id));
+      });
+
       it('diagnóstico do rastreador: conexão, comandos do próprio aparelho, atributos e ficha do modelo; 404 se não existe', async () => {
         traccar.cfg = cfg;
         traccar.protocolos = [{ protocolo: 'gt06', porta: 5023, transporte: 'ALL' }];
@@ -570,6 +611,14 @@ describe('RastreadoresService', () => {
         expect(depois).toMatchObject({ protocoloDetectado: 'gt06', online: true, comandos: ['engineStop', 'engineResume', 'custom'], atributos: { versionFw: '1.2', power: 12.6 } });
         expect(depois.ultimoPacoteEm).toBeInstanceOf(Date);
         expect(depois.telemetria).toMatchObject({ tensaoV: 12.6, bloqueado: null });
+        // pacote sem fix de GPS: comunica, mas não há posição para mostrar
+        expect(depois.ultimaPosicao).toBeNull();
+        await pool.query(
+          `insert into ultima_posicao (rastreador_id, posicao_id, fix_time, geom, speed_kmh, ignition)
+           values ($1, 1, now(), st_setsrid(st_makepoint(-38.5, -3.7), 4326), 42, true)`,
+          [r.id],
+        );
+        expect((await modelos.diagnostico(r.id)).ultimaPosicao).toMatchObject({ latitude: -3.7, longitude: -38.5, velocidadeKmh: 42, ignicao: true, em: expect.any(Date) });
 
         // Traccar fora do ar: a ficha diz o erro e o resto não é consultado
         traccar.falhar = true;

@@ -212,10 +212,21 @@ export interface DiagnosticoRastreador {
   /** null = não consultado (sem Traccar/device ou Traccar fora). */
   online: boolean | null;
   ultimoPacoteEm: string | null; atributos: Record<string, unknown>; atributosEm: string | null;
-  telemetria: { tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null };
+  telemetria: TelemetriaLida;
+  /** Última posição válida (com fix de GPS); null = nenhuma ainda. */
+  ultimaPosicao: UltimaPosicao | null;
   ficha: FichaTraccar | null;
   /** Comandos deste aparelho; null antes da primeira posição. */
   comandos: string[] | null;
+}
+export interface TelemetriaLida { tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null }
+export interface UltimaPosicao { em: string; latitude: number; longitude: number; velocidadeKmh: number | null; ignicao: boolean | null }
+/** GET /superadmin/rastreadores/transmissao: o que cada rastreador não desativado está mandando (sem consultar o Traccar). */
+export interface TransmissaoRastreador {
+  id: string; imei: string; modeloId: string | null; modelo: string | null; modeloProtocolo: string | null; modeloPorta: number | null;
+  protocoloDetectado: string | null; traccarDeviceId: string | null; cliente: string | null; placa: string | null;
+  ultimoPacoteEm: string | null; ultimaPosicaoValidaEm: string | null; pacotesUltimaHora: number;
+  ultimaPosicao: UltimaPosicao | null; atributos: Record<string, unknown>; atributosEm: string | null; telemetria: TelemetriaLida;
 }
 export interface AtributosRecebidos { imei: string; protocolo: string | null; atributos: Record<string, unknown>; atributos_em: string }
 export interface AdminSimCard { id: string; iccid: string; operadora: string | null; numero: string | null; status: string; rastreador_id: string | null }
@@ -243,7 +254,8 @@ export const adminApi = {
   saude: () => apiGet<Saude>('/superadmin/saude'),
   renameClient: (id: string, name: string) => apiSend('PATCH', `/clients/${id}`, { name }),
   rastreadores: () => apiGet<AdminRastreador[]>('/superadmin/rastreadores'),
-  createRastreador: (body: { imei: string; modeloId: string }) => apiSend('POST', '/superadmin/rastreadores', body),
+  createRastreador: (body: { imei: string; modeloId: string }) => apiSend<AdminRastreador>('POST', '/superadmin/rastreadores', body),
+  transmissao: () => apiGet<TransmissaoRastreador[]>('/superadmin/rastreadores/transmissao'),
   trocarModeloRastreador: (id: string, modeloId: string) => apiSend('PATCH', `/superadmin/rastreadores/${id}`, { modeloId }),
   modelos: () => apiGet<AdminRastreadorModelo[]>('/superadmin/rastreador-modelos'),
   criarModelo: (body: ModeloBody) => apiSend<AdminRastreadorModelo>('POST', '/superadmin/rastreador-modelos', body),

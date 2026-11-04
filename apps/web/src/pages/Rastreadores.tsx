@@ -2,13 +2,13 @@
 // cadastro de rastreador e chip, vínculo chip↔rastreador, vínculo rastreador↔cliente, instalação vigente,
 // último pacote, desinstalação e desativação. Em qual ativo o rastreador está é o próprio cliente que indica
 // (Gestão de ativos). Custo, avaria e recolhimento físico não existem no schema.
-import { useState, type ReactNode } from 'react';
-import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select, SearchSelect, TextButton, Modal, Field, FormGroup, Input, Callout, EmptyState, toast, confirmAction } from '../components/ui';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select, SearchSelect, SearchInput, TextButton, Modal, Field, FormGroup, Input, Callout, EmptyState, Tabs, TabPanel, toast, confirmAction, useUrlTab } from '../components/ui';
 import { KpiTile } from '../components/story';
 import { useStore } from '../lib/store';
-import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar, type SituacaoProtocolo } from '../lib/localleApi';
+import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar, type SituacaoProtocolo, type TransmissaoRastreador } from '../lib/localleApi';
 import { fmtD, fmtDT } from '@localle/shared/utils';
-import { itensDoDiagnostico, sugerirMapeamento, type Tom } from '../lib/diagnosticoRastreador';
+import { coordenadas, haQuanto, itensDoDiagnostico, PAROU_H, semFixDeGps, situacaoTransmissao, sugerirMapeamento, TRANSMITINDO_MIN, type SituacaoTransmissao, type Tom } from '../lib/diagnosticoRastreador';
 import { nomeDoModelo, normalizarIdentificador, ROTULO_IDENTIFICADOR, TIPOS_IDENTIFICADOR, validarIdentificador, type TipoIdentificador } from '@localle/shared/rastreadorModelos';
 
 // Modelos: a fonte é a lista de aparelhos do Traccar (migration 1793170000000, ~2.200 modelos com protocolo e porta);
@@ -26,6 +26,18 @@ const SIT_BADGE: Record<Situacao, { tone: string; label: string }> = {
   desativado: { tone: 'red', label: 'Desativado' },
 };
 
+// Diagnóstico e aba Transmissão se atualizam sozinhos enquanto abertos (o aparelho pode estar sendo instalado agora).
+const ATUALIZA_MS = 10_000;
+function useAtualizacao(reload: () => void) {
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState === 'visible') reload(); }, ATUALIZA_MS);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
+type Acompanhado = Pick<AdminRastreador, 'id' | 'imei' | 'modelo_id'>;
+
 const carregar = () => Promise.all([adminApi.rastreadores(), adminApi.simCards(), adminApi.clients(), adminApi.modelos()]);
 
 export default function Rastreadores() {
@@ -37,7 +49,8 @@ export default function Rastreadores() {
   const [aoCliente, setAoCliente] = useState<AdminRastreador | null>(null);
   const [trocandoModelo, setTrocandoModelo] = useState<AdminRastreador | null>(null);
   const [editandoModelo, setEditandoModelo] = useState<AdminRastreadorModelo | 'novo' | null>(null);
-  const [diagnosticando, setDiagnosticando] = useState<AdminRastreador | null>(null);
+  const [diagnosticando, setDiagnosticando] = useState<{ r: Acompanhado; recemCadastrado?: boolean } | null>(null);
+  const [tab, setTab] = useUrlTab('inventario');
   if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com o acesso da Locale para ver o Console da Locale." /></Card>;
 
   const [rastreadores, chips, clientes, modelos] = data || [[], [], [], []];
@@ -68,7 +81,12 @@ export default function Rastreadores() {
         <Button variant="quiet" onClick={() => setModal('chip')}>Cadastrar chip</Button>
         <Button onClick={() => setModal('rastreador')}>Cadastrar rastreador</Button>
       </PageHeader>
-      <PageBody>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head">
+        <Tabs value={tab} onChange={setTab} tabs={[{ key: 'inventario', label: 'Inventário' }, { key: 'transmissao', label: 'Transmissão' }]} />
+      </div>
+      <TabPanel id={tab}>
+      {tab === 'transmissao' && <PageBody><TransmissaoAba onDiagnostico={(r) => setDiagnosticando({ r })} /></PageBody>}
+      {tab === 'inventario' && <PageBody>
         {error && <Callout tone="crit">Não foi possível carregar o inventário: {error}</Callout>}
         <Section title="Resumo">
           <Grid cols={4} equal>
@@ -97,7 +115,7 @@ export default function Rastreadores() {
                   <Badge tone={SIT_BADGE[s].tone}>{SIT_BADGE[s].label}</Badge>,
                   <span className="num text-small">{r.ultimo_pacote_em ? fmtDT(Date.parse(r.ultimo_pacote_em)) : '—'}</span>,
                   <div className="flex gap-3 justify-end">
-                    {s !== 'desativado' && <TextButton onClick={() => setDiagnosticando(r)}>Diagnóstico</TextButton>}
+                    {s !== 'desativado' && <TextButton onClick={() => setDiagnosticando({ r })}>Diagnóstico</TextButton>}
                     {s !== 'desativado' && (r.sim_card_id
                       ? <TextButton onClick={async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); }}>Desvincular chip</TextButton>
                       : <TextButton onClick={() => setVinculando(r)}>Vincular chip</TextButton>)}
@@ -132,12 +150,15 @@ export default function Rastreadores() {
             <p className="text-caption text-ink-2 mt-card-head">Aparelho que não está na lista do Traccar? <TextButton className="text-caption" onClick={() => setEditandoModelo('novo')}>Cadastrar à mão</TextButton></p>
           </Card>
         </Section>
-      </PageBody>
-      {modal === 'rastreador' && <NovoRastreadorModal modelos={modelosAtivos} onClose={() => setModal(null)} onDone={reload} onModeloCriado={reload} onNovoModelo={() => { setModal(null); setEditandoModelo('novo'); }} />}
-      {diagnosticando && <DiagnosticoModal rastreador={diagnosticando} modelo={modelos.find((m) => m.id === diagnosticando.modelo_id) ?? null}
+      </PageBody>}
+      </TabPanel>
+      {modal === 'rastreador' && <NovoRastreadorModal modelos={modelosAtivos} onClose={() => setModal(null)} onDone={reload} onModeloCriado={reload}
+        onCriado={(r) => setDiagnosticando({ r, recemCadastrado: true })} onNovoModelo={() => { setModal(null); setEditandoModelo('novo'); }} />}
+      {diagnosticando && <DiagnosticoModal rastreador={diagnosticando.r} recemCadastrado={diagnosticando.recemCadastrado}
+        modelo={modelos.find((m) => m.id === diagnosticando.r.modelo_id) ?? null}
         onClose={() => setDiagnosticando(null)}
         onEditarModelo={(m) => { setDiagnosticando(null); setEditandoModelo(m); }}
-        onTrocarModelo={() => { setTrocandoModelo(diagnosticando); setDiagnosticando(null); }} />}
+        onTrocarModelo={() => { const r = rastreadores.find((x) => x.id === diagnosticando.r.id); if (r) setTrocandoModelo(r); setDiagnosticando(null); }} />}
       {trocandoModelo && <TrocarModeloModal rastreador={trocandoModelo} modelos={modelosAtivos} onClose={() => setTrocandoModelo(null)} onDone={reload} onModeloCriado={reload} />}
       {editandoModelo && <ModeloModal modelo={editandoModelo === 'novo' ? null : editandoModelo} conhecidos={protocolosConhecidos(modelos, rastreadores)} onClose={() => setEditandoModelo(null)} onDone={reload} />}
       {modal === 'chip' && <NovoChipModal onClose={() => setModal(null)} onDone={reload} />}
@@ -174,14 +195,15 @@ function ModeloCelula({ r, onTrocar }: { r: AdminRastreador; onTrocar?: () => vo
   );
 }
 
-function NovoRastreadorModal({ modelos, onClose, onDone, onModeloCriado, onNovoModelo }: { modelos: AdminRastreadorModelo[]; onClose: () => void; onDone: () => void; onModeloCriado: () => void; onNovoModelo: () => void }) {
+// Depois de cadastrar, abre o diagnóstico do rastreador novo para acompanhar a primeira transmissão.
+function NovoRastreadorModal({ modelos, onClose, onDone, onModeloCriado, onCriado, onNovoModelo }: { modelos: AdminRastreadorModelo[]; onClose: () => void; onDone: () => void; onModeloCriado: () => void; onCriado: (r: AdminRastreador) => void; onNovoModelo: () => void }) {
   const [modelo, setModelo] = useState<AdminRastreadorModelo | null>(null);
   const modeloId = modelo?.id ?? '';
   const [ident, setIdent] = useState('');
   const [tocado, setTocado] = useState(false);
   const invalido = modelo ? validarIdentificador(modelo.tipo_identificador, ident) : null;
   const pronto = !!modelo && !invalido;
-  const { busy, submit } = useSubmit(() => adminApi.createRastreador({ imei: normalizarIdentificador(ident), modeloId }), 'Rastreador cadastrado.', onDone, onClose);
+  const { busy, submit } = useSubmit(async () => onCriado(await adminApi.createRastreador({ imei: normalizarIdentificador(ident), modeloId })), 'Rastreador cadastrado.', onDone, onClose);
   return (
     <Modal open onClose={onClose} title="Cadastrar rastreador" width="max-w-xl" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!pronto} onClick={submit}>Cadastrar</Button></>}>
       <>
@@ -403,19 +425,23 @@ function FichaTraccarModelo({ modelo }: { modelo: AdminRastreadorModelo }) {
 }
 
 // Checklist do rastreador: cada etapa do caminho aparelho → Traccar → plataforma, com o que fazer quando não bate.
-function DiagnosticoModal({ rastreador, modelo, onClose, onEditarModelo, onTrocarModelo }: {
-  rastreador: AdminRastreador; modelo: AdminRastreadorModelo | null; onClose: () => void;
+// Atualiza sozinho enquanto aberto: serve para acompanhar a instalação (recém-cadastrado: aguardando a 1ª transmissão).
+function DiagnosticoModal({ rastreador, recemCadastrado, modelo, onClose, onEditarModelo, onTrocarModelo }: {
+  rastreador: Acompanhado; recemCadastrado?: boolean; modelo: AdminRastreadorModelo | null; onClose: () => void;
   onEditarModelo: (m: AdminRastreadorModelo) => void; onTrocarModelo: () => void;
 }) {
   const { data, error, loading, reload } = useAdminQuery(() => adminApi.diagnosticoRastreador(rastreador.id), [rastreador.id]);
+  useAtualizacao(reload);
+  const aguardando = recemCadastrado && data && !data.ultimoPacoteEm;
   const itens = data ? itensDoDiagnostico(data, modelo && { nome: nomeModelo(modelo), protocolo: modelo.protocolo, porta: modelo.porta }) : [];
   const telemetriaIncompleta = itens.some((i) => i.etapa === 'Telemetria' && i.tom === 'warn');
   const protocoloErrado = itens.some((i) => (i.etapa === 'Protocolo' || i.etapa === 'Modelo') && i.tom === 'crit');
   return (
-    <Modal open onClose={onClose} title={`Diagnóstico · ${rastreador.imei}`} width="max-w-xl"
-      footer={<><Button variant="quiet" loading={loading} onClick={reload}>Consultar de novo</Button><Button onClick={onClose}>Fechar</Button></>}>
+    <Modal open onClose={onClose} title={`${aguardando ? 'Aguardando a 1ª transmissão' : 'Diagnóstico'} · ${rastreador.imei}`} width="max-w-xl"
+      footer={<><span className="mr-auto self-center text-caption text-ink-2">Atualiza sozinho a cada {ATUALIZA_MS / 1000} s</span><Button onClick={onClose}>Fechar</Button></>}>
       {loading && !data && <p className="text-small text-ink-2">Consultando a plataforma e o Traccar…</p>}
       {error && <Callout tone="crit">{error}</Callout>}
+      {aguardando && modelo && <p className="text-small text-ink-2 rounded-ctl bg-surface-muted px-3 py-2">Rastreador cadastrado. Ligue o aparelho e configure-o para enviar ao servidor do Traccar na <b className="text-ink">porta {modelo.porta}</b> (protocolo {modelo.protocolo}): o primeiro pacote aparece aqui, sem precisar recarregar.</p>}
       {data && (
         <ol className="flex flex-col gap-stack">
           {itens.map((i) => (
@@ -426,6 +452,7 @@ function DiagnosticoModal({ rastreador, modelo, onClose, onEditarModelo, onTroca
           ))}
         </ol>
       )}
+      {data && data.atributosEm && <DadosRecebidos d={data} />}
       {data && (protocoloErrado || (telemetriaIncompleta && modelo)) && (
         <div className="flex flex-wrap gap-3 border-t border-line pt-card-head">
           {protocoloErrado && <TextButton onClick={onTrocarModelo}>{modelo ? 'Trocar modelo' : 'Definir modelo'}</TextButton>}
@@ -434,6 +461,89 @@ function DiagnosticoModal({ rastreador, modelo, onClose, onEditarModelo, onTroca
       )}
     </Modal>
   );
+}
+
+// O último valor de cada dado que este aparelho mandou (o Traccar decodifica; a plataforma guarda o último de cada chave).
+function DadosRecebidos({ d }: { d: { atributos: Record<string, unknown>; atributosEm: string | null; ultimaPosicao: TransmissaoRastreador['ultimaPosicao'] } }) {
+  const p = d.ultimaPosicao;
+  return (
+    <section className="flex flex-col gap-hair border-t border-line pt-card-head">
+      <p className="text-small font-medium">Dados recebidos <span className="font-normal text-ink-2">· {fmtDT(Date.parse(d.atributosEm!))}</span></p>
+      {p && <p className="text-small text-ink-2">Posição {coordenadas(p)}{p.velocidadeKmh !== null ? ` · ${Math.round(p.velocidadeKmh)} km/h` : ''}{p.ignicao !== null ? ` · ignição ${p.ignicao ? 'ligada' : 'desligada'}` : ''}</p>}
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-hair font-mono text-caption">
+        {Object.entries(d.atributos).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
+          <div key={k} className="contents"><dt className="text-ink-2">{k}</dt><dd className="break-all">{JSON.stringify(v)}</dd></div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+// Aba Transmissão: se cada rastreador está transmitindo e o quê (posição e telemetria), sem consultar o Traccar.
+const SIT_TRANSMISSAO: Record<SituacaoTransmissao, { tone: string; label: string }> = {
+  agora: { tone: 'green', label: 'Transmitindo' },
+  recente: { tone: 'orange', label: 'Sem pacote recente' },
+  parou: { tone: 'red', label: 'Parou' },
+  nunca: { tone: 'gray', label: 'Nunca transmitiu' },
+};
+function TransmissaoAba({ onDiagnostico }: { onDiagnostico: (r: Acompanhado) => void }) {
+  const { data, error, loading, reload } = useAdminQuery(adminApi.transmissao);
+  useAtualizacao(reload);
+  const [filtro, setFiltro] = useState('');
+  const [busca, setBusca] = useState('');
+  const agora = Date.now();
+  const lista = (data || []).map((t) => ({ t, sit: situacaoTransmissao(t.ultimoPacoteEm, agora), semGps: semFixDeGps(t.ultimoPacoteEm, t.ultimaPosicao?.em ?? null) }));
+  const count = (s: SituacaoTransmissao) => lista.filter((x) => x.sit === s).length;
+  const termo = busca.trim().toLowerCase();
+  const visiveis = lista.filter((x) => (!filtro || (filtro === 'sem_gps' ? x.semGps : x.sit === filtro))
+    && (!termo || [x.t.imei, x.t.placa, x.t.cliente, x.t.modelo].some((v) => v?.toLowerCase().includes(termo))));
+  return (
+    <>
+      {error && <Callout tone="crit">Não foi possível carregar a transmissão: {error}</Callout>}
+      <Section title="Agora">
+        <Grid cols={4} equal>
+          <KpiTile label="Transmitindo" value={count('agora')} status="mov" sub={`pacote nos últimos ${TRANSMITINDO_MIN} min`} />
+          <KpiTile label="Sem pacote recente" value={count('recente')} status="parado" sub={`último entre ${TRANSMITINDO_MIN} min e ${PAROU_H} h`} />
+          <KpiTile label="Parou" value={count('parou')} status={count('parou') ? 'crit' : undefined} sub={`nada há mais de ${PAROU_H} h`} />
+          <KpiTile label="Nunca transmitiu" value={count('nunca')} sub={`${lista.filter((x) => x.semGps).length} comunicando sem GPS`} />
+        </Grid>
+      </Section>
+      <Section title={`${visiveis.length} rastreadores`}>
+        <Card>
+          <div className="flex flex-wrap gap-stack mb-card-head">
+            <Select aria-label="Filtrar por transmissão" className="w-full sm:w-64" value={filtro} onChange={(e) => setFiltro(e.target.value)}
+              options={[{ value: '', label: 'Todos' }, ...(Object.keys(SIT_TRANSMISSAO) as SituacaoTransmissao[]).map((k) => ({ value: k, label: SIT_TRANSMISSAO[k].label })), { value: 'sem_gps', label: 'Comunicando sem GPS' }]} />
+            <SearchInput className="w-full sm:w-72" value={busca} onChange={setBusca} placeholder="IMEI, placa, cliente ou modelo" />
+            <span className="sm:ml-auto self-center text-caption text-ink-2">Atualiza sozinho a cada {ATUALIZA_MS / 1000} s</span>
+          </div>
+          <Table minWidth={1100} loading={loading && !data} align={['left', 'left', 'left', 'left', 'left', 'right']}
+            head={['IMEI', 'Cliente e ativo', 'Transmissão', 'Posição', 'Telemetria', '']}
+            emptyState={<EmptyState icon="sinal" title={lista.length ? 'Nenhum rastreador com esse filtro' : 'Nenhum rastreador cadastrado'} />}
+            rows={visiveis.map(({ t, sit, semGps }) => [
+              <span className="font-mono text-small">{t.imei}
+                <span className="block font-sans text-caption text-ink-2">{t.modelo || 'sem modelo'}{t.modeloProtocolo ? ` · ${t.modeloProtocolo} ${t.modeloPorta}` : ''}</span>
+                {t.protocoloDetectado && t.modeloProtocolo && t.protocoloDetectado !== t.modeloProtocolo && <span className="block font-sans text-caption text-crit-ink">chegou como {t.protocoloDetectado}</span>}
+                {!t.traccarDeviceId && <span className="block font-sans text-caption text-warn-ink">sem device no Traccar</span>}</span>,
+              t.cliente ? <span>{t.cliente}<span className="block text-caption text-ink-2">{t.placa || 'sem ativo'}</span></span> : <span className="text-ink-3">Em estoque</span>,
+              <span><Badge tone={SIT_TRANSMISSAO[sit].tone}>{SIT_TRANSMISSAO[sit].label}</Badge>
+                {t.ultimoPacoteEm && <span className="block text-caption text-ink-2 num">há {haQuanto(t.ultimoPacoteEm, agora)} · {t.pacotesUltimaHora} na última hora</span>}</span>,
+              t.ultimaPosicao
+                ? <span className="text-small"><span className="num">{coordenadas(t.ultimaPosicao)}</span>
+                    <span className="block text-caption text-ink-2">{[t.ultimaPosicao.velocidadeKmh !== null && `${Math.round(t.ultimaPosicao.velocidadeKmh)} km/h`, t.ultimaPosicao.ignicao !== null && `ignição ${t.ultimaPosicao.ignicao ? 'ligada' : 'desligada'}`].filter(Boolean).join(' · ')}</span>
+                    {semGps && <span className="block text-caption text-warn-ink">sem GPS há {haQuanto(t.ultimaPosicao.em, agora)}</span>}</span>
+                : <span className={sit === 'nunca' ? 'text-ink-3' : 'text-small text-warn-ink'}>{sit === 'nunca' ? '—' : 'sem posição com GPS'}</span>,
+              <TelemetriaCelula t={t.telemetria} />,
+              <TextButton onClick={() => onDiagnostico({ id: t.id, imei: t.imei, modelo_id: t.modeloId })}>Diagnóstico</TextButton>,
+            ])} />
+        </Card>
+      </Section>
+    </>
+  );
+}
+
+function TelemetriaCelula({ t }: { t: TransmissaoRastreador['telemetria'] }) {
+  const partes = [t.tensaoV !== null && `${t.tensaoV.toFixed(1)} V`, t.sinalGsm !== null && `sinal ${t.sinalGsm}/5`, t.satelites !== null && `${t.satelites} satélites`, t.bloqueado !== null && (t.bloqueado ? 'bloqueado' : 'desbloqueado')].filter(Boolean);
+  return partes.length ? <span className="text-small">{partes.join(' · ')}</span> : <span className="text-ink-3">—</span>;
 }
 
 // O que os aparelhos do modelo mandaram de verdade (último valor de cada atributo): base para preencher o mapeamento.

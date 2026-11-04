@@ -13,8 +13,9 @@ export function firmwareDe(a: Record<string, unknown>): { fw: string | null; hw:
   return { fw: txt(a.versionFw), hw: txt(a.versionHw) };
 }
 
-const haQuanto = (iso: string, agora: number) => {
+export const haQuanto = (iso: string, agora: number) => {
   const min = Math.round((agora - Date.parse(iso)) / 60_000);
+  if (min < 1) return 'menos de 1 min';
   if (min < 60) return `${min} min`;
   if (min < 48 * 60) return `${Math.round(min / 60)} h`;
   return `${Math.round(min / 1440)} dias`;
@@ -46,6 +47,15 @@ export function itensDoDiagnostico(
     itens.push({ etapa: 'Conexão', tom: 'warn', texto: `${d.online === false ? 'Desconectado' : 'Conexão não consultada'}; último pacote há ${haQuanto(d.ultimoPacoteEm, agora)}. Veja alimentação, chip e sinal no local.` });
   }
 
+  if (d.ultimoPacoteEm) {
+    const p = d.ultimaPosicao;
+    itens.push(p
+      ? semFixDeGps(d.ultimoPacoteEm, p.em)
+        ? { etapa: 'GPS', tom: 'warn', texto: `Comunica, mas a última posição com GPS é de há ${haQuanto(p.em, agora)}. Veja a antena do GPS e se o aparelho está coberto por metal.` }
+        : { etapa: 'GPS', tom: 'ok', texto: `Posição de há ${haQuanto(p.em, agora)}: ${coordenadas(p)}.` }
+      : { etapa: 'GPS', tom: 'warn', texto: 'Comunica, mas ainda sem posição com GPS. Em local fechado é normal: leve o veículo a céu aberto.' });
+  }
+
   if (!d.protocoloDetectado) itens.push({ etapa: 'Protocolo', tom: 'info', texto: 'Aguardando a primeira posição para confirmar o protocolo.' });
   else if (d.protocoloDetectado !== modelo.protocolo) itens.push({ etapa: 'Protocolo', tom: 'crit', texto: `O aparelho conectou como ${d.protocoloDetectado}, mas o modelo espera ${modelo.protocolo}: modelo errado ou aparelho na porta errada.` });
   else itens.push({ etapa: 'Protocolo', tom: 'ok', texto: `Confirmado na posição: ${d.protocoloDetectado}.` });
@@ -72,6 +82,27 @@ export function itensDoDiagnostico(
   const { fw, hw } = firmwareDe(d.atributos);
   itens.push({ etapa: 'Firmware', tom: 'info', texto: fw || hw ? [fw && `firmware ${fw}`, hw && `hardware ${hw}`].filter(Boolean).join(' · ') : 'O aparelho não informa firmware pelo protocolo.' });
   return itens;
+}
+
+export const coordenadas = (p: { latitude: number; longitude: number }) => `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`;
+
+// Aba Transmissão: "está transmitindo?" é pergunta de minutos (instalação, teste de bancada), não o "sem sinal" em horas
+// do monitoramento do cliente (monitoramento.sem_sinal_h). Parado e desligado, aparelho comum manda pacote a cada 5–30 min.
+export const TRANSMITINDO_MIN = 10;
+export const PAROU_H = 24;
+export type SituacaoTransmissao = 'agora' | 'recente' | 'parou' | 'nunca';
+
+export function situacaoTransmissao(ultimoPacoteEm: string | null, agora: number): SituacaoTransmissao {
+  if (!ultimoPacoteEm) return 'nunca';
+  const ms = agora - Date.parse(ultimoPacoteEm);
+  if (ms <= TRANSMITINDO_MIN * 60_000) return 'agora';
+  return ms <= PAROU_H * 3600_000 ? 'recente' : 'parou';
+}
+
+/** Pacotes chegando, mas a última posição com fix de GPS ficou para trás (ou nunca houve). */
+export function semFixDeGps(ultimoPacoteEm: string | null, posicaoEm: string | null): boolean {
+  if (!ultimoPacoteEm) return false;
+  return !posicaoEm || Date.parse(ultimoPacoteEm) - Date.parse(posicaoEm) > TRANSMITINDO_MIN * 60_000;
 }
 
 export interface SugestaoMapeamento { campo: 'atributoTensao' | 'sinalMax' | 'atributoBloqueio'; valor: string; motivo: string }

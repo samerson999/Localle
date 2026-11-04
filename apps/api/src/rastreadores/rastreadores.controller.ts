@@ -29,6 +29,12 @@ export class RastreadoresController {
     return this.rastreadores.findAllPainel();
   }
 
+  /** Aba Transmissão: o que cada rastreador não desativado está mandando (antes de `:id`, que exige UUID). */
+  @Get('transmissao')
+  transmissao() {
+    return this.modelos.transmissao();
+  }
+
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const rastreador = await this.rastreadores.findById(id);

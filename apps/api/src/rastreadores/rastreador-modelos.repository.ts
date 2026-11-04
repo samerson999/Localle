@@ -7,6 +7,17 @@ import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
 export type ModeloDados = Pick<RastreadorModeloEntity, 'fabricante' | 'nome' | 'protocolo' | 'porta' | 'tipo_identificador'> &
   Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio' | 'origem'>>;
 
+/** `ultima_posicao` (alias `up`), só posição válida: lat/lon saem do ponto PostGIS. */
+const COLUNAS_ULTIMA_POSICAO = `up.fix_time as posicao_em, st_y(up.geom) as latitude, st_x(up.geom) as longitude,
+              up.speed_kmh::float8 as velocidade_kmh, up.ignition as ignicao`;
+
+export interface EstadoRastreadorRow {
+  id: string; imei: string; status: string; protocolo: string | null; traccar_device_id: string | null; modelo_id: string | null;
+  ultimo_pacote_em: Date | null; ultimos_atributos: Record<string, unknown> | null; atributos_em: Date | null;
+  atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
+  posicao_em: Date | null; latitude: number | null; longitude: number | null; velocidade_kmh: number | null; ignicao: boolean | null;
+}
+
 /**
  * Catálogo global de modelos (sem `client_id`, como `rastreadores`): não estende `BaseRepository` pelo mesmo motivo
  * de `RastreadoresRepository`. Só a camada de superadmin acessa.
@@ -98,20 +109,52 @@ export class RastreadorModelosRepository {
 
   /** Rastreador com o modelo e a última comunicação — base do diagnóstico (checklist da tela). */
   async estadoDoRastreador(rastreadorId: string) {
-    const { rows } = await this.pool.query<{
-      id: string; imei: string; status: string; protocolo: string | null; traccar_device_id: string | null; modelo_id: string | null;
-      ultimo_pacote_em: Date | null; ultimos_atributos: Record<string, unknown> | null; atributos_em: Date | null;
-      atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
-    }>(
+    const { rows } = await this.pool.query<EstadoRastreadorRow>(
       `select r.id, r.imei, r.status, r.protocolo, r.traccar_device_id, r.modelo_id,
-              rc.ultimo_pacote_em, rc.ultimos_atributos, rc.atributos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio
+              rc.ultimo_pacote_em, rc.ultimos_atributos, rc.atributos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
+              ${COLUNAS_ULTIMA_POSICAO}
          from rastreadores r
          left join rastreador_comunicacao rc on rc.rastreador_id = r.id
          left join rastreador_modelos m on m.id = r.modelo_id
+         left join ultima_posicao up on up.rastreador_id = r.id
         where r.id = $1`,
       [rastreadorId],
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * O que cada rastreador não desativado está transmitindo (aba Transmissão do Console): comunicação, última posição
+   * válida, últimos atributos e quantos pacotes chegaram na última hora. Cruza clientes de propósito — rota só de
+   * superadmin. A contagem usa `server_time` (quando o Traccar recebeu), não `fix_time`: pacote antigo descarregado
+   * agora conta como transmissão de agora; o índice (rastreador_id, fix_time) limita a varredura a dois dias.
+   */
+  async transmissao() {
+    const { rows } = await this.pool.query<EstadoRastreadorRow & {
+      modelo_fabricante: string | null; modelo_nome: string | null; modelo_protocolo: string | null; modelo_porta: number | null;
+      client_name: string | null; asset_plate: string | null; ultima_posicao_valida_em: Date | null; pacotes_1h: number;
+    }>(
+      `select r.id, r.imei, r.status, r.protocolo, r.traccar_device_id, r.modelo_id,
+              rc.ultimo_pacote_em, rc.ultima_posicao_valida_em, rc.ultimos_atributos, rc.atributos_em,
+              m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
+              m.fabricante as modelo_fabricante, m.nome as modelo_nome, m.protocolo as modelo_protocolo, m.porta as modelo_porta,
+              c.name as client_name, a.plate as asset_plate,
+              ${COLUNAS_ULTIMA_POSICAO},
+              coalesce((select count(*)::int from posicoes p
+                         where p.rastreador_id = r.id and p.fix_time > now() - interval '2 days'
+                           and p.server_time > now() - interval '1 hour'), 0) as pacotes_1h
+         from rastreadores r
+         left join rastreador_comunicacao rc on rc.rastreador_id = r.id
+         left join rastreador_modelos m on m.id = r.modelo_id
+         left join ultima_posicao up on up.rastreador_id = r.id
+         left join rastreador_vinculos v on v.rastreador_id = r.id and v.desvinculado_em is null
+         left join clients c on c.id = v.client_id
+         left join instalacoes i on i.rastreador_id = r.id and i.desinstalado_em is null
+         left join assets a on a.id = i.asset_id
+        where r.status <> 'desativado'
+        order by rc.ultimo_pacote_em desc nulls last, r.criado_em desc`,
+    );
+    return rows;
   }
 
   /**

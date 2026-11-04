@@ -2,10 +2,11 @@ import { ConflictException, Injectable, Logger, NotFoundException } from '@nestj
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { UNIQUE, violouUnique } from '../db/pg-errors';
 import type { Telemetria } from '@localle/shared/realtime';
+import { nomeDoModelo } from '@localle/shared/rastreadorModelos';
 import { TraccarClient } from '../ingest/traccar-client';
 import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
 import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
-import { type ModeloDados, RastreadorModelosRepository } from './rastreador-modelos.repository';
+import { type EstadoRastreadorRow, type ModeloDados, RastreadorModelosRepository } from './rastreador-modelos.repository';
 
 /**
  * O que o Traccar diz sobre o modelo agora (decisão de 03/11/2026): versão do servidor, se o protocolo do modelo está
@@ -37,9 +38,42 @@ export interface DiagnosticoRastreador {
   atributosEm: Date | null;
   /** Lida dos atributos com o mapeamento do modelo (a mesma leitura do monitoramento); campo null = não lido. */
   telemetria: Telemetria;
+  /** Última posição válida (com fix de GPS); null = nenhuma ainda. */
+  ultimaPosicao: UltimaPosicao | null;
   ficha: FichaTraccar | null;
   comandos: string[] | null;
 }
+
+export interface UltimaPosicao { em: Date; latitude: number; longitude: number; velocidadeKmh: number | null; ignicao: boolean | null }
+
+/**
+ * Uma linha da aba Transmissão (Console › Rastreadores): o que o rastreador está mandando, sem consultar o Traccar
+ * (a lista inteira atualiza a cada poucos segundos; status do device no Traccar só no diagnóstico de um rastreador).
+ */
+export interface TransmissaoRastreador {
+  id: string;
+  imei: string;
+  modeloId: string | null;
+  modelo: string | null;
+  modeloProtocolo: string | null;
+  modeloPorta: number | null;
+  protocoloDetectado: string | null;
+  traccarDeviceId: string | null;
+  cliente: string | null;
+  placa: string | null;
+  ultimoPacoteEm: Date | null;
+  ultimaPosicaoValidaEm: Date | null;
+  pacotesUltimaHora: number;
+  ultimaPosicao: UltimaPosicao | null;
+  atributos: Record<string, unknown>;
+  atributosEm: Date | null;
+  telemetria: Telemetria;
+}
+
+const ultimaPosicaoDaLinha = (r: EstadoRastreadorRow): UltimaPosicao | null =>
+  r.posicao_em && r.latitude !== null && r.longitude !== null
+    ? { em: r.posicao_em, latitude: r.latitude, longitude: r.longitude, velocidadeKmh: r.velocidade_kmh, ignicao: r.ignicao }
+    : null;
 
 /** Catálogo de modelos (docs na migration 1793110000000): só superadmin; toda alteração vai para a auditoria. */
 @Injectable()
@@ -128,9 +162,33 @@ export class RastreadorModelosService {
       atributos: r.ultimos_atributos ?? {},
       atributosEm: r.atributos_em,
       telemetria: lerTelemetria(r.ultimos_atributos, mapeamentoDaLinha(r)),
+      ultimaPosicao: ultimaPosicaoDaLinha(r),
       ficha,
       comandos,
     };
+  }
+
+  async transmissao(): Promise<TransmissaoRastreador[]> {
+    const rows = await this.repo.transmissao();
+    return rows.map((r) => ({
+      id: r.id,
+      imei: r.imei,
+      modeloId: r.modelo_id,
+      modelo: r.modelo_nome ? nomeDoModelo({ fabricante: r.modelo_fabricante ?? r.modelo_nome, nome: r.modelo_nome }) : null,
+      modeloProtocolo: r.modelo_protocolo,
+      modeloPorta: r.modelo_porta,
+      protocoloDetectado: r.protocolo,
+      traccarDeviceId: r.traccar_device_id,
+      cliente: r.client_name,
+      placa: r.asset_plate,
+      ultimoPacoteEm: r.ultimo_pacote_em,
+      ultimaPosicaoValidaEm: r.ultima_posicao_valida_em,
+      pacotesUltimaHora: r.pacotes_1h,
+      ultimaPosicao: ultimaPosicaoDaLinha(r),
+      atributos: r.ultimos_atributos ?? {},
+      atributosEm: r.atributos_em,
+      telemetria: lerTelemetria(r.ultimos_atributos, mapeamentoDaLinha(r)),
+    }));
   }
 
   async criar(superadminId: string, d: ModeloDados): Promise<RastreadorModeloEntity> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firmwareDe, itensDoDiagnostico, sugerirMapeamento } from './diagnosticoRastreador';
+import { firmwareDe, haQuanto, itensDoDiagnostico, semFixDeGps, situacaoTransmissao, sugerirMapeamento } from './diagnosticoRastreador';
 import type { DiagnosticoRastreador } from './localleApi';
 
 const agora = Date.parse('2026-11-04T12:00:00Z');
@@ -8,6 +8,7 @@ const base: DiagnosticoRastreador = {
   imei: '868695060665955', status: 'ativo', modeloId: 'm1', protocoloDetectado: 'jmak', traccarDeviceId: '10', online: true,
   ultimoPacoteEm: '2026-11-04T11:55:00Z', atributos: { versionFw: 'JR12_V1.3' }, atributosEm: '2026-11-04T11:55:00Z',
   telemetria: { tensaoV: 12.5, satelites: 11, sinalGsm: 3, bloqueado: false },
+  ultimaPosicao: { em: '2026-11-04T11:55:00Z', latitude: -3.731862, longitude: -38.526669, velocidadeKmh: 0, ignicao: false },
   ficha: { traccar: { configurado: true, versao: '6.17.0', erro: null }, protocolo: { ativo: true, porta: 5259, transporte: 'ALL' }, comandos: null },
   comandos: ['engineStop', 'engineResume', 'custom'],
 };
@@ -15,7 +16,7 @@ const tom = (d: DiagnosticoRastreador, m = modelo) => Object.fromEntries(itensDo
 
 describe('itensDoDiagnostico', () => {
   it('tudo certo: todas as etapas ok, firmware informado', () => {
-    expect(tom(base)).toEqual({ Modelo: 'ok', Traccar: 'ok', 'Conexão': 'ok', Protocolo: 'ok', Telemetria: 'ok', Comandos: 'ok', Firmware: 'info' });
+    expect(tom(base)).toEqual({ Modelo: 'ok', Traccar: 'ok', 'Conexão': 'ok', GPS: 'ok', Protocolo: 'ok', Telemetria: 'ok', Comandos: 'ok', Firmware: 'info' });
     expect(itensDoDiagnostico(base, modelo, agora).at(-1)?.texto).toBe('firmware JR12_V1.3');
   });
 
@@ -69,5 +70,38 @@ describe('firmwareDe', () => {
   it('lê versionFw/versionHw; ausente = null', () => {
     expect(firmwareDe({ versionFw: '1.2', versionHw: 3 })).toEqual({ fw: '1.2', hw: '3' });
     expect(firmwareDe({})).toEqual({ fw: null, hw: null });
+  });
+});
+
+describe('GPS no diagnóstico', () => {
+  const gps = (d: DiagnosticoRastreador) => itensDoDiagnostico(d, modelo, agora).find((i) => i.etapa === 'GPS');
+  it('posição recente: ok com coordenadas', () => {
+    expect(gps(base)).toMatchObject({ tom: 'ok', texto: 'Posição de há 5 min: -3.73186, -38.52667.' });
+  });
+  it('comunica sem posição nenhuma ou com posição velha: aviso', () => {
+    expect(gps({ ...base, ultimaPosicao: null })?.tom).toBe('warn');
+    expect(gps({ ...base, ultimaPosicao: { ...base.ultimaPosicao!, em: '2026-11-04T10:00:00Z' } })).toMatchObject({ tom: 'warn', texto: expect.stringMatching(/há 2 h/) });
+  });
+  it('nunca comunicou: sem etapa de GPS (a conexão já diz o que fazer)', () => {
+    expect(gps({ ...base, ultimoPacoteEm: null, ultimaPosicao: null })).toBeUndefined();
+  });
+});
+
+describe('situacaoTransmissao', () => {
+  it('nunca, agora (até 10 min), recente (até 24 h) e parou', () => {
+    expect(situacaoTransmissao(null, agora)).toBe('nunca');
+    expect(situacaoTransmissao('2026-11-04T11:50:00Z', agora)).toBe('agora');
+    expect(situacaoTransmissao('2026-11-04T11:49:00Z', agora)).toBe('recente');
+    expect(situacaoTransmissao('2026-11-03T12:00:00Z', agora)).toBe('recente');
+    expect(situacaoTransmissao('2026-11-03T11:59:00Z', agora)).toBe('parou');
+  });
+  it('sem fix de GPS: pacote sem posição, ou posição mais de 10 min antes do pacote', () => {
+    expect(semFixDeGps(null, null)).toBe(false);
+    expect(semFixDeGps('2026-11-04T11:55:00Z', null)).toBe(true);
+    expect(semFixDeGps('2026-11-04T11:55:00Z', '2026-11-04T11:50:00Z')).toBe(false);
+    expect(semFixDeGps('2026-11-04T11:55:00Z', '2026-11-04T11:40:00Z')).toBe(true);
+  });
+  it('haQuanto: abaixo de 1 min não vira "0 min"', () => {
+    expect(haQuanto('2026-11-04T11:59:50Z', agora)).toBe('menos de 1 min');
   });
 });
