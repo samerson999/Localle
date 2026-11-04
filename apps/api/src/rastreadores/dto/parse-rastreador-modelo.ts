@@ -1,6 +1,7 @@
 import { TIPOS_IDENTIFICADOR } from '@localle/shared/rastreadorModelos';
 import { booleano, erro, numero, numeroOpcional, opcao, texto } from '../../common/validar';
 import type { ModeloDados } from '../rastreador-modelos.repository';
+import { SINAIS_MOTOR, type SinalMotor, SUPORTES_CAN } from '../../telemetria/sinais-motor';
 
 const protocolo = (v: unknown) => {
   const p = texto(v, 'protocolo', 30, 2).toLowerCase();
@@ -22,7 +23,19 @@ function mapeamento(b: Record<string, unknown>): Partial<ModeloDados> {
   if (b.atributoTensao !== undefined) out.atributo_tensao = atributo(b.atributoTensao, 'atributoTensao');
   if (b.sinalMax !== undefined) out.sinal_max = numeroOpcional(b.sinalMax, 'sinalMax', 1, 100, true);
   if (b.atributoBloqueio !== undefined) out.atributo_bloqueio = atributo(b.atributoBloqueio, 'atributoBloqueio');
+  if (b.suporteCan !== undefined) out.suporte_can = opcao(b.suporteCan, 'suporteCan', SUPORTES_CAN);
+  if (b.sinaisMotor !== undefined) out.sinais_motor = sinaisMotor(b.sinaisMotor);
+  if (b.atributoRpm !== undefined) out.atributo_rpm = atributo(b.atributoRpm, 'atributoRpm');
+  if (b.atributoOdometro !== undefined) out.atributo_odometro = atributo(b.atributoOdometro, 'atributoOdometro');
+  if (b.atributoCombustivel !== undefined) out.atributo_combustivel = atributo(b.atributoCombustivel, 'atributoCombustivel');
+  if (b.atributoHorimetro !== undefined) out.atributo_horimetro = atributo(b.atributoHorimetro, 'atributoHorimetro');
   return out;
+}
+
+// sinais que o modelo entrega: lista sem repetição, só os sinais conhecidos
+function sinaisMotor(v: unknown): SinalMotor[] {
+  if (!Array.isArray(v)) erro(`"sinaisMotor" é uma lista com: ${SINAIS_MOTOR.join(', ')}`);
+  return [...new Set(v.map((s) => opcao(s, 'sinaisMotor', SINAIS_MOTOR)))];
 }
 
 export function parseCriarModelo(body: unknown): ModeloDados {

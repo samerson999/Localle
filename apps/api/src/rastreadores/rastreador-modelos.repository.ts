@@ -2,10 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Pool } from 'pg';
 import { PG_POOL } from '../db/pg-pool.provider';
 import type { Queryable } from '../db/queryable';
+import type { InstalacaoSinalEntity } from '../telemetria/instalacao-sinais.repository';
 import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
 
 export type ModeloDados = Pick<RastreadorModeloEntity, 'fabricante' | 'nome' | 'protocolo' | 'porta' | 'tipo_identificador'> &
-  Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio' | 'origem'>>;
+  Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio' | 'origem' | CamposSinais>>;
+
+/** Capacidade de CAN e mapeamento dos sinais de motor (migration 1793180000000). */
+type CamposSinais = 'suporte_can' | 'sinais_motor' | 'atributo_rpm' | 'atributo_odometro' | 'atributo_combustivel' | 'atributo_horimetro';
 
 /** `ultima_posicao` (alias `up`), só posição válida: lat/lon saem do ponto PostGIS. */
 const COLUNAS_ULTIMA_POSICAO = `up.fix_time as posicao_em, st_y(up.geom) as latitude, st_x(up.geom) as longitude,
@@ -42,11 +46,25 @@ export class RastreadorModelosRepository {
 
   async criar(d: ModeloDados, executor: Queryable = this.pool): Promise<RastreadorModeloEntity> {
     const { rows } = await executor.query<RastreadorModeloEntity>(
-      `insert into rastreador_modelos (fabricante, nome, protocolo, porta, tipo_identificador, atributo_tensao, sinal_max, atributo_bloqueio, origem)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`,
-      [d.fabricante, d.nome, d.protocolo, d.porta, d.tipo_identificador, d.atributo_tensao ?? null, d.sinal_max ?? null, d.atributo_bloqueio ?? null, d.origem ?? 'manual'],
+      `insert into rastreador_modelos (fabricante, nome, protocolo, porta, tipo_identificador, atributo_tensao, sinal_max, atributo_bloqueio, origem,
+                                       suporte_can, sinais_motor, atributo_rpm, atributo_odometro, atributo_combustivel, atributo_horimetro)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) returning *`,
+      [
+        d.fabricante, d.nome, d.protocolo, d.porta, d.tipo_identificador, d.atributo_tensao ?? null, d.sinal_max ?? null, d.atributo_bloqueio ?? null, d.origem ?? 'manual',
+        d.suporte_can ?? 'nao_informado', d.sinais_motor ?? [], d.atributo_rpm ?? null, d.atributo_odometro ?? null, d.atributo_combustivel ?? null, d.atributo_horimetro ?? null,
+      ],
     );
     return rows[0];
+  }
+
+  /** Rastreadores que apontam para o modelo, inclusive desativados (o histórico deles guarda o modelo). */
+  async totalDeRastreadores(id: string, executor: Queryable = this.pool): Promise<number> {
+    const { rows } = await executor.query<{ n: number }>('select count(*)::int as n from rastreadores where modelo_id = $1', [id]);
+    return rows[0].n;
+  }
+
+  async excluir(id: string, executor: Queryable = this.pool): Promise<void> {
+    await executor.query('delete from rastreador_modelos where id = $1', [id]);
   }
 
   async findByNome(fabricante: string, nome: string): Promise<RastreadorModeloEntity | null> {
@@ -79,7 +97,10 @@ export class RastreadorModelosRepository {
   }
 
   async atualizar(id: string, d: Partial<ModeloDados & { ativo: boolean }>, executor: Queryable = this.pool): Promise<RastreadorModeloEntity | null> {
-    const campos = (['fabricante', 'nome', 'protocolo', 'porta', 'tipo_identificador', 'atributo_tensao', 'sinal_max', 'atributo_bloqueio', 'ativo'] as const).filter(
+    const campos = ([
+      'fabricante', 'nome', 'protocolo', 'porta', 'tipo_identificador', 'atributo_tensao', 'sinal_max', 'atributo_bloqueio', 'ativo',
+      'suporte_can', 'sinais_motor', 'atributo_rpm', 'atributo_odometro', 'atributo_combustivel', 'atributo_horimetro',
+    ] as const).filter(
       (k) => d[k] !== undefined,
     );
     if (!campos.length) return this.findById(id, executor);
@@ -121,6 +142,21 @@ export class RastreadorModelosRepository {
       [rastreadorId],
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * Estado dos sinais de motor na instalação principal vigente do rastreador (diagnóstico do superadmin, cruza clientes
+   * de propósito). Rastreador sem instalação = lista vazia: sinal de motor só existe instalado num veículo.
+   */
+  async sinaisDaInstalacaoVigente(rastreadorId: string) {
+    const { rows } = await this.pool.query<InstalacaoSinalEntity>(
+      `select s.* from instalacao_sinais s
+         join instalacoes i on i.id = s.instalacao_id
+        where i.rastreador_id = $1 and i.papel = 'principal' and i.desinstalado_em is null
+        order by s.sinal`,
+      [rastreadorId],
+    );
+    return rows;
   }
 
   /**

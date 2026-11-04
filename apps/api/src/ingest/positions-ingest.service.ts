@@ -5,8 +5,11 @@ import type { Alerta, Telemetria } from '@localle/shared/realtime';
 import { alertaDoAlarme } from '../alertas/alarmes-aparelho';
 import { inserirAlerta } from '../alertas/alertas.repository';
 import { detectarCercas } from '../cercas/cerca-detector';
+import { FUSO_PADRAO } from '../regras/avaliar-regra';
 import { avaliarRegras } from '../regras/motor-regras';
+import { atualizarSinaisMotor } from '../telemetria/instalacao-sinais.repository';
 import { lerTelemetria, mapeamentoDaLinha } from '../telemetria/leitura';
+import { mapeamentoSinaisDaLinha, ROTULO_SINAL } from '../telemetria/sinais-motor';
 import { resolverInstalacaoVigente } from './instalacao-vigente';
 import type { NormalizedPosition } from './traccar-position.mapper';
 
@@ -43,6 +46,11 @@ export interface EventoGravado {
  * reserva como resolvida — o commit acontece depois desse segundo update, nunca antes. Roda numa única
  * transação por posição (volume baixo por chamada: um worker da fila processa uma posição por job).
  */
+// "04/11 às 12:00" no fuso da operação (o mesmo das regras), para o texto do alerta
+const DIA = new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO_PADRAO, day: '2-digit', month: '2-digit' });
+const HORA = new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO_PADRAO, hour: '2-digit', minute: '2-digit' });
+const desdeTexto = (d: Date) => `${DIA.format(d)} às ${HORA.format(d)}`;
+
 @Injectable()
 export class PositionsIngestService {
   private readonly logger = new Logger(PositionsIngestService.name);
@@ -57,8 +65,12 @@ export class PositionsIngestService {
       const rastreador = await client.query<{
         id: string; protocolo: string | null; modelo_protocolo: string | null; modelo: string | null;
         atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
+        suporte_can: string | null; sinais_motor: string[] | null; atributo_rpm: string | null; atributo_odometro: string | null;
+        atributo_combustivel: string | null; atributo_horimetro: string | null; modelo_atualizado_em: Date | null;
       }>(
-        `select r.id, r.protocolo, m.protocolo as modelo_protocolo, r.modelo, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio
+        `select r.id, r.protocolo, m.protocolo as modelo_protocolo, r.modelo, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
+                m.suporte_can, m.sinais_motor, m.atributo_rpm, m.atributo_odometro, m.atributo_combustivel, m.atributo_horimetro,
+                m.atualizado_em as modelo_atualizado_em
            from rastreadores r left join rastreador_modelos m on m.id = r.modelo_id
           where r.traccar_device_id = $1`,
         [position.traccarDeviceId],
@@ -93,7 +105,7 @@ export class PositionsIngestService {
         return { status: 'deduped' };
       }
 
-      const { clientId, assetId } = await resolverInstalacaoVigente(client, rastreadorId, position.fixTime);
+      const { clientId, assetId, instalacaoId } = await resolverInstalacaoVigente(client, rastreadorId, position.fixTime);
 
       const inserted = await client.query<{ id: string }>(
         `insert into posicoes
@@ -129,6 +141,44 @@ export class PositionsIngestService {
 
       const ultimosAtributos = await this.atualizarComunicacao(client, rastreadorId, assetId, clientId, position);
       const telemetria = lerTelemetria(ultimosAtributos, mapeamentoDaLinha(rastreador.rows[0]));
+
+      // sinais de motor: só instalado (aparelho em bancada não tem CAN) e sempre pelos atributos DESTA posição
+      const alertasSinais: Alerta[] = [];
+      if (clientId && instalacaoId) {
+        const transicoes = await atualizarSinaisMotor(client, {
+          clientId,
+          instalacaoId,
+          rastreadorId,
+          attributes: position.attributes,
+          ctx: { fixTime: position.fixTime, serverTime: position.serverTime, gpsValido: position.valid, velocidadeKmh: position.speedKmh },
+          mapeamento: mapeamentoSinaisDaLinha(rastreador.rows[0]),
+          mapeamentoVersao: rastreador.rows[0].modelo_atualizado_em,
+        });
+        for (const t of transicoes) {
+          const msg = `rastreador_id=${rastreadorId} instalacao_id=${instalacaoId} sinal ${t.sinal}: ${t.de ?? '(novo)'} → ${t.para} (${t.motivo})`;
+          if (t.para === 'nao_recebido' || t.para === 'fora_do_esperado') this.logger.warn(msg);
+          else this.logger.log(msg);
+        }
+        // alerta para o gestor só quando o dado CHEGAVA e parou com o veículo em movimento; "nunca chegou" é problema
+        // de instalação e fica no diagnóstico do admin (docs/PESQUISA-REDE-CAN.md § 4.3)
+        const pararam = transicoes.filter((t) => t.para === 'nao_recebido' && t.ultimaLeituraEm);
+        if (pararam.length) {
+          const desde = new Date(Math.min(...pararam.map((t) => t.ultimaLeituraEm!.getTime())));
+          alertasSinais.push(
+            await inserirAlerta(client, {
+              clientId,
+              assetId,
+              eventoId: null,
+              origem: 'aparelho',
+              tipo: 'sinais_painel_pararam',
+              titulo: 'Dados do painel pararam de chegar',
+              detalhe: `${pararam.map((t) => ROTULO_SINAL[t.sinal]).join(', ')}: sem leitura desde ${desdeTexto(desde)}, com o veículo em movimento`,
+              prioridade: 'media',
+              ts: position.fixTime,
+            }),
+          );
+        }
+      }
       const atualizouUltimaPosicao = position.valid
         ? await this.atualizarUltimaPosicao(client, rastreadorId, assetId, clientId, posicaoId, position)
         : false;
@@ -152,7 +202,7 @@ export class PositionsIngestService {
         eventos.push(...(await avaliarRegras(client, { clientId, assetId, rastreadorId, posicaoId, position })));
       }
 
-      const alertas: Alerta[] = [];
+      const alertas: Alerta[] = [...alertasSinais];
       if (clientId) {
         for (const e of eventos) {
           if (!e.alerta) continue;
