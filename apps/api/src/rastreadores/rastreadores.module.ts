@@ -13,11 +13,14 @@ import { RastreadoresService } from './rastreadores.service';
 import { RastreadorModelosController } from './rastreador-modelos.controller';
 import { RastreadorModelosRepository } from './rastreador-modelos.repository';
 import { RastreadorModelosService } from './rastreador-modelos.service';
+import { TraccarAparelhosController } from './traccar-aparelhos.controller';
+import { TraccarAparelhosRepository } from './traccar-aparelhos.repository';
+import { TraccarAparelhosService } from './traccar-aparelhos.service';
 import { SimCardsRepository } from './sim-cards.repository';
 
 @Module({
   imports: [AuthGuardsModule, PermissionsModule, AssetsModule, AuditModule],
-  controllers: [RastreadoresController, RastreadoresClienteController, RastreadorModelosController],
-  providers: [RastreadoresRepository, SimCardsRepository, InstalacoesRepository, RastreadorVinculosRepository, RastreadoresService, RastreadorModelosRepository, RastreadorModelosService, TraccarClient],
+  controllers: [RastreadoresController, RastreadoresClienteController, RastreadorModelosController, TraccarAparelhosController],
+  providers: [RastreadoresRepository, SimCardsRepository, InstalacoesRepository, RastreadorVinculosRepository, RastreadoresService, RastreadorModelosRepository, RastreadorModelosService, TraccarAparelhosRepository, TraccarAparelhosService, TraccarClient],
 })
 export class RastreadoresModule {}

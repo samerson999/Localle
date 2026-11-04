@@ -6,16 +6,16 @@ import { useState, type ReactNode } from 'react';
 import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select, SearchSelect, TextButton, Modal, Field, FormGroup, Input, Callout, EmptyState, toast, confirmAction } from '../components/ui';
 import { KpiTile } from '../components/story';
 import { useStore } from '../lib/store';
-import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar } from '../lib/localleApi';
+import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar, type SituacaoProtocolo } from '../lib/localleApi';
 import { fmtD, fmtDT } from '@localle/shared/utils';
 import { itensDoDiagnostico, sugerirMapeamento, type Tom } from '../lib/diagnosticoRastreador';
-import { normalizarIdentificador, ROTULO_IDENTIFICADOR, TIPOS_IDENTIFICADOR, validarIdentificador, type TipoIdentificador } from '@localle/shared/rastreadorModelos';
+import { nomeDoModelo, normalizarIdentificador, ROTULO_IDENTIFICADOR, TIPOS_IDENTIFICADOR, validarIdentificador, type TipoIdentificador } from '@localle/shared/rastreadorModelos';
 
-// Modelos: o catálogo Localle (migration 1793160000000) já traz protocolo, porta e identificador conferidos na lista do
-// Traccar — no cadastro de rastreador basta escolher o modelo. Modelo não listado: protocolo em texto livre, com o nome
-// que o Traccar usa; as sugestões são o que a plataforma já viu (modelos e protocolos detectados nas posições).
-// Protocolo novo: o log do Traccar mostra o nome em "[T…: <protocolo> < ip] Unknown device - …".
-const nomeModelo = (m: { fabricante: string; nome: string }) => `${m.fabricante} ${m.nome}`;
+// Modelos: a fonte é a lista de aparelhos do Traccar (migration 1793170000000, ~2.200 modelos com protocolo e porta);
+// o catálogo guarda só os modelos em uso, criados sozinhos no cadastro do primeiro rastreador, com o que o Traccar não
+// sabe (identificador, mapeamento da telemetria). Aparelho fora da lista: cadastro à mão, protocolo em texto livre com o
+// nome que o Traccar usa — o log mostra em "[T…: <protocolo> < ip] Unknown device - …".
+const nomeModelo = nomeDoModelo;
 
 type Situacao = 'instalado' | 'vinculado' | 'estoque' | 'desativado';
 const situacao = (r: AdminRastreador): Situacao => (r.status === 'desativado' ? 'desativado' : r.instalacao_id ? 'instalado' : r.vinculo_id ? 'vinculado' : 'estoque');
@@ -114,14 +114,14 @@ export default function Rastreadores() {
         <Section title="Modelos de rastreador">
           <Card>
             <div className="flex flex-wrap items-center gap-stack mb-card-head">
-              <p className="text-small text-ink-2 mr-auto max-w-[80ch]">O catálogo já traz protocolo, porta e identificador de cada modelo, conferidos na lista do Traccar: no cadastro de rastreador basta escolher o modelo. A primeira posição confere o protocolo; em Editar, a ficha mostra o que o Traccar aceita do modelo.</p>
-              <Button variant="secondary" onClick={() => setEditandoModelo('novo')}>Modelo não listado</Button>
+              <p className="text-small text-ink-2 mr-auto max-w-[80ch]">Os modelos em uso. No cadastro de rastreador basta digitar o modelo: a busca procura também na lista do Traccar e, na primeira vez, o modelo entra aqui com protocolo e porta de lá. Em Editar ficam a ficha do Traccar e o mapeamento da telemetria.</p>
+              <ListaTraccarResumo onAtualizada={reload} />
             </div>
             <Table minWidth={820} loading={loading && !data} align={['left', 'left', 'right', 'left', 'right', 'left', 'right']}
               head={['Modelo', 'Protocolo', 'Porta', 'Identificador', 'Rastreadores', 'Situação', '']}
-              emptyState={<EmptyState icon="sinal" title="Nenhum modelo cadastrado" action={<Button onClick={() => setEditandoModelo('novo')}>Cadastrar modelo</Button>} />}
+              emptyState={<EmptyState icon="sinal" title="Nenhum modelo em uso" detail="O modelo entra aqui quando o primeiro rastreador dele é cadastrado." />}
               rows={modelos.map((m) => [
-                <span><span className="font-medium">{nomeModelo(m)}</span><span className="block text-caption text-ink-2">{m.origem === 'catalogo' ? 'Catálogo Localle' : 'Cadastrado pela tela'}</span></span>, <span className="font-mono text-small">{m.protocolo}</span>, <span className="num">{m.porta}</span>,
+                <span><span className="font-medium">{nomeModelo(m)}</span><span className="block text-caption text-ink-2">{m.origem === 'catalogo' ? 'Da lista do Traccar' : 'Cadastrado à mão'}</span></span>, <span className="font-mono text-small">{m.protocolo}</span>, <span className="num">{m.porta}</span>,
                 <span className="text-small">{ROTULO_IDENTIFICADOR[m.tipo_identificador]}</span>, <span className="num">{m.rastreadores}</span>,
                 <Badge tone={m.ativo ? 'green' : 'gray'}>{m.ativo ? 'Ativo' : 'Desativado'}</Badge>,
                 <div className="flex gap-3 justify-end">
@@ -129,15 +129,16 @@ export default function Rastreadores() {
                   <TextButton onClick={() => acao(() => adminApi.atualizarModelo(m.id, { ativo: !m.ativo }), m.ativo ? 'Modelo desativado: não aparece mais no cadastro.' : 'Modelo reativado.')}>{m.ativo ? 'Desativar' : 'Reativar'}</TextButton>
                 </div>,
               ])} />
+            <p className="text-caption text-ink-2 mt-card-head">Aparelho que não está na lista do Traccar? <TextButton className="text-caption" onClick={() => setEditandoModelo('novo')}>Cadastrar à mão</TextButton></p>
           </Card>
         </Section>
       </PageBody>
-      {modal === 'rastreador' && <NovoRastreadorModal modelos={modelosAtivos} onClose={() => setModal(null)} onDone={reload} onNovoModelo={() => { setModal(null); setEditandoModelo('novo'); }} />}
+      {modal === 'rastreador' && <NovoRastreadorModal modelos={modelosAtivos} onClose={() => setModal(null)} onDone={reload} onModeloCriado={reload} onNovoModelo={() => { setModal(null); setEditandoModelo('novo'); }} />}
       {diagnosticando && <DiagnosticoModal rastreador={diagnosticando} modelo={modelos.find((m) => m.id === diagnosticando.modelo_id) ?? null}
         onClose={() => setDiagnosticando(null)}
         onEditarModelo={(m) => { setDiagnosticando(null); setEditandoModelo(m); }}
         onTrocarModelo={() => { setTrocandoModelo(diagnosticando); setDiagnosticando(null); }} />}
-      {trocandoModelo && <TrocarModeloModal rastreador={trocandoModelo} modelos={modelosAtivos} onClose={() => setTrocandoModelo(null)} onDone={reload} />}
+      {trocandoModelo && <TrocarModeloModal rastreador={trocandoModelo} modelos={modelosAtivos} onClose={() => setTrocandoModelo(null)} onDone={reload} onModeloCriado={reload} />}
       {editandoModelo && <ModeloModal modelo={editandoModelo === 'novo' ? null : editandoModelo} conhecidos={protocolosConhecidos(modelos, rastreadores)} onClose={() => setEditandoModelo(null)} onDone={reload} />}
       {modal === 'chip' && <NovoChipModal onClose={() => setModal(null)} onDone={reload} />}
       {vinculando && <VincularModal rastreador={vinculando} chips={chipsLivres} onClose={() => setVinculando(null)} onDone={reload} />}
@@ -173,21 +174,18 @@ function ModeloCelula({ r, onTrocar }: { r: AdminRastreador; onTrocar?: () => vo
   );
 }
 
-function NovoRastreadorModal({ modelos, onClose, onDone, onNovoModelo }: { modelos: AdminRastreadorModelo[]; onClose: () => void; onDone: () => void; onNovoModelo: () => void }) {
-  const [modeloId, setModeloId] = useState('');
+function NovoRastreadorModal({ modelos, onClose, onDone, onModeloCriado, onNovoModelo }: { modelos: AdminRastreadorModelo[]; onClose: () => void; onDone: () => void; onModeloCriado: () => void; onNovoModelo: () => void }) {
+  const [modelo, setModelo] = useState<AdminRastreadorModelo | null>(null);
+  const modeloId = modelo?.id ?? '';
   const [ident, setIdent] = useState('');
   const [tocado, setTocado] = useState(false);
-  const modelo = modelos.find((m) => m.id === modeloId);
   const invalido = modelo ? validarIdentificador(modelo.tipo_identificador, ident) : null;
   const pronto = !!modelo && !invalido;
   const { busy, submit } = useSubmit(() => adminApi.createRastreador({ imei: normalizarIdentificador(ident), modeloId }), 'Rastreador cadastrado.', onDone, onClose);
   return (
     <Modal open onClose={onClose} title="Cadastrar rastreador" width="max-w-xl" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!pronto} onClick={submit}>Cadastrar</Button></>}>
-      {modelos.length === 0 ? (
-        <Callout tone="warn">Nenhum modelo ativo no catálogo. <TextButton onClick={onNovoModelo}>Cadastrar um modelo</TextButton> antes do rastreador.</Callout>
-      ) : <>
-        <Field label="Modelo"><SearchSelect value={modeloId} onChange={(v) => { setModeloId(v); setTocado(false); }} placeholder="Escolha o modelo"
-          options={modelos.map((m) => ({ value: m.id, label: nomeModelo(m), sub: `${m.protocolo} · porta ${m.porta}` }))} /></Field>
+      <>
+        <Field label="Modelo"><ModeloBusca value={modeloId} modelos={modelos} onModeloCriado={onModeloCriado} onChange={(m) => { setModelo(m); setTocado(false); }} /></Field>
         {modelo && <>
           <Field label={ROTULO_IDENTIFICADOR[modelo.tipo_identificador]} error={tocado ? invalido || undefined : undefined}
             hint={modelo.tipo_identificador === 'terminal_jt808' ? 'No JT808 o aparelho se identifica pelo número do terminal, que pode não ser o IMEI. Sem cadastro, o log do Traccar mostra "Unknown device - <número>".' : undefined}>
@@ -196,21 +194,88 @@ function NovoRastreadorModal({ modelos, onClose, onDone, onNovoModelo }: { model
           </Field>
           <p className="text-small text-ink-2 rounded-ctl bg-surface-muted px-3 py-2">Configure o aparelho para enviar ao servidor do Traccar na <b className="text-ink">porta {modelo.porta}</b> (protocolo {modelo.protocolo}). O device é criado no Traccar no cadastro; a primeira posição confirma o protocolo.</p>
         </>}
-        <p className="text-caption text-ink-2">Modelo que não está na lista? <TextButton className="text-caption" onClick={onNovoModelo}>Cadastrar modelo</TextButton></p>
-      </>}
+        <p className="text-caption text-ink-2">Aparelho que não está na lista do Traccar? <TextButton className="text-caption" onClick={onNovoModelo}>Cadastrar modelo à mão</TextButton></p>
+      </>
     </Modal>
   );
 }
 
-function TrocarModeloModal({ rastreador, modelos, onClose, onDone }: { rastreador: AdminRastreador; modelos: AdminRastreadorModelo[]; onClose: () => void; onDone: () => void }) {
+function TrocarModeloModal({ rastreador, modelos, onClose, onDone, onModeloCriado }: { rastreador: AdminRastreador; modelos: AdminRastreadorModelo[]; onClose: () => void; onDone: () => void; onModeloCriado: () => void }) {
   const [modeloId, setModeloId] = useState(rastreador.modelo_id || '');
   const { busy, submit } = useSubmit(() => adminApi.trocarModeloRastreador(rastreador.id, modeloId), 'Modelo do rastreador atualizado.', onDone, onClose);
   const sugerido = rastreador.protocolo ? modelos.filter((m) => m.protocolo === rastreador.protocolo) : [];
   return (
     <Modal open onClose={onClose} title={`Modelo · ${rastreador.imei}`} width="max-w-md" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!modeloId || modeloId === rastreador.modelo_id} onClick={submit}>Salvar</Button></>}>
-      <Field label="Modelo"><SearchSelect value={modeloId} onChange={setModeloId} placeholder="Escolha o modelo" options={modelos.map((m) => ({ value: m.id, label: nomeModelo(m), sub: `${m.protocolo} · porta ${m.porta}` }))} /></Field>
+      <Field label="Modelo"><ModeloBusca value={modeloId} modelos={modelos} onModeloCriado={onModeloCriado} onChange={(m) => setModeloId(m?.id ?? '')} /></Field>
       {rastreador.protocolo && <p className="text-caption text-ink-2">Protocolo detectado na 1ª posição: <b>{rastreador.protocolo}</b>{sugerido.length ? ` — modelos com esse protocolo: ${sugerido.map(nomeModelo).join(', ')}.` : '.'}</p>}
     </Modal>
+  );
+}
+
+const situacaoTexto = (s: SituacaoProtocolo, porta: number) => (!s ? '' : !s.ativo ? ' · protocolo inativo no nosso Traccar' : s.porta !== porta ? ` · nosso Traccar escuta na porta ${s.porta}` : '');
+
+// Busca única de modelo: os em uso (catálogo) e os da lista do Traccar. Escolher um da lista cria o modelo no catálogo
+// na hora, com protocolo e porta de lá — ninguém digita protocolo.
+function ModeloBusca({ value, modelos, onChange, onModeloCriado }: {
+  value: string; modelos: AdminRastreadorModelo[]; onChange: (m: AdminRastreadorModelo | null) => void; onModeloCriado: () => void;
+}) {
+  const [criados, setCriados] = useState<AdminRastreadorModelo[]>([]);
+  const [criando, setCriando] = useState(false);
+  const todos = [...modelos, ...criados.filter((c) => !modelos.some((m) => m.id === c.id))];
+  const onQuery = async (q: string) => {
+    const r = await adminApi.buscarModelos(q);
+    return [
+      ...r.modelos.map((m) => ({ value: `m:${m.id}`, label: nomeModelo(m), sub: `Em uso · ${m.protocolo} · porta ${m.porta}${situacaoTexto(m.situacao, m.porta)}` })),
+      ...r.aparelhos.map((a) => ({ value: `t:${a.id}`, label: a.nome, sub: `Lista do Traccar · ${a.protocolo} · porta ${a.porta}${situacaoTexto(a.situacao, a.porta)}` })),
+    ];
+  };
+  const escolher = async (v: string) => {
+    if (!v) return onChange(null);
+    if (v.startsWith('m:')) return onChange(todos.find((m) => m.id === v.slice(2)) ?? null);
+    setCriando(true);
+    try {
+      const m = await adminApi.modeloDoAparelhoTraccar(Number(v.slice(2)));
+      setCriados((c) => [...c, m]);
+      onChange(m);
+      onModeloCriado();
+    } catch (e: any) {
+      toast(e.message || String(e), { tone: 'crit' });
+      onChange(null);
+    } finally {
+      setCriando(false);
+    }
+  };
+  return (
+    <>
+      <SearchSelect value={value ? `m:${value}` : ''} onChange={escolher} onQuery={onQuery} placeholder="Digite o modelo (ex.: JR12, GV300, FMB920)"
+        emptyLabel="Nenhum modelo com esse nome no catálogo nem na lista do Traccar" options={todos.map((m) => ({ value: `m:${m.id}`, label: nomeModelo(m), sub: `${m.protocolo} · porta ${m.porta}` }))} />
+      {criando && <p className="text-caption text-ink-2 mt-hair">Trazendo o modelo da lista do Traccar…</p>}
+    </>
+  );
+}
+
+// Quantos modelos a lista do Traccar tem e quando foi atualizada; o botão baixa a página do Traccar de novo.
+function ListaTraccarResumo({ onAtualizada }: { onAtualizada: () => void }) {
+  const { data, reload } = useAdminQuery(() => adminApi.listaTraccar());
+  const [busy, setBusy] = useState(false);
+  const atualizar = async () => {
+    setBusy(true);
+    try {
+      const r = await adminApi.atualizarListaTraccar();
+      toast(`Lista do Traccar atualizada: ${r.total.toLocaleString('pt-BR')} modelos${r.removidos ? `, ${r.removidos} saíram` : ''}.`);
+      reload();
+      onAtualizada();
+    } catch (e: any) {
+      toast(e.message || String(e), { tone: 'crit' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-stack">
+      {data && <span className="text-caption text-ink-2">Lista do Traccar: {data.total.toLocaleString('pt-BR')} modelos{data.atualizado_em ? ` · ${fmtD(Date.parse(data.atualizado_em))}` : ''}</span>}
+      <Button variant="secondary" loading={busy} onClick={atualizar}>Atualizar lista do Traccar</Button>
+    </div>
   );
 }
 
@@ -249,13 +314,13 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
     if (ja?.porta && !porta) setPorta(String(ja.porta));
   };
   return (
-    <Modal open onClose={onClose} title={modelo ? `Editar modelo · ${nomeModelo(modelo)}` : 'Modelo não listado'} width="max-w-xl"
+    <Modal open onClose={onClose} title={modelo ? `Editar modelo · ${nomeModelo(modelo)}` : 'Aparelho fora da lista do Traccar'} width="max-w-xl"
       footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!ok} onClick={submit}>{modelo ? 'Salvar' : 'Cadastrar'}</Button></>}>
       {modelo && <FichaTraccarModelo modelo={modelo} />}
-      {!modelo && <p className="text-small text-ink-2">Antes de cadastrar, procure o modelo no catálogo. Se ele não estiver lá, pegue o protocolo e a porta na <a className="underline" href="https://www.traccar.org/devices/" target="_blank" rel="noreferrer">lista de aparelhos do Traccar</a>.</p>}
+      {!modelo && <p className="text-small text-ink-2">Só para aparelho que não está na lista do Traccar: o cadastro de rastreador já procura nela e traz protocolo e porta sozinho. Aqui o protocolo é o nome que o Traccar usa, confira na <a className="underline" href="https://www.traccar.org/devices/" target="_blank" rel="noreferrer">página de aparelhos do Traccar</a> ou no log dele.</p>}
       {modelo?.origem === 'catalogo' && (
         <p className="text-small text-ink-2 rounded-ctl bg-surface-muted px-3 py-2">
-          Modelo do catálogo Localle: protocolo, porta e identificador conferidos na lista do Traccar.{' '}
+          Protocolo e porta vieram da lista do Traccar.{' '}
           {travado ? <TextButton className="text-small" onClick={() => setDestravado(true)}>Editar dados técnicos</TextButton> : <b className="text-warn-ink">Edição liberada: confira com o aparelho real antes de salvar.</b>}
         </p>
       )}

@@ -19,6 +19,12 @@ const FORMATO: Record<TipoIdentificador, { re: RegExp; dica: string }> = {
   outro: { re: /^[A-Za-z0-9._-]{4,40}$/, dica: 'use de 4 a 40 letras, números, ponto, hífen ou sublinhado' },
 };
 
+/**
+ * Nome exibido do modelo: "fabricante nome". Modelo vindo da lista do Traccar é o nome de lá cortado no 1º espaço; nome
+ * de uma palavra só fica nos dois campos e aparece uma vez — assim o exibido é exatamente o nome do Traccar.
+ */
+export const nomeDoModelo = (m: { fabricante: string; nome: string }) => (m.fabricante === m.nome ? m.nome : `${m.fabricante} ${m.nome}`);
+
 /** Identificador sem espaços (o que vai para o Traccar como `uniqueId`). */
 export const normalizarIdentificador = (valor: string) => valor.replace(/\s+/g, '');
 

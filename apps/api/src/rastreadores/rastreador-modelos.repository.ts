@@ -5,7 +5,7 @@ import type { Queryable } from '../db/queryable';
 import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
 
 export type ModeloDados = Pick<RastreadorModeloEntity, 'fabricante' | 'nome' | 'protocolo' | 'porta' | 'tipo_identificador'> &
-  Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio'>>;
+  Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio' | 'origem'>>;
 
 /**
  * Catálogo global de modelos (sem `client_id`, como `rastreadores`): não estende `BaseRepository` pelo mesmo motivo
@@ -31,11 +31,40 @@ export class RastreadorModelosRepository {
 
   async criar(d: ModeloDados, executor: Queryable = this.pool): Promise<RastreadorModeloEntity> {
     const { rows } = await executor.query<RastreadorModeloEntity>(
-      `insert into rastreador_modelos (fabricante, nome, protocolo, porta, tipo_identificador, atributo_tensao, sinal_max, atributo_bloqueio)
-       values ($1, $2, $3, $4, $5, $6, $7, $8) returning *`,
-      [d.fabricante, d.nome, d.protocolo, d.porta, d.tipo_identificador, d.atributo_tensao ?? null, d.sinal_max ?? null, d.atributo_bloqueio ?? null],
+      `insert into rastreador_modelos (fabricante, nome, protocolo, porta, tipo_identificador, atributo_tensao, sinal_max, atributo_bloqueio, origem)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`,
+      [d.fabricante, d.nome, d.protocolo, d.porta, d.tipo_identificador, d.atributo_tensao ?? null, d.sinal_max ?? null, d.atributo_bloqueio ?? null, d.origem ?? 'manual'],
     );
     return rows[0];
+  }
+
+  async findByNome(fabricante: string, nome: string): Promise<RastreadorModeloEntity | null> {
+    const { rows } = await this.pool.query<RastreadorModeloEntity>(
+      'select * from rastreador_modelos where lower(fabricante) = lower($1) and lower(nome) = lower($2)',
+      [fabricante, nome],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Modelos ativos do catálogo cujo nome exibido ("fabricante nome") ou protocolo contém o termo. */
+  async buscarAtivos(termo: string, limite: number): Promise<RastreadorModeloEntity[]> {
+    const { rows } = await this.pool.query<RastreadorModeloEntity>(
+      `select * from rastreador_modelos
+        where ativo and (fabricante || ' ' || nome ilike $1 or nome ilike $1 or protocolo ilike $1)
+        order by lower(fabricante), lower(nome) limit $2`,
+      [termo, limite],
+    );
+    return rows;
+  }
+
+  /** Identificador mais comum entre os modelos do protocolo: palpite para modelo novo vindo da lista do Traccar. */
+  async identificadorDoProtocolo(protocolo: string): Promise<RastreadorModeloEntity['tipo_identificador'] | null> {
+    const { rows } = await this.pool.query<{ tipo_identificador: RastreadorModeloEntity['tipo_identificador'] }>(
+      `select tipo_identificador from rastreador_modelos where protocolo = $1 and ativo
+        group by 1 order by count(*) desc, tipo_identificador limit 1`,
+      [protocolo],
+    );
+    return rows[0]?.tipo_identificador ?? null;
   }
 
   async atualizar(id: string, d: Partial<ModeloDados & { ativo: boolean }>, executor: Queryable = this.pool): Promise<RastreadorModeloEntity | null> {

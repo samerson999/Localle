@@ -199,6 +199,13 @@ export interface FichaTraccar {
   /** null = nenhum aparelho do modelo conectou ainda pelo protocolo do modelo. */
   comandos: { tipos: string[]; imei: string } | null;
 }
+/** Situação do protocolo no Traccar da plataforma; null = o Traccar não informa (anterior à 6.17, fora ou sem config). */
+export type SituacaoProtocolo = { ativo: boolean; porta: number | null } | null;
+/** GET /superadmin/traccar-aparelhos/busca: modelos em uso + aparelhos da lista do Traccar ainda sem modelo. */
+export interface BuscaModelos {
+  modelos: (AdminRastreadorModelo & { situacao: SituacaoProtocolo })[];
+  aparelhos: { id: number; nome: string; protocolo: string; porta: number; situacao: SituacaoProtocolo }[];
+}
 /** GET /superadmin/rastreadores/:id/diagnostico: fatos; o checklist é montado em lib/diagnosticoRastreador.ts. */
 export interface DiagnosticoRastreador {
   imei: string; status: string; modeloId: string | null; protocoloDetectado: string | null; traccarDeviceId: string | null;
@@ -242,6 +249,10 @@ export const adminApi = {
   criarModelo: (body: ModeloBody) => apiSend<AdminRastreadorModelo>('POST', '/superadmin/rastreador-modelos', body),
   atualizarModelo: (id: string, body: Partial<ModeloBody> & { ativo?: boolean }) => apiSend<AdminRastreadorModelo>('PATCH', `/superadmin/rastreador-modelos/${id}`, body),
   atributosDoModelo: (id: string) => apiGet<AtributosRecebidos[]>(`/superadmin/rastreador-modelos/${id}/atributos`),
+  buscarModelos: (q: string) => apiGet<BuscaModelos>(`/superadmin/traccar-aparelhos/busca?q=${encodeURIComponent(q)}`),
+  modeloDoAparelhoTraccar: (id: number) => apiSend<AdminRastreadorModelo>('POST', `/superadmin/traccar-aparelhos/${id}/modelo`),
+  listaTraccar: () => apiGet<{ total: number; atualizado_em: string | null }>('/superadmin/traccar-aparelhos'),
+  atualizarListaTraccar: () => apiSend<{ total: number; removidos: number }>('POST', '/superadmin/traccar-aparelhos/atualizar'),
   diagnosticoRastreador: (id: string) => apiGet<DiagnosticoRastreador>(`/superadmin/rastreadores/${id}/diagnostico`),
   fichaTraccarDoModelo: (id: string) => apiGet<FichaTraccar>(`/superadmin/rastreador-modelos/${id}/traccar`),
   desativarRastreador: (id: string) => apiSend('POST', `/superadmin/rastreadores/${id}/desativar`),

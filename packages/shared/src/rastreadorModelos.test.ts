@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizarIdentificador, validarIdentificador } from './rastreadorModelos';
+import { nomeDoModelo, normalizarIdentificador, validarIdentificador } from './rastreadorModelos';
 
 describe('identificador do rastreador conforme o modelo', () => {
   it('IMEI: exatamente 15 dígitos', () => {
@@ -20,5 +20,12 @@ describe('identificador do rastreador conforme o modelo', () => {
     expect(validarIdentificador('outro', 'ab')).toMatch(/4 a 40/);
     expect(validarIdentificador('imei', '   ')).toBe('Informe o identificador do aparelho');
     expect(normalizarIdentificador(' 12 34 ')).toBe('1234');
+  });
+});
+
+describe('nome exibido do modelo', () => {
+  it('fabricante + nome; nome de uma palavra só (vindo do Traccar) aparece uma vez', () => {
+    expect(nomeDoModelo({ fabricante: 'Jimi', nome: 'IoT JM-VL01' })).toBe('Jimi IoT JM-VL01');
+    expect(nomeDoModelo({ fabricante: 'ATL200', nome: 'ATL200' })).toBe('ATL200');
   });
 });

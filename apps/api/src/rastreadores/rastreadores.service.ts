@@ -22,7 +22,7 @@ import { SimCardsRepository } from './sim-cards.repository';
 import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
 import type { RastreadorVinculoEntity } from './rastreador-vinculo.entity';
 import { isPgError, PG_EXCLUSION_VIOLATION, UNIQUE, violouUnique } from '../db/pg-errors';
-import { normalizarIdentificador, validarIdentificador } from '@localle/shared/rastreadorModelos';
+import { nomeDoModelo, normalizarIdentificador, validarIdentificador } from '@localle/shared/rastreadorModelos';
 import { parseUuid } from '../common/parse-uuid';
 import { RastreadorModelosRepository } from './rastreador-modelos.repository';
 
@@ -72,7 +72,7 @@ export class RastreadoresService {
     const imei = normalizarIdentificador(data.imei);
     const invalido = validarIdentificador(modelo.tipo_identificador, imei);
     if (invalido) throw new BadRequestException(invalido);
-    const nomeModelo = `${modelo.fabricante} ${modelo.nome}`;
+    const nomeModelo = nomeDoModelo(modelo);
     return withTransaction(this.pool, async (client) => {
       let criado: RastreadorEntity;
       try {
@@ -317,7 +317,7 @@ export class RastreadoresService {
     // trocar o modelo do catálogo também atualiza o nome exibido; o identificador já cadastrado não é revalidado
     // (o aparelho continua mandando o mesmo), só o protocolo esperado muda
     const modelo = data.modeloId ? await this.modeloAtivo(data.modeloId) : null;
-    const dados = modelo ? { ...data, modelo: `${modelo.fabricante} ${modelo.nome}` } : data;
+    const dados = modelo ? { ...data, modelo: nomeDoModelo(modelo) } : data;
     return withTransaction(this.pool, async (client) => {
       const antes = await this.rastreadores.findById(rastreadorId, client);
       if (!antes) throw new NotFoundException('Rastreador não encontrado');
@@ -373,7 +373,7 @@ export class RastreadoresService {
     if (typeof modeloId !== 'string' || !modeloId) throw new BadRequestException('Escolha o modelo do rastreador');
     const modelo = await this.modelos.findById(parseUuid('modeloId', modeloId));
     if (!modelo) throw new NotFoundException('Modelo de rastreador não encontrado');
-    if (!modelo.ativo) throw new BadRequestException(`O modelo ${modelo.fabricante} ${modelo.nome} está desativado no catálogo`);
+    if (!modelo.ativo) throw new BadRequestException(`O modelo ${nomeDoModelo(modelo)} está desativado no catálogo`);
     return modelo;
   }
 

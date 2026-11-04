@@ -487,17 +487,18 @@ describe('RastreadoresService', () => {
       await expect(modelos.atributosRecebidos(randomUUID())).rejects.toMatchObject({ status: 404 });
     });
 
-    // Catálogo pronto (migration 1793160000000): os três modelos da HML e os de mercado, com dados da lista do Traccar.
-    it('catálogo pronto: modelos do seed com protocolo e porta do Traccar; cadastrado pela tela é manual', async () => {
+    // Catálogo = modelos em uso (migrations 1793160000000 e 1793170000000): os três da HML ficam; os de mercado saíram
+    // (vêm da lista do Traccar quando forem usados).
+    it('catálogo: os três modelos em uso ficam, os de mercado sem rastreador saíram; cadastrado pela tela é manual', async () => {
       const lista = await modelos.listar();
-      const doCatalogo = lista.filter((m) => m.origem === 'catalogo');
-      expect(doCatalogo.length).toBeGreaterThanOrEqual(17);
+      expect(lista.find((m) => m.fabricante === 'EVOO-X' && m.nome === 'GT06')).toMatchObject({ protocolo: 'gt06', porta: 5023, origem: 'catalogo' });
+      expect(lista.find((m) => m.fabricante === 'Teltonika' && m.nome === 'FMC125')).toMatchObject({ protocolo: 'teltonika', porta: 5027, origem: 'catalogo' });
       // o JR12 pode já existir pela tela (não é sobrescrito): se é do catálogo, é com os dados da lista do Traccar
       const jr12 = lista.find((m) => m.fabricante === 'JMAK' && m.nome === 'JR12');
       expect(jr12).toBeDefined();
       if (jr12!.origem === 'catalogo') expect(jr12).toMatchObject({ protocolo: 'jmak', porta: 5259 });
-      expect(doCatalogo.find((m) => m.fabricante === 'Concox' && m.nome === 'GT06N')).toMatchObject({ protocolo: 'gt06', porta: 5023, tipo_identificador: 'imei' });
-      expect(doCatalogo.find((m) => m.fabricante === 'Suntech' && m.nome === 'ST4315')).toMatchObject({ protocolo: 'suntech', porta: 5011, tipo_identificador: 'outro' });
+      const gt06n = lista.find((m) => m.fabricante === 'Concox' && m.nome === 'GT06N');
+      if (gt06n) expect(gt06n.rastreadores).toBeGreaterThan(0);
       expect(lista.find((m) => m.id === modeloImei)?.origem).toBe('manual');
     });
 

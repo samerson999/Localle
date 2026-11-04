@@ -28,8 +28,8 @@ function mapeamento(b: Record<string, unknown>): Partial<ModeloDados> {
 export function parseCriarModelo(body: unknown): ModeloDados {
   const b = (body ?? {}) as Record<string, unknown>;
   return {
-    fabricante: texto(b.fabricante, 'fabricante', 60),
-    nome: texto(b.nome, 'nome', 60),
+    fabricante: texto(b.fabricante, 'fabricante', 120),
+    nome: texto(b.nome, 'nome', 120),
     protocolo: protocolo(b.protocolo),
     porta: numero(b.porta, 'porta', 1, 65535, true),
     tipo_identificador: opcao(b.tipoIdentificador, 'tipoIdentificador', TIPOS_IDENTIFICADOR),
@@ -40,8 +40,8 @@ export function parseCriarModelo(body: unknown): ModeloDados {
 export function parseAtualizarModelo(body: unknown): Partial<ModeloDados & { ativo: boolean }> {
   const b = (body ?? {}) as Record<string, unknown>;
   const out: Partial<ModeloDados & { ativo: boolean }> = {};
-  if (b.fabricante !== undefined) out.fabricante = texto(b.fabricante, 'fabricante', 60);
-  if (b.nome !== undefined) out.nome = texto(b.nome, 'nome', 60);
+  if (b.fabricante !== undefined) out.fabricante = texto(b.fabricante, 'fabricante', 120);
+  if (b.nome !== undefined) out.nome = texto(b.nome, 'nome', 120);
   if (b.protocolo !== undefined) out.protocolo = protocolo(b.protocolo);
   if (b.porta !== undefined) out.porta = numero(b.porta, 'porta', 1, 65535, true);
   if (b.tipoIdentificador !== undefined) out.tipo_identificador = opcao(b.tipoIdentificador, 'tipoIdentificador', TIPOS_IDENTIFICADOR);
