@@ -13,7 +13,7 @@ import { canSeeFleet, endSupport, homeOf } from '../lib/support';
 import { fmtT } from '@localle/shared/utils';
 import CommandPalette, { isMac } from './CommandPalette';
 import simboloLocalle from '../images/localle-simbolo.png';
-import { SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON, Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarProvider, useSidebar } from './Sidebar';
+import { DockItem, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON, Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarProvider, useSidebar } from './Sidebar';
 
 const OPERACAO = [
   { key: 'monitoramento', label: 'Monitoramento', to: '/monitoramento', icon: 'monitoramento' },
@@ -88,7 +88,7 @@ function LayoutBody() {
   const rev = useStore((s) => s.revenda);
   const patch = useStore((s) => s.patch);
   const needs = useNeedsYou();
-  const { state, openMobile, setOpenMobile } = useSidebar();
+  const { state, isMobile, openMobile, setOpenMobile } = useSidebar();
   useMaintJobs(); // leitura diária do rastreador e escalonamento por e-mail (fila local)
   // pulso no contador só quando entra um item crítico novo (não quando sai um, nem a cada atualização)
   const seen = useRef<Set<string> | null>(null);
@@ -157,9 +157,32 @@ function LayoutBody() {
   // celular: a barra superior diz em que tela se está (o título da página é discreto e o logo já mostra a revenda)
   const atual = mods.filter((m) => loc.pathname === m.to || loc.pathname.startsWith(m.to + '/')).sort((a, b) => b.to.length - a.to.length)[0]
     ?? (loc.pathname.startsWith('/precisa-de-voce') ? { label: 'Precisa de você' } : null);
-  const mini = state === 'collapsed' && !openMobile; // só ícones (desktop recolhido)
+  const mini = state === 'collapsed' && !isMobile; // só ícones (desktop recolhido); por isMobile e não por openMobile, que vira false antes da animação de saída da gaveta
   const sbw = mini ? SIDEBAR_WIDTH_ICON : SIDEBAR_WIDTH;
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
+
+  // celular: barra inferior flutuante. Três atalhos do dia a dia + "Mais" (o menu inteiro). Quem vê a frota: Monitoramento,
+  // críticos (o contador do "Precisa de você") e o primeiro módulo de gestão; sem frota (revenda, Locale), as três primeiras telas.
+  const naRota = (to: string) => loc.pathname === to || loc.pathname.startsWith(to + '/');
+  const gestao = allowed(GESTAO);
+  const atalhos = fleet
+    ? [...allowed(OPERACAO).slice(0, 1), ...gestao.slice(0, 1)]
+    : mods.slice(0, 3);
+  const noAtalho = atalhos.some((m) => naRota(m.to)) || (fleet && naRota('/precisa-de-voce'));
+  const dockPill = <>
+    {atalhos.slice(0, 1).map((m) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.label} active={naRota(m.to)} />)}
+    {fleet && <DockItem icon="atencao" label="Críticos" active={naRota('/precisa-de-voce')} onClick={() => setPanel(true)} expanded={panel}
+      badge={needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute -top-1.5 left-3" />} />}
+    {atalhos.slice(1).map((m) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.label} active={naRota(m.to)} />)}
+    <DockItem icon="menu" label="Mais" active={!noAtalho} onClick={() => setOpenMobile(true)} expanded={openMobile} />
+  </>;
+  // botão redondo: Buscar com o menu fechado; Fechar com ele aberto (a pílula se recolhe e o "Mais" some)
+  const dockAction = (
+    <button type="button" onClick={() => (openMobile ? setOpenMobile(false) : setCmdk(true))} aria-label={openMobile ? 'Fechar menu' : 'Buscar'}
+      className="dock-glass size-[62px] rounded-pill flex items-center justify-center text-ink transition-transform duration-150 active:scale-95 [-webkit-tap-highlight-color:transparent]">
+      <Icon name={openMobile ? 'fechar' : 'busca'} size={22} />
+    </button>
+  );
 
   const footBtn = ({ icon, label, onClick, children, expanded }: { icon: string; label: string; onClick: () => void; children?: ReactNode; expanded?: boolean }) => (
     <button type="button" onClick={onClick} title={mini ? label : undefined} aria-label={mini ? label : undefined} aria-expanded={expanded}
@@ -170,16 +193,15 @@ function LayoutBody() {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 md:flex-row" style={{ ['--sb-w' as any]: `${sbw}px` }}>
-      <Sidebar>
+      <Sidebar dock={{ pill: dockPill, action: dockAction }}>
         <SidebarHeader>
-          <div className={cx('relative flex items-center gap-stack h-[72px] shrink-0 px-[18px] overflow-hidden', openMobile && 'pr-14')}>
+          <div className="relative flex items-center gap-stack h-[72px] shrink-0 px-[18px] overflow-hidden">
             <BrandMark />
-            <div className={cx('flex flex-col', openMobile ? 'flex-1 min-w-0' : 'w-[166px] shrink-0', fade)}><span className="font-semibold text-body leading-tight line-clamp-2">{rev.branding.name}</span><span className="text-caption text-ink-2 truncate">{rev.clientName}</span></div>
-            {openMobile && <IconButton tone="sidebar" size="sm" onClick={() => setOpenMobile(false)} aria-label="Fechar menu" className="absolute right-3 top-1/2 -translate-y-1/2"><Icon name="fechar" size={18} /></IconButton>}
+            <div className={cx('flex flex-col', isMobile ? 'flex-1 min-w-0' : 'w-[166px] shrink-0', fade)}><span className="font-semibold text-body leading-tight line-clamp-2">{rev.branding.name}</span><span className="text-caption text-ink-2 truncate">{rev.clientName}</span></div>
           </div>
           <div className="px-3">
             <button type="button" onClick={() => setCmdk(true)} aria-label="Buscar" className="w-full h-10 rounded-ctl bg-surface-muted flex items-center gap-stack pl-[14px] pr-2 overflow-hidden text-body text-ink-2 transition-colors duration-150 hover:text-ink hover:bg-surface-hover">
-              <Icon name="busca" size={18} className="shrink-0" /><span className={cx('mr-auto whitespace-nowrap', fade)}>Buscar</span><kbd className={cx('text-caption font-mono text-ink-2 rounded-chip px-1.5 h-5 flex items-center shrink-0 bg-card border border-line', fade)}>{isMac ? '⌘K' : 'Ctrl+K'}</kbd>
+              <Icon name="busca" size={18} className="shrink-0" /><span className={cx('mr-auto whitespace-nowrap', fade)}>Buscar</span><kbd className={cx('text-caption font-mono text-ink-2 rounded-chip px-1.5 h-5 flex items-center shrink-0 bg-card border border-line max-md:hidden', fade)}>{isMac ? '⌘K' : 'Ctrl+K'}</kbd>
             </button>
           </div>
         </SidebarHeader>
@@ -218,12 +240,9 @@ function LayoutBody() {
       </Sidebar>
       <SidebarInset>
         <div style={{ ['--top-reserve' as any]: reserve && !session.support ? `calc(${reserve}px + var(--gap-grid))` : '0px' }} className="flex flex-col flex-1 min-w-0">
-          {/* celular: barra superior com contador sempre visível */}
+          {/* celular: barra superior só diz onde se está; navegação, busca e críticos ficam na barra inferior */}
           <div className="md:hidden no-print sticky top-0 z-[800] flex items-center gap-2 px-4 h-14 bg-canvas border-b border-line">
             <BrandMark size={30} /><span className="font-semibold text-body truncate mr-auto">{atual?.label ?? rev.branding.name}</span>
-            <IconButton size="touch" onClick={() => setCmdk(true)} aria-label="Buscar" ><Icon name="busca" /></IconButton>
-            {fleet && <IconButton size="touch" onClick={() => setPanel(true)} aria-label={`Precisa de você: ${needs.length} críticos`} className="relative"><Icon name="atencao" />{needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute top-0.5 right-0" />}</IconButton>}
-            <IconButton size="touch" onClick={() => setOpenMobile(true)} aria-label="Abrir menu" aria-expanded={openMobile} ><Icon name="menu" /></IconButton>
           </div>
           {/* desktop: "Precisa de você" fica no topo à direita, na mesma linha do cabeçalho da página (que reserva a largura dele
               por --top-reserve). Com a faixa de suporte aberta, volta a ocupar uma linha própria acima dela. Não acompanha o scroll. */}
@@ -249,7 +268,7 @@ function LayoutBody() {
           <AvisoBackend />
           </div>
           <OdometerAsk />
-          <main key={loc.pathname} className="flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end md:px-page-md md:pt-page-top-md anim-page"><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
+          <main key={loc.pathname} className="flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end max-md:pb-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] md:px-page-md md:pt-page-top-md anim-page"><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
         </div>
       </SidebarInset>
       <NeedsPanel open={panel} onClose={() => setPanel(false)} anchor={needsBtn.current} />

@@ -112,11 +112,11 @@ function Marcacoes() {
     <Stack gap="grid">
       <Card title="Registrar marcação" icon="mais">
         <p className="text-small text-ink-2 mb-3">As marcações chegam do teclado de jornada instalado no veículo ou do app do motorista. Use este formulário para lançar uma marcação manual ou fazer um ajuste.</p>
-        <div className="flex flex-wrap gap-3 items-end">
-          <Field label="Motorista"><SearchSelect className="w-52" value={d} onChange={setD} options={s.drivers.map((x: any) => ({ value: x.id, label: x.name }))} /></Field>
-          <Field label="Marcação"><Select className="w-52" value={type} onChange={(e) => setType(e.target.value)} options={Object.entries(JOURNEY_TYPES).map(([k, l]) => ({ value: k, label: l }))} /></Field>
+        <div className="flex flex-wrap gap-3 items-end max-md:[&>*]:w-full">
+          <Field label="Motorista"><SearchSelect className="w-52 max-md:w-full" value={d} onChange={setD} options={s.drivers.map((x: any) => ({ value: x.id, label: x.name }))} /></Field>
+          <Field label="Marcação"><Select className="w-52 max-md:w-full" value={type} onChange={(e) => setType(e.target.value)} options={Object.entries(JOURNEY_TYPES).map(([k, l]) => ({ value: k, label: l }))} /></Field>
           <Field label="Data e hora"><DateInput type="datetime-local" value={ts} max={toInputDT(Date.now())} onChange={(e) => setTs(e.target.value)} /></Field>
-          <Field label="Origem"><Select className="w-40" value={src} onChange={(e) => setSrc(e.target.value)} options={[{ value: 'app', label: 'App do motorista' }, { value: 'teclado', label: 'Teclado embarcado' }, { value: 'manual', label: 'Ajuste manual' }]} /></Field>
+          <Field label="Origem"><Select className="w-40 max-md:w-full" value={src} onChange={(e) => setSrc(e.target.value)} options={[{ value: 'app', label: 'App do motorista' }, { value: 'teclado', label: 'Teclado embarcado' }, { value: 'manual', label: 'Ajuste manual' }]} /></Field>
           <Button onClick={() => { const t0 = new Date(ts).getTime(); if (!isFinite(t0) || t0 > Date.now()) return toast('Informe uma data e hora que não esteja no futuro.', { tone: 'crit' }); registrarMarcacao({ driverId: d, type, ts: t0, source: src }).then(() => toast('Marcação registrada.', { detail: `${s.drivers.find((x: any) => x.id === d)?.name} · ${JOURNEY_TYPES[type]}` })).catch((e: any) => toast('Não foi possível registrar: ' + (e.message || e), { tone: 'crit' })); }}>Registrar</Button>
         </div>
       </Card>
@@ -145,8 +145,8 @@ function Folha() {
   return (
     <Stack gap="grid">
       <Card>
-        <div className="flex flex-wrap gap-3 items-end">
-          <Field label="Motorista"><SearchSelect className="w-56" value={d} onChange={setD} options={[...s.drivers.map((x: any) => ({ value: x.id, label: x.name })), { value: 'todos', label: 'Todos os motoristas (um por página)' }]} /></Field>
+        <div className="flex flex-wrap gap-3 items-end max-md:[&>*]:w-full">
+          <Field label="Motorista"><SearchSelect className="w-56 max-md:w-full" value={d} onChange={setD} options={[...s.drivers.map((x: any) => ({ value: x.id, label: x.name })), { value: 'todos', label: 'Todos os motoristas (um por página)' }]} /></Field>
           <Field label="Período"><Pills value={mode} onChange={setMode} options={[{ key: 'mes', label: 'Competência' }, { key: 'custom', label: 'Personalizado' }]} /></Field>
           {mode === 'mes' ? <Field label="Competência"><DateInput type="month" value={ym} onChange={(e) => setYm(e.target.value)} /></Field> : <><Field label="De"><DateInput type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></Field><Field label="Até"><DateInput type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></Field></>}
           <Button variant="dark" onClick={() => print(<>{selected.map(sheet)}</>)}><Icon name="imprimir" size={18} />Imprimir / salvar PDF{selected.length > 1 ? ` (${selected.length} folhas)` : ''}</Button>
@@ -172,7 +172,7 @@ function Termo() {
   const cfg = useCfg();
   return (
     <Stack gap="grid">
-      <Card className="no-print"><div className="flex flex-wrap gap-3 items-end"><Field label="Motorista"><Select className="w-52" value={d} onChange={(e) => setD(e.target.value)} options={s.drivers.map((x: any) => ({ value: x.id, label: x.name }))} /></Field><Button variant="dark" onClick={() => print(<div className="doc-sheet" style={{ fontSize: 14, maxWidth: 760, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: document.getElementById('termo-doc')?.innerHTML || '' }} />)}><Icon name="imprimir" size={18} />Imprimir para assinatura</Button></div><div className="mt-3"><LegalNote /></div></Card>
+      <Card className="no-print"><div className="flex flex-wrap gap-3 items-end max-md:[&>*]:w-full"><Field label="Motorista"><Select className="w-52 max-md:w-full" value={d} onChange={(e) => setD(e.target.value)} options={s.drivers.map((x: any) => ({ value: x.id, label: x.name }))} /></Field><Button variant="dark" onClick={() => print(<div className="doc-sheet" style={{ fontSize: 14, maxWidth: 760, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: document.getElementById('termo-doc')?.innerHTML || '' }} />)}><Icon name="imprimir" size={18} />Imprimir para assinatura</Button></div><div className="mt-3"><LegalNote /></div></Card>
       <article id="termo-doc" className="bg-card border border-line rounded-card p-8 md:p-12 max-w-3xl print-area text-body leading-relaxed">
         <h2 className="text-h2 font-semibold text-center mb-6">Termo de ciência sobre controle de jornada e tempo de direção</h2>
         <p className="mb-3">Eu, <b>{drv?.name}</b>, portador(a) da CNH nº <b>{drv?.cnh}</b>, categoria <b>{drv?.cnhCat}</b>, motorista profissional empregado(a) de <b>{company}</b>, declaro que fui orientado(a) e estou ciente das regras de jornada de trabalho e tempo de direção previstas na Lei nº 13.103/2015, na CLT (arts. 235-A a 235-H) e no Código de Trânsito Brasileiro (art. 67-C), em especial:</p>

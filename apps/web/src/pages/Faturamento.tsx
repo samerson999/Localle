@@ -64,7 +64,7 @@ export default function Faturamento() {
   return (
     <div>
       <PageHeader icon="dinheiro" title="Faturamento" subtitle={`Apuração de ${mesLabel(ym)}, por cliente`}>
-        <Select aria-label="Competência" className="w-48" value={ym} onChange={(e) => setYm(e.target.value)} options={mesesRecentes(12).map((m) => ({ value: m, label: mesLabel(m) }))} />
+        <Select aria-label="Competência" className="w-48 max-md:w-full" value={ym} onChange={(e) => setYm(e.target.value)} options={mesesRecentes(12).map((m) => ({ value: m, label: mesLabel(m) }))} />
         {!corrente && abertas > 0 && <Button loading={closing} onClick={fechar}>Fechar competência</Button>}
         <Button variant="secondary" onClick={exportar} disabled={!rows.length}><Icon name="exportar" size={18} />Exportar para o financeiro</Button>
       </PageHeader>

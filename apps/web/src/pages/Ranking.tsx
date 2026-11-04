@@ -178,9 +178,9 @@ function RegisterEvent({ types }: { types: EvType[] }) {
   const t = types.find((x) => x.code === e.type);
   return (
     <Card title="Lançar evento manualmente" icon="mais">
-      <div className="flex flex-wrap gap-2 items-end">
-        <Field label="Motorista"><SearchSelect className="w-48" value={e.driverId} onChange={(v) => setE({ ...e, driverId: v })} options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
-        <Field label="Evento"><Select className="w-64" value={e.type} onChange={(x) => setE({ ...e, type: x.target.value })} options={types.filter((x) => x.active).map((x) => ({ value: x.code, label: x.label }))} /></Field>
+      <div className="flex flex-wrap gap-2 items-end max-md:[&>*]:w-full">
+        <Field label="Motorista"><SearchSelect className="w-48 max-md:w-full" value={e.driverId} onChange={(v) => setE({ ...e, driverId: v })} options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
+        <Field label="Evento"><Select className="w-64 max-md:w-full" value={e.type} onChange={(x) => setE({ ...e, type: x.target.value })} options={types.filter((x) => x.active).map((x) => ({ value: x.code, label: x.label }))} /></Field>
         {t?.unit && <Field label={`Valor (${t.unit})`}><Input className="w-28" type="number" value={e.value} onChange={(x) => setE({ ...e, value: x.target.value })} /></Field>}
         <Button variant="dark" onClick={async () => { try { await lancarEventoRanking({ driverId: e.driverId, type: e.type, ts: Date.now(), assetId: s.assets.find((a: any) => a.driverId === e.driverId)?.id, value: e.value ? +e.value : null, source: 'manual' }); toast('Evento lançado.'); setE({ ...e, value: '' }); } catch (er: any) { toast('Não foi possível lançar: ' + (er.message || er), { tone: 'crit' }); } }}>Lançar</Button>
       </div>

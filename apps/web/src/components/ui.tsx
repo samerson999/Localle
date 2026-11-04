@@ -97,11 +97,13 @@ export function FloatingPanel({ side = 'right', label, title, subtitle, header, 
   side?: 'right' | 'bottom'; label: string; title?: React.ReactNode; subtitle?: React.ReactNode; header?: React.ReactNode; onClose?: () => void;
   footer?: React.ReactNode; closing?: boolean; children?: React.ReactNode; className?: string;
 }) {
+  // celular: folha inferior presa à tela, com duas alturas (a faixa dentro do mapa deixava o corpo com poucos pixels)
+  const mobile = useIsMobile();
+  if (mobile) return <Sheet modal={false} label={label} title={title} subtitle={subtitle} header={header} onClose={onClose} actions={footer} closing={closing}>{children}</Sheet>;
   return (
     <aside aria-label={label} className={cx('absolute z-[450] bg-card rounded-panel shadow-panel flex flex-col overflow-hidden bleed-card-sm',
-      side === 'right' ? 'right-3 top-3 bottom-3 w-[380px] max-w-[calc(100%-24px)] max-md:top-auto max-md:left-2 max-md:right-2 max-md:bottom-2 max-md:w-auto max-md:max-w-none max-md:max-h-[58%]' : 'left-3 right-3 bottom-3 max-h-[60%]',
-      // no celular o painel lateral vira faixa inferior (o lateral cobria o mapa inteiro) e entra de baixo
-      closing ? (side === 'right' ? 'panel-out max-md:[animation-name:page-out]' : 'anim-out') : (side === 'right' ? 'panel-in max-md:[animation-name:page-in]' : 'anim-page'), className)}>
+      side === 'right' ? 'right-3 top-3 bottom-3 w-[380px] max-w-[calc(100%-24px)]' : 'left-3 right-3 bottom-3 max-h-[60%]',
+      closing ? (side === 'right' ? 'panel-out' : 'anim-out') : (side === 'right' ? 'panel-in' : 'anim-page'), className)}>
       {(title || header || onClose) && (
         <header className="flex items-start gap-stack px-card-sm pt-card-sm">
           <div className="min-w-0 mr-auto flex flex-col gap-hair">{header}{title && <h2 className="text-h3 font-semibold">{title}</h2>}{subtitle && <p className="text-small text-ink-2">{subtitle}</p>}</div>
@@ -112,6 +114,133 @@ export function FloatingPanel({ side = 'right', label, title, subtitle, header, 
       {footer && <footer className="flex flex-wrap items-center gap-tight px-card-sm py-stack border-t border-line">{footer}</footer>}
     </aside>
   );
+}
+
+// Régua do celular: abaixo de md (768 px), a mesma do Tailwind e da barra lateral.
+const MOBILE_MQ = '(max-width: 767px)';
+export function useIsMobile() {
+  const [m, setM] = useState(() => typeof window !== 'undefined' && window.matchMedia(MOBILE_MQ).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(MOBILE_MQ);
+    const on = () => setM(mql.matches);
+    on();
+    mql.addEventListener('change', on);
+    return () => mql.removeEventListener('change', on);
+  }, []);
+  return m;
+}
+
+// Arrasto pela alça de uma folha inferior: o elemento segue o dedo (para cima, com resistência) e, ao soltar, volta ao
+// lugar e quem chamou decide pelo deslocamento e pela velocidade (px/ms). Toque em botão, link ou campo não arrasta.
+export function useSheetDrag(target: React.RefObject<HTMLElement>, onRelease: (dy: number, vy: number) => void) {
+  const g = useRef<{ id: number; y: number; t: number; dy: number } | null>(null);
+  const end = (e: React.PointerEvent) => {
+    const s = g.current, el = target.current;
+    if (!s || e.pointerId !== s.id) return;
+    g.current = null;
+    if (el) { el.style.transition = ''; el.style.translate = ''; }
+    onRelease(s.dy, s.dy / Math.max(16, e.timeStamp - s.t));
+  };
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('a,input,select,textarea,button:not([data-sheet-handle])')) return;
+      g.current = { id: e.pointerId, y: e.clientY, t: e.timeStamp, dy: 0 };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const s = g.current, el = target.current;
+      if (!s || !el || e.pointerId !== s.id) return;
+      s.dy = e.clientY - s.y;
+      el.style.transition = 'none';
+      el.style.translate = `0 ${s.dy < 0 ? s.dy * 0.2 : s.dy}px`;
+    },
+    onPointerUp: end, onPointerCancel: end,
+  };
+}
+
+// Folha inferior do celular, o padrão único de sobreposição abaixo de md.
+// modal = diálogo (fundo escurecido, foco preso, rolagem da página travada); a altura segue o conteúdo, até 92% da tela;
+//   arrastar para baixo fecha.
+// modal={false} = painel de detalhe sobre o mapa (veículo, "Passou por aqui"): o mapa continua usável acima; abre recolhida
+//   (cabeçalho, ações e o começo do corpo) e expande até 88% da tela tocando ou arrastando a alça; arrastar para baixo
+//   recolhe e, recolhida, fecha. As ações ficam logo abaixo do cabeçalho, ao alcance do polegar nas duas alturas.
+// bare = o conteúdo traz o próprio cabeçalho, área rolável e rodapé (painel "Precisa de você"); a folha só põe a alça.
+// tall = altura fixa de 92% (abas que trocam de conteúdo não fazem a folha pular de tamanho).
+// Quem chama controla a montagem (usePresence) e passa `closing` durante a saída, como no FloatingPanel.
+const SHEET_PEEK_BODY = 104; // quanto do corpo aparece com a folha recolhida
+export function Sheet({ modal = true, bare = false, tall = false, label, title, subtitle, header, onClose, actions, footer, closing, children }: {
+  modal?: boolean; bare?: boolean; tall?: boolean; label: string; title?: React.ReactNode; subtitle?: React.ReactNode; header?: React.ReactNode; onClose?: () => void;
+  actions?: React.ReactNode; footer?: React.ReactNode; closing?: boolean; children?: React.ReactNode;
+}) {
+  const box = useRef<HTMLDivElement>(null), top = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(modal);
+  const [peek, setPeek] = useState(0);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  useScrollLock(modal && !closing);
+  useLayoutEffect(() => {
+    if (modal) return;
+    const measure = () => { const b = box.current, t = top.current; if (b && t) setPeek(Math.max(0, b.offsetHeight - Math.min(t.offsetHeight + SHEET_PEEK_BODY, b.offsetHeight * 0.6))); };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (box.current) ro.observe(box.current);
+    if (top.current) ro.observe(top.current);
+    return () => ro.disconnect();
+  }, [modal]);
+  useEffect(() => {
+    const back = document.activeElement as HTMLElement | null;
+    const focusables = () => Array.from(box.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input,select,textarea,[tabindex]:not([tabindex="-1"])') || []);
+    if (modal) focusables()[0]?.focus();
+    const k = (e: KeyboardEvent) => {
+      // Esc fecha só a sobreposição do topo (um Modal aberto por cima do painel do veículo, como Comandos, fecha primeiro)
+      if (e.key === 'Escape' && !e.defaultPrevented) { const all = document.querySelectorAll('[aria-modal="true"],[data-sheet]'); if (all[all.length - 1] === box.current) { e.preventDefault(); closeRef.current?.(); } return; }
+      if (!modal || e.key !== 'Tab') return;
+      const f = focusables(); if (!f.length) return;
+      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+    };
+    document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('keydown', k); if (modal) back?.focus?.(); };
+  }, [modal]);
+  const drag = useSheetDrag(box, (dy, vy) => {
+    const down = dy > 64 || vy > 0.5, up = dy < -40 || vy < -0.5;
+    if (modal) { if (down) onClose?.(); return; }
+    if (down) { if (expanded) setExpanded(false); else onClose?.(); }
+    else if (up) setExpanded(true);
+    else if (Math.abs(dy) < 6) setExpanded(!expanded);
+  });
+  const dragBody = !modal && !expanded;
+  const sheet = (
+    <div ref={box} data-sheet="" role={modal ? 'dialog' : 'region'} aria-modal={modal || undefined} aria-label={label}
+      style={modal ? undefined : { transform: `translateY(${expanded ? 0 : peek}px)` }}
+      className={cx('fixed inset-x-0 bottom-0 flex flex-col bg-card rounded-t-panel shadow-[var(--shadow-sheet)] bleed-card-sm no-print',
+        'transition-[transform,translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
+        modal ? cx('z-[1310]', tall ? 'h-[92vh] supports-[height:100dvh]:h-[92dvh]' : 'max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh]') : 'z-[1060] h-[88vh] supports-[height:100dvh]:h-[88dvh]', // acima da barra inferior (z-1050): o painel do veículo a cobre enquanto aberto
+        closing ? 'sheet-out' : 'sheet-in')}>
+      <div ref={top} {...drag} className="shrink-0 touch-none select-none">
+        {modal
+          ? <span aria-hidden="true" className="block mx-auto mt-2 mb-1 w-10 h-1 rounded-pill bg-line-strong" />
+          : <button type="button" data-sheet-handle="" aria-label={expanded ? 'Recolher painel' : 'Expandir painel'} aria-expanded={expanded} onClick={(e) => { if (e.detail === 0) setExpanded(!expanded); /* teclado; o toque já alternou ao soltar */ }}
+              className="flex w-full justify-center pt-2 pb-1"><span aria-hidden="true" className="w-10 h-1 rounded-pill bg-line-strong" /></button>}
+        {!bare && (title || header || onClose) && (
+          <header className="flex items-start gap-stack px-card-sm pt-tight">
+            <div className="min-w-0 mr-auto flex flex-col gap-hair">{header}{title && <h2 className={cx(modal ? 'text-h2' : 'text-h3', 'font-semibold')}>{title}</h2>}{subtitle && <p className="text-small text-ink-2">{subtitle}</p>}</div>
+            {onClose && <IconButton aria-label="Fechar" className="-mr-2 -mt-1" onClick={onClose}><Icon name="fechar" size={20} /></IconButton>}
+          </header>
+        )}
+        {actions && <div className="flex items-center gap-tight px-card-sm pt-stack pb-tight">{actions}</div>}
+      </div>
+      {bare ? children : <>
+      <div {...(dragBody ? drag : {})} onClick={dragBody ? () => setExpanded(true) : undefined}
+        className={cx('flex-1 min-h-0 px-card-sm pt-card-head-sm', dragBody ? 'overflow-hidden touch-none' : 'overflow-y-auto overscroll-contain', !footer && 'pb-[max(var(--pad-card-sm),env(safe-area-inset-bottom))]')}>
+        <HeadingLevel level={3}>{children}</HeadingLevel>
+      </div>
+      {footer && <footer className="shrink-0 flex flex-wrap items-center justify-end gap-tight px-card-sm pt-stack pb-[max(12px,env(safe-area-inset-bottom))] border-t border-line">{footer}</footer>}
+      </>}
+    </div>
+  );
+  return createPortal(modal
+    ? <div className="fixed inset-0 z-[1300] no-print"><div className={cx('absolute inset-0 bg-scrim', closing ? 'anim-fade-out' : 'anim-fade')} onClick={onClose} />{sheet}</div>
+    : sheet, document.body);
 }
 
 // Menu de contexto num ponto (clique direito no mapa): cabeçalho opcional (ex.: coordenadas) e itens como no Menu.
@@ -675,13 +804,20 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
   }, [open]);
+  const mobile = useIsMobile();
+  const drag = useSheetDrag(box, (dy, vy) => { if (dy > 64 || vy > 0.5) onClose(); });
   if (!mounted) return null;
   const c = last.current;
-  // portal no body: o modal não fica preso a painéis com transform/z-index de quem o abriu
+  // portal no body: o modal não fica preso a painéis com transform/z-index de quem o abriu.
+  // Celular: folha inferior (mesma linguagem do Sheet) — encosta embaixo, sobe de baixo, alça e cabeçalho arrastam para
+  // fechar; formulário longo rola o fundo inteiro e o mt-auto mantém o topo alcançável (items-end cortaria o topo).
   return createPortal(
-    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} className={cx('w-full bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col', closing ? 'anim-out' : 'anim-page', width)}>
-        <div className="flex items-center gap-stack mb-card-head"><h2 className="text-h2 font-semibold mr-auto">{c.title}</h2><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={onClose}><Icon name="fechar" /></IconButton></div>
+    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} className={cx('w-full bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] transition-[translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]', closing ? 'anim-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-page max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
+        <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
+          <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />
+          <div className="flex items-center gap-stack mb-card-head"><h2 className="text-h2 font-semibold mr-auto">{c.title}</h2><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={onClose}><Icon name="fechar" /></IconButton></div>
+        </div>
         <HeadingLevel level={3}><div className="flex flex-col gap-field min-w-0">{c.children}</div></HeadingLevel>
         {/* celular: formulário longo não esconde as ações lá embaixo; o rodapé gruda no fim da tela enquanto o modal rola */}
         {c.footer && <div className="flex flex-wrap justify-end gap-tight mt-form-actions pt-card-foot border-t border-line max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-card max-md:px-card max-md:-mb-card max-md:pb-card max-md:bg-card max-md:rounded-b-panel">{c.footer}</div>}
@@ -1219,7 +1355,7 @@ export function Toaster() {
   return <>
     <ConfirmHost />
     {createPortal(
-      <div aria-live="polite" className="fixed z-[1500] bottom-4 left-4 right-4 sm:left-auto flex flex-col items-end gap-2 pointer-events-none">
+      <div aria-live="polite" className="fixed z-[1500] bottom-4 max-md:bottom-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] left-4 right-4 sm:left-auto flex flex-col items-end gap-2 pointer-events-none">{/* celular: acima da barra inferior */}
         {toastItems.map((t) => <ToastView key={t.id} t={t} />)}
       </div>,
       document.body,

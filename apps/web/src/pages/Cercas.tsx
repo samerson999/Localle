@@ -86,7 +86,7 @@ export default function Cercas() {
             <Clicks onClick={onMap} />
             <Center c={sp.get('lat') ? [+sp.get('lat')!, +sp.get('lng')!] : null} />
           </MapContainer>
-          <div className="absolute z-[400] top-3 left-3">
+          <div className="absolute z-[400] top-3 left-3 [@media(pointer:coarse)]:hidden">{/* no toque o zoom é pela pinça */}
             <MapControls items={[{ icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() }, { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() }]} />
           </div>
           <div className="absolute z-[400] bottom-3 left-3 right-3 sm:right-auto bg-card border border-line shadow-float rounded-btn px-3 py-2 text-caption font-medium text-ink-2">{tip}</div>

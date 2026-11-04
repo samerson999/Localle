@@ -242,14 +242,14 @@ function OsModal({ init, onClose }: any) {
             <div className="flex items-baseline gap-2"><h3 className="text-h3 font-semibold mr-auto">Itens e serviços</h3>{items.length > 0 && <span className="text-small text-ink-2 num">{doneN} de {items.length} feitos</span>}</div>
             {items.length > 0 && (
               <ul className="flex flex-col border border-line rounded-ctl overflow-hidden">
-                <li aria-hidden="true" className="grid grid-cols-[auto_1fr_7.5rem_7.5rem_auto] gap-3 px-3 py-2 bg-card-2 text-caption text-ink-2"><span className="w-[18px]" /><span>Item</span><span>Estimado (R$)</span><span>Realizado (R$)</span><span className="w-8" /></li>
+                <li aria-hidden="true" className="grid grid-cols-[auto_1fr_7.5rem_7.5rem_auto] gap-3 px-3 py-2 bg-card-2 text-caption text-ink-2 max-md:hidden"><span className="w-[18px]" /><span>Item</span><span>Estimado (R$)</span><span>Realizado (R$)</span><span className="w-8" /></li>
                 {items.map((it: any) => (
-                  <li key={it.id} className="grid grid-cols-[auto_1fr_7.5rem_7.5rem_auto] items-center gap-3 px-3 py-2 border-t border-line">
+                  <li key={it.id} className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] md:grid-cols-[auto_1fr_7.5rem_7.5rem_auto] items-center gap-x-3 gap-y-tight px-3 py-2 border-t border-line max-md:first-of-type:border-t-0">
                     <Check aria-label={`${it.label} feito`} checked={!!it.done} onChange={(v) => upItem(it.id, 'done', v)} />
-                    <InlineInput aria-label="Item" className={cx('text-body h-8 px-1 -mx-1', it.done && 'line-through text-ink-2')} value={it.label} onChange={(e) => upItem(it.id, 'label', e.target.value)} />
-                    <Input type="number" aria-label={`Estimado de ${it.label}`} placeholder="Estimado" className="h-8 text-small" value={it.est ?? ''} onChange={(e) => upItem(it.id, 'est', e.target.value === '' ? null : +e.target.value)} />
+                    <InlineInput aria-label="Item" className={cx('text-body h-8 px-1 -mx-1 max-md:col-span-2', it.done && 'line-through text-ink-2')} value={it.label} onChange={(e) => upItem(it.id, 'label', e.target.value)} />
+                    <Input type="number" aria-label={`Estimado de ${it.label}`} placeholder="Estimado" className="h-8 text-small max-md:col-start-2" value={it.est ?? ''} onChange={(e) => upItem(it.id, 'est', e.target.value === '' ? null : +e.target.value)} />
                     <Input type="number" aria-label={`Realizado de ${it.label}`} placeholder="Realizado" className="h-8 text-small" value={it.real ?? ''} onChange={(e) => upItem(it.id, 'real', e.target.value === '' ? null : +e.target.value)} />
-                    <IconButton size="sm" aria-label={`Remover ${it.label}`} onClick={() => set('items', items.filter((x: any) => x.id !== it.id))} className="text-ink-3"><Icon name="fechar" size={16} /></IconButton>
+                    <IconButton size="sm" aria-label={`Remover ${it.label}`} onClick={() => set('items', items.filter((x: any) => x.id !== it.id))} className="text-ink-3 max-md:col-start-4 max-md:row-start-1"><Icon name="fechar" size={16} /></IconButton>
                   </li>
                 ))}
               </ul>

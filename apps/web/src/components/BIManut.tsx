@@ -99,9 +99,9 @@ export function BIGestor({ A, B, a, openWos }: { A: Kpis; B?: Kpis; a: [number, 
         <ChartCard title="Falhas mais frequentes" icon="alerta" period={`${rangeText(a)} · panes não planejadas`} sentence={failSentence} state={totalF ? 'ready' : 'empty'} empty={{ title: 'Nenhuma pane no período' }}>
           <ul className="flex flex-col gap-1">
             {fails.map((f, i) => (
-              <TipItem title={f.title} rows={[{ label: 'Panes', value: `${f.qty}×`, strong: true }, { label: 'Custo', value: brl(f.cost) }]} foot={totalF ? `${Math.round((f.qty / totalF) * 100)}% das panes do período` : undefined} key={f.title} className="grid grid-cols-[minmax(0,12rem)_1fr_auto] items-center gap-3 h-9">
+              <TipItem title={f.title} rows={[{ label: 'Panes', value: `${f.qty}×`, strong: true }, { label: 'Custo', value: brl(f.cost) }]} foot={totalF ? `${Math.round((f.qty / totalF) * 100)}% das panes do período` : undefined} key={f.title} className="grid grid-cols-[minmax(0,12rem)_1fr_auto] max-sm:grid-cols-[1fr_auto] items-center gap-x-3 gap-y-tight min-h-9 max-sm:py-tight">
                 <span className="text-small truncate">{f.title}</span>
-                <span className="h-2.5 rounded-pill bg-track overflow-hidden"><span className="block h-full rounded-pill fill-loss grow-x" style={{ width: `${(f.qty / maxQ) * 100}%`, ['--i' as any]: i }} /></span>
+                <span className="h-2.5 rounded-pill bg-track overflow-hidden max-sm:col-span-2 max-sm:order-last"><span className="block h-full rounded-pill fill-loss grow-x" style={{ width: `${(f.qty / maxQ) * 100}%`, ['--i' as any]: i }} /></span>
                 <span className="text-small num text-right whitespace-nowrap"><span className="font-semibold">{f.qty}×</span> <span className="text-ink-2">· {brlShort(f.cost)}</span></span>
               </TipItem>
             ))}

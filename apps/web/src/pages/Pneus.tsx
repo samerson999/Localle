@@ -109,9 +109,9 @@ function Visao({ onOpen, period }: any) {
         <ChartCard title="Sulco dos pneus rodando" icon="pneus" period="agora" sentence={ilegal ? `${ilegal} ${ilegal === 1 ? 'pneu está' : 'pneus estão'} abaixo do mínimo legal de ${num(LEGAL_MIN_MM, 1)} mm e ${ilegal === 1 ? 'aparece' : 'aparecem'} em "Precisa de você".` : toRemove.length ? `${toRemove.length} pneus chegaram ao sulco de retirada (${num(R.cfg.removal, 1)} mm).` : 'Nenhum pneu rodando no limite de retirada.'}>
           <ul className="flex flex-col gap-stack">
             {(['ok', 'atencao', 'retirar', 'ilegal'] as const).map((k) => (
-              <TipItem title={LEVEL[k].label} rows={[{ label: 'Pneus', value: `${lv(k).length} de ${rolling.length}`, strong: true }, { label: 'Parcela', value: rolling.length ? pct(lv(k).length / rolling.length, 0) : '—' }]} key={k} className="grid grid-cols-[minmax(0,11rem)_1fr_3rem] items-center gap-3 text-body">
+              <TipItem title={LEVEL[k].label} rows={[{ label: 'Pneus', value: `${lv(k).length} de ${rolling.length}`, strong: true }, { label: 'Parcela', value: rolling.length ? pct(lv(k).length / rolling.length, 0) : '—' }]} key={k} className="grid grid-cols-[minmax(0,11rem)_1fr_3rem] max-sm:grid-cols-[1fr_3rem] gap-y-tight items-center gap-3 text-body">
                 <StatusDot kind={LEVEL[k].kind} label={k === 'ok' ? `Acima de ${num(R.cfg.warn, 1)} mm` : k === 'atencao' ? `Atenção (até ${num(R.cfg.warn, 1)} mm)` : k === 'retirar' ? `Retirar (até ${num(R.cfg.removal, 1)} mm)` : `Abaixo de ${num(LEGAL_MIN_MM, 1)} mm (legal)`} />
-                <Progress value={rolling.length ? lv(k).length / rolling.length : 0} color={k === 'ok' ? 'var(--ink-2)' : k === 'atencao' ? 'var(--warn)' : 'var(--loss)'} label={`${lv(k).length} de ${rolling.length} pneus`} />
+                <Progress className="h-2 max-sm:col-span-2 max-sm:order-last" value={rolling.length ? lv(k).length / rolling.length : 0} color={k === 'ok' ? 'var(--ink-2)' : k === 'atencao' ? 'var(--warn)' : 'var(--loss)'} label={`${lv(k).length} de ${rolling.length} pneus`} />
                 <span className="num text-right">{lv(k).length}</span>
               </TipItem>
             ))}
@@ -138,8 +138,8 @@ function Veiculos({ onOpen }: any) {
   return (
     <Stack gap="grid">
       <Card>
-        <div className="flex flex-wrap gap-x-5 gap-y-3 items-end">
-          <Field label="Veículo"><Select className="w-64" value={aid} onChange={(e) => { setAid(e.target.value); setSlot(null); }} options={vehs.map((a: any) => ({ value: a.id, label: `${a.name} · ${a.model}` }))} /></Field>
+        <div className="flex flex-wrap gap-x-5 gap-y-3 items-end max-md:[&>*]:w-full">
+          <Field label="Veículo"><Select className="w-64 max-md:w-full" value={aid} onChange={(e) => { setAid(e.target.value); setSlot(null); }} options={vehs.map((a: any) => ({ value: a.id, label: `${a.name} · ${a.model}` }))} /></Field>
           <Field label="Tipo de eixo"><Pills value={layoutKey(asset)} onChange={async (k) => { if (await R.setLayout(aid, k)) { setSlot(null); toast(`Tipo de eixo: ${LAYOUTS[k].label}.`); } }} options={Object.entries(LAYOUTS).map(([k, v]) => ({ key: k, label: v.label }))} /></Field>
           <span className="text-small text-ink-2 pb-2 ml-auto">{asset?.kind === 'implemento' && <>{currentCoupling(s, aid) ? <>{compositionName(s, currentCoupling(s, aid)!.items)} com <AssetName name={aName(s, currentCoupling(s, aid)!.tractorId)} /> · </> : 'Desengatada · '}</>}Km atual <Num value={R.kmOf(aid)} unit="km" size="small" className="font-semibold text-ink" />{asset?.kind === 'implemento' && ' (pelos engates)'}</span>
         </div>
@@ -272,8 +272,8 @@ function Medicoes() {
   return (
     <Stack gap="grid">
       <Card title="Medir sulcos" icon="pneus">
-        <div className="flex flex-wrap gap-x-5 gap-y-3 items-end mb-4">
-          <Field label="Veículo"><SearchSelect className="w-56" value={aid} onChange={(v) => { setAid(v); setVals({}); }} options={vehs.map((a: any) => ({ value: a.id, label: a.name }))} /></Field>
+        <div className="flex flex-wrap gap-x-5 gap-y-3 items-end mb-4 max-md:[&>*]:w-full">
+          <Field label="Veículo"><SearchSelect className="w-56 max-md:w-full" value={aid} onChange={(v) => { setAid(v); setVals({}); }} options={vehs.map((a: any) => ({ value: a.id, label: a.name }))} /></Field>
           <span className="text-small text-ink-2 pb-2">Km gravado com a medição: <Num value={km} size="small" className="font-semibold text-ink" /> (rastreador)</span>
         </div>
         <Table minWidth={760} emptyState={<EmptyState icon="pneus" title="Nenhum pneu montado neste veículo" detail="Monte os pneus em Por veículo." />} head={['Posição', 'Pneu', 'Última medição', 'Novo sulco (mm)']} rows={tires.map((t: any) => { const st = R.stats(t); return [posLabel(t.position), <TireTag t={t} />, <span className="inline-flex flex-wrap items-center gap-x-2"><Level st={st} /><span className="text-caption text-ink-2 num">{st.lastMeasure ? `${fmtD(st.lastMeasure.ts)}${st.lastMeasure.source === 'profundimetro' ? ' · profundímetro' : ''}` : 'nunca medido'}</span></span>, <Input className="w-28" type="number" step="0.1" inputMode="decimal" aria-label={`Sulco ${posLabel(t.position)}`} placeholder={num(st.tread, 1)} value={vals[t.id] || ''} onChange={(e) => setVals({ ...vals, [t.id]: e.target.value })} />]; })} />
@@ -340,7 +340,7 @@ function Lista({ onOpen }: any) {
   const dup = form?.number && R.tires.some((t: any) => t.fireNumber === fire(form.number));
   return (
     <>
-      <Card title={`Pneus (${list.length})`} icon="pneus" actions={<div className="flex gap-2 flex-wrap items-center"><SearchInput className="w-56" placeholder="Número, marca, medida" value={q} onChange={(v) => { setQ(v); setMore(25); }} aria-label="Buscar pneu" /><Button onClick={() => setForm({ number: '', brand: '', model: '', size: '295/80 R22.5', dot: '', recappable: true, maxLives: 3, cost: '', purchaseDate: toInputD(Date.now()), supplier: '', tread: 18, location: 'Almoxarifado Matriz' })}><Icon name="mais" size={16} />Cadastrar pneu</Button></div>}>
+      <Card title={`Pneus (${list.length})`} icon="pneus" actions={<div className="flex gap-2 flex-wrap items-center max-md:w-full"><SearchInput className="w-56 max-md:w-full" placeholder="Número, marca, medida" value={q} onChange={(v) => { setQ(v); setMore(25); }} aria-label="Buscar pneu" /><Button onClick={() => setForm({ number: '', brand: '', model: '', size: '295/80 R22.5', dot: '', recappable: true, maxLives: 3, cost: '', purchaseDate: toInputD(Date.now()), supplier: '', tread: 18, location: 'Almoxarifado Matriz' })}><Icon name="mais" size={16} />Cadastrar pneu</Button></div>}>
         <div className="mb-4"><Pills value={st} onChange={(k) => { setSt(k); setMore(25); }} options={[{ key: '', label: 'Todos' }, ...Object.entries(TIRE_STATUS).map(([k, v]) => ({ key: k, label: v.label }))]} /></div>
         <Table minWidth={1080} align={['left', 'left', 'left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'right']}
           emptyState={<EmptyState illustration="ilu-busca-veiculo" layout="row" title="Nenhum pneu com esses filtros" detail="Troque a situação ou limpe a busca." />}
@@ -408,9 +408,9 @@ function TireDetail({ id, onClose }: any) {
       <Card title="Movimentações" icon="historico">
         <ol className="flex flex-col max-h-72 overflow-y-auto">
           {moves.map((m, i) => (
-            <li key={i} className="grid grid-cols-[6.5rem_9rem_minmax(0,1fr)] gap-3 py-2 border-t border-line first:border-t-0 text-body">
+            <li key={i} className="grid grid-cols-[6.5rem_minmax(0,1fr)] md:grid-cols-[6.5rem_9rem_minmax(0,1fr)] gap-x-3 gap-y-hair py-2 border-t border-line first:border-t-0 text-body">
               <span className="num text-small text-ink-2">{fmtD(m.ts)}</span><span className="font-medium">{MOVE_LABEL[m.kind]}</span>
-              <span className="text-ink-2">{m.kind === 'rodizio' ? `${aName(s, m.assetId!)} · ${posLabel(m.fromPos)} → ${posLabel(m.pos)}` : m.assetId ? `${aName(s, m.assetId)} · ${posLabel(m.pos)}` : ''}{m.km != null ? `${m.assetId ? ' · ' : ''}${num(m.km)} km` : ''}{m.detail ? `${m.assetId || m.km != null ? ' · ' : ''}${m.detail}` : ''}</span>
+              <span className="text-ink-2 max-md:col-start-2 max-md:text-small">{m.kind === 'rodizio' ? `${aName(s, m.assetId!)} · ${posLabel(m.fromPos)} → ${posLabel(m.pos)}` : m.assetId ? `${aName(s, m.assetId)} · ${posLabel(m.pos)}` : ''}{m.km != null ? `${m.assetId ? ' · ' : ''}${num(m.km)} km` : ''}{m.detail ? `${m.assetId || m.km != null ? ' · ' : ''}${m.detail}` : ''}</span>
             </li>
           ))}
         </ol>

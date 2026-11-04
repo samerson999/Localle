@@ -1,7 +1,7 @@
 // Componentes que contam a história de cada tela: número principal → por que está assim → onde agir.
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Skeleton, EmptyState, ErrorState, cx, IconButton, List, ListItem, DescList, DescRow, Card, CardHeader, CardFooter, Insight, Illustration, useHeadingLevel, HeadingLevel } from './ui';
+import { Button, Skeleton, EmptyState, ErrorState, cx, IconButton, List, ListItem, DescList, DescRow, Card, CardHeader, CardFooter, Insight, Illustration, useHeadingLevel, HeadingLevel, Sheet, useIsMobile, usePresence } from './ui';
 import { Icon } from './icons';
 import { useCountUp } from '../lib/motion';
 import { isPlate } from '@localle/shared/utils';
@@ -349,26 +349,32 @@ export function Timeline({ items }: { items: { tone: 'plan' | 'cost'; ts: number
   );
 }
 
-// Seletor de período com comparação ("1–27 set" + "vs 1–27 ago")
+// Seletor de período com comparação ("1–27 set" + "vs 1–27 ago"). No celular abre como folha inferior: o popover
+// alinhado à direita do botão saía pela borda esquerda quando o cabeçalho quebrava linha.
 export function PeriodButton({ label, compare, children }: { label: string; compare?: string; children?: (close: () => void) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const mobile = useIsMobile();
+  const sheet = usePresence(open && mobile);
   const ref = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open || mobile) return;
     const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
     const k = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     document.addEventListener('mousedown', h); document.addEventListener('keydown', k);
     return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
-  }, [open]);
+  }, [open, mobile]);
+  const close = () => setOpen(false);
   return (
-    <div ref={ref} className="relative">
-      <button type="button" aria-expanded={open} aria-haspopup={children ? 'dialog' : undefined} onClick={() => children && setOpen(!open)} className="h-ctl pl-3 pr-2 rounded-btn bg-card border border-line-strong flex items-center gap-icon text-body hover:bg-card-2 hover:border-line-hover transition-colors">
-        <Icon name="calendario" size={18} className="text-ink-2" />
-        <span className="font-medium num">{label}</span>
-        {compare && <span className="text-ink-2 num">vs {compare}</span>}
-        <Icon name="abaixo" size={16} className="text-ink-3" />
+    <div ref={ref} className="relative max-w-full">
+      <button ref={btn} type="button" aria-expanded={open} aria-haspopup={children ? 'dialog' : undefined} onClick={() => children && setOpen(!open)} className="h-ctl max-w-full pl-3 pr-2 rounded-btn bg-card border border-line-strong flex items-center gap-icon text-body hover:bg-card-2 hover:border-line-hover transition-colors">
+        <Icon name="calendario" size={18} className="text-ink-2 shrink-0" />
+        <span className="font-medium num whitespace-nowrap">{label}</span>
+        {compare && <span className="text-ink-2 num truncate">vs {compare}</span>}
+        <Icon name="abaixo" size={16} className="text-ink-3 shrink-0" />
       </button>
-      {open && children && <div role="dialog" aria-label="Escolher período" className="absolute right-0 top-12 z-[600] bg-card border border-line rounded-pop p-4 shadow-pop anim-page min-w-[280px]">{children(() => setOpen(false))}</div>}
+      {open && !mobile && children && <div role="dialog" aria-label="Escolher período" className="absolute right-0 top-12 z-[600] bg-card border border-line rounded-pop p-4 shadow-pop anim-page min-w-[280px]">{children(close)}</div>}
+      {sheet.mounted && children && <Sheet label="Escolher período" title="Escolher período" onClose={() => { close(); btn.current?.focus(); }} closing={sheet.closing}>{children(close)}</Sheet>}
     </div>
   );
 }

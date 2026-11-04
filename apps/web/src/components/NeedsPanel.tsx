@@ -1,6 +1,6 @@
 // "Precisa de você" no topo: prévia rápida em duas abas (ref. central de notificações do Visor, 02/11/2026).
 // Ação necessária = críticos de toda a plataforma (lib/needs); Atualizações = alertas recentes, com lido/não lido.
-// No computador abre como popover preso ao botão do topo; no celular, como painel lateral de altura inteira.
+// No computador abre como popover preso ao botão do topo; no celular, como folha inferior (Sheet), o padrão do celular.
 // O detalhe completo (filtros por tipo, histórico com busca) fica na página /precisa-de-voce.
 import { marcarAlertasLidos } from '../lib/localleApi';
 import { toast } from '../components/ui';
@@ -13,7 +13,7 @@ import { NeedsList, StatusGlyph, priorityKind, AssetName } from './story';
 import { resolveAlert } from '../lib/critical';
 import { TreatDialog, TreatedLine } from './TreatDialog';
 import { Icon } from './icons';
-import { cx, usePresence, useScrollLock, IconButton, Button, TextButton, List, ListItem, EmptyState, Tabs } from './ui';
+import { cx, usePresence, Sheet, IconButton, Button, TextButton, List, ListItem, EmptyState, Tabs } from './ui';
 import { rectUi, viewportUi } from '../lib/uiZoom';
 import { Link } from 'react-router-dom';
 
@@ -23,7 +23,6 @@ export default function NeedsPanel({ open, onClose, anchor }: { open: boolean; o
   const { mounted, closing } = usePresence(open);
   // popover só no computador e quando aberto pelo botão do topo; o ícone da barra do celular abre o painel
   const desk = !!anchor && typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches;
-  useScrollLock(open && !desk);
   const box = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
@@ -36,7 +35,7 @@ export default function NeedsPanel({ open, onClose, anchor }: { open: boolean; o
   }, [open, desk, anchor]);
   useEffect(() => {
     if (!open) return;
-    if (!desk) closeRef.current?.focus();
+    if (!desk) return; // no celular a folha cuida do foco, do Esc e do toque fora
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     // popover: clique fora fecha (o botão do topo alterna sozinho, por isso fica de fora)
     const down = (e: PointerEvent) => { const t = e.target as Node; if (desk && !box.current?.contains(t) && !anchor?.contains(t) && !(t as Element).closest?.('[role="dialog"]')) onClose(); };
@@ -52,16 +51,13 @@ export default function NeedsPanel({ open, onClose, anchor }: { open: boolean; o
     </div>
   );
   return (
-    <div className={cx('fixed inset-0 z-[1100] no-print', closing && 'pointer-events-none')}>
-      <div className={cx('absolute inset-0 bg-scrim', closing ? 'anim-fade-out' : 'anim-fade')} onClick={onClose} />
-      <aside role="dialog" aria-modal="true" aria-label="Precisa de você" className={cx('absolute right-0 top-0 h-full w-[440px] max-w-full bg-card border-l border-line flex flex-col', closing ? 'panel-out' : 'panel-in')}>
-        <Body onClose={onClose} closeRef={closeRef} />
-      </aside>
-    </div>
+    <Sheet bare tall label="Precisa de você" onClose={onClose} closing={closing}>
+      <Body onClose={onClose} closeRef={closeRef} sheet />
+    </Sheet>
   );
 }
 
-function Body({ onClose, closeRef }: { onClose: () => void; closeRef?: React.Ref<HTMLButtonElement> }) {
+function Body({ onClose, closeRef, sheet }: { onClose: () => void; closeRef?: React.Ref<HTMLButtonElement>; sheet?: boolean }) {
   const needs = useNeedsYou();
   const alerts = useStore((s) => s.alerts);
   const assets = useStore((s) => s.assets);
@@ -76,7 +72,7 @@ function Body({ onClose, closeRef }: { onClose: () => void; closeRef?: React.Ref
   const readAll = () => { patch((s: any) => ({ alerts: s.alerts.map((a: any) => ({ ...a, read: true })), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Alertas recentes', action: `marcou ${unread} alertas como lidos em lote`, count: unread }) })); marcarAlertasLidos().catch((e) => toast('Não foi possível marcar como lidos: ' + (e.message || e), { tone: 'crit' })); };
   return (
     <>
-      <header className="flex flex-col gap-stack px-5 pt-5 pb-3 border-b border-line">
+      <header className={cx('flex flex-col gap-stack px-5 pb-3 border-b border-line', sheet ? 'pt-1' : 'pt-5')}>
         <div className="flex items-center gap-3">
           <h2 className="text-h3 font-semibold mr-auto">Precisa de você</h2>
           {tab === 'atual' && unread > 0 && <TextButton onClick={readAll}>Marcar todos como lidos</TextButton>}
@@ -109,7 +105,7 @@ function Body({ onClose, closeRef }: { onClose: () => void; closeRef?: React.Ref
           )
         )}
       </div>
-      <footer className="px-5 py-3 border-t border-line">
+      <footer className="px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] border-t border-line">
         <Link to={tab === 'acao' ? '/precisa-de-voce' : '/precisa-de-voce?aba=historico'} onClick={onClose} className="flex items-center justify-center gap-tight h-9 rounded-ctl text-small font-medium text-ink-2 hover:text-ink hover:bg-surface-hover">
           Abrir a central de alertas<Icon name="chevron" size={14} />
         </Link>

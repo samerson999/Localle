@@ -37,12 +37,12 @@ export default function Login() {
   };
   const pos = b.photoPos;
   const photo = (
-    <div className={cx('relative overflow-hidden bg-ink p-10 md:p-14 flex items-end', pos === 'fundo' ? 'absolute inset-0' : 'flex-[999_1_520px] min-h-[320px]')}>
+    <div className={cx('relative overflow-hidden bg-ink p-10 md:p-14 flex items-end', pos === 'fundo' ? 'absolute inset-0' : 'flex-[999_1_520px] min-h-[320px] max-md:min-h-[136px] max-md:p-6')}>
       {b.photo ? <img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" /> : (
         <svg aria-hidden="true" viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-40"><g fill="none" stroke="var(--brand)" strokeWidth="2"><path d="M-20 620 C 160 560, 240 700, 420 610 S 700 520, 860 600" /><path d="M-20 300 C 120 360, 300 240, 460 330 S 720 420, 860 300" /><path d="M200 -20 C 240 200, 160 420, 260 640 S 300 860, 280 940" /><path d="M600 -20 C 560 220, 660 460, 580 700 S 620 860, 640 940" /></g></svg>
       )}
       {b.photo && <div className="absolute inset-0 bg-scrim" />}
-      {pos !== 'fundo' && <div className="relative max-w-md"><h2 className="text-on-dark text-[clamp(28px,3.4vw,40px)] font-semibold leading-[1.1] tracking-[-0.025em]">{b.tagline}</h2></div>}
+      {pos !== 'fundo' && <div className="relative max-w-md max-md:hidden"><h2 className="text-on-dark text-[clamp(28px,3.4vw,40px)] font-semibold leading-[1.1] tracking-[-0.025em]">{b.tagline}</h2></div>}
     </div>
   );
   const form = (

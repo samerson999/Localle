@@ -54,9 +54,9 @@ export default function Setup() {
       <PageHeader title="Setup" subtitle="Padrões e limites de cada parâmetro de operação. A lei é piso: o valor só pode ser mais rigoroso." />
       <div className="flex flex-wrap items-center gap-tight mb-card-head">
         {!termo && <Tabs value={tab} onChange={setTab} tabs={modulos.map((m) => ({ key: m, label: MODULOS[m] || m }))} />}
-        <div className="ml-auto flex flex-wrap items-center gap-tight">
+        <div className="ml-auto flex flex-wrap items-center gap-tight max-md:ml-0 max-md:w-full">
           <Pills value={camada} onChange={setCamada} options={[{ key: 'empresa', label: 'Empresa' }, ...groups.map((g: any) => ({ key: g.id, label: g.name }))]} />
-          <SearchInput className="w-56" value={q} onChange={setQ} placeholder="Buscar parâmetro" aria-label="Buscar parâmetro" />
+          <SearchInput className="w-56 max-md:w-full" value={q} onChange={setQ} placeholder="Buscar parâmetro" aria-label="Buscar parâmetro" />
         </div>
       </div>
       {groupId && <Callout className="mb-card-head">Camada do grupo: só os parâmetros que aceitam exceção por grupo aparecem. O que não for definido aqui herda da empresa.</Callout>}

@@ -3,7 +3,7 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-leaflet';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useStore, vehicleStatus, contarStatusFrota, assetKm } from '../lib/store';
-import { Button, Badge, usePresence, useScrollLock, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb } from '../components/ui';
+import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { glyphOf, silhouetteOf } from '../components/assetArt';
 import { GlideMarker, ClusteredVehicles, Address, FenceShapes, MapButton, MapControls, VehicleListItem, MAP_STYLES, type MapStyleKey } from '../components/MapBits';
@@ -74,6 +74,7 @@ export default function Monitoramento() {
   const [mapStyle, setMapStyle] = useState<MapStyleKey>('ruas');
   const [grouped, setGrouped] = useState(true);
   const [styleMenu, setStyleMenu] = useState<{ x: number; y: number } | null>(null);
+  const mobile = useIsMobile();
   // celular: mapa e lista não cabem lado a lado nem empilhados (a lista empurrava o mapa para fora da tela); um de cada vez
   const [view, setView] = useState<'mapa' | 'lista'>('mapa');
   const mapSectionRef = useRef<HTMLElement>(null);
@@ -187,13 +188,13 @@ export default function Monitoramento() {
             <h1 className="text-h3 font-semibold leading-tight">Monitoramento</h1>
             <p className="text-caption text-ink-2">Ao vivo · {list.length} veículos{lastUpd ? <> · atualizado às <time className="num">{fmtT(lastUpd)}</time></> : null}</p>
           </div>
-          <SearchInput className="w-64" value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
+          <SearchInput className="w-64 max-md:w-full" value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
           <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />
-          <div role="group" aria-label="Visão" className="flex gap-tight">
+          <div role="group" aria-label="Visão" className="flex gap-tight max-md:hidden">
             <Button variant={visao.cards ? 'dark' : 'secondary'} size="sm" aria-pressed={visao.cards} disabled={visao.cards && !visao.tabela} title={visao.cards && !visao.tabela ? 'Ligue a tabela para poder esconder os cards' : undefined} onClick={() => setVisao({ ...visao, cards: !visao.cards })}><Icon name="ativos" size={16} />Cards</Button>
             <Button variant={visao.tabela ? 'dark' : 'secondary'} size="sm" aria-pressed={visao.tabela} disabled={visao.tabela && !visao.cards} title={visao.tabela && !visao.cards ? 'Ligue os cards para poder esconder a tabela' : undefined} onClick={() => setVisao({ ...visao, tabela: !visao.tabela })}><Icon name="relatorios" size={16} />Tabela</Button>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => setCmd({ target: 'grupo' })}><Icon name="comando" size={16} />Comando para grupo</Button>
+          <Button variant="secondary" size="sm" className="max-md:hidden" onClick={() => setCmd({ target: 'grupo' })}><Icon name="comando" size={16} />Comando para grupo</Button>
           <Button variant="secondary" size="sm" onClick={sairTelaCheia} title="Sair da tela cheia (Esc)"><Icon name="tela-cheia" size={16} />Sair da tela cheia</Button>
         </div>
       )}
@@ -235,11 +236,12 @@ export default function Monitoramento() {
 
           <div className="absolute top-3 left-3 right-3 z-[400] flex flex-col items-start gap-tight pointer-events-none [&>*]:pointer-events-auto">
           <div className="flex flex-wrap gap-tight">
-            <MapButton icon="cerca" label="Cercas" pressed={showF} onClick={() => setShowF(!showF)} />
+            {!mobile && <MapButton icon="cerca" label="Cercas" pressed={showF} onClick={() => setShowF(!showF)} />}
             <MapButton icon="busca" label="Passou por aqui" title="Quem passou pelo ponto no centro do mapa. Para escolher outro ponto: botão direito no computador, toque longo no celular." onClick={() => { const c = map?.getCenter(); if (c) passAt(c.lat, c.lng, 300); }} />
-            <MapButton icon="equipe" label="Agrupar" pressed={grouped} title={grouped ? 'Agrupando veículos próximos' : 'Mostrando todos os veículos'} onClick={() => setGrouped(!grouped)} />
+            {!mobile && <MapButton icon="equipe" label="Agrupar" pressed={grouped} title={grouped ? 'Agrupando veículos próximos' : 'Mostrando todos os veículos'} onClick={() => setGrouped(!grouped)} />}
+            {/* celular: cercas, agrupar e estilo num menu só ("Camadas"); quatro botões tomavam o topo do mapa */}
             <span ref={styleBtnRef}>
-              <MapButton icon="camadas" label="Estilo do mapa" title="Trocar o estilo do mapa"
+              <MapButton icon="camadas" label={mobile ? 'Camadas' : 'Estilo do mapa'} title={mobile ? 'Cercas, agrupamento e estilo do mapa' : 'Trocar o estilo do mapa'}
                 onClick={() => {
                   const r = styleBtnRef.current && rectUi(styleBtnRef.current), sec = mapSectionRef.current && rectUi(mapSectionRef.current);
                   if (r && sec) setStyleMenu(styleMenu ? null : { x: r.left - sec.left, y: r.bottom - sec.top + 6 });
@@ -248,16 +250,22 @@ export default function Monitoramento() {
           </div>
           <div>
             <MapControls items={[
-              { icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() },
-              { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() },
+              // no toque o zoom é pela pinça; os botões só ocupavam o mapa
+              ...(mobile ? [] : [{ icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() }, { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() }]),
               { icon: 'centralizar', label: 'Ver a frota toda', onClick: fitAll },
               { icon: 'tela-cheia', label: full ? 'Sair da tela cheia' : 'Tela cheia', onClick: full ? sairTelaCheia : entrarTelaCheia },
             ]} />
           </div>
           </div>
           {styleMenu && (
-            <ContextMenu x={styleMenu.x} y={styleMenu.y} onClose={() => setStyleMenu(null)} header="Estilo do mapa"
-              items={(Object.keys(MAP_STYLES) as MapStyleKey[]).map((k) => ({ label: MAP_STYLES[k].label, icon: MAP_STYLES[k].icon, onClick: () => setMapStyle(k) }))} />
+            <ContextMenu x={Math.max(8, Math.min(styleMenu.x, (mapSectionRef.current?.clientWidth ?? 600) - 264))} y={styleMenu.y} onClose={() => setStyleMenu(null)} header={mobile ? 'Camadas' : 'Estilo do mapa'}
+              items={[
+                ...(mobile ? [
+                  { label: showF ? 'Ocultar cercas' : 'Mostrar cercas', icon: 'cerca', onClick: () => setShowF(!showF) },
+                  { label: grouped ? 'Mostrar todos os veículos' : 'Agrupar veículos próximos', icon: 'equipe', onClick: () => setGrouped(!grouped) },
+                ] : []),
+                ...(Object.keys(MAP_STYLES) as MapStyleKey[]).map((k) => ({ label: `${mobile ? 'Mapa: ' : ''}${MAP_STYLES[k].label}${k === mapStyle ? ' · em uso' : ''}`, icon: MAP_STYLES[k].icon, onClick: () => setMapStyle(k) })),
+              ]} />
           )}
 
           {tileErr >= TILE_ERRORS && (
@@ -293,7 +301,7 @@ export default function Monitoramento() {
           {pp.mounted && lastPass.current && <PassPanel closing={pp.closing} pass={lastPass.current} setPass={setPass} />}
         </section>
         {full && visao.tabela && (
-          <Card dense className={cx('min-h-0 overflow-y-auto', visao.cards ? 'h-[40%]' : 'h-[45%]')}>
+          <Card dense className={cx('min-h-0 overflow-y-auto max-md:hidden', visao.cards ? 'h-[40%]' : 'h-[45%]')}>
             <Table minWidth={760} pageSize={200} card={false} align={['left', 'left', 'right', 'left', 'left', 'left', 'left']}
               head={['Veículo', 'Status', 'Velocidade', 'Ignição', 'Motorista', 'Atualizado', 'Endereço']}
               onRow={(i) => pick(shown[i].a.id)} selected={(i) => shown[i]?.a.id === sel}
@@ -342,17 +350,29 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
   const fences = useStore((st) => st.fences.filter((f: any) => v?.inside?.includes(f.id)));
   const setPhoto = (data: string) => { useStore.getState().upsert('assets', { id: a.id, photo: data }); toast('Foto do veículo atualizada.'); };
   const hours = a.meter === 'horimetro';
+  const mobile = useIsMobile();
+  const nav = useNavigate();
+  const bloqueio = v?.blocked
+    ? <Button size={mobile ? 'md' : 'sm'} className={cx(mobile && 'flex-1')} onClick={() => onCmd('c_desb')}><Icon name="cadeado" size={16} />Desbloquear</Button>
+    : <Button variant="danger" size={mobile ? 'md' : 'sm'} className={cx(mobile && 'flex-1')} onClick={() => onCmd('c_bloq')}><Icon name="cadeado" size={16} />Bloquear</Button>;
   return (
     <FloatingPanel label={`Detalhe de ${a.name}`} closing={closing} onClose={onClose}
       header={<StatusLine kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} sub={[v && !v.noSignal ? `${Math.round(v.speed || 0)} km/h` : null, fences.length ? `em ${fences.map((f: any) => f.name).join(', ')}` : null].filter(Boolean).join(' · ') || undefined} />}
-      footer={<>
+      // celular: só o que se faz na rua cabe na linha (comandos e bloqueio); o resto vai para o menu e a foto para o corpo.
+      // Seis botões quebravam em três linhas e o painel ficava sem espaço para o próprio conteúdo.
+      footer={mobile ? <>
+        <Button variant="secondary" className="flex-1" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>
+        {bloqueio}
+        <Menu label="Mais ações do veículo" items={[
+          { label: 'Percurso', icon: 'rota', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) },
+          { label: 'Compartilhar localização', icon: 'compartilhar', onClick: onShare },
+        ]} trigger={({ ref, open, toggle }) => <button ref={ref} type="button" aria-label="Mais ações do veículo" aria-haspopup="menu" aria-expanded={open} onClick={toggle} className={cx(buttonClass('secondary'), '!px-0 w-ctl')}><Icon name="mais-opcoes" size={20} /></button>} />
+      </> : <>
         <Link to={`/monitoramento/replay?a=${a.id}`} className={buttonClass('secondary', 'sm')}><Icon name="rota" size={16} />Percurso</Link>
         <FilePick accept="image/*" onFile={(data) => setPhoto(data)} className={buttonClass('secondary', 'sm')}><Icon name="camera" size={16} />{a.photo ? 'Trocar foto' : 'Enviar foto'}</FilePick>
         <Button variant="secondary" size="sm" onClick={onShare}><Icon name="compartilhar" size={16} />Compartilhar</Button>
         <Button variant="secondary" size="sm" className="ml-auto" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>
-        {v?.blocked
-          ? <Button size="sm" onClick={() => onCmd('c_desb')}><Icon name="cadeado" size={16} />Desbloquear</Button>
-          : <Button variant="danger" size="sm" onClick={() => onCmd('c_bloq')}><Icon name="cadeado" size={16} />Bloquear</Button>}
+        {bloqueio}
       </>}>
       <div className="flex items-center gap-grid">
         <AssetThumb asset={a} className="w-28 h-16" />
@@ -360,6 +380,7 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
           <Plate name={a.name} size="lg" className="mb-hair" />
           <p className="text-small text-ink-2 truncate">{a.brand} {a.model} <span className="text-ink-2 num">{String(a.year || '').slice(0, 4)}</span></p>
           <p className="text-small text-ink-2 truncate">{d?.name || 'Sem motorista'}</p>
+          {mobile && <FilePick accept="image/*" onFile={(data) => setPhoto(data)} className="self-start text-small font-medium link-brand"><span className="inline-flex items-center gap-icon"><Icon name="camera" size={16} />{a.photo ? 'Trocar foto' : 'Enviar foto'}</span></FilePick>}
         </div>
       </div>
       <Pendencias assetId={a.id} reasons={reasons} />
@@ -545,8 +566,8 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
     <Modal open={!!state} onClose={onClose} title="Enviar comando" width="max-w-3xl">
       <div className="flex flex-wrap gap-stack items-center">
         <Tabs value={target} onChange={(k) => setTarget(k as any)} tabs={[{ key: 'veiculo', label: 'Veículo' }, { key: 'grupo', label: 'Grupo de veículos' }]} />
-        {target === 'veiculo' ? <SearchSelect aria-label="Veículo" className="w-56" value={assetId} onChange={setAssetId} options={assets.map((a: any) => ({ value: a.id, label: a.name }))} />
-          : <Select aria-label="Grupo" className="w-64" value={groupId} onChange={(e) => setGroupId(e.target.value)} options={groups.map((g: any) => ({ value: g.id, label: `${g.name} (${assets.filter((a: any) => a.groupIds?.includes(g.id)).length})` }))} />}
+        {target === 'veiculo' ? <SearchSelect aria-label="Veículo" className="w-56 max-md:w-full" value={assetId} onChange={setAssetId} options={assets.map((a: any) => ({ value: a.id, label: a.name }))} />
+          : <Select aria-label="Grupo" className="w-64 max-md:w-full" value={groupId} onChange={(e) => setGroupId(e.target.value)} options={groups.map((g: any) => ({ value: g.id, label: `${g.name} (${assets.filter((a: any) => a.groupIds?.includes(g.id)).length})` }))} />}
       </div>
       <div role="radiogroup" aria-label="Comando" className="grid grid-cols-2 md:grid-cols-3 gap-tight">
         {[...defs, ...(tecnico && !real ? [{ id: 'livre', name: 'Comando livre', desc: 'Texto direto ao equipamento' }] : [])].map((d: any) => (

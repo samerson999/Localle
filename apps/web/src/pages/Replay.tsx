@@ -114,8 +114,8 @@ export default function Replay() {
       <MonitorHeader title="Replay de percurso" subtitle="Reveja o trajeto, as paradas e os eventos de um veículo."><RetiredToggle /></MonitorHeader>
       <Stack gap="grid">
       <Card>
-        <div className="flex flex-wrap gap-field items-end">
-          <Field label="Veículo"><SearchSelect className="w-56" value={aid} onChange={setAid} options={assets.map((a: any) => ({ value: a.id, label: a.name, sub: a.model }))} /></Field>
+        <div className="flex flex-wrap gap-field items-end max-md:[&>*]:w-full">
+          <Field label="Veículo"><SearchSelect className="w-56 max-md:w-full" value={aid} onChange={setAid} options={assets.map((a: any) => ({ value: a.id, label: a.name, sub: a.model }))} /></Field>
           <Field label="De"><Input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
           <Field label="Até"><Input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
           <Button variant="dark" loading={!!remote?.loading} onClick={() => setLoaded({ aid, from, to, n: loaded.n + 1 })}>Carregar percurso</Button>
@@ -149,7 +149,7 @@ export default function Replay() {
           {pts.length > 0 && (
             <div role="group" aria-label="Reprodução do percurso" className="no-print absolute inset-x-3 bottom-6 z-[450] bg-card border border-line rounded-panel shadow-panel px-3 py-2 flex flex-col gap-hair">
               <div className="flex items-center gap-tight">
-                <Button size="sm" className="min-w-[112px]" onClick={() => { if (idx >= pts.length - 1) setIdx(0); setPlaying(!playing); }}><Icon name={playing ? 'pause' : 'play'} size={16} />{playing ? 'Pausar' : 'Reproduzir'}</Button>
+                <Button size="sm" className="min-w-[112px] max-md:min-w-0" onClick={() => { if (idx >= pts.length - 1) setIdx(0); setPlaying(!playing); }}><Icon name={playing ? 'pause' : 'play'} size={16} /><span className="max-md:sr-only">{playing ? 'Pausar' : 'Reproduzir'}</span></Button>
                 <IconButton size="sm" aria-label="Reiniciar" title="Reiniciar" onClick={() => { setPlaying(false); setIdx(0); }}><Icon name="reiniciar" size={16} /></IconButton>
                 <IconButton size="sm" aria-label="Voltar um trecho" title="Voltar um trecho" onClick={() => setIdx(Math.max(0, idx - 20))}><Icon name="voltar" size={16} /></IconButton>
                 <IconButton size="sm" aria-label="Avançar um trecho" title="Avançar um trecho" onClick={() => setIdx(Math.min(pts.length - 1, idx + 20))}><Icon name="chevron" size={16} /></IconButton>

@@ -108,6 +108,23 @@ a { text-underline-offset: 3px; }
 .anim-fade-out { animation: fade-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
 .panel-out { animation: panel-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
 .anim-swap { animation: fade-in var(--t-swap) ease both; }
+/* folha inferior do celular (ui.tsx › Sheet): entra e sai pela borda de baixo. Anima `translate`, não `transform`, que
+   fica livre para a altura recolhida; `backwards` não segura o valor depois, e o arrasto escreve `translate` inline. */
+@keyframes sheet-in { from { translate: 0 100%; } }
+@keyframes sheet-out { to { translate: 0 100%; } }
+.sheet-in { animation: sheet-in 280ms var(--ease-out) backwards; }
+.sheet-out { animation: sheet-out 180ms var(--ease-in) forwards; pointer-events: none; }
+/* barra inferior do celular (Sidebar.tsx › SidebarDock), valores do #mobile-bottom-nav do Visor (03/11/2026): a gaveta
+   cresce da pílula (escala a partir da base, 500 ms na abertura e 200 ms no fechamento) e a pílula se recolhe na
+   horizontal. O fundo é transparente: só captura o toque fora. Flutua, então leva sombra; o vidro deixa o mapa e as
+   listas aparecerem por trás sem perder leitura (fundo do card a 82%). */
+.dock-glass { background: color-mix(in srgb, var(--card) 82%, transparent); border: 1px solid color-mix(in srgb, var(--card) 40%, transparent); box-shadow: var(--shadow-dock-float); -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); }
+.dock-backdrop { opacity: 0; pointer-events: none; }
+.dock-drawer { pointer-events: none; visibility: hidden; transform: scaleX(0.15) scaleY(0.02); transition: transform 200ms var(--ease-dock), visibility 0s 200ms; }
+.dock-pill { transform-origin: 50%; transition: transform 200ms var(--ease-dock); }
+.dock[data-state="open"] .dock-backdrop { pointer-events: auto; }
+.dock[data-state="open"] .dock-drawer { pointer-events: auto; visibility: visible; transform: none; transition: transform 500ms var(--ease-dock), visibility 0s; }
+.dock[data-state="open"] .dock-pill { pointer-events: none; transform: scaleX(0.0001); }
 /* toast */
 @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(0.98); } }
@@ -121,7 +138,9 @@ a { text-underline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
   .anim-page, .grow-y, .grow-x, .panel-in, .toast-in { animation: fade-in 150ms ease both !important; transform: none !important; }
-  .anim-out, .panel-out, .toast-out { animation: fade-out var(--t-exit) ease both !important; }
+  .anim-out, .panel-out, .toast-out, .sheet-out { animation: fade-out var(--t-exit) ease both !important; }
+  .sheet-in { animation: fade-in 150ms ease both !important; }
+  .dock-drawer, .dock-pill { transition: none !important; }
   .pulse-once { animation: none; }
   .skeleton { animation: none; }
   /* só fades curtos: nada desliza nem cresce (pílulas, menu, barras de progresso mudam direto) */

@@ -41,7 +41,7 @@ function AlertLog() {
   const list = [...alerts].reverse().filter((a: any) => (!pr || a.priority === pr) && (!onlyUnread || !a.read));
   const patch = useStore.getState().patch;
   return (
-    <Card title={`Alertas (${list.length})`} icon="alerta" actions={<div className="flex gap-stack items-center flex-wrap"><Select className="w-40" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} /><Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} /></div>}>
+    <Card title={`Alertas (${list.length})`} icon="alerta" actions={<div className="flex gap-stack items-center flex-wrap max-md:w-full max-md:[&>*]:flex-1"><Select className="w-40 max-md:w-full" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} /><Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} /></div>}>
       <Table head={['Quando', 'Prioridade', 'Alerta', 'Ativo', 'Detalhe', '']} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Nenhum alerta com esses filtros" />} rows={list.map((a: any) => [<span className="num whitespace-nowrap">{fmtDT(a.ts)}</span>, <Prio p={a.priority} />, <span className="font-medium">{a.title}</span>, <AssetName name={assets.find((x: any) => x.id === a.assetId)?.name} />, <span className="text-small text-ink-2">{a.detail}</span>, a.read ? <span className="text-caption text-ink-2">Lido</span> : <TextButton onClick={() => patch((s: any) => ({ alerts: s.alerts.map((x: any) => (x.id === a.id ? { ...x, read: true } : x)) }))}>Marcar como lido</TextButton>])} />
     </Card>
   );
@@ -71,8 +71,8 @@ function Rules() {
             const F = RULE_FIELDS[c.field];
             const values = c.field.includes('cerca') ? FENCE_TYPES : F.values;
             return (
-              <div key={i} className="grid grid-cols-[1.4fr_0.8fr_1fr_auto] gap-tight items-center">
-                <Select aria-label="Campo" value={c.field} onChange={(e) => setCond(i, 'field', e.target.value)} options={Object.entries(RULE_FIELDS).map(([k, v]) => ({ value: k, label: `${v.src}: ${v.label}` }))} />
+              <div key={i} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:grid-cols-[1.4fr_0.8fr_1fr_auto] gap-tight items-center max-md:pb-stack max-md:border-b max-md:border-line max-md:last:border-b-0">
+                <Select className="max-md:col-span-3" aria-label="Campo" value={c.field} onChange={(e) => setCond(i, 'field', e.target.value)} options={Object.entries(RULE_FIELDS).map(([k, v]) => ({ value: k, label: `${v.src}: ${v.label}` }))} />
                 <Select aria-label="Operador" value={c.op} onChange={(e) => setCond(i, 'op', e.target.value)} options={F.ops} />
                 {values ? <Select aria-label="Valor" value={c.value} onChange={(e) => setCond(i, 'value', e.target.value)} options={values} /> : <Input aria-label="Valor" type={c.field === 'horario' ? 'time' : 'text'} value={c.value} onChange={(e) => setCond(i, 'value', e.target.value)} />}
                 <IconButton aria-label="Remover condição" tone="outline" disabled={r.conditions.length <= 1} onClick={() => setR({ ...r, conditions: r.conditions.filter((_: any, j: number) => j !== i) })}><Icon name="fechar" size={18} /></IconButton>

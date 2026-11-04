@@ -47,7 +47,7 @@ export function PeriodCompare({ value, onChange, presets = BI_PRESETS, modes = [
   return (
     <PeriodButton label={rangeText(a)} compare={b ? rangeText(b) : undefined}>
       {() => (
-        <div className="flex flex-col gap-4 w-[320px] max-w-[80vw]">
+        <div className="flex flex-col gap-4 w-full md:w-[320px] md:max-w-[80vw]">
           <div>
             <p className="text-caption text-ink-2 mb-2">Período</p>
             <Pills value={value.preset} options={[...presets.map((p) => ({ key: p.key, label: p.label })), { key: 'custom', label: 'Personalizado' }]}

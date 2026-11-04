@@ -1,6 +1,6 @@
 import { createContext, forwardRef, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
-import { cx, useScrollLock } from './ui';
+import { cx, useIsMobile, useScrollLock } from './ui';
 import { Icon } from './icons';
 
 // Porte do Sidebar oficial do shadcn/ui (https://ui.shadcn.com/docs/components/base/sidebar)
@@ -34,17 +34,6 @@ export function useSidebar() {
   return ctx;
 }
 
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < breakpoint);
-  useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
-    const onChange = () => setIsMobile(mql.matches);
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  }, [breakpoint]);
-  return isMobile;
-}
-
 const readStoredOpen = () => { try { return localStorage.getItem(SIDEBAR_STORAGE_KEY) === '0'; } catch { return false; } };
 
 export function SidebarProvider({ children, defaultOpen, style, className = '' }: { children: ReactNode; defaultOpen?: boolean; style?: CSSProperties; className?: string }) {
@@ -74,7 +63,7 @@ export function SidebarProvider({ children, defaultOpen, style, className = '' }
   );
 }
 
-export function Sidebar({ collapsible = 'icon', children }: { collapsible?: 'icon' | 'none'; children: ReactNode }) {
+export function Sidebar({ collapsible = 'icon', dock, children }: { collapsible?: 'icon' | 'none'; dock?: { pill: ReactNode; action: ReactNode }; children: ReactNode }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 
   if (collapsible === 'none') {
@@ -82,9 +71,9 @@ export function Sidebar({ collapsible = 'icon', children }: { collapsible?: 'ico
   }
 
   if (isMobile) {
-    return (
-      <SidebarSheet open={openMobile} onClose={() => setOpenMobile(false)}>{children}</SidebarSheet>
-    );
+    return dock
+      ? <SidebarDock open={openMobile} onClose={() => setOpenMobile(false)} pill={dock.pill} action={dock.action}>{children}</SidebarDock>
+      : <SidebarSheet open={openMobile} onClose={() => setOpenMobile(false)}>{children}</SidebarSheet>;
   }
 
   return (
@@ -145,6 +134,59 @@ function SidebarSheet({ open, onClose, children }: { open: boolean; onClose: () 
   );
 }
 
+// Celular: barra inferior flutuante (ref. Visor, 03/11/2026 — #mobile-bottom-nav). Pílula com os atalhos e, ao lado, um
+// botão redondo; "Mais" abre o menu inteiro numa gaveta que cresce da própria pílula (escala a partir da base) enquanto a
+// pílula se recolhe. Fundo transparente só para capturar o toque fora. É diálogo enquanto aberta: Esc, foco preso na
+// gaveta e no botão redondo (que vira Fechar), página de trás sem rolar. Larguras e alturas seguem o Visor: pílula de 62
+// com itens de 54, 20 nas laterais, 24 acima da área segura.
+function SidebarDock({ open, onClose, pill, action, children }: { open: boolean; onClose: () => void; pill: ReactNode; action: ReactNode; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const drawer = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  useScrollLock(open);
+  useEffect(() => {
+    if (!open) return;
+    const back = document.activeElement as HTMLElement | null;
+    const focusables = () => Array.from(box.current?.querySelectorAll<HTMLElement>('[data-dock-open] a[href],[data-dock-open] button:not(:disabled),[data-dock-open] input,[data-dock-action] button') || []);
+    (drawer.current?.querySelector<HTMLElement>('a[aria-current="page"]') || focusables()[0])?.focus();
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); closeRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const f = focusables(); if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('keydown', k); back?.focus?.(); };
+  }, [open]);
+  return (
+    <nav ref={box} aria-label="Navegação" data-state={open ? 'open' : 'closed'} data-slot="sidebar" data-mobile="true" className="dock md:hidden no-print fixed inset-x-0 bottom-0 z-[1050] pointer-events-none">
+      <div className="dock-backdrop fixed inset-0" aria-hidden="true" onClick={onClose} />
+      <div className="pointer-events-auto relative flex items-end gap-2 px-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
+        <div className="relative min-w-0 flex-1">
+          <div ref={drawer} role="dialog" aria-modal={open || undefined} aria-label="Menu" aria-hidden={!open || undefined} {...(open ? { 'data-dock-open': '' } : { inert: '' as any })}
+            className="dock-drawer absolute bottom-0 inset-x-0 z-20 origin-bottom">
+            <div className="dock-glass flex flex-col max-h-[min(36rem,calc(100vh-8rem))] supports-[height:100dvh]:max-h-[min(36rem,calc(100dvh-8rem))] overflow-hidden rounded-[28px]">{children}</div>
+          </div>
+          <div {...(open ? { inert: '' as any } : {})} className="dock-pill dock-glass relative z-10 flex h-[62px] items-center rounded-pill p-1">{pill}</div>
+        </div>
+        <div data-dock-action="" className="shrink-0">{action}</div>
+      </div>
+    </nav>
+  );
+}
+
+// Item da pílula da barra inferior: ícone e rótulo curto (só ícone seria adivinhação, ver crítica de 03/11).
+export function DockItem({ to, icon, label, active, badge, onClick, expanded }: { to?: string; icon: string; label: string; active?: boolean; badge?: ReactNode; onClick?: () => void; expanded?: boolean }) {
+  const cls = cx('relative flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 h-[54px] rounded-pill transition-colors duration-150 [-webkit-tap-highlight-color:transparent]',
+    active ? 'bg-brand-soft text-brand-link' : 'text-ink-2 active:bg-surface-hover');
+  const inner = <><span className="relative"><Icon name={icon} size={22} />{badge}</span><span className="max-w-full truncate px-1 text-[11px] leading-none font-medium">{label}</span></>;
+  return to
+    ? <NavLink to={to} aria-current={active ? 'page' : undefined} className={cls}>{inner}</NavLink>
+    : <button type="button" onClick={onClick} aria-expanded={expanded} aria-haspopup="dialog" className={cls}>{inner}</button>;
+}
+
 // Botão de alternância explícito (equivalente ao SidebarTrigger do shadcn): preso à borda do sidebar.
 export function SidebarTrigger({ className = '' }: { className?: string }) {
   const { state, toggleSidebar } = useSidebar();
@@ -197,9 +239,12 @@ export function SidebarGroup({ title, children }: { title: string; children: Rea
   );
 }
 
+// "Recolhido" é só do desktop: na gaveta do celular os rótulos aparecem sempre (a barra começa recolhida desde a v2, e
+// a gaveta herdava o estado e abria só com ícones)
+const useMini = () => { const { state, isMobile } = useSidebar(); return state === 'collapsed' && !isMobile; };
+
 function SidebarGroupLabel({ children }: { children: ReactNode }) {
-  const { state } = useSidebar();
-  const mini = state === 'collapsed';
+  const mini = useMini();
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
   return (
     <div data-slot="sidebar-group-label" className="relative h-9 shrink-0" aria-hidden="true">
@@ -222,8 +267,7 @@ export const SidebarMenu = forwardRef<HTMLDivElement, { children: ReactNode; pil
 });
 
 export function SidebarMenuButton({ to, icon, label, badge }: { to: string; icon: string; label: string; badge?: ReactNode }) {
-  const { state } = useSidebar();
-  const mini = state === 'collapsed';
+  const mini = useMini();
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
   return (
     <NavLink to={to} data-slot="sidebar-menu-button" title={mini ? label : undefined} aria-label={mini ? label : undefined}
