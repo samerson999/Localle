@@ -13,10 +13,16 @@ import { canSeeFleet, endSupport, homeOf } from '../lib/support';
 import { fmtT } from '@localle/shared/utils';
 import CommandPalette, { isMac } from './CommandPalette';
 import simboloLocalle from '../images/localle-simbolo.png';
-import { DockItem, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON, Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarProvider, useSidebar } from './Sidebar';
+import simbolo3d from '../images/localle-simbolo-3d.webp';
+import wordmarkLocalle from '../images/localle-wordmark.webp';
+import { DockItem, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON, Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarSubMenu, SidebarProvider, useSidebar } from './Sidebar';
 
 const OPERACAO = [
-  { key: 'monitoramento', label: 'Monitoramento', to: '/monitoramento', icon: 'monitoramento' },
+  // Monitoramento é o principal; Replay e Cercas são páginas próprias, na árvore do menu (04/11/2026, eram abas)
+  { key: 'monitoramento', label: 'Monitoramento', to: '/monitoramento', icon: 'monitoramento', sub: [
+    { key: 'replay', label: 'Replay', to: '/monitoramento/replay', icon: 'rota' },
+    { key: 'cercas', label: 'Cercas', to: '/monitoramento/cercas', icon: 'cerca' },
+  ] },
   { key: 'relatorios', label: 'Relatórios', to: '/relatorios', icon: 'relatorios', mod: 'monitoramento' },
 ];
 const GESTAO = [
@@ -128,8 +134,11 @@ function LayoutBody() {
   // pílula ativa: mede o link ativo e desliza até ele
   useLayoutEffect(() => {
     const measure = () => {
-      const el = navRef.current?.querySelector<HTMLElement>('a[aria-current="page"]');
-      setPill(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
+      const el = navRef.current?.querySelector<HTMLElement>('a[aria-current="page"]') ?? navRef.current?.querySelector<HTMLElement>('a[data-trilha]');
+      // subitem fica dentro do bloco da árvore (posicionado): soma os offsets até o menu
+      let top = 0;
+      for (let n: HTMLElement | null = el ?? null; n && n !== navRef.current; n = n.offsetParent as HTMLElement | null) top += n.offsetTop;
+      setPill(el ? { top, height: el.offsetHeight } : null);
     };
     measure();
     window.addEventListener('resize', measure);
@@ -153,13 +162,15 @@ function LayoutBody() {
   ];
   const canConfig = session.role === 'revenda' || session.role === 'locale';
   // Setup (parâmetros de operação, docs/PLANO-SETUP-ADMIN.md): quem vê a frota configura a própria empresa; a API decide quem pode alterar
-  const mods = [...allowed(OPERACAO), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
+  const mods = [...allowed(OPERACAO).flatMap((n: any) => [n, ...(n.sub || [])]), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
   // celular: a barra superior diz em que tela se está (o título da página é discreto e o logo já mostra a revenda)
   const atual = mods.filter((m) => loc.pathname === m.to || loc.pathname.startsWith(m.to + '/')).sort((a, b) => b.to.length - a.to.length)[0]
     ?? (loc.pathname.startsWith('/precisa-de-voce') ? { label: 'Precisa de você' } : null);
   const mini = state === 'collapsed' && !isMobile; // só ícones (desktop recolhido); por isMobile e não por openMobile, que vira false antes da animação de saída da gaveta
   const sbw = mini ? SIDEBAR_WIDTH_ICON : SIDEBAR_WIDTH;
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
+  // mesma regra da tela de login: sem logo nem nome de revenda próprios, a marca é a da Localle
+  const marcaLocalle = !rev.branding.logo && (!rev.branding.name || rev.branding.name === 'Localle');
 
   // celular: barra inferior flutuante. Três atalhos do dia a dia + "Mais" (o menu inteiro). Quem vê a frota: Monitoramento,
   // críticos (o contador do "Precisa de você") e o primeiro módulo de gestão; sem frota (revenda, Locale), as três primeiras telas.
@@ -195,10 +206,19 @@ function LayoutBody() {
     <div className="flex flex-col flex-1 min-w-0 md:flex-row" style={{ ['--sb-w' as any]: `${sbw}px` }}>
       <Sidebar dock={{ pill: dockPill, action: dockAction }}>
         <SidebarHeader>
-          <div className="relative flex items-center gap-stack h-[72px] shrink-0 px-[18px] overflow-hidden">
-            <BrandMark />
-            <div className={cx('flex flex-col', isMobile ? 'flex-1 min-w-0' : 'w-[166px] shrink-0', fade)}><span className="font-semibold text-body leading-tight line-clamp-2">{rev.branding.name}</span><span className="text-caption text-ink-2 truncate">{rev.clientName}</span></div>
-          </div>
+          {marcaLocalle ? (
+            // Sem white-label: a logo da tela de login partida em símbolo + texto. O símbolo fica parado (é o que sobra
+            // recolhida) e só o texto entra/sai com o mesmo fade dos rótulos — trocar uma imagem pela outra piscava.
+            <div className="relative flex items-center gap-stack h-[72px] shrink-0 px-[18px] overflow-hidden">
+              <img src={simbolo3d} alt="" aria-hidden className="w-9 h-9 object-contain shrink-0" />
+              <div className={cx('flex flex-col gap-hair', isMobile ? 'flex-1 min-w-0' : 'w-[166px] shrink-0', fade)}><img src={wordmarkLocalle} alt="Localle" className="h-5 w-auto self-start" /><span className="text-caption text-ink-2 truncate">{rev.clientName}</span></div>
+            </div>
+          ) : (
+            <div className="relative flex items-center gap-stack h-[72px] shrink-0 px-[18px] overflow-hidden">
+              <BrandMark />
+              <div className={cx('flex flex-col', isMobile ? 'flex-1 min-w-0' : 'w-[166px] shrink-0', fade)}><span className="font-semibold text-body leading-tight line-clamp-2">{rev.branding.name}</span><span className="text-caption text-ink-2 truncate">{rev.clientName}</span></div>
+            </div>
+          )}
           <div className="px-3">
             <button type="button" onClick={() => setCmdk(true)} aria-label="Buscar" className="w-full h-10 rounded-ctl bg-surface-muted flex items-center gap-stack pl-[14px] pr-2 overflow-hidden text-body text-ink-2 transition-colors duration-150 hover:text-ink hover:bg-surface-hover">
               <Icon name="busca" size={18} className="shrink-0" /><span className={cx('mr-auto whitespace-nowrap', fade)}>Buscar</span><kbd className={cx('text-caption font-mono text-ink-2 rounded-chip px-1.5 h-5 flex items-center shrink-0 bg-card border border-line max-md:hidden', fade)}>{isMac ? '⌘K' : 'Ctrl+K'}</kbd>
@@ -212,7 +232,12 @@ function LayoutBody() {
                 <SidebarMenuButton to="/precisa-de-voce" icon="atencao" label="Precisa de você" badge={needs.length > 0 && <Counter n={needs.length} pulse={pulse} className={cx('shrink-0', fade)} />} />
               </div>
             )}
-            <SidebarGroup title="Operação">{allowed(OPERACAO).map((n) => <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />)}</SidebarGroup>
+            <SidebarGroup title="Operação">{allowed(OPERACAO).map((n: any) => n.sub ? (
+              <div key={n.key} className="flex flex-col gap-hair">
+                <SidebarMenuButton to={n.to} icon={n.icon} label={n.label} end trilha={naRota(n.to) && loc.pathname !== n.to && !n.sub.some((x: any) => naRota(x.to))} />
+                <SidebarSubMenu items={n.sub} />
+              </div>
+            ) : <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />)}</SidebarGroup>
             <SidebarGroup title="Gestão">{allowed(GESTAO).map((n) => <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />)}</SidebarGroup>
             <SidebarGroup title="Administração">{admin.map((n) => <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />)}</SidebarGroup>
           </SidebarMenu>

@@ -266,13 +266,33 @@ export const SidebarMenu = forwardRef<HTMLDivElement, { children: ReactNode; pil
   );
 });
 
-export function SidebarMenuButton({ to, icon, label, badge }: { to: string; icon: string; label: string; badge?: ReactNode }) {
+// `end`: só a rota exata marca o item (o de um item com subitens, para a pílula ir para o subitem). `trilha`: está numa
+// tela da seção sem subitem próprio no menu (ex.: /monitoramento/alertas) — o item fica em destaque e recebe a pílula.
+export function SidebarMenuButton({ to, icon, label, badge, end, trilha }: { to: string; icon: string; label: string; badge?: ReactNode; end?: boolean; trilha?: boolean }) {
   const mini = useMini();
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
   return (
-    <NavLink to={to} data-slot="sidebar-menu-button" title={mini ? label : undefined} aria-label={mini ? label : undefined}
-      className={({ isActive }) => cx('relative z-[1] flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body overflow-hidden transition-colors duration-150', isActive ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
+    <NavLink to={to} end={end} data-slot="sidebar-menu-button" data-trilha={trilha || undefined} title={mini ? label : undefined} aria-label={mini ? label : undefined}
+      className={({ isActive }) => cx('relative z-[1] flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body overflow-hidden transition-colors duration-150', isActive || trilha ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
       <Icon name={icon} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{label}</span>{badge}
     </NavLink>
+  );
+}
+
+// Subitens de um módulo (árvore, sempre aberta): recuados sob o item principal, com uma linha-guia que nasce no ícone
+// dele. Recolhida, a barra só mostra ícones: o recuo e a linha somem e o subitem fica alinhado aos demais.
+export function SidebarSubMenu({ items }: { items: { key: string; to: string; icon: string; label: string }[] }) {
+  const mini = useMini();
+  const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
+  return (
+    <div data-slot="sidebar-sub-menu" className="relative flex flex-col gap-hair">
+      <span aria-hidden="true" className={cx('absolute left-[23px] top-0 bottom-3 w-px bg-line transition-opacity duration-150 motion-reduce:transition-none', mini && 'opacity-0')} />
+      {items.map((s) => (
+        <NavLink key={s.key} to={s.to} data-slot="sidebar-menu-button" title={mini ? s.label : undefined} aria-label={mini ? s.label : undefined}
+          className={({ isActive }) => cx('relative z-[1] flex items-center gap-3 h-9 pr-3 rounded-ctl text-small overflow-hidden transition-[color,background-color,padding] duration-150 motion-reduce:transition-none', mini ? 'pl-[15px]' : 'pl-[36px]', isActive ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
+          <Icon name={s.icon} size={18} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{s.label}</span>
+        </NavLink>
+      ))}
+    </div>
   );
 }

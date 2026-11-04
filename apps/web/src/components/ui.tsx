@@ -930,19 +930,18 @@ export function Breadcrumbs({ items }: { items: { label: string; to?: string }[]
   );
 }
 
-// Cabeçalho de página: discreto (ícone + nome pequenos), o peso visual fica com o conteúdo abaixo.
-// Em telas de BI, passe `period` (seletor com comparação); em telas ao vivo, não passe.
+// Cabeçalho de página sem o nome da tela à vista (04/11/2026: o menu já diz onde se está); o título segue no h1 para
+// leitor de tela. A linha fica com as ações (e o período, em telas de BI), na altura do botão "Precisa de você".
+// Sem ações, sobra só a linha vazia no desktop, para o conteúdo não passar por baixo desse botão.
 // `crumbs` é opcional: usar em sub-telas (ex.: um tipo de relatório dentro do hub de Relatórios).
-export function PageHeader({ icon, title, subtitle, children, period, crumbs }: { icon?: Parameters<typeof Icon>[0]['name']; title: string; subtitle?: React.ReactNode; children?: React.ReactNode; period?: React.ReactNode; crumbs?: { label: string; to?: string }[] }) {
+export function PageHeader({ title, children, period, crumbs }: { icon?: Parameters<typeof Icon>[0]['name']; title: string; subtitle?: React.ReactNode; children?: React.ReactNode; period?: React.ReactNode; crumbs?: { label: string; to?: string }[] }) {
+  const acoes = !!(period || children);
   return (
-    <header className="flex flex-col mb-page-head">
+    <header className={cx('flex flex-col', acoes ? 'mb-page-head' : 'mb-card-head')}>
+      <h1 className="sr-only">{title}</h1>
       {crumbs && <Breadcrumbs items={crumbs} />}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-tight min-h-ctl md:pr-[var(--top-reserve,0px)]">
-        <div className="mr-auto min-w-0 flex items-center gap-tight text-ink-2">
-          {icon && <Icon name={icon} size={15} className="shrink-0" />}
-          <h1 className="text-small font-medium truncate">{title}</h1>
-        </div>
-        {(period || children) && <div className="flex flex-wrap items-center gap-tight">{period}{children}</div>}
+      <div className={cx('flex flex-wrap items-center gap-x-6 gap-y-tight min-h-ctl md:pr-[var(--top-reserve,0px)]', !acoes && 'max-md:hidden')}>
+        {acoes && <div className="flex flex-wrap items-center gap-tight">{period}{children}</div>}
       </div>
     </header>
   );
