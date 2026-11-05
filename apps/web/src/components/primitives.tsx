@@ -62,12 +62,12 @@ const WIDE: Partial<Record<Split | '2', string>> = {
   '7/5': 'grid-cols-12 [&>*]:col-span-12 xl:[&>*:nth-child(odd)]:col-span-7 xl:[&>*:nth-child(even)]:col-span-5',
   '8/4': 'grid-cols-12 [&>*]:col-span-12 xl:[&>*:nth-child(odd)]:col-span-8 xl:[&>*:nth-child(even)]:col-span-4',
 };
-export function Grid({ cols, split, wide = false, gap = 'grid', equal = false, as = 'div', className = '', children, ...p }: Box & { cols?: Cols; split?: Split; wide?: boolean; gap?: Gap; equal?: boolean }) {
+export const Grid = React.forwardRef<HTMLElement, Box & { cols?: Cols; split?: Split; wide?: boolean; gap?: Gap; equal?: boolean }>(function Grid({ cols, split, wide = false, gap = 'grid', equal = false, as = 'div', className = '', children, ...p }, ref) {
   const Tag = as as any;
   const key = split ?? (cols === 2 ? '2' : undefined);
   const tpl = wide && key && WIDE[key as Split] ? WIDE[key as Split] : split ? SPLIT[split] : COLS[cols ?? 1];
-  return <Tag {...p} className={cx('grid min-w-0', tpl, GAP[gap], equal ? 'items-stretch' : 'items-start', className)}>{children}</Tag>;
-}
+  return <Tag ref={ref} {...p} className={cx('grid min-w-0', tpl, GAP[gap], equal ? 'items-stretch' : 'items-start', className)}>{children}</Tag>;
+});
 // Filho de Grid que ocupa outra largura que a da grade (ex.: um card largo numa grade de 3). span em doze avos a partir de lg.
 const SPAN: Record<number, string> = { 3: 'lg:!col-span-3', 4: 'lg:!col-span-4', 5: 'lg:!col-span-5', 6: 'lg:!col-span-6', 7: 'lg:!col-span-7', 8: 'lg:!col-span-8', 9: 'lg:!col-span-9', 12: '!col-span-12' };
 export function GridItem({ span, className = '', children }: { span: 3 | 4 | 5 | 6 | 7 | 8 | 9 | 12; className?: string; children: React.ReactNode }) {

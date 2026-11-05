@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import { useSearchParams } from 'react-router-dom';
 import { useStore, useStoreData } from '../lib/store';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, TextButton, Slider, Tabs, EmptyState, ErrorState, Spinner, DescList, DescRow, Stack, Grid, IconButton, cx, toast, useIsMobile } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, TextButton, Slider, Tabs, EmptyState, ErrorState, Spinner, DescList, DescRow, Stack, Grid, IconButton, cx, toast, useIsMobile, useEdgeFade } from '../components/ui';
 import { KpiTile, Num, StatusDot, numSizeClass } from '../components/story';
 import { Icon } from '../components/icons';
 import { MonitorHeader } from '../components/MonitorTabs';
@@ -49,6 +49,8 @@ export default function Replay() {
   const [showF, setShowF] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const mobile = useIsMobile();
+  const faixa = useRef<HTMLElement>(null);
+  useEdgeFade(faixa);
   const asset = assets.find((a: any) => a.id === loaded.aid);
 
   // veículo real: percurso vem da API; demais: do histórico local
@@ -127,7 +129,7 @@ export default function Replay() {
         </div>
       </Card>
       {/* celular: faixa que rola de lado — precisa de foco pelo teclado para rolar e de nome para o leitor de tela */}
-      <Grid cols={5} equal role={mobile ? 'region' : undefined} aria-label={mobile ? 'Indicadores do percurso' : undefined} tabIndex={mobile ? 0 : undefined} className="max-md:flex max-md:overflow-x-auto max-md:overscroll-x-contain max-md:-mx-page max-md:px-page max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:w-[148px] max-md:[&>*]:shrink-0">
+      <Grid ref={faixa} cols={5} equal role={mobile ? 'region' : undefined} aria-label={mobile ? 'Indicadores do percurso' : undefined} tabIndex={mobile ? 0 : undefined} className="max-md:flex max-md:overflow-x-auto max-md:overscroll-x-contain max-md:-mx-page max-md:px-page max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:w-[148px] max-md:[&>*]:shrink-0">
         <KpiTile label="Distância" value={stats.dist} digits={1} unit="km" />
         <KpiTile label="Tempo em movimento" display={<span className={cx(numSizeClass('kpi'), 'num')}>{hm(stats.moving)}</span>} />
         <KpiTile label="Paradas (> 5 min)" value={stats.stops.length} />

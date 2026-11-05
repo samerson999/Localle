@@ -662,11 +662,9 @@ export function Badge({ tone = 'tag', children, className = '' }: { tone?: strin
 // Indicador que desliza até a opção ativa (--t-pill). Na primeira medida aparece direto, sem deslizar do zero.
 // Indicador deslizante por FLIP: a posição/tamanho final (left/top/width/height) nunca transiciona;
 // só `transform` anima (translate + scale a partir do retângulo anterior), sem custo de layout.
-function useSlider(value: string) {
-  const box = useRef<HTMLDivElement>(null);
-  const indicator = useRef<HTMLSpanElement>(null);
-  // trilho rolando de lado (celular): a borda do lado onde há mais opções esmaece (data-fade, base.css) — sem barra de
-  // rolagem, as abas fora da tela não davam nenhum sinal de que existiam
+// Faixa que rola de lado (celular): a borda do lado onde há mais conteúdo esmaece (data-fade, base.css) — sem barra de
+// rolagem, o que estava fora da tela não dava nenhum sinal de que existia. Sem rolagem (desktop), nada esmaece.
+export function useEdgeFade(box: React.RefObject<HTMLElement>) {
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -676,7 +674,13 @@ function useSlider(value: string) {
     const ro = new ResizeObserver(cue);
     ro.observe(el);
     return () => { el.removeEventListener('scroll', cue); ro.disconnect(); };
-  }, []);
+  }, [box]);
+}
+
+function useSlider(value: string) {
+  const box = useRef<HTMLDivElement>(null);
+  const indicator = useRef<HTMLSpanElement>(null);
+  useEdgeFade(box);
   const prev = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const [rect, setRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   useLayoutEffect(() => {
@@ -722,7 +726,7 @@ const sliderText = 'transition-colors duration-[250ms]';
 // e a opção ativa é trazida para a vista (useSlider).
 const segTrack = 'relative inline-flex flex-wrap max-md:flex-nowrap max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden w-fit max-w-full gap-1 p-1 bg-card rounded-pill';
 const segIndicator = 'absolute rounded-pill bg-brand-fill';
-const segItem = (size: 'sm' | 'md', on: boolean, style: unknown) => cx('relative shrink-0 whitespace-nowrap px-3 rounded-pill font-medium inline-flex items-center gap-tight', size === 'sm' ? 'h-7 [@media(pointer:coarse)]:h-9 text-caption' : 'h-8 [@media(pointer:coarse)]:h-10 text-small', sliderText, on ? cx('text-brand-fill-ink', !style && 'bg-brand-fill') : 'text-ink-2 hover:text-ink');
+const segItem = (size: 'sm' | 'md', on: boolean, style: unknown) => cx('relative shrink-0 whitespace-nowrap px-3 rounded-pill font-medium inline-flex items-center gap-tight', size === 'sm' ? 'h-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:min-w-11 justify-center text-caption' : 'h-8 [@media(pointer:coarse)]:h-10 text-small', sliderText, on ? cx('text-brand-fill-ink', !style && 'bg-brand-fill') : 'text-ink-2 hover:text-ink');
 
 // Contador neutro (abas, filtros, listas). O do "Precisa de você" é o único vermelho (Layout).
 export function CountBadge({ n, className = '' }: { n: number; className?: string }) {
@@ -949,7 +953,7 @@ export function Breadcrumbs({ items }: { items: { label: string; to?: string }[]
         const last = i === items.length - 1;
         return (
           <span key={i} className="flex items-center gap-tight min-w-0">
-            {i > 0 && <Icon name="chevron" size={12} className="shrink-0 text-ink-3 rotate-[-90deg]" />}
+            {i > 0 && <Icon name="chevron" size={12} className="shrink-0 text-ink-3" />}
             {last || !it.to
               ? <span className={cx('truncate', last && 'text-ink font-medium')}>{it.label}</span>
               : <button type="button" onClick={() => navigate(it.to!)} className="alvo-toque min-w-0 max-w-full hover:text-ink hover:underline underline-offset-2"><span className="block truncate">{it.label}</span></button>}
