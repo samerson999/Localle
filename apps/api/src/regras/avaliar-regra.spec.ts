@@ -51,6 +51,17 @@ describe('condicaoAtende', () => {
     expect(condicaoAtende({ field: 'alimentacao', op: '=', value: 'Desconectada' }, ctx({ alarms: ['powerCut'] }))).toBe(true);
     expect(condicaoAtende({ field: 'alimentacao', op: '=', value: 'Conectada' }, ctx())).toBe(true);
   });
+
+  it('alimentação pelo estado lido quando o aparelho não manda o alarme', () => {
+    const desconectada = { field: 'alimentacao' as const, op: '=', value: 'Desconectada' };
+    const conectada = { field: 'alimentacao' as const, op: '=', value: 'Conectada' };
+    expect(condicaoAtende(desconectada, ctx({ alimentacaoExterna: false }))).toBe(true);
+    expect(condicaoAtende(conectada, ctx({ alimentacaoExterna: false }))).toBe(false);
+    expect(condicaoAtende(desconectada, ctx({ alimentacaoExterna: true }))).toBe(false);
+    expect(condicaoAtende(conectada, ctx({ alimentacaoExterna: true }))).toBe(true);
+    // o alarme vale mesmo com a leitura dizendo ligada (pacote do alarme pode chegar antes da tensão cair)
+    expect(condicaoAtende(desconectada, ctx({ alarms: ['powerCut'], alimentacaoExterna: true }))).toBe(true);
+  });
 });
 
 describe('regraAtende', () => {

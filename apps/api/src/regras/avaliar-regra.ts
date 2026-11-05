@@ -42,6 +42,8 @@ export interface ContextoRegra {
   tiposCercaDentro: string[];
   alarms: string[];
   attributes: Record<string, unknown>;
+  /** Alimentação externa pela leitura da telemetria (src/telemetria/leitura.ts); null = o aparelho não informa. */
+  alimentacaoExterna?: boolean | null;
 }
 
 /** Horário e dia são regra da empresa: valem no fuso da operação, não em UTC. */
@@ -84,8 +86,12 @@ export function condicaoAtende(c: Condicao, ctx: ContextoRegra, fuso = FUSO_PADR
       return typeof ctx.attributes.blocked === 'boolean' && (c.value === 'Ativo') === ctx.attributes.blocked;
     case 'panico':
       return ctx.alarms.includes('sos');
-    case 'alimentacao':
-      return (c.value === 'Desconectada') === ctx.alarms.includes('powerCut');
+    case 'alimentacao': {
+      // alarme do aparelho ou estado lido (aparelho sem alarme powerCut, como o teltonika). Sem leitura, "Conectada"
+      // continua valendo como antes da leitura existir, para não mudar regra já configurada.
+      const cortada = ctx.alarms.includes('powerCut') || ctx.alimentacaoExterna === false;
+      return (c.value === 'Desconectada') === cortada;
+    }
     case 'horario':
       return c.op === 'depois de' ? minutos >= toMin(c.value) : minutos < toMin(c.value);
     case 'dia_semana':

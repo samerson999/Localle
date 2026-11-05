@@ -22,7 +22,7 @@ interface RegraAtiva {
  */
 export async function avaliarRegras(
   client: PoolClient,
-  p: { clientId: string; assetId: string; rastreadorId: string; posicaoId: string; position: NormalizedPosition },
+  p: { clientId: string; assetId: string; rastreadorId: string; posicaoId: string; position: NormalizedPosition; alimentacaoExterna?: boolean | null },
 ): Promise<EventoGravado[]> {
   const { rows: regras } = await client.query<RegraAtiva>(
     'select id, nome, prioridade, condicoes, acoes from regras where client_id = $1 and ativa and removida_em is null',
@@ -42,6 +42,7 @@ export async function avaliarRegras(
     tiposCercaDentro: tipos.map((t) => t.tipo),
     alarms: p.position.alarms,
     attributes: p.position.attributes,
+    alimentacaoExterna: p.alimentacaoExterna ?? null,
   };
 
   const eventos: EventoGravado[] = [];

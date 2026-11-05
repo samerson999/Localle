@@ -18,10 +18,15 @@ export interface Telemetria {
   sinalGsm: number | null;
   bloqueado: boolean | null;
   /**
+   * Alimentação externa (fio do veículo) ligada. `false` = cortada: o rastreador está na bateria interna, sinal clássico
+   * de furto. Vem da tensão quando o aparelho a informa, senão do `charge` do Traccar.
+   */
+  alimentacaoExterna: boolean | null;
+  /**
    * Quando chegou o atributo de cada leitura (ISO, horário do servidor do Traccar). Valor antigo continua valendo como
    * "último conhecido", mas a tela mostra a idade; `null` = idade desconhecida.
    */
-  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null };
+  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null; alimentacaoExterna: string | null };
 }
 
 export interface RealtimePosicao {

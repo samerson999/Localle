@@ -72,11 +72,14 @@ export function itensDoDiagnostico(
   if (!d.atributosEm) itens.push({ etapa: 'Telemetria', tom: 'info', texto: 'Nenhum atributo recebido ainda.' });
   else {
     const t = d.telemetria;
-    const faltam = [t.tensaoV === null && 'tensão', t.sinalGsm === null && 'sinal', t.bloqueado === null && 'estado de bloqueio'].filter(Boolean) as string[];
-    const lidos = [t.tensaoV !== null && `${t.tensaoV} V`, t.sinalGsm !== null && `sinal ${t.sinalGsm}/5`, t.bloqueado !== null && (t.bloqueado ? 'bloqueado' : 'desbloqueado')].filter(Boolean);
+    // alimentação vem da tensão ou, sem ela, do `charge` do Traccar (GT06): aparelho que só manda o `charge` não está
+    // "sem tensão" para o diagnóstico, porque o que importa dela (fio ligado ou cortado) é lido
+    const alimentacao = t.alimentacaoExterna ?? null;
+    const faltam = [t.tensaoV === null && alimentacao === null && 'tensão', t.sinalGsm === null && 'sinal', t.bloqueado === null && 'estado de bloqueio'].filter(Boolean) as string[];
+    const lidos = [t.tensaoV !== null && `${t.tensaoV} V`, t.tensaoV === null && alimentacao !== null && `alimentação ${alimentacao ? 'ligada' : 'cortada'}`, t.sinalGsm !== null && `sinal ${t.sinalGsm}/5`, t.bloqueado !== null && (t.bloqueado ? 'bloqueado' : 'desbloqueado')].filter(Boolean);
     // valor antigo comparado ao último pacote: o aparelho manda pacotes, mas não esse dado (ex.: chave mudou no decoder)
     const ref = Date.parse(d.atributosEm);
-    const antigos = ([['tensão', t.tensaoV, t.lidaEm?.tensaoV], ['sinal', t.sinalGsm, t.lidaEm?.sinalGsm], ['estado de bloqueio', t.bloqueado, t.lidaEm?.bloqueado]] as const)
+    const antigos = ([['tensão', t.tensaoV, t.lidaEm?.tensaoV], ['alimentação externa', t.tensaoV === null ? alimentacao : null, t.lidaEm?.alimentacaoExterna], ['sinal', t.sinalGsm, t.lidaEm?.sinalGsm], ['estado de bloqueio', t.bloqueado, t.lidaEm?.bloqueado]] as const)
       .filter(([, valor, em]) => valor !== null && leituraAntiga(em, ref))
       .map(([nome, , em]) => `${nome} (lido há ${haQuanto(em!, agora)})`);
     if (antigos.length) {
@@ -84,6 +87,11 @@ export function itensDoDiagnostico(
     } else itens.push(faltam.length
       ? { etapa: 'Telemetria', tom: 'warn', texto: `Não lido: ${faltam.join(', ')}${lidos.length ? ` (lido: ${lidos.join(', ')})` : ''}. Veja as sugestões de mapeamento no modelo.` }
       : { etapa: 'Telemetria', tom: 'ok', texto: `Lido: ${lidos.join(', ')}.` });
+    // instalado com o fio solto (ou a leitura antiga dizendo isso): o aparelho descarrega a bateria interna e cala
+    if (alimentacao === false) {
+      const em = t.tensaoV !== null ? t.lidaEm?.tensaoV : t.lidaEm?.alimentacaoExterna;
+      itens.push({ etapa: 'Alimentação', tom: 'crit', texto: `Alimentação externa cortada${t.tensaoV !== null ? ` (${t.tensaoV} V no fio)` : ''}${em ? `, lida há ${haQuanto(em, agora)}` : ''}: o aparelho está na bateria interna e vai parar de transmitir quando ela acabar. Confira o positivo e o negativo no chicote.` });
+    }
   }
 
   if (!d.comandos) itens.push({ etapa: 'Comandos', tom: 'info', texto: 'Os comandos aceitos aparecem depois da primeira posição.' });

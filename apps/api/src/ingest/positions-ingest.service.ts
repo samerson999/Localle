@@ -9,7 +9,7 @@ import { FUSO_PADRAO } from '../regras/avaliar-regra';
 import { avaliarRegras } from '../regras/motor-regras';
 import { atualizarSinaisMotor } from '../telemetria/instalacao-sinais.repository';
 import { acompanharAtributos, chavesLidas, type DatasPorChave } from '../telemetria/atributos-vistos';
-import { lerTelemetriaComIdade, mapeamentoDaLinha } from '../telemetria/leitura';
+import { lerTelemetria, lerTelemetriaComIdade, mapeamentoDaLinha } from '../telemetria/leitura';
 import { mapeamentoSinaisDaLinha, ROTULO_SINAL } from '../telemetria/sinais-motor';
 import { resolverInstalacaoVigente } from './instalacao-vigente';
 import type { NormalizedPosition } from './traccar-position.mapper';
@@ -197,6 +197,16 @@ export class PositionsIngestService {
         ? await this.atualizarUltimaPosicao(client, rastreadorId, assetId, clientId, posicaoId, position)
         : false;
       const eventos: EventoGravado[] = await this.gravarAlarmes(client, rastreadorId, assetId, clientId, posicaoId, position);
+      // corte pelo estado: muitos aparelhos (o teltonika da HML, por exemplo) não mandam o alarme `powerCut`, e o corte
+      // ficaria só no ícone. Só a virada ligada → cortada conta: aparelho que já nasce cortado é bancada, não furto.
+      const alimentacaoAntes = lerTelemetria(comunicacao.atributosAntes, mapeamento).alimentacaoExterna;
+      if (alimentacaoAntes === true && telemetria.alimentacaoExterna === false && !position.alarms.includes('powerCut')) {
+        const pelaTensao = telemetria.tensaoV !== null;
+        this.logger.warn(
+          `rastreador_id=${rastreadorId} asset_id=${assetId ?? '-'} alimentação externa cortada (${pelaTensao ? `tensão ${telemetria.tensaoV} V` : 'charge=false'}) sem alarme powerCut do aparelho`,
+        );
+        eventos.push(await this.gravarEvento(client, rastreadorId, assetId, clientId, posicaoId, position, 'powerCut', { detectadoPor: pelaTensao ? 'tensao' : 'charge' }));
+      }
       if (position.valid && clientId && assetId) {
         eventos.push(
           ...(await detectarCercas(client, {
@@ -213,7 +223,7 @@ export class PositionsIngestService {
 
       // regras só sobre a posição mais nova do ativo: posição atrasada avaliaria estado velho
       if (atualizouUltimaPosicao && clientId && assetId) {
-        eventos.push(...(await avaliarRegras(client, { clientId, assetId, rastreadorId, posicaoId, position })));
+        eventos.push(...(await avaliarRegras(client, { clientId, assetId, rastreadorId, posicaoId, position, alimentacaoExterna: telemetria.alimentacaoExterna })));
       }
 
       const alertas: Alerta[] = [...alertasSinais];
@@ -259,8 +269,8 @@ export class PositionsIngestService {
     position: NormalizedPosition,
     lidas: Map<string, string>,
   ) {
-    const antes = await client.query<{ atributos_vistos_em: DatasPorChave; atributos_ausentes_desde: DatasPorChave; atributos_em: Date | null }>(
-      'select atributos_vistos_em, atributos_ausentes_desde, atributos_em from rastreador_comunicacao where rastreador_id = $1 for update',
+    const antes = await client.query<{ atributos_vistos_em: DatasPorChave; atributos_ausentes_desde: DatasPorChave; atributos_em: Date | null; ultimos_atributos: Record<string, unknown> }>(
+      'select atributos_vistos_em, atributos_ausentes_desde, atributos_em, ultimos_atributos from rastreador_comunicacao where rastreador_id = $1 for update',
       [rastreadorId],
     );
     const a = antes.rows[0];
@@ -296,7 +306,7 @@ export class PositionsIngestService {
         JSON.stringify(acompanhamento.vistosEm), JSON.stringify(acompanhamento.ausentesDesde),
       ],
     );
-    return { ultimosAtributos: rows[0].ultimos_atributos, ...acompanhamento };
+    return { ultimosAtributos: rows[0].ultimos_atributos, atributosAntes: a?.ultimos_atributos ?? null, ...acompanhamento };
   }
 
   private async atualizarUltimaPosicao(
@@ -336,15 +346,26 @@ export class PositionsIngestService {
     position: NormalizedPosition,
   ): Promise<EventoGravado[]> {
     const eventos: EventoGravado[] = [];
-    for (const alarme of position.alarms) {
-      const { rows } = await client.query<{ id: string }>(
-        `insert into eventos (rastreador_id, client_id, asset_id, origem, tipo, ts, posicao_id, attributes)
-         values ($1, $2, $3, 'aparelho', $4, $5, $6, $7)
-         returning id`,
-        [rastreadorId, clientId, assetId, alarme, position.fixTime, posicaoId, { traccarPositionId: position.traccarPositionId }],
-      );
-      eventos.push({ id: rows[0].id, tipo: alarme, ts: position.fixTime, alerta: alertaDoAlarme(alarme) });
-    }
+    for (const alarme of position.alarms) eventos.push(await this.gravarEvento(client, rastreadorId, assetId, clientId, posicaoId, position, alarme));
     return eventos;
+  }
+
+  private async gravarEvento(
+    client: PoolClient,
+    rastreadorId: string,
+    assetId: string | null,
+    clientId: string | null,
+    posicaoId: string,
+    position: NormalizedPosition,
+    tipo: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<EventoGravado> {
+    const { rows } = await client.query<{ id: string }>(
+      `insert into eventos (rastreador_id, client_id, asset_id, origem, tipo, ts, posicao_id, attributes)
+       values ($1, $2, $3, 'aparelho', $4, $5, $6, $7)
+       returning id`,
+      [rastreadorId, clientId, assetId, tipo, position.fixTime, posicaoId, { traccarPositionId: position.traccarPositionId, ...extra }],
+    );
+    return { id: rows[0].id, tipo, ts: position.fixTime, alerta: alertaDoAlarme(tipo) };
   }
 }

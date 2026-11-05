@@ -39,6 +39,7 @@ export function chavesLidas(m: MapeamentoTelemetria, s: MapeamentoSinais): Map<s
     ['rssi', 'sinal GSM'],
     [m.atributoBloqueio || 'blocked', 'bloqueio'],
     ['ignition', 'ignição'],
+    ['charge', 'alimentação externa'],
   ]);
   for (const sinal of SINAIS_MOTOR) {
     const chave = s.atributos[sinal] || ATRIBUTO_PADRAO[sinal];

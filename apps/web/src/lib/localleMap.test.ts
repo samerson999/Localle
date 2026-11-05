@@ -35,16 +35,17 @@ describe('toAsset / toVehicle', () => {
 
   it('telemetria que a API não envia fica null, mesmo com valor de exemplo salvo no navegador', () => {
     const v = toVehicle(row(), { battery: 12.6, gps: 0, gsm: 0, blocked: false })!;
-    expect(v).toMatchObject({ battery: null, gps: null, gsm: null, blocked: null });
+    expect(v).toMatchObject({ battery: null, gps: null, gsm: null, blocked: null, power: null });
   });
 
-  it('telemetria da API vira bateria/satélites/sinal/bloqueio; posição ao vivo sem telemetria mantém a última', () => {
-    const t = { tensaoV: 13.3, satelites: 15, sinalGsm: 5, bloqueado: false };
+  it('telemetria da API vira bateria/satélites/sinal/bloqueio/alimentação; posição ao vivo sem telemetria mantém a última', () => {
+    const t = { tensaoV: 13.3, satelites: 15, sinalGsm: 5, bloqueado: false, alimentacaoExterna: true };
     const v = toVehicle(row({ telemetria: t }), undefined)!;
-    expect(v).toMatchObject({ battery: 13.3, gps: 15, gsm: 5, blocked: false });
+    expect(v).toMatchObject({ battery: 13.3, gps: 15, gsm: 5, blocked: false, power: true });
     const p = { kind: 'posicao' as const, assetId: 'a1', rastreadorId: 'r1', fixTime: '2026-01-01T12:05:00Z', lat: -8, lon: -34, speedKmh: 0, ignition: true };
     expect(applyPosicao(v, p)).toMatchObject({ battery: 13.3, gps: 15 });
     expect(applyPosicao(v, { ...p, telemetria: { ...t, satelites: 9, tensaoV: null } })).toMatchObject({ battery: null, gps: 9 });
+    expect(applyPosicao(v, { ...p, telemetria: { ...t, tensaoV: 0.7, alimentacaoExterna: false } })).toMatchObject({ battery: 0.7, power: false });
   });
 
   it('sem posição ainda (aguardando) não vira veículo no mapa', () => {

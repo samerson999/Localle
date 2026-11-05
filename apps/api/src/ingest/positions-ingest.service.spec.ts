@@ -171,6 +171,44 @@ describe('PositionsIngestService', () => {
     ]);
   });
 
+  it('alimentação ligada → cortada sem alarme do aparelho vira evento powerCut com alerta; já cortada não repete', async () => {
+    const rastreadorId = await criarRastreador(1011);
+    await instalar(rastreadorId, '2026-01-01T00:00:00Z');
+    const t = (s: string) => new Date(`2026-01-01T12:${s}Z`);
+    const pacote = (id: number, s: string, attributes: Record<string, unknown>, alarms: string[] = []) =>
+      service.ingest(position({ traccarDeviceId: 1011, traccarPositionId: id, fixTime: t(s), serverTime: t(s), attributes, alarms }));
+
+    await pacote(1, '00:00', { power: 12.8 });
+    const corte = await pacote(2, '00:10', { power: 0.7 });
+    expect(corte.status === 'gravada' && corte.eventos.map((e) => e.tipo)).toEqual(['powerCut']);
+    expect(corte.status === 'gravada' && corte.alertas.map((a) => [a.tipo, a.titulo, a.prioridade])).toEqual([['powerCut', 'Alimentação do rastreador cortada', 'alta']]);
+
+    // continua cortada: não é virada nova
+    const depois = await pacote(3, '00:20', { power: 0.6 });
+    expect(depois.status === 'gravada' && depois.eventos).toEqual([]);
+
+    // religou e cortou de novo, desta vez com o alarme do aparelho: um evento só, o do alarme
+    await pacote(4, '00:30', { power: 12.7 });
+    const comAlarme = await pacote(5, '00:40', { power: 0.5 }, ['powerCut']);
+    expect(comAlarme.status === 'gravada' && comAlarme.eventos.map((e) => e.tipo)).toEqual(['powerCut']);
+
+    const { rows } = await pool.query("select attributes->>'detectadoPor' as por from eventos where rastreador_id = $1 and tipo = 'powerCut' order by ts", [rastreadorId]);
+    expect(rows).toEqual([{ por: 'tensao' }, { por: null }]);
+  });
+
+  it('corte pelo `charge` (aparelho sem tensão) e aparelho que já chega cortado não gera alerta', async () => {
+    const gt06 = await criarRastreador(1012);
+    await instalar(gt06, '2026-01-01T00:00:00Z');
+    await service.ingest(position({ traccarDeviceId: 1012, traccarPositionId: 1, attributes: { charge: true } }));
+    const corte = await service.ingest(position({ traccarDeviceId: 1012, traccarPositionId: 2, fixTime: new Date('2026-01-01T12:05:00Z'), serverTime: new Date('2026-01-01T12:05:01Z'), attributes: { charge: false } }));
+    expect(corte.status === 'gravada' && corte.alertas.map((a) => a.tipo)).toEqual(['powerCut']);
+
+    // bancada: primeiro pacote já sem alimentação
+    await criarRastreador(1013);
+    const bancada = await service.ingest(position({ traccarDeviceId: 1013, traccarPositionId: 1, attributes: { power: 0.7 } }));
+    expect(bancada.status === 'gravada' && bancada.eventos).toEqual([]);
+  });
+
   it('pacote válido atrasado não regride ultima_posicao_valida_em', async () => {
     const rastreadorId = await criarRastreador(1008);
     await service.ingest(position({ traccarDeviceId: 1008, traccarPositionId: 1, fixTime: new Date('2026-01-02T12:00:00Z') }));
@@ -209,8 +247,8 @@ describe('PositionsIngestService', () => {
     const r = await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 3, serverTime: t('00:30'), attributes: { power: 13.3, rssi: 2 } }));
     // cada leitura com a data da sua chave: o bloqueio é o do heartbeat das 12:00
     expect(r.status === 'gravada' && r.telemetria).toEqual({
-      tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false,
-      lidaEm: { tensaoV: t('00:30').toISOString(), satelites: t('00:15').toISOString(), sinalGsm: t('00:30').toISOString(), bloqueado: t('00:00').toISOString() },
+      tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false, alimentacaoExterna: true,
+      lidaEm: { tensaoV: t('00:30').toISOString(), satelites: t('00:15').toISOString(), sinalGsm: t('00:30').toISOString(), bloqueado: t('00:00').toISOString(), alimentacaoExterna: t('00:30').toISOString() },
     });
 
     // reenvio atrasado (serverTime antigo) não volta o sinal para 4, mas traz a chave nova

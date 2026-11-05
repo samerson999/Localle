@@ -7,6 +7,12 @@ export interface MapeamentoTelemetria {
   atributoBloqueio: string | null;
 }
 
+/**
+ * Abaixo disto a alimentação externa está desligada: bateria de veículo ligada nunca fica tão baixa (12 V descarregada
+ * ainda tem ~10 V), e o que sobra no fio cortado é ruído do conversor do aparelho (o JR12 de bancada marca 0,7 V).
+ */
+export const TENSAO_MIN_ALIMENTACAO_V = 6;
+
 export const SEM_MAPEAMENTO: MapeamentoTelemetria = { atributoTensao: null, sinalMax: null, atributoBloqueio: null };
 
 /** Colunas de `rastreador_modelos` (left join: modelo ausente vira tudo null = padrão). */
@@ -25,11 +31,15 @@ export const mapeamentoDaLinha = (r: { atributo_tensao: string | null; sinal_max
  */
 export function lerTelemetria(attributes: Record<string, unknown> | null | undefined, m: MapeamentoTelemetria = SEM_MAPEAMENTO): Telemetria {
   const a = attributes ?? {};
+  const tensaoV = volts(a[m.atributoTensao || 'power']);
   return {
-    tensaoV: volts(a[m.atributoTensao || 'power']),
+    tensaoV,
     satelites: inteiro(a.sat, 0, 64),
     sinalGsm: escala(a.rssi, m.sinalMax || 5),
     bloqueado: booleano(a[m.atributoBloqueio || 'blocked']),
+    // a tensão é a leitura direta; `charge` (GT06 e outros sem tensão) é o bit "alimentação externa conectada" do Traccar.
+    // O alarme `powerCut` não entra: é evento (já vira alerta) e, no último valor conhecido por chave, ficaria preso.
+    alimentacaoExterna: tensaoV !== null ? tensaoV >= TENSAO_MIN_ALIMENTACAO_V : typeof a.charge === 'boolean' ? a.charge : null,
   };
 }
 
@@ -44,9 +54,14 @@ export function lerTelemetriaComIdade(
 ): Telemetria {
   const v = vistosEm ?? {};
   const em = (chave: string) => (typeof v[chave] === 'string' ? (v[chave] as string) : null);
+  const t = lerTelemetria(attributes, m);
+  const tensao = m.atributoTensao || 'power';
   return {
-    ...lerTelemetria(attributes, m),
-    lidaEm: { tensaoV: em(m.atributoTensao || 'power'), satelites: em('sat'), sinalGsm: em('rssi'), bloqueado: em(m.atributoBloqueio || 'blocked') },
+    ...t,
+    lidaEm: {
+      tensaoV: em(tensao), satelites: em('sat'), sinalGsm: em('rssi'), bloqueado: em(m.atributoBloqueio || 'blocked'),
+      alimentacaoExterna: t.alimentacaoExterna === null ? null : em(t.tensaoV !== null ? tensao : 'charge'),
+    },
   };
 }
 

@@ -8,6 +8,7 @@ import { MAP_GLYPH, AssetSilhouette, type Category, type SilhouetteKey } from '.
 import { pngIconUrl } from '../lib/pngIcons';
 import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { leituraAntiga } from '../lib/diagnosticoRastreador';
+import type { ComunicacaoStatus } from '@localle/shared/realtime';
 import { StatusDot, Plate, Num } from './story';
 import { IconButton, cx, Menu, type MenuItem } from './ui';
 import { Icon, type IconName } from './icons';
@@ -228,30 +229,45 @@ export function MapControls({ items }: { items: { icon: string; label: string; o
   );
 }
 
-// Leitura do rastreador na linha do veículo: ignição, GPS, sinal de celular e bateria, sempre na mesma ordem (as colunas
-// se alinham na lista); bloqueio só aparece quando bloqueado. Dado que o aparelho não manda fica apagado com "não
-// informado" — nunca um valor de exemplo. Tom de atenção só onde a leitura é inequívoca (sem satélite ou menos de 4,
-// que não dão posição confiável; sem sinal de celular) e na bateria abaixo de BATTERY_LOW_V, o mesmo limite do painel do veículo.
+// Leitura do rastreador na linha do veículo: conexão, ignição, GPS, sinal de celular e bateria, sempre na mesma ordem (as
+// colunas se alinham na lista); bloqueio só aparece quando bloqueado. A bateria é a alimentação do veículo: com o fio
+// cortado (rastreador na bateria interna, sinal clássico de furto) fica vermelha mesmo quando o aparelho não manda a tensão.
+// Conexão vem do status de comunicação do backend, não de atributo do aparelho, e por isso não tem idade.
+// Dado que o aparelho não manda fica apagado com "não informado" — nunca um valor de exemplo. Tom de atenção só onde a leitura é inequívoca (sem satélite ou menos de 4,
+// que não dão posição confiável; sem sinal de celular) e na bateria abaixo de BATTERY_LOW_V, o mesmo limite do painel do veículo;
+// leitura boa fica verde, para a lista dizer de relance que o aparelho está saudável.
 // Leitura antiga (o dado não chega há mais de LEITURA_ANTIGA_MIN) fica apagada, sem tom de alerta, com a idade na dica.
 export type LeituraRastreador = {
   ignition?: boolean | null; gps?: number | null; gsm?: number | null; battery?: number | null; blocked?: boolean | null;
-  em?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null } | null;
+  /** Alimentação externa ligada; `false` = cortada. */
+  power?: boolean | null;
+  comunicacao?: ComunicacaoStatus | null;
+  em?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null; alimentacaoExterna?: string | null } | null;
 };
 type TomLeitura = 'neutro' | 'off' | 'ok' | 'warn' | 'crit';
 const TOM_LEITURA: Record<TomLeitura, string> = { neutro: 'text-ink-3', off: 'text-ink-3 opacity-40', ok: 'text-mov', warn: 'text-warn', crit: 'text-crit-ink' };
+const CONEXAO: Record<string, [string, TomLeitura]> = {
+  online: ['Online', 'ok'], sem_gps: ['Comunicando, mas sem posição de GPS', 'warn'], sem_sinal: ['Sem comunicação', 'crit'], aguardando: ['Aguardando a primeira comunicação', 'off'],
+};
 function TrackerIcons({ t }: { t: LeituraRastreador }) {
   const item = (icon: IconName, label: string, tom: TomLeitura, em?: string | null) => {
     const antiga = leituraAntiga(em);
     const texto = antiga ? `${label} (lido ${antiga})` : label;
     return <span key={icon} title={texto} className={cx('flex', TOM_LEITURA[antiga ? 'off' : tom])}><Icon name={icon} size={15} label={texto} /></span>;
   };
+  const volts = (v: number) => `${v.toFixed(1).replace('.', ',')} V`;
+  const conexao = CONEXAO[t.comunicacao || ''];
   const sats = (n: number) => (n === 0 ? 'GPS sem satélites' : `GPS com ${n} ${n === 1 ? 'satélite' : 'satélites'}${n < 4 ? ' (posição imprecisa)' : ''}`);
   return (
     <span className="flex items-center gap-2 mt-hair" aria-label="Leitura do rastreador">
+      {conexao && item('online', conexao[0], conexao[1])}
       {t.ignition == null ? item('chave', 'Ignição: não informada', 'off') : item('chave', t.ignition ? 'Ignição ligada' : 'Ignição desligada', t.ignition ? 'ok' : 'neutro')}
-      {t.gps == null ? item('gps', 'GPS: não informado', 'off') : item('gps', sats(t.gps), t.gps < 4 ? 'warn' : 'neutro', t.em?.satelites)}
-      {t.gsm == null ? item('sinal', 'Sinal de celular: não informado', 'off') : item('sinal', t.gsm === 0 ? 'Sem sinal de celular' : `Sinal de celular ${t.gsm}/5`, t.gsm === 0 ? 'warn' : 'neutro', t.em?.sinalGsm)}
-      {t.battery == null ? item('bateria', 'Bateria: não informada', 'off') : item('bateria', `Bateria ${t.battery.toFixed(1).replace('.', ',')} V${t.battery < BATTERY_LOW_V ? ' · baixa' : ''}`, t.battery < BATTERY_LOW_V ? 'crit' : 'neutro', t.em?.tensaoV)}
+      {t.gps == null ? item('gps', 'GPS: não informado', 'off') : item('gps', sats(t.gps), t.gps < 4 ? 'warn' : 'ok', t.em?.satelites)}
+      {t.gsm == null ? item('sinal', 'Sinal de celular: não informado', 'off') : item('sinal', t.gsm === 0 ? 'Sem sinal de celular' : `Sinal de celular ${t.gsm}/5`, t.gsm === 0 ? 'warn' : 'ok', t.em?.sinalGsm)}
+      {t.power === false ? item('bateria', `Alimentação cortada: rastreador na bateria interna${t.battery == null ? '' : ` (${volts(t.battery)} no fio)`}`, 'crit', t.em?.alimentacaoExterna)
+        : t.battery != null ? item('bateria', `Bateria ${volts(t.battery)}${t.battery < BATTERY_LOW_V ? ' · baixa' : ''}`, t.battery < BATTERY_LOW_V ? 'crit' : 'ok', t.em?.tensaoV)
+        : t.power === true ? item('bateria', 'Alimentação externa ligada', 'ok', t.em?.alimentacaoExterna)
+        : item('bateria', 'Bateria: não informada', 'off')}
       {t.blocked === true && item('cadeado', 'Bloqueado', 'crit', t.em?.bloqueado)}
     </span>
   );

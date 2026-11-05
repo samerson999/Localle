@@ -676,7 +676,7 @@ function TransmissaoAba({ onDiagnostico }: { onDiagnostico: (r: Acompanhado) => 
                   {p && <span className="text-caption text-ink-2"><span className="num">{coordenadas(p)}</span>{p.velocidadeKmh !== null && ` · ${Math.round(p.velocidadeKmh)} km/h`}{p.ignicao !== null && ` · ignição ${p.ignicao ? 'ligada' : 'desligada'}`}</span>}
                   {!p && sit !== 'nunca' && <span className="text-caption text-warn-ink">sem posição com GPS</span>}
                   {semGps && p && <span className="text-caption text-warn-ink">sem GPS há {haQuanto(p.em, agora)}</span>}
-                  {[t.telemetria.tensaoV, t.telemetria.sinalGsm, t.telemetria.satelites, t.telemetria.bloqueado].some((v) => v !== null) && <span className="text-ink-2 [&>span]:text-caption"><TelemetriaCelula t={t.telemetria} /></span>}
+                  {[t.telemetria.tensaoV, t.telemetria.sinalGsm, t.telemetria.satelites, t.telemetria.bloqueado, t.telemetria.alimentacaoExterna ?? null].some((v) => v !== null) && <span className="text-ink-2 [&>span]:text-caption"><TelemetriaCelula t={t.telemetria} /></span>}
                 </div>
               );
             }}
@@ -707,6 +707,8 @@ function TelemetriaCelula({ t }: { t: TransmissaoRastreador['telemetria'] }) {
   const com = (texto: string, em: string | null | undefined) => { const a = leituraAntiga(em); return a ? `${texto} (${a})` : texto; };
   const partes = [
     t.tensaoV !== null && com(`${t.tensaoV.toFixed(1)} V`, t.lidaEm?.tensaoV),
+    t.alimentacaoExterna === false ? com('alimentação cortada', t.lidaEm?.alimentacaoExterna)
+      : t.tensaoV === null && t.alimentacaoExterna === true && com('alimentação ligada', t.lidaEm?.alimentacaoExterna),
     t.sinalGsm !== null && com(`sinal ${t.sinalGsm}/5`, t.lidaEm?.sinalGsm),
     t.satelites !== null && com(`${t.satelites} satélites`, t.lidaEm?.satelites),
     t.bloqueado !== null && com(t.bloqueado ? 'bloqueado' : 'desbloqueado', t.lidaEm?.bloqueado),

@@ -63,9 +63,9 @@ export function applyPosicao(v: any, p: RealtimePosicao) {
   return { ...v, assetId: assetIdFor(p.assetId), live: true, pos: [p.lat, p.lon] as [number, number], speed, moving: speed > 3, ignition: p.ignition, lastUpdate, comunicacao: 'online', noSignal: false, ...(p.telemetria ? telemetriaDoVeiculo(p.telemetria) : {}) };
 }
 
-/** Telemetria da API → campos do veículo que a tela já usa (bateria em V, satélites, sinal 0–5, bloqueio) e quando cada um chegou. */
+/** Telemetria da API → campos do veículo que a tela já usa (bateria em V, satélites, sinal 0–5, bloqueio, alimentação externa) e quando cada um chegou. */
 export function telemetriaDoVeiculo(t: Telemetria | undefined) {
-  return { battery: t?.tensaoV ?? null, gps: t?.satelites ?? null, gsm: t?.sinalGsm ?? null, blocked: t?.bloqueado ?? null, telemetriaEm: t?.lidaEm ?? null };
+  return { battery: t?.tensaoV ?? null, gps: t?.satelites ?? null, gsm: t?.sinalGsm ?? null, blocked: t?.bloqueado ?? null, power: t?.alimentacaoExterna ?? null, telemetriaEm: t?.lidaEm ?? null };
 }
 
 /** Item do recálculo periódico do backend (kind 'comunicacao'); `null` = nada muda na tela. */

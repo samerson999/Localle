@@ -24,7 +24,7 @@ function pacotes(inicial: EstadoAtributos | null, lista: [min: number, chaves: s
 
 describe('chavesLidas', () => {
   it('as chaves que a plataforma lê, com o mapeamento do modelo ou o padrão do Traccar', () => {
-    expect(Object.fromEntries(JR12)).toEqual({ vin: 'tensão', sat: 'satélites', rssi: 'sinal GSM', out1: 'bloqueio', ignition: 'ignição', rpm: 'RPM', obdOdometer: 'odômetro do painel', fuelLevel: 'combustível' });
+    expect(Object.fromEntries(JR12)).toEqual({ vin: 'tensão', sat: 'satélites', rssi: 'sinal GSM', out1: 'bloqueio', ignition: 'ignição', charge: 'alimentação externa', rpm: 'RPM', obdOdometer: 'odômetro do painel', fuelLevel: 'combustível' });
     expect(chavesLidas(SEM_MAPEAMENTO, SEM_MAPEAMENTO_SINAIS).get('power')).toBe('tensão');
   });
 });
@@ -73,8 +73,8 @@ describe('lerTelemetriaComIdade', () => {
     const t1 = lerTelemetriaComIdade({ vin: 718, power: 14.08, rssi: 28 }, { vin: '2026-11-03T18:37:45.000Z', rssi: '2026-11-04T19:34:48.000Z' },
       { atributoTensao: 'vin', sinalMax: 31, atributoBloqueio: 'out1' });
     expect(t1).toEqual({
-      tensaoV: 0.72, satelites: null, sinalGsm: 5, bloqueado: null,
-      lidaEm: { tensaoV: '2026-11-03T18:37:45.000Z', satelites: null, sinalGsm: '2026-11-04T19:34:48.000Z', bloqueado: null },
+      tensaoV: 0.72, satelites: null, sinalGsm: 5, bloqueado: null, alimentacaoExterna: false,
+      lidaEm: { tensaoV: '2026-11-03T18:37:45.000Z', satelites: null, sinalGsm: '2026-11-04T19:34:48.000Z', bloqueado: null, alimentacaoExterna: '2026-11-03T18:37:45.000Z' },
     });
   });
 });

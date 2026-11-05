@@ -223,7 +223,7 @@ export default function Monitoramento() {
                 <li key={a.id}>
                   <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
                     model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
-                    tracker={v ? { ignition: v.ignition, gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, em: v.telemetriaEm } : null}
+                    tracker={v ? { ignition: v.ignition, gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
                     speed={v && !v.noSignal ? Math.round(v.speed) : null} time={v ? fmtT(v.lastUpdate) : ''}
                     menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
                       { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
@@ -455,8 +455,11 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
         {v?.noSignal ? <>
           <DescRow label="Comunicação"><StatusDot kind="nosignal" label={s.label} /></DescRow>
           <DescRow label="Última posição"><time className="num">{fmtDT(v.lastUpdate)}</time></DescRow>
+          {/* aparelho calado com o fio cortado antes: é o retrato do furto, então o último estado conhecido continua na tela */}
+          {v.power === false && <DescRow label="Alimentação"><StatusDot kind="crit" label="Cortada antes de perder o sinal" /><Idade em={v.telemetriaEm?.alimentacaoExterna} /></DescRow>}
         </> : <>
           <DescRow label="Ignição">{v?.ignition == null ? <span className="text-ink-2">Não informada</span> : <StatusDot kind={v.ignition ? 'mov' : 'off'} label={v.ignition ? 'Ligada' : 'Desligada'} />}</DescRow>
+          <DescRow label="Alimentação">{v?.power == null ? NAO_INFORMADO : <>{v.power ? 'Ligada' : <StatusDot kind="crit" label="Cortada · na bateria interna" />}<Idade em={v.telemetriaEm?.alimentacaoExterna} /></>}</DescRow>
           <DescRow label="Bateria">{v?.battery == null ? NAO_INFORMADO : <>{v.battery < BATTERY_LOW_V && !leituraAntiga(v.telemetriaEm?.tensaoV) ? <StatusDot kind="crit" label={`${num(v.battery, 1)} V · baixa`} /> : `${num(v.battery, 1)} V`}<Idade em={v.telemetriaEm?.tensaoV} /></>}</DescRow>
           <DescRow label="GPS">{v?.gps == null ? NAO_INFORMADO : <>{v.gps} satélites<Idade em={v.telemetriaEm?.satelites} /></>}</DescRow>
           <DescRow label="Bloqueio">{v?.blocked == null ? NAO_INFORMADO : <>{v.blocked ? <StatusDot kind="crit" label="Bloqueado" /> : 'Livre'}<Idade em={v.telemetriaEm?.bloqueado} /></>}</DescRow>

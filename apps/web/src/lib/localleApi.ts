@@ -236,9 +236,9 @@ export interface SinaisMotorDiagnostico {
   sinais: { sinal: SinalMotor; status: StatusSinal; motivo: string; ultimoValor: number | null; ultimaLeituraEm: string | null; ultimoRecebimentoEm: string | null; atributo: string | null; avaliadoAte: string }[];
 }
 export interface TelemetriaLida {
-  tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null;
+  tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null; alimentacaoExterna?: boolean | null;
   /** Quando chegou o atributo de cada leitura (ISO); null = idade desconhecida. */
-  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null };
+  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null; alimentacaoExterna?: string | null };
 }
 export interface UltimaPosicao { em: string; latitude: number; longitude: number; velocidadeKmh: number | null; ignicao: boolean | null }
 /** GET /superadmin/rastreadores/transmissao: o que cada rastreador não desativado está mandando (sem consultar o Traccar). */

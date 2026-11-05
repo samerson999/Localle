@@ -109,4 +109,14 @@ describe('regras — isolamento e motor na ingestão', () => {
     expect(res.status === 'gravada' && res.eventos.find((e) => e.tipo === 'regra')?.attributes).toMatchObject({ regraId: r.id, ranking: true });
     await repo.remover(clientA, r.id);
   });
+
+  it('"Alimentação = Desconectada" dispara pelo estado lido, sem alarme powerCut do aparelho', async () => {
+    const r = await repo.criar(clientA, regra({ nome: 'Fio cortado', condicoes: [{ field: 'alimentacao', op: '=', value: 'Desconectada' }] }));
+    const comTensao = (fixTime: string, power: number) => ({ ...posicao(fixTime, 0), attributes: { power } });
+    const ligada = await ingest.ingest(comTensao('2026-09-01T10:00:00Z', 12.8));
+    expect(ligada.status === 'gravada' && ligada.eventos.filter((e) => e.tipo === 'regra')).toEqual([]);
+    const cortada = await ingest.ingest(comTensao('2026-09-01T10:01:00Z', 0.6));
+    expect(cortada.status === 'gravada' && cortada.eventos.find((e) => e.tipo === 'regra')?.attributes).toMatchObject({ regraId: r.id });
+    await repo.remover(clientA, r.id);
+  });
 });

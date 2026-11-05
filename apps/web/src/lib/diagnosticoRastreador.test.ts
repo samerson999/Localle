@@ -42,6 +42,17 @@ describe('itensDoDiagnostico', () => {
     expect(itensDoDiagnostico(d, modelo, agora).find((i) => i.etapa === 'Telemetria')?.texto).toMatch(/Não lido: tensão, estado de bloqueio/);
   });
 
+  it('alimentação: cortada vira item crítico com a tensão e a idade; sem tensão, o `charge` conta como lido', () => {
+    const cortada = { ...base, telemetria: { ...base.telemetria, tensaoV: 0.7, alimentacaoExterna: false, lidaEm: { tensaoV: '2026-11-04T11:50:00Z', satelites: null, sinalGsm: null, bloqueado: null, alimentacaoExterna: '2026-11-04T11:50:00Z' } } };
+    expect(tom(cortada)).toMatchObject({ Telemetria: 'ok', 'Alimentação': 'crit' });
+    expect(itensDoDiagnostico(cortada, modelo, agora).find((i) => i.etapa === 'Alimentação')?.texto).toMatch(/^Alimentação externa cortada \(0.7 V no fio\), lida há 10 min/);
+
+    const gt06 = { ...base, telemetria: { tensaoV: null, satelites: 15, sinalGsm: 5, bloqueado: false, alimentacaoExterna: true } };
+    expect(tom(gt06)).toEqual(expect.not.objectContaining({ 'Alimentação': expect.anything() }));
+    expect(itensDoDiagnostico(gt06, modelo, agora).find((i) => i.etapa === 'Telemetria')).toMatchObject({ tom: 'ok', texto: 'Lido: alimentação ligada, sinal 5/5, desbloqueado.' });
+    expect(itensDoDiagnostico({ ...gt06, telemetria: { ...gt06.telemetria, alimentacaoExterna: false } }, modelo, agora).find((i) => i.etapa === 'Alimentação')?.texto).toMatch(/^Alimentação externa cortada: o aparelho/);
+  });
+
   it('Traccar fora do ar ou antigo', () => {
     expect(tom({ ...base, ficha: { ...base.ficha!, traccar: { configurado: true, versao: null, erro: 'O Traccar não respondeu.' } } }).Traccar).toBe('crit');
     expect(tom({ ...base, ficha: { ...base.ficha!, protocolo: null } }).Traccar).toBe('info');
