@@ -101,13 +101,19 @@ export default function Monitoramento() {
   const [full, setFull] = useState(false);
   const [visao, setVisaoRaw] = useState<VisaoMonitor>(() => lerVisao(email));
   const setVisao = (v: VisaoMonitor) => { if (!v.cards && !v.tabela) return; setVisaoRaw(v); salvarVisao(email, v); };
+  // Botão "Tela cheia" do mapa: expande só o mapa (fixed por cima de tudo + tela cheia do navegador), não a tela.
+  // Fullscreen API só no elemento do mapa esconderia os modais e toasts, que vão por portal para o body.
+  const [mapaCheio, setMapaCheio] = useState(false);
   const nativo = useRef(false);
-  const entrarTelaCheia = () => { setFull(true); const p = document.documentElement.requestFullscreen?.(); if (p) { nativo.current = true; p.catch(() => { nativo.current = false; }); } };
-  const sairTelaCheia = () => { setFull(false); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); nativo.current = false; };
-  useScrollLock(full);
+  const pedirNativo = () => { if (document.fullscreenElement) return; const p = document.documentElement.requestFullscreen?.(); if (p) { nativo.current = true; p.catch(() => { nativo.current = false; }); } };
+  const sairNativo = () => { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); nativo.current = false; };
+  const sairTelaCheia = () => { setFull(false); setMapaCheio(false); sairNativo(); };
+  const entrarMapaCheio = () => { setMapaCheio(true); pedirNativo(); };
+  const sairMapaCheio = () => { setMapaCheio(false); if (!full) sairNativo(); };
+  useScrollLock(full || mapaCheio);
   useEffect(() => {
     // Esc na tela cheia do navegador é consumido por ele: o fim da tela cheia nativa encerra o modo da tela junto
-    const f = () => { if (!document.fullscreenElement && nativo.current) { nativo.current = false; setFull(false); } };
+    const f = () => { if (!document.fullscreenElement && nativo.current) { nativo.current = false; setFull(false); setMapaCheio(false); } };
     document.addEventListener('fullscreenchange', f);
     return () => document.removeEventListener('fullscreenchange', f);
   }, []);
@@ -153,14 +159,14 @@ export default function Monitoramento() {
     ts: a.ts, title: a.title, detail: [assets.find((x: any) => x.id === a.assetId)?.name, a.detail].filter(Boolean).join(' · '),
   })), [alerts, assets]);
   useEffect(() => { if (view === 'mapa') map?.invalidateSize(); }, [view, map]); // o mapa volta de display:none
-  useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
+  useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
   // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
   useEffect(() => {
-    if (!full) return;
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !sel && !cmd && !document.querySelector('[aria-modal="true"], [role="menu"]')) sairTelaCheia(); };
+    if (!full && !mapaCheio) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !sel && !cmd && !document.querySelector('[aria-modal="true"], [role="menu"]')) (mapaCheio ? sairMapaCheio : sairTelaCheia)(); };
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
-  }, [full, cmd, sel]);
+  }, [full, mapaCheio, cmd, sel]);
   const pick = (id: string) => { setSel(id); setView('mapa'); };
   const fitAll = () => { const pts = list.filter((x: any) => x.v).map((x: any) => x.v.pos); if (map && pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 15 }); };
   const clearFilters = () => { setQ(''); setSt('todos'); setGrp(''); };
@@ -230,7 +236,9 @@ export default function Monitoramento() {
         </Card>
 
         <div className={full ? 'flex-1 min-w-0 flex flex-col gap-stack' : 'contents'}>
-        <section ref={mapSectionRef} aria-label="Mapa" className={full
+        <section ref={mapSectionRef} aria-label="Mapa" className={mapaCheio
+          ? 'fixed inset-0 z-[1100] overflow-hidden bg-canvas'
+          : full
           ? 'flex-1 min-h-[240px] relative rounded-card overflow-hidden border border-line'
           : cx('flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line h-[62vh] max-md:supports-[height:100dvh]:h-[62dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', view === 'lista' && 'max-md:hidden')}>
           <MapContainer ref={setMap} center={[-8.1, -34.92]} zoom={12} className="w-full h-full" zoomControl={false}>
@@ -261,7 +269,7 @@ export default function Monitoramento() {
               // no toque o zoom é pela pinça; os botões só ocupavam o mapa
               ...(mobile ? [] : [{ icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() }, { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() }]),
               { icon: 'centralizar', label: 'Ver a frota toda', onClick: fitAll },
-              { icon: 'tela-cheia', label: full ? 'Sair da tela cheia' : 'Tela cheia', onClick: full ? sairTelaCheia : entrarTelaCheia },
+              { icon: 'tela-cheia', label: mapaCheio ? 'Sair da tela cheia' : 'Mapa em tela cheia', onClick: mapaCheio ? sairMapaCheio : entrarMapaCheio },
             ]} />
           </div>
           </div>

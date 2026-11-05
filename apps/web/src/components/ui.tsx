@@ -932,8 +932,10 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   // portal no body: o modal não fica preso a painéis com transform/z-index de quem o abriu.
   // Celular: folha inferior (mesma linguagem do Sheet) — encosta embaixo, sobe de baixo, alça e cabeçalho arrastam para
   // fechar; formulário longo rola o fundo inteiro e o mt-auto mantém o topo alcançável (items-end cortaria o topo).
+  // max-md:justify-start: em coluna, o justify-center do desktop centralizava na vertical, e o form mais alto que a tela
+  // estourava metade para cima, fora da rolagem — o modal abria no meio do formulário, sem como subir até o título.
   return createPortal(
-    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !touched.current && onClose()}>
+    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !touched.current && onClose()}>
       <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] transition-[translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]', closing ? 'anim-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-page max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
         <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
           <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />

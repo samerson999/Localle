@@ -16,6 +16,7 @@ import SolarPneus from '~icons/solar/wheel-bold-duotone';
 import SolarRanking from '~icons/solar/cup-first-bold-duotone';
 import SolarLocale from '~icons/solar/buildings-2-bold-duotone';
 import SolarConfig from '~icons/solar/settings-minimalistic-bold-duotone';
+import SolarMarca from '~icons/solar/palette-bold-duotone';
 import SolarAtencao from '~icons/solar/danger-triangle-bold-duotone';
 import SolarAjuda from '~icons/solar/question-circle-bold-duotone';
 import SolarSair from '~icons/solar/logout-2-bold-duotone';
@@ -36,6 +37,7 @@ const SOLAR: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
   ranking: SolarRanking,
   locale: SolarLocale,
   config: SolarConfig,
+  marca: SolarMarca,
   atencao: SolarAtencao,
   ajuda: SolarAjuda,
   sair: SolarSair,
@@ -63,6 +65,7 @@ const P: Record<string, string> = {
   // shell
   busca: 'M10.75 17.25a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13z M15.5 15.5l4.75 4.75',
   atencao: 'M5.75 16.75V11a6.25 6.25 0 0 1 12.5 0v5.75l1.5 1.5H4.25z M10 20.75h4',
+  marca: 'M12 20.25a8.25 8.25 0 1 1 8.25-8.25c0 1.66-1.34 2.5-3 2.5h-1.75a1.75 1.75 0 0 0-1.25 3c.5.55.25 2.75-2.25 2.75z M8 11.25v.01 M10.5 7.75v.01 M15 8.25v.01',
   config: 'M4.25 7.25h9.5 M17.75 7.25h2 M4.25 16.75h2 M10.25 16.75h9.5 M15.75 9.25a2 2 0 1 0 0-4 2 2 0 0 0 0 4z M8.25 18.75a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   ajuda: 'M12 20.25a8.25 8.25 0 1 0 0-16.5 8.25 8.25 0 0 0 0 16.5z M9.75 9.5a2.3 2.3 0 0 1 4.45.75c0 1.5-2.2 2-2.2 3.25 M12 16.75v.01',
   sair: 'M14.25 4.25h3.5a1.5 1.5 0 0 1 1.5 1.5v12.5a1.5 1.5 0 0 1-1.5 1.5h-3.5 M10.25 8l-4 4 4 4 M6.25 12h9',

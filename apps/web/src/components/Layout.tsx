@@ -162,7 +162,7 @@ function LayoutBody() {
   ];
   const canConfig = session.role === 'revenda' || session.role === 'locale';
   // Setup (parâmetros de operação, docs/PLANO-SETUP-ADMIN.md): quem vê a frota configura a própria empresa; a API decide quem pode alterar
-  const mods = [...allowed(OPERACAO).flatMap((n: any) => [n, ...(n.sub || [])]), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'config' }] : [])];
+  const mods = [...allowed(OPERACAO).flatMap((n: any) => [n, ...(n.sub || [])]), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'marca' }] : [])];
   // celular: a barra superior diz em que tela se está (o título da página é discreto e o logo já mostra a revenda)
   const atual = mods.filter((m) => loc.pathname === m.to || loc.pathname.startsWith(m.to + '/')).sort((a, b) => b.to.length - a.to.length)[0]
     ?? (loc.pathname.startsWith('/precisa-de-voce') ? { label: 'Precisa de você' } : null);
@@ -248,7 +248,8 @@ function LayoutBody() {
         </SidebarContent>
         <SidebarFooter>
           <div className="px-3 pt-2 pb-3 border-t border-line flex flex-col gap-hair">
-            {canConfig && <NavLink to="/revenda" title={mini ? 'Configurações' : undefined} aria-label={mini ? 'Configurações' : undefined} className={({ isActive }) => cx('flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body font-medium overflow-hidden', isActive ? 'bg-ink text-on-dark' : 'text-ink-2 hover:text-ink hover:bg-surface-hover')}><Icon name="config" className="shrink-0" /><span className={cx('truncate', fade)}>Configurações</span></NavLink>}
+            {fleet && <NavLink to="/setup" title={mini ? 'Setup' : undefined} aria-label={mini ? 'Setup' : undefined} className={({ isActive }) => cx('flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body font-medium overflow-hidden', isActive ? 'bg-ink text-on-dark' : 'text-ink-2 hover:text-ink hover:bg-surface-hover')}><Icon name="config" className="shrink-0" /><span className={cx('truncate', fade)}>Setup</span></NavLink>}
+            {canConfig && <NavLink to="/revenda" title={mini ? 'Configurações' : undefined} aria-label={mini ? 'Configurações' : undefined} className={({ isActive }) => cx('flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body font-medium overflow-hidden', isActive ? 'bg-ink text-on-dark' : 'text-ink-2 hover:text-ink hover:bg-surface-hover')}><Icon name="marca" className="shrink-0" /><span className={cx('truncate', fade)}>Configurações</span></NavLink>}
             <div className="relative">
               {footBtn({ icon: 'ajuda', label: 'Ajuda', onClick: () => setHelp(!help), expanded: help })}
               {help && (
