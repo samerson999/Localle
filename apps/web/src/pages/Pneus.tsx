@@ -33,7 +33,7 @@ function PneusInner() {
       <div className="flex flex-wrap items-center gap-tight mb-card-head">
         <RetiredToggle />
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'visao', label: 'Visão geral' }, { key: 'veiculos', label: 'Por veículo' }, { key: 'medicoes', label: 'Medir sulcos' }, { key: 'desgaste', label: 'Desgaste e custo' }, { key: 'lista', label: 'Todos os pneus' }, { key: 'estoque', label: 'Estoque' }, { key: 'config', label: 'Parâmetros' }]} />
-        {tab === 'visao' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}
+        {tab === 'visao' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}
       </div>
       <TabPanel id={tab}>
         {tab === 'visao' && <Visao onOpen={setOpen} period={period} />}

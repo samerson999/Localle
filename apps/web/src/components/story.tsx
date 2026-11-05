@@ -366,7 +366,7 @@ export function PeriodButton({ label, compare, children }: { label: string; comp
   }, [open, mobile]);
   const close = () => setOpen(false);
   return (
-    <div ref={ref} className="relative max-w-full">
+    <div ref={ref} className="relative min-w-0 max-w-full">
       <button ref={btn} type="button" aria-expanded={open} aria-haspopup={children ? 'dialog' : undefined} onClick={() => children && setOpen(!open)} className="h-ctl max-w-full pl-3 pr-2 rounded-btn bg-card border border-line-strong flex items-center gap-icon text-body hover:bg-card-2 hover:border-line-hover transition-colors">
         <Icon name="calendario" size={18} className="text-ink-2 shrink-0" />
         <span className="font-medium num whitespace-nowrap">{label}</span>

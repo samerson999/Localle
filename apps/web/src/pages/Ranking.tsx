@@ -33,7 +33,7 @@ export default function Ranking() {
   return (
     <div>
       <PageHeader title="Ranking de motoristas" subtitle="Eventos do rastreador, telemetria, regras da empresa e jornada" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'ranking', label: 'Ranking' }, { key: 'matriz', label: 'Matriz de eventos e pesos' }, { key: 'campanhas', label: 'Campanhas' }]} />{tab === 'ranking' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'ranking', label: 'Ranking' }, { key: 'matriz', label: 'Matriz de eventos e pesos' }, { key: 'campanhas', label: 'Campanhas' }]} />{tab === 'ranking' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'ranking' && <Board period={period} />}
         {tab === 'matriz' && <Matriz />}

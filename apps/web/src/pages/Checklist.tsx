@@ -28,7 +28,7 @@ function Inner() {
   return (
     <div>
       <PageHeader icon="checklist" title="Checklist" subtitle="Modelos, grupos de respondentes, adesão e painel de respostas" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'bi', label: 'BI e adesão' }, { key: 'modelos', label: 'Modelos' }, { key: 'grupos', label: 'Grupos e pessoas' }, { key: 'preencher', label: 'Preencher (app)' }, { key: 'respostas', label: 'Respostas' }]} />{tab === 'bi' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'bi', label: 'BI e adesão' }, { key: 'modelos', label: 'Modelos' }, { key: 'grupos', label: 'Grupos e pessoas' }, { key: 'preencher', label: 'Preencher (app)' }, { key: 'respostas', label: 'Respostas' }]} />{tab === 'bi' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
       {R.error && <Callout tone="crit" className="mb-card-head">{R.error}</Callout>}
       {carregando ? <LoadingBlock /> : <>
       {tab === 'bi' && <BI period={period} />}

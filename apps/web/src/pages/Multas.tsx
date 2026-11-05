@@ -36,7 +36,7 @@ export default function Multas() {
       <div className="flex flex-wrap items-center gap-tight mb-card-head">
         <RetiredToggle />
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'visao', label: 'Visão geral' }, { key: 'lista', label: 'Multas' }, { key: 'cnh', label: 'Pontos na CNH' }]} />
-        {tab === 'visao' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}
+        {tab === 'visao' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}
       </div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'visao' && <Visao onOpen={setEdit} period={period} />}

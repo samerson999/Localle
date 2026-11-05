@@ -212,7 +212,9 @@ function SidebarRail() {
 }
 
 export function SidebarInset({ children }: { children: ReactNode }) {
-  return <div data-slot="sidebar-inset" className="relative flex w-full flex-1 flex-col">{children}</div>;
+  // min-w-0: sem ele o item de flex não encolhe abaixo do conteúdo e, entre 768 e 1023 px (celular deitado, tablet em
+  // pé), a página passava da borda direita pela largura da barra lateral
+  return <div data-slot="sidebar-inset" className="relative flex w-full min-w-0 flex-1 flex-col">{children}</div>;
 }
 
 export function SidebarHeader({ children, className = '' }: { children: ReactNode; className?: string }) {

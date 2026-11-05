@@ -22,7 +22,7 @@ export default function Jornada() {
   return (
     <div>
       <PageHeader icon="jornada" title="Gestão de jornada" subtitle="Controle de ponto do motorista conforme a Lei 13.103/2015" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'painel', label: 'Visão geral' }, { key: 'marcacoes', label: 'Marcações' }, { key: 'folha', label: 'Folha de ponto' }, { key: 'termo', label: 'Termo de orientação' }, { key: 'documentos', label: 'Termos e medidas' }, { key: 'regras', label: 'Regras' }]} />{tab === 'painel' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'painel', label: 'Visão geral' }, { key: 'marcacoes', label: 'Marcações' }, { key: 'folha', label: 'Folha de ponto' }, { key: 'termo', label: 'Termo de orientação' }, { key: 'documentos', label: 'Termos e medidas' }, { key: 'regras', label: 'Regras' }]} />{tab === 'painel' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
       <TabPanel id={tab} loading={carregando}>
       {tab === 'painel' && <Painel goDocs={() => setTab('documentos')} period={period} />}
       {tab === 'marcacoes' && <Marcacoes />}

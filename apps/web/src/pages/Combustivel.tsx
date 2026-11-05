@@ -46,7 +46,7 @@ function Lancamentos() {
   const n = (id: string) => assets.find((a: any) => a.id === id)?.name;
   return (
     <>
-      <Card title="Abastecimentos" icon="combustivel" actions={<div className="flex gap-2"><div className="w-48"><SearchSelect aria-label="Veículo" value={aid} onChange={setAid} placeholder="Todos os veículos" options={assets.filter((a: any) => a.kind === 'veiculo').map((a: any) => ({ value: a.id, label: a.name }))} /></div><Button onClick={() => setOpen(true)}><Icon name="mais" size={16} />Lançar abastecimento</Button></div>}>
+      <Card title="Abastecimentos" icon="combustivel" actions={<div className="flex flex-wrap gap-2 max-md:w-full"><div className="w-48 max-md:w-full"><SearchSelect aria-label="Veículo" value={aid} onChange={setAid} placeholder="Todos os veículos" options={assets.filter((a: any) => a.kind === 'veiculo').map((a: any) => ({ value: a.id, label: a.name }))} /></div><Button onClick={() => setOpen(true)} className="max-md:w-full"><Icon name="mais" size={16} />Lançar abastecimento</Button></div>}>
         <Table minWidth={980} align={['left', 'left', 'left', 'right', 'right', 'right', 'right', 'left', 'left']}
           emptyState={<EmptyState illustration="ilu-combustivel" layout="row" title="Nenhum abastecimento lançado" detail={aid ? 'Este veículo ainda não tem abastecimentos. Troque o veículo ou lance um abastecimento.' : 'Lance o primeiro abastecimento para acompanhar consumo e gasto.'} />}
           head={['Data', 'Veículo', 'Motorista', 'Km', 'Litros', 'Valor', 'R$/L', 'Posto', 'Nota']} rows={list.map((f: any) => {

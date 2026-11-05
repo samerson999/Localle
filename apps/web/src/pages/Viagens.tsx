@@ -26,7 +26,7 @@ export default function Viagens() {
       <div className="flex flex-wrap items-center gap-tight mb-card-head">
         <RetiredToggle />
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'visao', label: 'Visão geral' }, { key: 'portaria', label: 'Portaria' }, { key: 'rua', label: 'Quem está na rua' }, { key: 'externas', label: 'Viagens externas' }, { key: 'recorrentes', label: 'Viagens recorrentes' }]} />
-        {tab === 'visao' && <div className="ml-auto"><PeriodCompare value={period} onChange={setPeriod} /></div>}
+        {tab === 'visao' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}
       </div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'visao' && <Visao period={period} />}
