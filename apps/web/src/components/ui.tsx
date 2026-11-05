@@ -1056,7 +1056,7 @@ export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, 
       )}
       <div className={cx('overflow-x-auto -mx-bleed', card && 'hidden md:block')}>
         <table className="w-full border-collapse text-body" style={{ minWidth }}>
-          <thead><tr className="text-ink-2 text-caption">{head.map((h, i) => <th key={i} className={cx(CELL_X, 'h-10 font-medium border-b border-line', al(i))}>{h}</th>)}</tr></thead>
+          <thead><tr className="text-ink-2 text-caption">{head.map((h, i) => <th key={i} className={cx(CELL_X, 'h-10 font-medium border-b border-line', al(i))}>{act(i) ? <span className="sr-only">Ações</span> : h}</th>)}</tr></thead>
           <tbody>
             {loading ? Array.from({ length: 5 }, (_, i) => <tr key={i} className="border-t border-line first:border-t-0">{head.map((_, j) => <td key={j} className={cx(CELL_X, 'h-row')}><Skeleton className={cx('h-4', j === 0 ? 'w-24' : 'w-full max-w-[120px]', act(j) && 'ml-auto w-6')} /></td>)}</tr>)
               : rows.length === 0 ? <tr><td colSpan={head.length}>{emptyNode}</td></tr>
