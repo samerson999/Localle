@@ -33,7 +33,7 @@ export default function Relatorios() {
       <Stack gap="grid">
         <Grid cols={4} equal>
           {TIPOS.map((t) => (
-            <button key={t.title} type="button" aria-label={`Abrir ${t.title.toLowerCase()}`} onClick={() => t.path && navigate(t.path)} className="text-left min-w-0">
+            <button key={t.title} type="button" onClick={() => t.path && navigate(t.path)} className="text-left min-w-0">
               <Card title={t.title} icon={t.icon} className="h-full hover:bg-card-2 transition-colors"
                 footer={
                   <span className="flex w-full justify-end">

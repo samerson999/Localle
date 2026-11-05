@@ -204,6 +204,9 @@ function LayoutBody() {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 md:flex-row" style={{ ['--sb-w' as any]: `${sbw}px` }}>
+      {/* primeiro Tab da página: pula o menu inteiro. HashRouter: href="#conteudo" trocaria a rota, então o clique só move o foco */}
+      <a href="#conteudo" onClick={(e) => { e.preventDefault(); document.getElementById('conteudo')?.focus(); }}
+        className="no-print sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[2000] focus:inline-flex focus:items-center focus:h-ctl focus:px-4 focus:rounded-ctl focus:bg-card focus:border focus:border-line focus:shadow-pop focus:text-body focus:font-medium focus:text-ink">Pular para o conteúdo</a>
       <Sidebar dock={{ pill: dockPill, action: dockAction }}>
         <SidebarHeader>
           {marcaLocalle ? (
@@ -293,7 +296,7 @@ function LayoutBody() {
           <AvisoBackend />
           </div>
           <OdometerAsk />
-          <main key={loc.pathname} className="flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end max-md:pb-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] md:px-page-md md:pt-page-top-md anim-page"><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
+          <main key={loc.pathname} id="conteudo" tabIndex={-1} className="focus-visible:outline-none focus-visible:shadow-none flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end max-md:pb-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] md:px-page-md md:pt-page-top-md anim-page"><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
         </div>
       </SidebarInset>
       <NeedsPanel open={panel} onClose={() => setPanel(false)} anchor={needsBtn.current} />

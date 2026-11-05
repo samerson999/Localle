@@ -64,7 +64,7 @@ export default function Login() {
   const marca = b.logo ? <BrandMark size={32} /> : b.name && b.name !== 'Localle' ? <span className="flex items-center gap-2"><BrandMark size={28} /><span className="text-h3 font-semibold">{b.name}</span></span> : <img src={logoLocalle} alt="Localle" className="h-8 w-auto" />;
 
   const form = (
-    <div className={cx('relative flex-1 min-h-screen flex items-center', pos === 'fundo' ? 'justify-end p-6 md:pr-20' : 'justify-center')}>
+    <main className={cx('relative flex-1 min-h-screen flex items-center', pos === 'fundo' ? 'justify-end p-6 md:pr-20' : 'justify-center')}>
       <form onSubmit={(e) => { e.preventDefault(); void (modo === 'esqueci' ? pedirLink() : enter()); }}
         // o app abre a 90% no desktop (base.css › --ui-zoom); o formulário do login volta a 100%, tudo na mesma proporção
         className={cx('flex flex-col text-center anim-fade [zoom:calc(1/var(--ui-zoom))]', pos === 'fundo' ? 'w-full max-w-[400px] bg-card rounded-card shadow-modal p-8' : 'w-[min(370px,calc(100%-48px))] pt-24 pb-16')}>
@@ -100,7 +100,7 @@ export default function Login() {
           {b.supportPhone && <p className="text-small text-ink-2">Suporte: <span className="num">{b.supportPhone}</span></p>}
         </footer>
       </form>
-    </div>
+    </main>
   );
 
   if (pos === 'centro') return <div className="min-h-screen relative bg-card flex">{form}</div>;

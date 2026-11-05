@@ -42,7 +42,7 @@ function AlertLog() {
   const list = [...alerts].reverse().filter((a: any) => (!pr || a.priority === pr) && (!onlyUnread || !a.read));
   const patch = useStore.getState().patch;
   return (
-    <Card title={`Alertas (${list.length})`} icon="alerta" actions={<div className="flex gap-stack items-center flex-wrap max-md:w-full max-md:[&>*]:flex-1"><Select className="w-40 max-md:w-full" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} /><Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} /></div>}>
+    <Card title={`Alertas (${list.length})`} icon="alerta" actions={<div className="flex gap-stack items-center flex-wrap max-md:w-full max-md:[&>*]:flex-1"><Select aria-label="Prioridade" className="w-40 max-md:w-full" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} /><Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} /></div>}>
       <Table head={['Quando', 'Prioridade', 'Alerta', 'Ativo', 'Detalhe', '']} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Nenhum alerta com esses filtros" />} rows={list.map((a: any) => [<span className="num whitespace-nowrap">{fmtDT(a.ts)}</span>, <Prio p={a.priority} />, <span className="font-medium">{a.title}</span>, <AssetName name={assets.find((x: any) => x.id === a.assetId)?.name} />, <span className="text-small text-ink-2">{a.detail}</span>, a.read ? <span className="text-caption text-ink-2">Lido</span> : <TextButton onClick={() => patch((s: any) => ({ alerts: s.alerts.map((x: any) => (x.id === a.id ? { ...x, read: true } : x)) }))}>Marcar como lido</TextButton>])} />
     </Card>
   );
