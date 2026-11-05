@@ -181,7 +181,7 @@ function SidebarDock({ open, onClose, pill, action, children }: { open: boolean;
 export function DockItem({ to, icon, label, active, badge, onClick, expanded }: { to?: string; icon: string; label: string; active?: boolean; badge?: ReactNode; onClick?: () => void; expanded?: boolean }) {
   const cls = cx('relative flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 h-[54px] rounded-pill transition-colors duration-150 [-webkit-tap-highlight-color:transparent]',
     active ? 'bg-brand-soft text-brand-link' : 'text-ink-2 active:bg-surface-hover');
-  const inner = <><span className="relative"><Icon name={icon} size={22} />{badge}</span><span className="max-w-full truncate px-1 text-[11px] leading-none font-medium">{label}</span></>;
+  const inner = <><span className="relative"><Icon name={icon} size={22} />{badge}</span>{/* tela estreita demais para qualquer rótulo (zoom de 200%): só o ícone, o texto fica para o leitor de tela */}<span className="max-w-full truncate px-1 text-[11px] leading-none font-medium max-[300px]:sr-only">{label}</span></>;
   return to
     ? <NavLink to={to} aria-current={active ? 'page' : undefined} className={cls}>{inner}</NavLink>
     : <button type="button" onClick={onClick} aria-expanded={expanded} aria-haspopup="dialog" className={cls}>{inner}</button>;

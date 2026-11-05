@@ -342,4 +342,9 @@ a { text-underline-offset: 3px; }
    !important porque a classe de tamanho do Tailwind (text-body, text-small) vem depois deste arquivo. */
 @media (pointer: coarse) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea { font-size: var(--fs-field-touch) !important; }
+  /* link de texto e valor clicável no meio da linha: o alvo do dedo cresce até ~44px sem mudar o layout (área invisível
+     ao redor). Horizontal menor que o vertical: dois links lado a lado (gap-x-5, 20px) só se encostam.
+     Não funciona em elemento com overflow hidden (truncate): o recorte corta a área — truncar num span interno. */
+  .alvo-toque { position: relative; }
+  .alvo-toque::after { content: ""; position: absolute; inset: -12px -10px; }
 }

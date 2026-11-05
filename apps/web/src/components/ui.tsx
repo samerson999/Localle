@@ -66,7 +66,7 @@ export function Button({ variant = 'primary', size = 'md', loading = false, clas
 
 // Ação em texto (Editar, Excluir, Remover): brand = ação comum (cor do link), danger = destrutiva.
 export function TextButton({ tone = 'brand', className = '', ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'brand' | 'danger' }) {
-  return <button type="button" {...p} className={cx('text-small font-medium underline-offset-[3px] hover:underline disabled:opacity-40 disabled:no-underline', tone === 'danger' ? 'text-crit-ink' : 'link-brand', className)} />;
+  return <button type="button" {...p} className={cx('alvo-toque text-small font-medium underline-offset-[3px] hover:underline disabled:opacity-40 disabled:no-underline', tone === 'danger' ? 'text-crit-ink' : 'link-brand', className)} />;
 }
 
 // Botão só com ícone: aria-label obrigatório. sidebar = hover sobre o canvas; on-dark = sobre superfície escura.
@@ -952,7 +952,7 @@ export function Breadcrumbs({ items }: { items: { label: string; to?: string }[]
             {i > 0 && <Icon name="chevron" size={12} className="shrink-0 text-ink-3 rotate-[-90deg]" />}
             {last || !it.to
               ? <span className={cx('truncate', last && 'text-ink font-medium')}>{it.label}</span>
-              : <button type="button" onClick={() => navigate(it.to!)} className="truncate hover:text-ink hover:underline underline-offset-2">{it.label}</button>}
+              : <button type="button" onClick={() => navigate(it.to!)} className="alvo-toque min-w-0 max-w-full hover:text-ink hover:underline underline-offset-2"><span className="block truncate">{it.label}</span></button>}
           </span>
         );
       })}
@@ -971,7 +971,7 @@ export function PageHeader({ title, children, period, crumbs }: { icon?: Paramet
       <h1 className="sr-only">{title}</h1>
       {crumbs && <Breadcrumbs items={crumbs} />}
       <div className={cx('flex flex-wrap items-center gap-x-6 gap-y-tight min-h-ctl md:pr-[var(--top-reserve,0px)]', !acoes && 'max-md:hidden')}>
-        {acoes && <div className="flex flex-wrap items-center gap-tight">{period}{children}</div>}
+        {acoes && <div className="flex flex-wrap items-center gap-tight min-w-0 max-w-full">{period}{children}</div>}
       </div>
     </header>
   );

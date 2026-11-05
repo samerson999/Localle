@@ -154,7 +154,7 @@ export default function Rastreadores() {
                         {primeira && <TextButton onClick={primeira.onClick}>{primeira.label}</TextButton>}
                         {resto.length > 0 && <Menu label={`Mais ações de ${r.imei}`} items={resto} trigger={({ ref, open, toggle }) => (
                           <button ref={ref} type="button" aria-haspopup="menu" aria-expanded={open} onClick={toggle}
-                            className="inline-flex items-center gap-hair text-small font-medium link-brand">Mais ações<Icon name="mais-opcoes" size={18} /></button>
+                            className="alvo-toque inline-flex items-center gap-hair text-small font-medium link-brand">Mais ações<Icon name="mais-opcoes" size={18} /></button>
                         )} />}
                       </CardActions>
                     )}

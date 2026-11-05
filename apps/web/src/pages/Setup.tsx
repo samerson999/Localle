@@ -103,7 +103,7 @@ function Valor({ p, onSave }: { p: SetupParametro; onSave: (v: number | string, 
   };
   return (
     <>
-      <button type="button" disabled={bloqueado} onClick={() => setEdit({ value: String(p.value), reason: '' })} className={cx('text-left font-medium num rounded-chip px-2 py-1 -mx-2', bloqueado ? 'cursor-default text-ink-2' : 'hover:bg-surface-muted')} aria-label={`${mostrar}, alterar ${p.label}`}>{mostrar}</button>
+      <button type="button" disabled={bloqueado} onClick={() => setEdit({ value: String(p.value), reason: '' })} className={cx('alvo-toque text-left font-medium num rounded-chip px-2 py-1 -mx-2', bloqueado ? 'cursor-default text-ink-2' : 'hover:bg-surface-muted')} aria-label={`${mostrar}, alterar ${p.label}`}>{mostrar}</button>
       <Modal open={!!edit} onClose={() => setEdit(null)} title={p.label} footer={<><Button variant="ghost" onClick={() => setEdit(null)}>Cancelar</Button><Button loading={busy} onClick={confirmar}>Salvar</Button></>}>
         {edit && <div className="grid gap-field">
           {p.type === 'number'

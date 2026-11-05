@@ -168,7 +168,7 @@ export default function Monitoramento() {
 
   const header = (
     <MonitorHeader title="Monitoramento" subtitle={<>Ao vivo · {list.length} veículos rastreados{lastUpd ? <> · atualizado às <time className="num">{fmtT(lastUpd)}</time></> : null}</>}>
-      <Button variant="secondary" onClick={() => setCmd({ target: 'grupo' })} disabled={!list.length}><Icon name="comando" size={18} />Comando para grupo</Button>
+      <Button variant="secondary" className="max-w-full min-w-0" onClick={() => setCmd({ target: 'grupo' })} disabled={!list.length}><Icon name="comando" size={18} className="shrink-0" /><span className="truncate">Comando para grupo</span></Button>
     </MonitorHeader>
   );
 
@@ -366,7 +366,7 @@ function PainelFrota({ total, counts, st, onStatus, kmHoje, velMedia, emMoviment
           {STATUS_FROTA.map((s) => (
             <li key={s.k}>
               <button type="button" aria-pressed={st === s.k} onClick={() => onStatus(s.k)} title={st === s.k ? 'Mostrar todos na lista' : `Filtrar a lista: ${s.label.toLowerCase()}`}
-                className={cx('w-full flex items-center gap-tight h-8 px-2 rounded-tight text-small row-hover', st === s.k ? 'bg-surface-selected' : 'hover:bg-card-2')}>
+                className={cx('w-full flex items-center gap-tight h-8 [@media(pointer:coarse)]:h-11 px-2 rounded-tight text-small row-hover', st === s.k ? 'bg-surface-selected' : 'hover:bg-card-2')}>
                 <StatusDot kind={s.kind} label={s.label} className="mr-auto" />
                 <span className="num font-medium text-ink">{counts[s.k]}</span>
                 <span className="num text-ink-3 w-10 text-right">{pct(counts[s.k])}%</span>

@@ -19,7 +19,7 @@ import { DockItem, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON, Sidebar, SidebarContent, S
 
 const OPERACAO = [
   // Monitoramento é o principal; Replay e Cercas são páginas próprias, na árvore do menu (04/11/2026, eram abas)
-  { key: 'monitoramento', label: 'Monitoramento', to: '/monitoramento', icon: 'monitoramento', sub: [
+  { key: 'monitoramento', label: 'Monitoramento', curto: 'Mapa', to: '/monitoramento', icon: 'monitoramento', sub: [
     { key: 'replay', label: 'Replay', to: '/monitoramento/replay', icon: 'rota' },
     { key: 'cercas', label: 'Cercas', to: '/monitoramento/cercas', icon: 'cerca' },
   ] },
@@ -181,10 +181,11 @@ function LayoutBody() {
     : mods.slice(0, 3);
   const noAtalho = atalhos.some((m) => naRota(m.to)) || (fleet && naRota('/precisa-de-voce'));
   const dockPill = <>
-    {atalhos.slice(0, 1).map((m) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.label} active={naRota(m.to)} />)}
+    {/* dock: rótulo curto quando o nome não cabe nos ~60px do item ("Monitora…") */}
+    {atalhos.slice(0, 1).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
     {fleet && <DockItem icon="atencao" label="Críticos" active={naRota('/precisa-de-voce')} onClick={() => setPanel(true)} expanded={panel}
       badge={needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute -top-1.5 left-3" />} />}
-    {atalhos.slice(1).map((m) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.label} active={naRota(m.to)} />)}
+    {atalhos.slice(1).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
     <DockItem icon="menu" label="Mais" active={!noAtalho} onClick={() => setOpenMobile(true)} expanded={openMobile} />
   </>;
   // botão redondo: Buscar com o menu fechado; Fechar com ele aberto (a pílula se recolhe e o "Mais" some)
