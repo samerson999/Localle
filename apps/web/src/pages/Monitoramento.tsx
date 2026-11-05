@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-leaflet';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore, vehicleStatus, contarStatusFrota, assetKm } from '../lib/store';
 import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
@@ -54,7 +55,7 @@ const TILE_ERRORS = 6; // a partir de quantos blocos do mapa falhando o erro apa
 
 export default function Monitoramento() {
   const nav = useNavigate();
-  const assets = useStore((s) => s.assets.filter((a: any) => a.tracker));
+  const assets = useStore(useShallow((s) => s.assets.filter((a: any) => a.tracker)));
   const vehicles = useStore((s) => s.vehicles);
   const groups = useStore((s) => s.groups);
   const drivers = useStore((s) => s.drivers);
@@ -567,7 +568,7 @@ function trackCommand(label: string) {
 
 export function CommandModal({ state, onClose }: { state: null | { target: 'veiculo' | 'grupo'; assetId?: string; defId?: string }; onClose: () => void }) {
   const defs = useStore((s) => s.commandDefs);
-  const assets = useStore((s) => s.assets.filter((a: any) => a.tracker));
+  const assets = useStore(useShallow((s) => s.assets.filter((a: any) => a.tracker)));
   const groups = useStore((s) => s.groups);
   const commands = useStore((s) => s.commands);
   const [target, setTarget] = useState<'veiculo' | 'grupo'>('veiculo');

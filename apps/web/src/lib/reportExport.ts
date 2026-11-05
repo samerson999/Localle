@@ -1,15 +1,22 @@
 // Exportação dos relatórios: CSV, Excel (XLSX) e PDF, todos baixados direto pelo navegador (sem passar
 // pela caixa de diálogo de impressão). NO PRODUTO REAL o backend pode gerar os três formatos sob demanda,
 // mas o conteúdo e as colunas são os mesmos.
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// xlsx e jspdf (~280 KB comprimidos) só baixam quando a pessoa exporta: antes vinham junto com a tela de cada relatório.
 import { useStore } from './store';
+import { toast } from '../components/ui';
 
 export { fmtCoord } from './geocode';
 
 export type ReportMeta = { empresa: string; periodo: string; filtros: string; emitidoEm: string };
 export type PdfSection = { title: string; head: string[]; rows: (string | number)[][] };
+
+// biblioteca baixada na hora: sem rede, avisa em vez de falhar calado (quem chama não espera o retorno)
+async function carregar<T>(lib: () => Promise<T>): Promise<T> {
+  try { return await lib(); } catch (e) {
+    toast('Não foi possível gerar o arquivo agora. Confira a conexão e tente de novo.', { tone: 'crit' });
+    throw e;
+  }
+}
 
 export function csv(name: string, head: string[], rows: (string | number)[][]) {
   const esc = (x: any) => { const s = String(x ?? ''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -31,8 +38,9 @@ export function nomeAba(titulo: string, usados: Set<string>) {
  * paradas…) cada uma na sua aba, com as mesmas colunas (sprint 28/10/2026, melhoria 6). O CSV, que só comporta uma
  * tabela, leva a principal.
  */
-export function xlsx(name: string, meta: ReportMeta, head: string[], rows: (string | number)[][], extras: PdfSection[] = [], principal = 'Relatório') {
+export async function xlsx(name: string, meta: ReportMeta, head: string[], rows: (string | number)[][], extras: PdfSection[] = [], principal = 'Relatório') {
   const cab = [[meta.empresa], [meta.periodo], [meta.filtros], [`Emitido em ${meta.emitidoEm}`], []];
+  const XLSX = await carregar(() => import('xlsx'));
   const wb = XLSX.utils.book_new();
   const usados = new Set<string>();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([...cab, head, ...rows]), nomeAba(principal, usados));
@@ -80,12 +88,13 @@ const marcaAtual = (): MarcaPdf => { try { return useStore.getState().revenda?.b
 // PDF no padrão visual da plataforma (sprint 28/10/2026, melhoria 5): faixa na cor da revenda com o logo dela (ou o
 // nome e o slogan), caixa de metadados do filtro, tabelas zebradas com cabeçalho repetido em cada página, e rodapé
 // com emissor/usuário e "Página N de M" em todas as páginas.
-export function pdf(opts: { file: string; titulo: string; cliente: string; usuario: string; role: string; meta: PdfMetaItem[]; sections: PdfSection[]; nota?: string; marca?: MarcaPdf }) {
+export async function pdf(opts: { file: string; titulo: string; cliente: string; usuario: string; role: string; meta: PdfMetaItem[]; sections: PdfSection[]; nota?: string; marca?: MarcaPdf }) {
   const { file, titulo, cliente, usuario, role, meta, sections, nota } = opts;
   const marca = opts.marca ?? marcaAtual();
   const { rgb, textoEscuro } = corDaMarca(marca.color);
   const tinta: [number, number, number] = textoEscuro ? [20, 24, 33] : [255, 255, 255];
   const TOTAL = '{total}';
+  const [{ default: jsPDF }, { default: autoTable }] = await carregar(() => Promise.all([import('jspdf'), import('jspdf-autotable')]));
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();

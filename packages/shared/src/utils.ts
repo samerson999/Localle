@@ -1,11 +1,28 @@
 export const uid = (p = '') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
-export const brl = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-export const num = (v: number, d = 0) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+// Formatadores criados uma vez e reaproveitados: toLocale*String com opções monta um Intl novo a cada chamada (~1 ms
+// num celular médio, ~95× o custo de reaproveitar) e a lista do monitoramento formata a hora de cada veículo. Criados
+// no primeiro uso, não no carregamento, para não pesar em telas que não formatam nada. Mesma saída do toLocale*String.
+const intl = <T>(make: () => T) => { let f: T | undefined; return () => (f ??= make()); };
+const fBRL = intl(() => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }));
+const fNum = new Map<number, Intl.NumberFormat>();
+const fHora = intl(() => new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+const fDataHora = intl(() => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
+const fDiaMes = intl(() => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }));
+// Intl.DateTimeFormat.format lança erro com data inválida (o toLocale*String devolvia "Invalid Date"): vira '—'
+const instante = (t: number | string) => { const n = typeof t === 'number' ? t : new Date(t).getTime(); return Number.isFinite(n) ? n : null; };
+
+export const brl = (v: number) => fBRL().format(v ?? 0);
+export const num = (v: number, d = 0) => {
+  let f = fNum.get(d);
+  if (!f) fNum.set(d, (f = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d })));
+  return f.format(v ?? 0);
+};
 export const km = (v: number) => num(Math.round(v ?? 0)) + ' km';
 export const pct = (v: number, d = 1) => num(v * 100, d) + '%';
-export const fmtDT = (t: number | string) => t ? new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+export const fmtDT = (t: number | string) => { const n = t ? instante(t) : null; return n === null ? '—' : fDataHora().format(n); };
+// sem opções o próprio motor já reaproveita o formatador
 export const fmtD = (t: number | string) => t ? new Date(t).toLocaleDateString('pt-BR') : '—';
-export const fmtT = (t: number) => t ? new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+export const fmtT = (t: number) => { const n = t ? instante(t) : null; return n === null ? '—' : fHora().format(n); };
 export const hm = (ms: number) => { const m = Math.round(ms / 60000); const s = m < 0 ? '-' : ''; const a = Math.abs(m); return `${s}${Math.floor(a / 60)}h${String(a % 60).padStart(2, '0')}`; };
 export const DAY = 86400000, HOUR = 3600000, MIN = 60000;
 export const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -56,6 +73,6 @@ export function groupBy<T>(a: T[], f: (x: T) => string) { return a.reduce((m, x)
 // placa brasileira (antiga ou Mercosul): só placas usam fonte mono no texto corrido
 export const isPlate = (x: string) => /^[A-Z]{3}-?\d[A-Z0-9]\d{2}$/.test((x || '').trim());
 // "20:29" se for hoje, "16/10 20:29" nos outros dias
-export const shortDT = (t: number) => { const d = new Date(t); const hh = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); return d.toDateString() === new Date().toDateString() ? hh : `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${hh}`; };
+export const shortDT = (t: number) => { if (instante(t) === null) return '—'; const d = new Date(t); const hh = fHora().format(d); return d.toDateString() === new Date().toDateString() ? hh : `${fDiaMes().format(d)} ${hh}`; };
 // número abreviado para gráficos: 18 mil, 1,2 mi
 export const abbr = (v: number, d = 1) => { const a = Math.abs(v ?? 0); return a >= 1e6 ? `${num(v / 1e6, a >= 1e7 ? 0 : d)} mi` : a >= 1e3 ? `${num(v / 1e3, a >= 1e4 ? 0 : d)} mil` : num(v, 0); };

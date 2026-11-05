@@ -6,7 +6,7 @@ import { useStore } from '../lib/store';
 import { BrandMark } from '../components/Layout';
 import { homeOf } from '../lib/support';
 import { esqueciSenha, login } from '../lib/localleApi';
-import { Button, Input, Field, TextButton, cx } from '../components/ui';
+import { Button, Input, Field, TextButton, cx, useIsMobile } from '../components/ui';
 import LoginShowcase from '../components/LoginShowcase';
 import logoLocalle from '../images/localle-logo.webp';
 
@@ -47,7 +47,9 @@ export default function Login() {
   const selo = (Icone: typeof IconCadeado) => <span aria-hidden="true" className="mx-auto grid place-items-center size-12 rounded-ctl border border-brand-soft-line bg-brand-soft text-brand-link"><Icone className="size-6" /></span>;
   const erro = err && <p role="alert" className="text-small font-medium text-crit-ink text-left">{err}</p>;
 
-  const visual = (
+  // celular: o painel visual some (max-md:hidden) e nem é montado — senão as ilustrações do carrossel baixavam escondidas
+  const mobile = useIsMobile();
+  const visual = mobile ? null : (
     <div aria-hidden={b.photo ? true : undefined} className={cx('relative isolate overflow-hidden flex-1 min-h-screen flex flex-col items-center justify-center px-8 py-16 max-md:hidden', pos === 'direita' ? 'border-l' : 'border-r', 'border-line', !b.photo && 'login-visual')}>
       {b.photo ? <>
         <img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />

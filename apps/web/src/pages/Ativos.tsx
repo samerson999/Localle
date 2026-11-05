@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore, assetKm, useStoreData } from '../lib/store';
 import { atualizarIconeAtivo, atualizarPlacaAtivo, criarAtivo, definirMotoristaDoAtivo, desativarMotorista, desinstalarRastreador, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
 import { backendIdOf } from '../lib/localleMap';
@@ -469,7 +470,7 @@ function DriverHistory({ assetId }: { assetId: string }) {
 
 // rastreadores que já passaram pelo ativo (vínculos em accessLog, os mesmos usados na cobrança)
 function TrackerHistory({ assetId }: { assetId: string }) {
-  const log = useStore((s) => s.accessLog.filter((l: any) => l.assetId === assetId).sort((x: any, y: any) => y.ts - x.ts));
+  const log = useStore(useShallow((s) => s.accessLog.filter((l: any) => l.assetId === assetId).sort((x: any, y: any) => y.ts - x.ts)));
   if (!log.length) return null;
   return (
     <div className="flex flex-col gap-tight border border-line rounded-ctl p-card-sm">

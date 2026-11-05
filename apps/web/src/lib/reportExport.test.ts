@@ -40,7 +40,7 @@ describe('PDF dos relatórios', () => {
   it('várias páginas: rodapé com "Página N de M" preenchido e nome da marca no cabeçalho', async () => {
     const { pdf } = await import('./reportExport');
     const rows = Array.from({ length: 120 }, (_, i) => [`linha ${i}`, i]);
-    pdf({ file: 't.pdf', titulo: 'Teste', cliente: 'Cliente X', usuario: 'Ana', role: 'gestor', meta: [{ label: 'Período', value: 'hoje' }],
+    await pdf({ file: 't.pdf', titulo: 'Teste', cliente: 'Cliente X', usuario: 'Ana', role: 'gestor', meta: [{ label: 'Período', value: 'hoje' }],
       sections: [{ title: 'Seção', head: ['A', 'B'], rows }], marca: { name: 'Revenda Exemplo', tagline: 'Rastreamento', color: '#0F766E' } });
     const saida: string = (globalThis as any).__pdf;
     const paginas = (saida.match(/\/Type \/Page\b/g) || []).length;

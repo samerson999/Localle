@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../lib/store';
 import { setupApi, syncParametros, type SetupHistorico, type SetupParametro } from '../lib/localleApi';
 import { Badge, Button, Callout, Card, Field, Input, Modal, PageHeader, Pills, SearchInput, Select, Switch, Table, Tabs, TabPanel, TextButton, cx, toast, EmptyState, Skeleton, useUrlTab } from '../components/ui';
@@ -22,7 +23,7 @@ const OPCAO: Record<string, string> = {
 
 export default function Setup() {
   // só grupos do backend (uuid): os locais e o grupo "Frota real" não existem na API
-  const groups = useStore((s) => s.groups.filter((g: any) => /^[0-9a-f-]{36}$/i.test(g.id)));
+  const groups = useStore(useShallow((s) => s.groups.filter((g: any) => /^[0-9a-f-]{36}$/i.test(g.id))));
   const [camada, setCamada] = useState('empresa'); // 'empresa' | id do grupo
   const [tab, setTab] = useUrlTab('monitoramento'); // ?aba=: os módulos linkam "Ajustar no Setup" direto para a seção deles
   const [q, setQ] = useState('');
