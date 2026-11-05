@@ -4,6 +4,7 @@ import { useStore } from '../lib/store';
 import { setupApi, syncParametros, type SetupHistorico, type SetupParametro } from '../lib/localleApi';
 import { Badge, Button, Callout, Card, Field, Input, Modal, PageHeader, Pills, SearchInput, Select, Switch, Table, Tabs, TabPanel, TextButton, cx, toast, EmptyState, Skeleton, useUrlTab } from '../components/ui';
 import { Stack } from '../components/primitives';
+import { Icon } from '../components/icons';
 import { fmtDT } from '@localle/shared/utils';
 
 // Setup de parâmetros de operação (docs/PLANO-SETUP-ADMIN.md § 5): tela gerada do registro central da API
@@ -103,7 +104,12 @@ function Valor({ p, onSave }: { p: SetupParametro; onSave: (v: number | string, 
   };
   return (
     <>
-      <button type="button" disabled={bloqueado} onClick={() => setEdit({ value: String(p.value), reason: '' })} className={cx('alvo-toque text-left font-medium num rounded-chip px-2 py-1 -mx-2', bloqueado ? 'cursor-default text-ink-2' : 'hover:bg-surface-muted')} aria-label={`${mostrar}, alterar ${p.label}`}>{mostrar}</button>
+      {bloqueado
+        ? <span className="font-medium num text-ink-2">{mostrar}</span>
+        : <button type="button" onClick={() => setEdit({ value: String(p.value), reason: '' })} className="group alvo-toque inline-flex items-center gap-tight text-left rounded-chip px-2 py-1 -mx-2 hover:bg-surface-muted" aria-label={`${mostrar}, alterar ${p.label}`}>
+          <span className="font-medium num">{mostrar}</span>
+          <span className="inline-flex items-center gap-1 text-small font-medium link-brand underline-offset-[3px] group-hover:underline"><Icon name="editar" size={14} />Alterar</span>
+        </button>}
       <Modal open={!!edit} onClose={() => setEdit(null)} title={p.label} footer={<><Button variant="ghost" onClick={() => setEdit(null)}>Cancelar</Button><Button loading={busy} onClick={confirmar}>Salvar</Button></>}>
         {edit && <div className="grid gap-field">
           {p.type === 'number'
