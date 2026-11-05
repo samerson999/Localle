@@ -867,6 +867,10 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   // EDIT_EVENT dos campos próprios: Select, SearchSelect, DateInput). Os botões do rodapé (Cancelar, Salvar) chamam o
   // onClose de quem abriu direto, sem pergunta: ali a intenção é explícita.
   const closeRef = useRef(onClose); closeRef.current = onClose;
+  // quem abriu: lido no render da abertura, antes do commit — depois dele o autoFocus de um campo já tirou o foco do botão
+  const opener = useRef<HTMLElement | null>(null), wasOpen = useRef(false), restore = useRef<ReturnType<typeof setTimeout>>();
+  if (open && !wasOpen.current && typeof document !== 'undefined') opener.current = document.activeElement as HTMLElement | null;
+  wasOpen.current = open;
   const touched = useRef(false);
   useEffect(() => {
     if (!open) return;
@@ -880,11 +884,37 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
     if (touched.current && !(await confirmAction({ title: 'Descartar o que foi preenchido?', detail: 'As informações deste formulário ainda não foram salvas e serão perdidas.', confirmLabel: 'Descartar', cancelLabel: 'Continuar editando' }))) return;
     closeRef.current();
   };
+  // Foco (mesma regra do Sheet): ao abrir entra no diálogo — campo com autoFocus já está dentro e fica —, o Tab circula
+  // só dentro do diálogo do topo, e ao fechar volta para quem abriu (sem isso o leitor de tela ficava na página de trás
+  // e, ao fechar, caía no início do documento).
   useEffect(() => {
     if (!open) return;
-    const k = (e: KeyboardEvent) => { if (e.key !== 'Escape' || e.defaultPrevented) return; const all = document.querySelectorAll('[aria-modal="true"]'); if (all[all.length - 1] === box.current) { e.preventDefault(); void requestClose(); } };
+    clearTimeout(restore.current);
+    const back = opener.current;
+    const topo = () => { const all = document.querySelectorAll('[aria-modal="true"]'); return all[all.length - 1] === box.current; };
+    const focusables = () => Array.from(box.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled):not([type="hidden"]),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])') || [])
+      .filter((el) => el.getClientRects().length > 0 && !el.closest('[inert]'));
+    if (!box.current?.contains(document.activeElement)) (focusables()[0] ?? box.current)?.focus({ preventScroll: true });
+    const k = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !topo()) return;
+      if (e.key === 'Escape') { e.preventDefault(); void requestClose(); return; }
+      if (e.key !== 'Tab') return;
+      const f = focusables(); if (!f.length) { e.preventDefault(); return; }
+      const dentro = box.current?.contains(document.activeElement);
+      if (e.shiftKey && (!dentro || document.activeElement === f[0])) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && (!dentro || document.activeElement === f[f.length - 1])) { e.preventDefault(); f[0].focus(); }
+    };
     document.addEventListener('keydown', k);
-    return () => document.removeEventListener('keydown', k);
+    // devolve no fim da tarefa: a remontagem imediata do StrictMode cancela (senão tiraria o foco do campo com autoFocus),
+    // e só devolve se o foco ficou sem dono — outro diálogo que abriu em seguida, ou a troca de tela, ficam com ele
+    return () => {
+      document.removeEventListener('keydown', k);
+      const el = box.current;
+      restore.current = setTimeout(() => {
+        const a = document.activeElement;
+        if (back?.isConnected && (!a || a === document.body || !a.isConnected || el?.contains(a))) back.focus({ preventScroll: true });
+      }, 0);
+    };
   }, [open]);
   const mobile = useIsMobile();
   const drag = useSheetDrag(box, (dy, vy) => { if (dy > 64 || vy > 0.5) void requestClose(); });
@@ -895,7 +925,7 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   // fechar; formulário longo rola o fundo inteiro e o mt-auto mantém o topo alcançável (items-end cortaria o topo).
   return createPortal(
     <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !touched.current && onClose()}>
-      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} className={cx('w-full bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] transition-[translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]', closing ? 'anim-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-page max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
+      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] transition-[translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]', closing ? 'anim-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-page max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
         <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
           <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />
           <div className="flex items-center gap-stack mb-card-head"><h2 className="text-h2 font-semibold mr-auto">{c.title}</h2><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={() => void requestClose()}><Icon name="fechar" /></IconButton></div>
