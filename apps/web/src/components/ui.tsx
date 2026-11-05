@@ -1035,30 +1035,52 @@ export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, 
 }
 
 // Versão empilhada automática de uma linha da tabela (celular). Colunas de cabeçalho vazio ou não textual antes da
-// primeira coluna nomeada (miniatura, seleção) ficam à esquerda; a primeira coluna nomeada é o título; as demais viram
-// pares rótulo/valor; a coluna de ações (cabeçalho '' no fim) fica no canto, sem abrir a linha ao ser tocada.
+// primeira coluna nomeada (miniatura, seleção) ficam à esquerda; a primeira coluna nomeada é o título; a primeira
+// coluna que é só um Badge (a situação) sobe para a linha do título, que é o que se lê primeiro na lista; as demais
+// viram pares rótulo/valor, sem os vazios ("—"). Ações (cabeçalho '' no fim): um botão de ícone ou menu fica no canto;
+// ações em texto descem para uma linha própria, quebrando, com altura de toque — no canto, 2 ou 3 delas espremiam o
+// título até uma palavra por linha.
+const vazioCel = (c: React.ReactNode): boolean => c == null || c === '' || c === false || c === '—'
+  || (React.isValidElement(c) && (c.props as { children?: React.ReactNode }).children === '—');
 function AutoCard({ head, row }: { head: React.ReactNode[]; row: React.ReactNode[] }) {
   if (!row) return null;
   const last = head.length - 1;
   const actIdx = last > 0 && head[last] === '' ? last : -1;
   const titleIdx = Math.max(0, head.findIndex((h, j) => j !== actIdx && typeof h === 'string' && h !== ''));
-  const vazio = (c: React.ReactNode) => c == null || c === '' || c === false;
-  const lead = row.slice(0, titleIdx).filter((c) => !vazio(c));
+  const statusIdx = row.findIndex((c, j) => j > titleIdx && j !== actIdx && React.isValidElement(c) && c.type === Badge);
+  const lead = row.slice(0, titleIdx).filter((c) => !vazioCel(c));
+  const act = actIdx > 0 && !vazioCel(row[actIdx]) ? row[actIdx] : null;
+  const actIcone = React.isValidElement(act) && (act.type === Menu || act.type === IconButton);
   return (
     <div className="flex items-start gap-stack min-w-0">
       {lead.length > 0 && <div className="shrink-0 flex items-center gap-tight" onClick={(e) => e.stopPropagation()}>{lead.map((c, k) => <React.Fragment key={k}>{c}</React.Fragment>)}</div>}
       <div className="flex-1 min-w-0 flex flex-col gap-tight">
-        <div className="text-body font-medium min-w-0 break-words">{row[titleIdx]}</div>
+        <div className="flex items-start justify-between gap-stack min-w-0">
+          <div className="text-body font-medium min-w-0 break-words">{row[titleIdx]}</div>
+          {statusIdx > 0 && <div className="shrink-0 pt-px">{row[statusIdx]}</div>}
+        </div>
         <dl className="flex flex-col gap-hair text-small">
-          {row.map((c, j) => j <= titleIdx || j === actIdx || vazio(c) ? null : (
+          {row.map((c, j) => j <= titleIdx || j === actIdx || j === statusIdx || vazioCel(c) ? null : (
             <div key={j} className="flex items-baseline justify-between gap-stack min-w-0">
               <dt className="text-ink-2 shrink-0 max-w-[45%]">{head[j]}</dt>
               <dd className="min-w-0 text-right break-words num">{c}</dd>
             </div>
           ))}
         </dl>
+        {act && !actIcone && <CardActions>{act}</CardActions>}
       </div>
-      {actIdx > 0 && !vazio(row[actIdx]) && <div className="shrink-0 -mr-1 -mt-1 flex items-center" onClick={(e) => e.stopPropagation()}>{row[actIdx]}</div>}
+      {act && actIcone && <div className="shrink-0 -mr-1 -mt-1 flex items-center" onClick={(e) => e.stopPropagation()}>{act}</div>}
+    </div>
+  );
+}
+
+// Linha de ações em texto de um card de lista (celular): alinhada à esquerda, quebra, 44 px de altura com o dedo.
+// Desfaz o `justify-end` da célula de ações da tabela larga quando ela é reaproveitada aqui.
+export function CardActions({ children }: { children: React.ReactNode }) {
+  return (
+    <div onClick={(e) => e.stopPropagation()}
+      className="flex flex-wrap items-center gap-x-5 [@media(pointer:coarse)]:-my-tight [&>div]:flex [&>div]:flex-wrap [&>div]:!justify-start [&>div]:gap-x-5 [@media(pointer:coarse)]:[&_button]:min-h-11 [&_button]:text-left">
+      {children}
     </div>
   );
 }

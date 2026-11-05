@@ -3,7 +3,7 @@
 // nunca a conhece). Situação vem do contrato (editado em Contratos); pagamento fica em Faturamento.
 import { useState } from 'react';
 import { ConviteLink } from '../components/ConviteLink';
-import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Callout, toast, EmptyState } from '../components/ui';
+import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Callout, toast, EmptyState, CardActions } from '../components/ui';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery, type AdminClient } from '../lib/localleApi';
 import { fmtD, num } from '@localle/shared/utils';
@@ -43,6 +43,28 @@ export default function Clientes() {
             <Table minWidth={980} loading={loading && !data} align={['left', 'left', 'right', 'left', 'right', 'left', 'right']}
               head={['Cliente', 'Situação', 'Veículos', 'Acesso', 'Rastreadores instalados', 'Cadastrado em', '']}
               emptyState={<EmptyState illustration="ilu-clientes" title="Nenhum cliente cadastrado" detail="Cadastre o primeiro cliente com o e-mail do administrador dele." action={<Button onClick={() => setCreating(true)}>Novo cliente</Button>} />}
+              card={(i) => {
+                const c = clients[i];
+                return (
+                  <div className="flex flex-col gap-tight min-w-0">
+                    <div className="flex items-start justify-between gap-stack">
+                      <span className="text-body font-medium min-w-0 break-words">{c.name}</span>
+                      <span className="shrink-0 pt-px">{c.contrato_status ? <Badge tone={CONTRACT_BADGE[c.contrato_status].tone}>{CONTRACT_BADGE[c.contrato_status].label}</Badge> : <span className="text-small text-ink-2">Sem contrato</span>}</span>
+                    </div>
+                    <span className="text-small text-ink-2 num">{num(c.veiculos)} {c.veiculos === 1 ? 'veículo' : 'veículos'} · {num(c.rastreadores_instalados)} {c.rastreadores_instalados === 1 ? 'rastreador instalado' : 'rastreadores instalados'}</span>
+                    <span className="flex flex-wrap items-center gap-x-stack gap-y-hair text-caption text-ink-2">
+                      {c.usuarios_ativos ? <span className="num">{num(c.usuarios_ativos)} {c.usuarios_ativos === 1 ? 'usuário' : 'usuários'}</span> : !c.convites_pendentes && <Badge tone="orange">Sem acesso</Badge>}
+                      {c.convites_pendentes > 0 && <Badge tone="orange">{c.convites_pendentes === 1 ? 'Convite pendente' : `${c.convites_pendentes} convites pendentes`}</Badge>}
+                      <span className="num">desde {fmtD(Date.parse(c.created_at))}</span>
+                    </span>
+                    <CardActions>
+                      <TextButton onClick={() => setRenaming(c)}>Renomear</TextButton>
+                      {c.admin_pendente_id && <TextButton onClick={() => reenviar(c)}>Reenviar convite</TextButton>}
+                      {!c.usuarios_ativos && !c.convites_pendentes && <TextButton onClick={() => setAdminFor(c)}>Convidar admin</TextButton>}
+                    </CardActions>
+                  </div>
+                );
+              }}
               rows={clients.map((c) => [
                 <span className="font-medium">{c.name}</span>,
                 c.contrato_status ? <Badge tone={CONTRACT_BADGE[c.contrato_status].tone}>{CONTRACT_BADGE[c.contrato_status].label}</Badge> : <span className="text-small text-ink-2">Sem contrato</span>,

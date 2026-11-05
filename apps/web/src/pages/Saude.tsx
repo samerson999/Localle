@@ -66,7 +66,7 @@ export default function Saude() {
         </Section>
         <Section title="Integrações">
           <Card title="Serviços" icon="link">
-            <Table minWidth={400} align={['left', 'right']} head={['Serviço', 'Situação']}
+            <Table minWidth={0} align={['left', 'right']} head={['Serviço', 'Situação']}
               rows={[
                 ['Traccar (gateway)', <Badge tone={BADGE[h.gateway.status].tone}>{BADGE[h.gateway.status].label}</Badge>],
                 ['Fila de ingestão (Redis)', <Badge tone={BADGE[h.fila.status].tone}>{BADGE[h.fila.status].label}</Badge>],

@@ -43,7 +43,15 @@ export default function SupportAccess() {
           </div>
         </Card>
         <Card title="Registro de acessos de suporte" icon="historico">
-          <Table minWidth={680} emptyState={<EmptyState icon="cadeado" title="Nenhum acesso de suporte registrado" detail="Cada entrada como cliente fica aqui com quem, quando e o motivo." />} head={['Início', 'Quem', 'Cliente', 'Motivo', 'Duração']} rows={(s.supportLog || []).map((x: any) => [<span className="num">{fmtDT(x.at)}</span>, x.by, x.client, <span className="text-small">{x.reason}</span>, x.endedAt ? <span className="num">{hm(x.endedAt - x.at)}</span> : <span className="text-ink-2">em andamento</span>])} />
+          <Table minWidth={680} emptyState={<EmptyState icon="cadeado" title="Nenhum acesso de suporte registrado" detail="Cada entrada como cliente fica aqui com quem, quando e o motivo." />} head={['Início', 'Quem', 'Cliente', 'Motivo', 'Duração']}
+            card={(i) => { const x = (s.supportLog || [])[i]; return (
+              <div className="flex flex-col gap-hair min-w-0">
+                <div className="flex items-baseline justify-between gap-stack"><span className="text-body font-medium min-w-0 break-words">{x.client}</span><span className="shrink-0 text-caption text-ink-2 num">{x.endedAt ? hm(x.endedAt - x.at) : 'em andamento'}</span></div>
+                <span className="text-small break-words">{x.reason}</span>
+                <span className="text-caption text-ink-2 break-all"><span className="num">{fmtDT(x.at)}</span> · {x.by}</span>
+              </div>
+            ); }}
+            rows={(s.supportLog || []).map((x: any) => [<span className="num">{fmtDT(x.at)}</span>, x.by, x.client, <span className="text-small">{x.reason}</span>, x.endedAt ? <span className="num">{hm(x.endedAt - x.at)}</span> : <span className="text-ink-2">em andamento</span>])} />
         </Card>
       </div>
     </div>

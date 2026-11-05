@@ -3,7 +3,7 @@
 // frota de agora), faturamento apurado (competência — fechada, preserva valores e medição) e valor recebido
 // (pagamentos registrados manualmente, aceita parciais). Fechar só vale para mês já encerrado.
 import { useState } from 'react';
-import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Grid, Modal, Field, FormGroup, Input, Select, Callout, EmptyState, toast, confirmAction } from '../components/ui';
+import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Grid, Modal, Field, FormGroup, Input, Select, Callout, EmptyState, toast, confirmAction, CardActions } from '../components/ui';
 import { KpiTile, Num } from '../components/story';
 import { Icon } from '../components/icons';
 import { useStore } from '../lib/store';
@@ -84,6 +84,20 @@ export default function Faturamento() {
             <Table minWidth={1000} loading={loading && !data} align={['left', 'left', 'right', 'right', 'left', 'right']}
               head={['Cliente', 'Cobrança', 'Veículos-dia (média)', 'Apurado', 'Pagamento', '']}
               emptyState={<EmptyState illustration="ilu-faturamento" title="Nenhum contrato para faturar" detail="Cadastre o contrato do cliente em Contratos." />}
+              card={(i) => {
+                const r = rows[i];
+                return (
+                  <div className="flex flex-col gap-tight min-w-0">
+                    <div className="flex items-baseline justify-between gap-stack">
+                      <span className="text-body font-medium min-w-0 break-words">{r.clientName}</span>
+                      <span className="shrink-0 num font-semibold">{brl(r.apurado)}</span>
+                    </div>
+                    <span className="text-caption text-ink-2">{BILLING_LABEL[r.billingType]}{r.billingType === 'por_veiculo_ativo' && <span className="num"> · {num(r.veiculosMedia, 1)} veículos-dia</span>}</span>
+                    <div className="[&>span]:flex-row [&>span]:flex-wrap [&>span]:items-baseline [&>span]:gap-x-stack">{situacao(r)}</div>
+                    {r.fatura && <CardActions><TextButton onClick={() => setPaying(r)}>{r.fatura.emAberto > 0 ? 'Registrar pagamento' : 'Pagamentos'}</TextButton></CardActions>}
+                  </div>
+                );
+              }}
               rows={rows.map((r) => [
                 <span className="font-medium">{r.clientName}</span>,
                 BILLING_LABEL[r.billingType],

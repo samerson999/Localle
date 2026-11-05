@@ -3,8 +3,9 @@
 // último pacote, desinstalação e desativação. Em qual ativo o rastreador está é o próprio cliente que indica
 // (Gestão de ativos). Custo, avaria e recolhimento físico não existem no schema.
 import { useEffect, useState, type ReactNode } from 'react';
-import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select, SearchSelect, SearchInput, TextButton, Modal, Field, FormGroup, Input, Check, Callout, EmptyState, Tabs, TabPanel, toast, confirmAction, useUrlTab } from '../components/ui';
+import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select, SearchSelect, SearchInput, TextButton, Modal, Field, FormGroup, Input, Check, Callout, EmptyState, Tabs, TabPanel, toast, confirmAction, useUrlTab, CardActions, Menu, type MenuItem } from '../components/ui';
 import { KpiTile } from '../components/story';
+import { Icon } from '../components/icons';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar, type SinaisMotorDiagnostico, type SinalMotor, type SituacaoProtocolo, type SuporteCan, type TransmissaoRastreador, type PreviaModelo, type EscolhaDeModelo } from '../lib/localleApi';
 import { fmtD, fmtDT } from '@localle/shared/utils';
@@ -80,6 +81,22 @@ export default function Rastreadores() {
       detail: `${r.imei} sai da plataforma e do Traccar de vez${r.sim_card_id ? ', e o chip volta a ficar livre' : ''}. Serve para cadastro errado: rastreador que já transmitiu ou já foi de um cliente só pode ser desativado.` }))) return;
     acao(() => adminApi.excluirRastreador(r.id), 'Rastreador excluído.');
   };
+  // ações da linha conforme a situação: no desktop viram links lado a lado; no card do celular, Diagnóstico fica à
+  // vista e o resto vai para o menu (até 6 links quebrando em 3 linhas abafavam o próprio rastreador)
+  const acoesDe = (r: AdminRastreador): MenuItem[] => {
+    const s = situacao(r);
+    if (s === 'desativado') return !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir', danger: true, onClick: () => excluir(r) }] : [];
+    return [
+      { label: 'Diagnóstico', icon: 'sinal', onClick: () => setDiagnosticando({ r }) },
+      r.sim_card_id
+        ? { label: 'Desvincular chip', icon: 'link', onClick: async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); } }
+        : { label: 'Vincular chip', icon: 'link', onClick: () => setVinculando(r) },
+      ...(s === 'instalado' ? [{ label: 'Desinstalar', icon: 'ativos', onClick: () => desinstalar(r) }] : []),
+      ...(s === 'vinculado' ? [{ label: 'Desvincular do cliente', icon: 'revenda', onClick: () => desvincular(r) }] : []),
+      ...(s === 'estoque' ? [{ label: 'Vincular a cliente', icon: 'revenda', onClick: () => setAoCliente(r) }, { label: 'Desativar', icon: 'cadeado', onClick: () => desativar(r) }] : []),
+      ...(s === 'estoque' && !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir', danger: true, onClick: () => excluir(r) }] : []),
+    ];
+  };
   const excluirModelo = async (m: AdminRastreadorModelo) => {
     if (!(await confirmAction({ title: 'Excluir modelo?', tone: 'danger', confirmLabel: 'Excluir',
       detail: `${nomeModelo(m)} sai do catálogo${m.atributo_tensao || m.sinal_max || m.atributo_bloqueio ? ', com o mapeamento da telemetria' : ''}. Se for da lista do Traccar, volta a aparecer na busca do cadastro.` }))) return;
@@ -116,6 +133,34 @@ export default function Rastreadores() {
             <Table minWidth={1100} loading={loading && !data} align={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
               head={['IMEI', 'Modelo / protocolo', 'Chip', 'Cliente e ativo', 'Situação', 'Último sinal', '']}
               emptyState={<EmptyState illustration="ilu-rastreador" title="Nenhum rastreador cadastrado" action={<Button onClick={() => setModal('rastreador')}>Cadastrar rastreador</Button>} />}
+              card={(i) => {
+                const r = list[i], s = situacao(r), acoes = acoesDe(r);
+                const [primeira, ...resto] = acoes[0]?.label === 'Diagnóstico' ? acoes : [undefined, ...acoes];
+                return (
+                  <div className="flex flex-col gap-tight min-w-0">
+                    <div className="flex items-start justify-between gap-stack">
+                      <span className="font-mono text-body font-medium break-all">{r.imei}</span>
+                      <span className="shrink-0 pt-px"><Badge tone={SIT_BADGE[s].tone}>{SIT_BADGE[s].label}</Badge></span>
+                    </div>
+                    <div className="text-small"><ModeloCelula r={r} onTrocar={s !== 'desativado' ? () => setTrocandoModelo(r) : undefined} /></div>
+                    {!r.traccar_device_id && s !== 'desativado' && <span className="text-caption text-warn-ink">sem device no Traccar</span>}
+                    {r.client_name && <span className="text-small">{r.client_name}<span className="text-ink-2"> · {r.asset_plate ? `${r.asset_plate} desde ${fmtD(Date.parse(r.instalado_em!))}` : 'aguardando o cliente indicar o ativo'}</span></span>}
+                    <span className="flex flex-wrap gap-x-stack gap-y-hair text-caption text-ink-2">
+                      <span>{r.iccid ? <>{r.operadora || 'Chip'} <span className="font-mono">{r.iccid}</span></> : 'Sem chip'}</span>
+                      <span className="num">{r.ultimo_pacote_em ? `Último sinal ${fmtDT(Date.parse(r.ultimo_pacote_em))}` : 'Nunca transmitiu'}</span>
+                    </span>
+                    {acoes.length > 0 && (
+                      <CardActions>
+                        {primeira && <TextButton onClick={primeira.onClick}>{primeira.label}</TextButton>}
+                        {resto.length > 0 && <Menu label={`Mais ações de ${r.imei}`} items={resto} trigger={({ ref, open, toggle }) => (
+                          <button ref={ref} type="button" aria-haspopup="menu" aria-expanded={open} onClick={toggle}
+                            className="inline-flex items-center gap-hair text-small font-medium link-brand">Mais ações<Icon name="mais-opcoes" size={18} /></button>
+                        )} />}
+                      </CardActions>
+                    )}
+                  </div>
+                );
+              }}
               rows={list.map((r) => {
                 const s = situacao(r);
                 return [
@@ -126,15 +171,7 @@ export default function Rastreadores() {
                   <Badge tone={SIT_BADGE[s].tone}>{SIT_BADGE[s].label}</Badge>,
                   <span className="num text-small">{r.ultimo_pacote_em ? fmtDT(Date.parse(r.ultimo_pacote_em)) : '—'}</span>,
                   <div className="flex gap-3 justify-end">
-                    {s !== 'desativado' && <TextButton onClick={() => setDiagnosticando({ r })}>Diagnóstico</TextButton>}
-                    {s !== 'desativado' && (r.sim_card_id
-                      ? <TextButton onClick={async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); }}>Desvincular chip</TextButton>
-                      : <TextButton onClick={() => setVinculando(r)}>Vincular chip</TextButton>)}
-                    {s === 'instalado' && <TextButton onClick={() => desinstalar(r)}>Desinstalar</TextButton>}
-                    {s === 'vinculado' && <TextButton onClick={() => desvincular(r)}>Desvincular do cliente</TextButton>}
-                    {s === 'estoque' && <TextButton onClick={() => setAoCliente(r)}>Vincular a cliente</TextButton>}
-                    {s === 'estoque' && <TextButton onClick={() => desativar(r)}>Desativar</TextButton>}
-                    {(s === 'estoque' || s === 'desativado') && !r.ultimo_pacote_em && <TextButton onClick={() => excluir(r)}>Excluir</TextButton>}
+                    {acoesDe(r).map((a) => <TextButton key={a.label} tone={a.danger ? 'danger' : 'brand'} onClick={a.onClick}>{a.label}</TextButton>)}
                   </div>,
                 ];
               })}
@@ -621,6 +658,28 @@ function TransmissaoAba({ onDiagnostico }: { onDiagnostico: (r: Acompanhado) => 
           <Table minWidth={1100} loading={loading && !data} align={['left', 'left', 'left', 'left', 'left', 'right']}
             head={['IMEI', 'Cliente e ativo', 'Transmissão', 'Posição', 'Telemetria', '']}
             emptyState={<EmptyState icon="sinal" illustration={lista.length ? undefined : 'ilu-rastreador'} title={lista.length ? 'Nenhum rastreador com esse filtro' : 'Nenhum rastreador cadastrado'} />}
+            onRow={(i) => { const { t } = visiveis[i]; onDiagnostico({ id: t.id, imei: t.imei, modelo_id: t.modeloId }); }}
+            card={(i) => {
+              const { t, sit, semGps } = visiveis[i];
+              const p = t.ultimaPosicao;
+              return (
+                <div className="flex flex-col gap-tight min-w-0">
+                  <div className="flex items-start justify-between gap-stack">
+                    <span className="font-mono text-body font-medium break-all">{t.imei}</span>
+                    <span className="shrink-0 pt-px"><Badge tone={SIT_TRANSMISSAO[sit].tone}>{SIT_TRANSMISSAO[sit].label}</Badge></span>
+                  </div>
+                  <span className="text-small">{t.cliente ? <>{t.cliente}<span className="text-ink-2"> · {t.placa || 'sem ativo'}</span></> : <span className="text-ink-2">Em estoque</span>}</span>
+                  <span className="text-caption text-ink-2">{t.modelo || 'sem modelo'}{t.modeloProtocolo ? ` · ${t.modeloProtocolo} ${t.modeloPorta}` : ''}
+                    {t.ultimoPacoteEm && <span className="num"> · há {haQuanto(t.ultimoPacoteEm, agora)}, {t.pacotesUltimaHora} na última hora</span>}</span>
+                  {t.protocoloDetectado && t.modeloProtocolo && t.protocoloDetectado !== t.modeloProtocolo && <span className="text-caption text-crit-ink">chegou como {t.protocoloDetectado}</span>}
+                  {!t.traccarDeviceId && <span className="text-caption text-warn-ink">sem device no Traccar</span>}
+                  {p && <span className="text-caption text-ink-2"><span className="num">{coordenadas(p)}</span>{p.velocidadeKmh !== null && ` · ${Math.round(p.velocidadeKmh)} km/h`}{p.ignicao !== null && ` · ignição ${p.ignicao ? 'ligada' : 'desligada'}`}</span>}
+                  {!p && sit !== 'nunca' && <span className="text-caption text-warn-ink">sem posição com GPS</span>}
+                  {semGps && p && <span className="text-caption text-warn-ink">sem GPS há {haQuanto(p.em, agora)}</span>}
+                  {[t.telemetria.tensaoV, t.telemetria.sinalGsm, t.telemetria.satelites, t.telemetria.bloqueado].some((v) => v !== null) && <span className="text-ink-2 [&>span]:text-caption"><TelemetriaCelula t={t.telemetria} /></span>}
+                </div>
+              );
+            }}
             rows={visiveis.map(({ t, sit, semGps }) => [
               <span className="font-mono text-small">{t.imei}
                 <span className="block font-sans text-caption text-ink-2">{t.modelo || 'sem modelo'}{t.modeloProtocolo ? ` · ${t.modeloProtocolo} ${t.modeloPorta}` : ''}</span>

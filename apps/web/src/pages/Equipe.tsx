@@ -89,6 +89,19 @@ export default function Equipe() {
             <Table minWidth={900} loading={loading && !data} align={['left', 'left', 'left', 'left', 'left']}
               head={['Quando', 'Quem', 'Ação', 'Cliente', 'Detalhe']}
               empty="Nenhuma alteração registrada ainda."
+              card={(i) => {
+                const e = log[i], d = detalhe(e);
+                return (
+                  <div className="flex flex-col gap-hair min-w-0">
+                    <div className="flex items-baseline justify-between gap-stack">
+                      <span className="text-body font-medium min-w-0">{actionLabel(e.action)}{e.client_name && <span className="font-normal text-ink-2"> · {e.client_name}</span>}</span>
+                      <span className="shrink-0 num text-caption text-ink-2">{fmtDT(Date.parse(e.created_at))}</span>
+                    </div>
+                    {d && <span className="text-small text-ink-2 break-words">{d}</span>}
+                    <span className="flex flex-wrap items-center gap-x-tight text-caption text-ink-2 min-w-0"><span className="break-all">{e.actor_email || '—'}</span><Badge tone={e.actor_type === 'superadmin' ? 'gray' : 'green'} className="text-caption">{e.actor_type === 'superadmin' ? 'Locale' : 'Cliente'}</Badge></span>
+                  </div>
+                );
+              }}
               rows={log.map((e) => [
                 <span className="num text-small">{fmtDT(Date.parse(e.created_at))}</span>,
                 <span className="text-small">{e.actor_email || '—'}<Badge tone={e.actor_type === 'superadmin' ? 'gray' : 'green'} className="ml-tight">{e.actor_type === 'superadmin' ? 'Locale' : 'Cliente'}</Badge></span>,
