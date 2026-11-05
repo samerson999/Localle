@@ -89,11 +89,11 @@ export default function Rastreadores() {
     return [
       { label: 'Diagnóstico', icon: 'sinal', onClick: () => setDiagnosticando({ r }) },
       r.sim_card_id
-        ? { label: 'Desvincular chip', icon: 'link', onClick: async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); } }
+        ? { label: 'Desvincular chip', icon: 'link', danger: true, onClick: async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); } }
         : { label: 'Vincular chip', icon: 'link', onClick: () => setVinculando(r) },
       ...(s === 'instalado' ? [{ label: 'Desinstalar', icon: 'ativos', onClick: () => desinstalar(r) }] : []),
-      ...(s === 'vinculado' ? [{ label: 'Desvincular do cliente', icon: 'revenda', onClick: () => desvincular(r) }] : []),
-      ...(s === 'estoque' ? [{ label: 'Vincular a cliente', icon: 'revenda', onClick: () => setAoCliente(r) }, { label: 'Desativar', icon: 'cadeado', onClick: () => desativar(r) }] : []),
+      ...(s === 'vinculado' ? [{ label: 'Desvincular do cliente', icon: 'revenda', danger: true, onClick: () => desvincular(r) }] : []),
+      ...(s === 'estoque' ? [{ label: 'Vincular a cliente', icon: 'revenda', onClick: () => setAoCliente(r) }, { label: 'Desativar', icon: 'cadeado', danger: true, onClick: () => desativar(r) }] : []),
       ...(s === 'estoque' && !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir', danger: true, onClick: () => excluir(r) }] : []),
     ];
   };
@@ -193,8 +193,8 @@ export default function Rastreadores() {
                 <Badge tone={m.ativo ? 'green' : 'gray'}>{m.ativo ? 'Ativo' : 'Desativado'}</Badge>,
                 <div className="flex gap-3 justify-end">
                   <TextButton onClick={() => setEditandoModelo(m)}>Editar</TextButton>
-                  <TextButton onClick={() => acao(() => adminApi.atualizarModelo(m.id, { ativo: !m.ativo }), m.ativo ? 'Modelo desativado: não aparece mais no cadastro.' : 'Modelo reativado.')}>{m.ativo ? 'Desativar' : 'Reativar'}</TextButton>
-                  {m.rastreadores === 0 && <TextButton onClick={() => excluirModelo(m)}>Excluir</TextButton>}
+                  <TextButton tone={m.ativo ? 'danger' : 'brand'} onClick={() => acao(() => adminApi.atualizarModelo(m.id, { ativo: !m.ativo }), m.ativo ? 'Modelo desativado: não aparece mais no cadastro.' : 'Modelo reativado.')}>{m.ativo ? 'Desativar' : 'Reativar'}</TextButton>
+                  {m.rastreadores === 0 && <TextButton tone="danger" onClick={() => excluirModelo(m)}>Excluir</TextButton>}
                 </div>,
               ])} />
             <p className="text-caption text-ink-2 mt-card-head">Aparelho que não está na lista do Traccar? <TextButton className="text-caption" onClick={() => setEditandoModelo('novo')}>Cadastrar à mão</TextButton></p>

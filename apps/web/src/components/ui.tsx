@@ -65,15 +65,18 @@ export function Button({ variant = 'primary', size = 'md', loading = false, clas
 }
 
 // Ação em texto (Editar, Excluir, Remover): brand = ação comum (cor do link), danger = destrutiva.
+// ação destrutiva (Excluir, Desativar, Remover…) usa tone="danger": vermelho é só para crítico, erro e destrutivo
 export function TextButton({ tone = 'brand', className = '', ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'brand' | 'danger' }) {
   return <button type="button" {...p} className={cx('alvo-toque text-small font-medium underline-offset-[3px] hover:underline disabled:opacity-40 disabled:no-underline', tone === 'danger' ? 'text-crit-ink' : 'link-brand', className)} />;
 }
 
 // Botão só com ícone: aria-label obrigatório. sidebar = hover sobre o canvas; on-dark = sobre superfície escura.
 // outline = botão de mapa e barra de ferramentas (fundo de card com borda).
-type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string; size?: 'sm' | 'md' | 'touch'; tone?: 'default' | 'sidebar' | 'on-dark' | 'outline' };
+type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string; size?: 'sm' | 'md' | 'touch'; tone?: 'default' | 'sidebar' | 'on-dark' | 'outline' | 'danger' | 'danger-outline' };
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(({ size = 'md', tone = 'default', className = '', ...p }, r) => {
-  const t = { default: 'text-ink-2 hover:text-ink hover:bg-card-2', sidebar: 'text-ink-2 hover:text-ink hover:bg-surface-hover', 'on-dark': 'text-on-dark hover:bg-on-dark-hover', outline: 'bg-card border border-line-strong text-ink hover:bg-card-2' }[tone];
+  const t = { default: 'text-ink-2 hover:text-ink hover:bg-card-2', sidebar: 'text-ink-2 hover:text-ink hover:bg-surface-hover', 'on-dark': 'text-on-dark hover:bg-on-dark-hover', outline: 'bg-card border border-line-strong text-ink hover:bg-card-2',
+    // ação destrutiva (remover, excluir) é sempre vermelha — PRODUCT.md › cores; acoesDestrutivas.test.ts cobra o padrão
+    danger: 'text-crit-ink hover:bg-crit-soft', 'danger-outline': 'bg-card border border-line-strong text-crit-ink hover:bg-crit-soft' }[tone];
   // touch = 44×44 (alvo de toque recomendado), só para a barra fixa do mobile; sm/md seguem os tokens de controle
   // (32/40 no desktop; com dedo, 40/44 — tokens.css › toque).
   const sizeCls = size === 'sm' ? 'w-ctl-sm h-ctl-sm rounded-btn' : size === 'touch' ? 'w-11 h-11 rounded-ctl' : 'w-ctl h-ctl rounded-ctl';
@@ -271,7 +274,7 @@ export function Sheet({ modal = true, bare = false, tall = false, label, title, 
 }
 
 // Menu de contexto num ponto (clique direito no mapa): cabeçalho opcional (ex.: coordenadas) e itens como no Menu.
-export function ContextMenu({ x, y, header, items, onClose }: { x: number; y: number; header?: React.ReactNode; items: { label: string; icon?: string; onClick?: () => void; to?: string }[]; onClose: () => void }) {
+export function ContextMenu({ x, y, header, items, onClose }: { x: number; y: number; header?: React.ReactNode; items: { label: string; icon?: string; onClick?: () => void; to?: string; danger?: boolean }[]; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     (box.current?.querySelector('a,button') as HTMLElement | null)?.focus();
@@ -279,14 +282,16 @@ export function ContextMenu({ x, y, header, items, onClose }: { x: number; y: nu
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
   }, []);
-  const cls = 'w-full flex items-center gap-icon px-stack h-9 [@media(pointer:coarse)]:h-11 rounded-btn text-body text-left text-ink hover:bg-surface-muted focus:bg-surface-muted';
+  const base = 'w-full flex items-center gap-icon px-stack h-9 [@media(pointer:coarse)]:h-11 rounded-btn text-body text-left';
+  // danger: ação destrutiva em vermelho, como no Menu
+  const cls = (danger?: boolean) => cx(base, danger ? 'text-crit-ink hover:bg-crit-soft focus:bg-crit-soft' : 'text-ink hover:bg-surface-muted focus:bg-surface-muted');
   return (
     <div ref={box} role="menu" className="absolute z-[600] w-64 bg-card border border-line rounded-pop shadow-pop p-1 anim-page" style={{ left: x, top: y }}>
       {header && <div className="px-stack py-tight text-caption text-ink-3">{header}</div>}
       {items.map((it) => {
-        const inner = <>{it.icon && <Icon name={it.icon} size={18} className="text-ink-2" />}{it.label}</>;
-        return it.to ? <a key={it.label} role="menuitem" href={`#${it.to}`} className={cls} onClick={onClose}>{inner}</a>
-          : <button key={it.label} type="button" role="menuitem" className={cls} onClick={() => { it.onClick?.(); onClose(); }}>{inner}</button>;
+        const inner = <>{it.icon && <Icon name={it.icon} size={18} className={it.danger ? '' : 'text-ink-2'} />}{it.label}</>;
+        return it.to ? <a key={it.label} role="menuitem" href={`#${it.to}`} className={cls(it.danger)} onClick={onClose}>{inner}</a>
+          : <button key={it.label} type="button" role="menuitem" className={cls(it.danger)} onClick={() => { it.onClick?.(); onClose(); }}>{inner}</button>;
       })}
     </div>
   );
@@ -1120,6 +1125,7 @@ export function CardActions({ children }: { children: React.ReactNode }) {
 }
 
 // Menu de ações (o "…" da linha): abre em portal; itens com ícone; danger = ação destrutiva em vermelho, separada.
+// danger: ação destrutiva — fica vermelha e vai para o grupo do fim do menu
 export type MenuItem = { label: string; icon?: string; onClick: () => void; danger?: boolean; disabled?: boolean };
 export function Menu({ items, label = 'Mais opções', trigger }: { items: MenuItem[]; label?: string; trigger?: (p: { ref: React.Ref<HTMLButtonElement>; open: boolean; toggle: () => void }) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -1482,7 +1488,9 @@ function ConfirmHost() {
   const done = (v: boolean) => { if (!confirmReq) return; confirmReq.resolve(v); confirmReq = null; force((n) => n + 1); };
   return (
     <Modal open={!!r} onClose={() => done(false)} title={r?.title || ''} width="max-w-md"
-      footer={<><Button variant="ghost" onClick={() => done(false)}>{r?.cancelLabel || 'Cancelar'}</Button><Button autoFocus variant={r?.tone === 'primary' ? 'primary' : 'danger'} onClick={() => done(true)}>{r?.confirmLabel || 'Excluir'}</Button></>}>
+      // foco inicial no lado seguro: em ação destrutiva (Descartar, Excluir) um Enter apressado só cancela; em ação comum
+      // (tone primary, ex.: Sair) o Enter confirma
+      footer={<><Button variant="ghost" autoFocus={r?.tone !== 'primary'} onClick={() => done(false)}>{r?.cancelLabel || 'Cancelar'}</Button><Button autoFocus={r?.tone === 'primary'} variant={r?.tone === 'primary' ? 'primary' : 'danger'} onClick={() => done(true)}>{r?.confirmLabel || 'Excluir'}</Button></>}>
       {r?.detail ? <p className="text-body text-ink-2">{r.detail}</p> : null}
     </Modal>
   );

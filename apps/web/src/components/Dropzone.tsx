@@ -39,7 +39,7 @@ export function Dropzone({ value, onChange, label, hint, accept = 'image/*', max
               : <span className="w-full h-full flex items-center gap-2 px-4 text-body bg-card-2"><Icon name="multas" size={20} className="text-ink-3 shrink-0" /><span className="truncate">{fileName || 'Arquivo anexado'}</span></span>}
             <div className="absolute bottom-2 right-2 flex gap-tight">
               <button type="button" onClick={() => input.current?.click()} className="h-8 px-3 rounded-btn bg-card text-caption font-medium shadow-float hover:bg-card-2">Trocar</button>
-              <button type="button" onClick={() => { onChange(''); setErr(''); }} className="h-8 px-3 rounded-btn bg-card text-caption font-medium shadow-float hover:bg-card-2">Remover</button>
+              <button type="button" onClick={() => { onChange(''); setErr(''); }} className="h-8 px-3 rounded-btn bg-card text-caption font-medium text-crit-ink shadow-float hover:bg-crit-soft">Remover</button>
             </div>
           </>
         ) : (

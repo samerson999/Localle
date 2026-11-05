@@ -297,7 +297,7 @@ export default function Monitoramento() {
             return (
               <ContextMenu x={Math.max(8, Math.min(vctx.x, (mapSectionRef.current?.clientWidth ?? 600) - 264))} y={Math.max(8, Math.min(vctx.y, (mapSectionRef.current?.clientHeight ?? 600) - 220))} onClose={() => setVctx(null)}
                 header={<span className="font-medium">{va.a.name}</span>} items={[
-                  { label: 'Bloquear', icon: 'cadeado', onClick: () => comandar(va.a.id, 'c_bloq') },
+                  { label: 'Bloquear', icon: 'cadeado', danger: true, onClick: () => comandar(va.a.id, 'c_bloq') },
                   { label: 'Desbloquear', icon: 'cadeado', onClick: () => comandar(va.a.id, 'c_desb') },
                   { label: 'Outros comandos…', icon: 'comando', onClick: () => comandar(va.a.id) },
                   { label: 'Ver detalhes', icon: 'ativos', onClick: () => setSel(va.a.id) },

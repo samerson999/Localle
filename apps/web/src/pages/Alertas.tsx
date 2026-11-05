@@ -76,7 +76,7 @@ function Rules() {
                 <Select className="max-md:col-span-3" aria-label="Campo" value={c.field} onChange={(e) => setCond(i, 'field', e.target.value)} options={Object.entries(RULE_FIELDS).map(([k, v]) => ({ value: k, label: `${v.src}: ${v.label}` }))} />
                 <Select aria-label="Operador" value={c.op} onChange={(e) => setCond(i, 'op', e.target.value)} options={F.ops} />
                 {values ? <Select aria-label="Valor" value={c.value} onChange={(e) => setCond(i, 'value', e.target.value)} options={values} /> : <Input aria-label="Valor" type={c.field === 'horario' ? 'time' : 'text'} value={c.value} onChange={(e) => setCond(i, 'value', e.target.value)} />}
-                <IconButton aria-label="Remover condição" tone="outline" disabled={r.conditions.length <= 1} onClick={() => setR({ ...r, conditions: r.conditions.filter((_: any, j: number) => j !== i) })}><Icon name="fechar" size={18} /></IconButton>
+                <IconButton aria-label="Remover condição" tone="danger-outline" disabled={r.conditions.length <= 1} onClick={() => setR({ ...r, conditions: r.conditions.filter((_: any, j: number) => j !== i) })}><Icon name="fechar" size={18} /></IconButton>
               </div>
             );
           })}

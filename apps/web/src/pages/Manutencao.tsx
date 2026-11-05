@@ -254,7 +254,7 @@ function OsModal({ init, onClose }: any) {
                     <InlineInput aria-label="Item" className={cx('text-body h-8 px-1 -mx-1 max-md:col-span-2', it.done && 'line-through text-ink-2')} value={it.label} onChange={(e) => upItem(it.id, 'label', e.target.value)} />
                     <Input type="number" aria-label={`Estimado de ${it.label}`} placeholder="Estimado" className="h-8 text-small max-md:col-start-2" value={it.est ?? ''} onChange={(e) => upItem(it.id, 'est', e.target.value === '' ? null : +e.target.value)} />
                     <Input type="number" aria-label={`Realizado de ${it.label}`} placeholder="Realizado" className="h-8 text-small" value={it.real ?? ''} onChange={(e) => upItem(it.id, 'real', e.target.value === '' ? null : +e.target.value)} />
-                    <IconButton size="sm" aria-label={`Remover ${it.label}`} onClick={() => set('items', items.filter((x: any) => x.id !== it.id))} className="text-ink-3 max-md:col-start-4 max-md:row-start-1"><Icon name="fechar" size={16} /></IconButton>
+                    <IconButton size="sm" tone="danger" aria-label={`Remover ${it.label}`} onClick={() => set('items', items.filter((x: any) => x.id !== it.id))} className="max-md:col-start-4 max-md:row-start-1"><Icon name="fechar" size={16} /></IconButton>
                   </li>
                 ))}
               </ul>
