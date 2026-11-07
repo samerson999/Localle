@@ -292,15 +292,15 @@ migrations e nos repositories, nunca nos services de domínio — já é a regra
   exposto. PgBouncer e Postgres sem porta pública (desde 38c6f2c, `infra/plataforma/docker-compose.yml` publica os dois
   só em 127.0.0.1 por padrão).
 - Painel do Coolify em domínio com HTTPS e 2FA. `fail2ban` no SSH.
-- Antes do go-live: rodar `security-review` sobre a ingestão (pendente desde a auditoria da conciliação).
+- `security-review` da ingestão: feito em 229e98d (07/11/2026). Repetir antes do go-live se a ingestão mudar.
 
 ## 8. Ordem de execução para o go-live
 
 1. Decisões pendentes (§ 9).
 2. Código: tags de imagem fixas (`timescaledb-ha:pg16`, `pgbouncer:latest`, `traccar:latest` ainda móveis);
-   `deploy.yml` funcionando com GHCR (hoje só manual, `workflow_dispatch`); `security-review` da ingestão; push do que
-   está em `dev`. Já feito em 38c6f2c: extensões `timescaledb`/`postgis` criadas pela primeira migration; Postgres e
-   PgBouncer só em 127.0.0.1.
+   `deploy.yml` funcionando com GHCR (hoje só manual, `workflow_dispatch`); push do que está em `dev`. Já feito:
+   extensões `timescaledb`/`postgis` criadas pela primeira migration e Postgres/PgBouncer só em 127.0.0.1 (38c6f2c);
+   `security-review` da ingestão (229e98d).
 3. Contratar VPS-PRD e domínio; DNS (`app.`, `api.`, `gw.`); firewall.
 4. Coolify em produção; stack com variáveis de produção (SMTP, `APP_URL`).
 5. Traccar de produção com retenção e Forwarding declarados no compose.
