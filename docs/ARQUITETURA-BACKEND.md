@@ -211,6 +211,11 @@ Fila entre a ingestão e a gravação (decisão de `PRODUCT.md`, "fila entre a i
 
 ## 7. Infraestrutura: 2 VPS
 
+> **Atualização de 07/11/2026:** a produção nasce com **1 VPS** e separa o banco para a topologia abaixo por gatilho
+> medido (CPU, disco, latência, fila, SLA), não desde o início — decisão aprovada em `docs/PLANO-INFRA-PRODUCAO.md`,
+> que também traz fases, migração entre VPS, backup e métricas de capacidade. O que segue continua valendo como o
+> desenho da Fase 2.
+
 ### 7.1 Por que dividir banco e aplicação
 
 - **Isolamento de recursos:** o Postgres é sensível a I/O de disco e a picos de memória (checkpoint, vacuum); a API e o Traccar competem por CPU e rede. No mesmo servidor, um vacuum pesado derruba o tempo de resposta da API, e vice-versa.
