@@ -16,6 +16,8 @@ import type { NormalizedPosition } from './traccar-position.mapper';
 
 export type IngestResult =
   | { status: 'deduped' }
+  /** Recusada na admissão (admissao-posicao.ts): formato inválido — não é retentada, é logada. */
+  | { status: 'recusada'; motivo: string }
   | { status: 'rastreador_desconhecido' }
   | {
       status: 'gravada';
@@ -58,7 +60,11 @@ export class PositionsIngestService {
 
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
-  async ingest(position: NormalizedPosition): Promise<IngestResult> {
+  async ingest(recebida: NormalizedPosition): Promise<IngestResult> {
+    // Hora não confiável (relógio do aparelho adiantado, admissao-posicao.ts): a posição vai para o histórico com o fixTime e
+    // o valid originais, mas tudo que decide o estado atual (dono no instante, sinais, eventos) usa a hora do Traccar e
+    // trata a posição como sem fix — mapa, cercas e regras não andam, e nenhuma data futura entra em ultima_posicao.
+    const position = recebida.horaConfiavel === false ? { ...recebida, fixTime: recebida.serverTime, valid: false } : recebida;
     const client = await this.pool.connect();
     try {
       await client.query('begin');
@@ -81,6 +87,11 @@ export class PositionsIngestService {
         return { status: 'rastreador_desconhecido' };
       }
       const rastreadorId = rastreador.rows[0].id;
+      if (recebida.horaConfiavel === false) {
+        this.logger.warn(
+          `rastreador_id=${rastreadorId} traccar_position_id=${recebida.traccarPositionId} fixTime ${recebida.fixTime.toISOString()} à frente do serverTime ${recebida.serverTime.toISOString()} (relógio do aparelho): gravada no histórico, sem mover o mapa`,
+        );
+      }
       // O protocolo é o que o Traccar usou para decodificar (definido pela porta em que o aparelho conecta),
       // não digitado no cadastro: o Traccar não expõe lista de protocolos pela API. Só grava quando muda.
       if (position.protocol && position.protocol !== rastreador.rows[0].protocolo) {
@@ -119,9 +130,9 @@ export class PositionsIngestService {
           position.traccarPositionId,
           clientId,
           assetId,
-          position.fixTime,
+          recebida.fixTime,
           position.serverTime,
-          position.valid,
+          recebida.valid,
           position.longitude,
           position.latitude,
           position.speedKmh,
@@ -283,11 +294,16 @@ export class PositionsIngestService {
     const { rows } = await client.query<{ ultimos_atributos: Record<string, unknown> }>(
       `insert into rastreador_comunicacao (rastreador_id, asset_id, client_id, ultimo_pacote_em, ultima_posicao_valida_em, ultimos_atributos, atributos_em,
                                           atributos_vistos_em, atributos_ausentes_desde)
-       values ($1, $2, $3, now(), case when $4 then $5::timestamptz else null end, $6::jsonb, $7, $8::jsonb, $9::jsonb)
+       values ($1, $2, $3, least($7::timestamptz, now()), case when $4 then $5::timestamptz else null end, $6::jsonb, $7, $8::jsonb, $9::jsonb)
        on conflict (rastreador_id) do update set
-         asset_id = excluded.asset_id,
-         client_id = excluded.client_id,
-         ultimo_pacote_em = excluded.ultimo_pacote_em,
+         -- hora em que o Traccar recebeu o pacote (server_time), não a hora do processamento: posição atrasada
+         -- (recuperada pela conciliação, reenvio do Traccar, buffer do aparelho) não faz um aparelho calado parecer
+         -- "transmitindo agora" nem devolve o vínculo a um cliente/ativo anterior
+         asset_id = case when excluded.ultimo_pacote_em >= coalesce(rastreador_comunicacao.ultimo_pacote_em, '-infinity')
+           then excluded.asset_id else rastreador_comunicacao.asset_id end,
+         client_id = case when excluded.ultimo_pacote_em >= coalesce(rastreador_comunicacao.ultimo_pacote_em, '-infinity')
+           then excluded.client_id else rastreador_comunicacao.client_id end,
+         ultimo_pacote_em = greatest(excluded.ultimo_pacote_em, rastreador_comunicacao.ultimo_pacote_em),
          -- greatest ignora null e não deixa pacote atrasado (fix_time antigo) regredir o valor
          ultima_posicao_valida_em = greatest(excluded.ultima_posicao_valida_em, rastreador_comunicacao.ultima_posicao_valida_em),
          -- último valor conhecido de cada atributo (aparelho que manda cada dado num pacote): o pacote mais novo

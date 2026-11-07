@@ -238,6 +238,46 @@ describe('PositionsIngestService', () => {
     expect(comunicacao.rows[0].ultima_posicao_valida_em).toBeNull();
   });
 
+  it('posição atrasada (ex.: recuperada pela conciliação) não volta ultimo_pacote_em nem troca o vínculo da comunicação', async () => {
+    const rastreadorId = await criarRastreador(1020);
+    await instalar(rastreadorId, '2026-01-01T00:00:00Z');
+    await service.ingest(
+      position({ traccarDeviceId: 1020, traccarPositionId: 2, fixTime: new Date('2026-01-02T12:00:00Z'), serverTime: new Date('2026-01-02T12:00:01Z') }),
+    );
+    // de antes da instalação: o dono no instante do dado é "ninguém" — gravada no histórico, mas não é o estado atual
+    const atrasada = await service.ingest(
+      position({ traccarDeviceId: 1020, traccarPositionId: 1, fixTime: new Date('2025-12-31T10:00:00Z'), serverTime: new Date('2025-12-31T10:00:01Z') }),
+    );
+    expect(atrasada.status).toBe('gravada');
+
+    const { rows } = await pool.query('select ultimo_pacote_em, asset_id, client_id from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
+    expect(rows[0].ultimo_pacote_em.toISOString()).toBe('2026-01-02T12:00:01.000Z');
+    expect(rows[0].asset_id).toBe(assetId);
+    expect(rows[0].client_id).toBe(clientId);
+    const ultima = await pool.query('select fix_time from ultima_posicao where rastreador_id = $1', [rastreadorId]);
+    expect(ultima.rows[0].fix_time.toISOString()).toBe('2026-01-02T12:00:00.000Z');
+  });
+
+  it('hora não confiável (relógio adiantado): vai para o histórico, mas não congela o mapa nem a comunicação', async () => {
+    const rastreadorId = await criarRastreador(1021);
+    await instalar(rastreadorId, '2026-01-01T00:00:00Z');
+    await service.ingest(position({ traccarDeviceId: 1021, traccarPositionId: 1, fixTime: new Date('2026-01-02T12:00:00Z'), serverTime: new Date('2026-01-02T12:00:01Z') }));
+    // aparelho com o relógio em 2027
+    const adiantada = await service.ingest(
+      position({ traccarDeviceId: 1021, traccarPositionId: 2, fixTime: new Date('2027-06-01T00:00:00Z'), serverTime: new Date('2026-01-02T12:01:00Z'), horaConfiavel: false }),
+    );
+    expect(adiantada.status === 'gravada' && adiantada.atualizouUltimaPosicao).toBe(false);
+    // a seguinte, com relógio certo, move o mapa normalmente (antes, a de 2027 travava ultima_posicao até 2027)
+    const seguinte = await service.ingest(position({ traccarDeviceId: 1021, traccarPositionId: 3, fixTime: new Date('2026-01-02T12:02:00Z'), serverTime: new Date('2026-01-02T12:02:01Z') }));
+    expect(seguinte.status === 'gravada' && seguinte.atualizouUltimaPosicao).toBe(true);
+
+    const historico = await pool.query('select fix_time, valid from posicoes where rastreador_id = $1 and traccar_position_id = 2', [rastreadorId]);
+    expect(historico.rows[0]).toEqual({ fix_time: new Date('2027-06-01T00:00:00Z'), valid: true }); // dado original preservado
+    const com = await pool.query('select ultima_posicao_valida_em, ultimo_pacote_em from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
+    expect(com.rows[0].ultima_posicao_valida_em.toISOString()).toBe('2026-01-02T12:02:00.000Z');
+    expect(com.rows[0].ultimo_pacote_em.toISOString()).toBe('2026-01-02T12:02:01.000Z');
+  });
+
   it('telemetria usa o último valor conhecido de cada atributo; pacote atrasado só preenche o que faltava', async () => {
     const rastreadorId = await criarRastreador(1010);
     const t = (s: string) => new Date(`2026-01-01T12:${s}Z`);
@@ -298,7 +338,7 @@ describe('PositionsIngestService', () => {
       log.mockRestore();
       warn.mockRestore();
     }
-  });
+  }, 15_000); // ~4 s numa máquina livre; com a suíte inteira em paralelo passava dos 5 s padrão e a limpeza quebrava em cascata
 
   it('grava o protocolo informado pelo Traccar no rastreador, e atualiza se mudar', async () => {
     const rastreadorId = await criarRastreador(1099);

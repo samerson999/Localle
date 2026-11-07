@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PositionsQueue } from '../queue/positions.queue';
+import { InboxRepository } from './inbox.repository';
 import { readTraccarConfig, TraccarClient } from './traccar-client';
 
 const DEFAULT_INTERVAL_MS = 30_000;
@@ -13,10 +13,11 @@ const DEFAULT_INTERVAL_MS = 30_000;
 export class PositionsPollerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PositionsPollerService.name);
   private timer?: NodeJS.Timeout;
+  private consultando = false;
 
   constructor(
     private readonly client: TraccarClient,
-    private readonly queue: PositionsQueue,
+    private readonly inbox: InboxRepository,
   ) {}
 
   onModuleInit(): void {
@@ -41,13 +42,22 @@ export class PositionsPollerService implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
+  /** Uma consulta por vez: com o Traccar lento, o `setInterval` empilharia consultas sobre a que ainda não voltou. */
   async pollOnce(config: ReturnType<typeof readTraccarConfig>, logger: Logger): Promise<void> {
     if (!config) return;
+    if (this.consultando) {
+      logger.warn('Polling do Traccar: consulta anterior ainda sem resposta — esta volta foi pulada');
+      return;
+    }
+    this.consultando = true;
     try {
+      // mesma fila do Forwarding e da conciliação (o dedup do worker descarta a posição que já chegou por outro caminho)
       const positions = await this.client.fetchPositions(config);
-      await Promise.all(positions.map((position) => this.queue.enqueue(position)));
+      for (const position of positions) await this.inbox.inserir('posicao', { position, origem: 'polling' });
     } catch (err) {
       logger.error(`Falha ao buscar posições do Traccar: ${(err as Error).message}`);
+    } finally {
+      this.consultando = false;
     }
   }
 }

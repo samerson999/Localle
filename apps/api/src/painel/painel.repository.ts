@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Pool } from 'pg';
 import { PG_POOL } from '../db/pg-pool.provider';
+import { INBOX_MAX_TENTATIVAS } from '../ingest/inbox.repository';
 
 /**
  * Agregados da plataforma inteira para o Console da Locale (Visão geral, Saúde). Cruza clientes de
@@ -67,15 +68,44 @@ export class PainelRepository {
     return { tamanhoBytes: Number(rows[0].total), posicoesBytes, posicoes24h: Number(rows[0].p24) };
   }
 
-  async inbox(): Promise<{ pendentes: number; maisAntigaSeg: number | null; comErro24h: number }> {
+  /**
+   * Inbox de ingestão separado pelo que cada número significa: `pendentes`/`maisAntigaSeg` são só o tempo real ainda em
+   * tentativa (é o atraso do mapa); recuperadas pela conciliação são antigas por natureza e esgotadas nunca mais saem —
+   * contadas juntas, uma única linha esgotada deixava "mais antiga" crescendo para sempre e escondia atraso de verdade.
+   * Só linhas não processadas (`concluir` zera o erro), então o índice parcial de pendentes atende.
+   */
+  async inbox(): Promise<{ pendentes: number; maisAntigaSeg: number | null; comErro24h: number; recuperadasPendentes: number; esgotadas: number }> {
     const { rows } = await this.pool.query(
-      `select count(*) filter (where processado_em is null)::int as pendentes,
-              extract(epoch from now() - min(recebido_em) filter (where processado_em is null)) as idade,
-              count(*) filter (where erro is not null and recebido_em > now() - interval '24 hours')::int as erros
-         from ingest_inbox`,
+      `select count(*) filter (where tentativas < $1 and prioridade = 0)::int as pendentes,
+              extract(epoch from now() - min(recebido_em) filter (where tentativas < $1 and prioridade = 0)) as idade,
+              count(*) filter (where erro is not null and tentativas < $1 and recebido_em > now() - interval '24 hours')::int as erros,
+              count(*) filter (where tentativas < $1 and prioridade = 1)::int as recuperadas,
+              count(*) filter (where tentativas >= $1)::int as esgotadas
+         from ingest_inbox where processado_em is null`,
+      [INBOX_MAX_TENTATIVAS],
     );
     const r = rows[0];
-    return { pendentes: r.pendentes, maisAntigaSeg: r.idade === null ? null : Math.round(Number(r.idade)), comErro24h: r.erros };
+    return {
+      pendentes: r.pendentes,
+      maisAntigaSeg: r.idade === null ? null : Math.round(Number(r.idade)),
+      comErro24h: r.erros,
+      recuperadasPendentes: r.recuperadas,
+      esgotadas: r.esgotadas,
+    };
+  }
+
+  /** Última volta da conciliação com o Traccar (qualquer instância) e o que ela recuperou nas últimas 24 h. */
+  async conciliacao(): Promise<{
+    ultimaVolta: { iniciadaEm: string; concluidaEm: string | null; recuperadas: number; falhas: number; interrompidaPor: string | null } | null;
+    recuperadas24h: number;
+  }> {
+    const { rows } = await this.pool.query(
+      `select (select row_to_json(e) from (select iniciada_em as "iniciadaEm", concluida_em as "concluidaEm", recuperadas, falhas,
+                      interrompida_por as "interrompidaPor"
+                 from ingest_conciliacao_execucoes where modo = 'automatica' order by iniciada_em desc limit 1) e) as ultima,
+              (select coalesce(sum(recuperadas), 0)::int from ingest_conciliacao_execucoes where iniciada_em > now() - interval '24 hours') as r24`,
+    );
+    return { ultimaVolta: rows[0].ultima, recuperadas24h: rows[0].r24 };
   }
 
   /** Comunicação dos rastreadores instalados: agora (≤ 10 min), recente (≤ 24 h), sem sinal. */

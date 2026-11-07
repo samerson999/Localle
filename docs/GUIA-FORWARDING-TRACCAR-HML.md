@@ -140,8 +140,39 @@ docker exec <CONTAINER_BANCO> psql -U <USUARIO> -d <BANCO> -c "select rastreador
 
 ## Etapa 7 — Desligar o polling (depois de ~24 h estável)
 
+> **Só depois da Etapa 8 (conciliação ligada).** O reenvio do Traccar 6.17 quebra quando o aparelho não está conectado
+> (`"device" is null` no `tracker-server.log`) e a última posição antes de uma desconexão se perde do Forwarding; até
+> 06/11/2026 quem a cobria na HML era o polling (`docs/ARQUITETURA-INTEGRACAO-TRACCAR.md` § 5.1b).
+
 Coolify → API → `TRACCAR_POLL_ENABLED=false` → Restart. O log da API passa a mostrar
 "Polling do Traccar desligado por TRACCAR_POLL_ENABLED=false.".
+
+## Etapa 8 — Ligar a conciliação (depois do deploy com a migration 1793200000000)
+
+O retry do Forwarding fica na memória do Traccar: API fora por alguns minutos (deploy com problema, banco caído) perde
+posições de vez — medido em 05/11/2026: 95 de 120 em 2 min. A conciliação busca no Traccar o que faltou
+(`docs/ARQUITETURA-INTEGRACAO-TRACCAR.md` § 5.1b).
+
+1. Coolify → API → `CONCILIACAO_ENABLED=true` (usa o mesmo `TRACCAR_URL`/`TRACCAR_USER`/`TRACCAR_PASSWORD` do polling;
+   demais parâmetros com os padrões do `.env.example`) → Restart.
+2. Log esperado na subida: "Conciliação com o Traccar ligada: a cada 300s…". Na primeira volta, cada rastreador é
+   conferido nas últimas 24 h (`CONCILIACAO_INICIO_H`); o que o Forwarding perdeu aparece como aviso
+   "posição(ões) que o Forwarding não entregou recuperada(s)".
+3. Conferir no Console → Saúde ("Recuperadas pela conciliação") ou `GET /superadmin/conciliacao`.
+4. Com a conciliação estável, o polling é redundante (só traz a última posição de cada aparelho): Etapa 7.
+
+## Retenção do Traccar (pendente — mexe na VPS, pedir autorização antes)
+
+O Traccar guarda todas as posições em `tc_positions` para sempre (na HML: ~900 bytes por posição; ~2 TB/ano estimados
+com 2.000 placas). Depois da conciliação ligada, a plataforma é a dona do histórico; o Traccar só precisa guardar o
+bastante para a conciliação e a reexecução manual (`INGEST_DEDUP_DIAS`, padrão 14 dias).
+
+- Configuração do Traccar para apagar histórico antigo: `database.historyDays` no `traccar.xml` — **conferir o nome da
+  chave na documentação da versão em uso (6.17) antes de aplicar**; nesta auditoria ele não foi verificado no servidor.
+- Valor recomendado: **pelo menos 30 dias** (acima dos 14 do controle de duplicidade, com folga para reexecução manual
+  de um incidente longo).
+- Aplicar exige reiniciar o Traccar — mesma ordem da Etapa 5 (backup do `traccar.xml`, reinício, `docker network
+  connect coolify traccar`, conferir Forwarding).
 
 ## Voltar atrás
 

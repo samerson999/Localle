@@ -163,6 +163,10 @@ serviço externo. Até lá, não prometer endereço em 100% das linhas exportada
 
 ## 4. Ingestão: Traccar → fila → Postgres
 
+> **Atualização de 05/11/2026:** a fila de posições é o `ingest_inbox` (Postgres), não o BullMQ — Forwarding, conciliação
+> com o Traccar e polling gravam todos nele, e o Redis ficou só para o tempo real. O texto abaixo sobre BullMQ é o
+> registro da decisão original. Como está implementado: `docs/ARQUITETURA-INTEGRACAO-TRACCAR.md` § 5.1b.
+
 **Detalhamento completo (contratos, unidades, conciliação, quarentena, decisões de retenção) em
 `docs/ARQUITETURA-INTEGRACAO-TRACCAR.md`** — esta seção fica como resumo de alto nível; o front **nunca** fala com
 o Traccar, nem em protótipo de backend: quem chama a API/webhook do Traccar é sempre o NestJS.
@@ -186,6 +190,9 @@ Fila entre a ingestão e a gravação (decisão de `PRODUCT.md`, "fila entre a i
 
 - **Backup do Postgres:** `pg_dump` lógico diário não é suficiente sozinho para um banco que não pode perder dados entre backups — usar **WAL archiving + `pg_basebackup`** (ou `pgBackRest`) para PITR (point-in-time recovery), com os arquivos de WAL enviados para fora da VPS do banco (objeto storage, ou a VPS de aplicação como destino secundário, nunca só local).
 - **Backup do Traccar:** mesmo Postgres, mesma rotina; o `backup.sh` do kit atual (`pg_dump` simples) serve para a fase de teste, não para produção.
+- **Implementado (05/11/2026):** tela Saúde do Console com o inbox separado em tempo real/recuperadas/esgotadas, a
+  conciliação com o Traccar e o Redis; aviso de hora em hora no log para linhas esgotadas
+  (`docs/ARQUITETURA-INTEGRACAO-TRACCAR.md` § 5.1b).
 - **Métricas mínimas antes de vender a clientes:** tempo de resposta do endpoint de posições, profundidade da fila, uso de disco do banco (hypertables crescem rápido), número de rastreadores sem comunicação há mais de X minutos (isso já é produto: "Precisa de você").
 - **Logs:** da API (NestJS) e do Traccar centralizados (mesmo que só `docker compose logs` agregado por enquanto); antes de produção com cliente pagante, um coletor (Loki, ou o que o Coolify já oferecer) evita depender de SSH manual.
 

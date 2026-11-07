@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RealtimeMessage } from '@localle/shared/realtime';
 import { PositionsIngestService } from '../ingest/positions-ingest.service';
 import { MonitoringRepository } from '../monitoring/monitoring.repository';
-import { PositionsWorker } from '../queue/positions.worker';
+import { ProcessadorPosicao } from '../ingest/processador-posicao';
 import { RealtimeStreamService } from './realtime-stream.service';
 import { RealtimeHub } from './realtime.hub';
 
@@ -20,7 +20,7 @@ describe('tempo real (Redis pub/sub + SSE stream)', () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', { maxRetriesPerRequest: null });
   const hub = new RealtimeHub(connection);
-  const worker = new PositionsWorker(connection, new PositionsIngestService(pool), hub);
+  const worker = new ProcessadorPosicao(new PositionsIngestService(pool), hub);
   const stream = new RealtimeStreamService(hub, new MonitoringRepository(pool));
 
   let clientA: string;
@@ -78,9 +78,9 @@ describe('tempo real (Redis pub/sub + SSE stream)', () => {
     });
     await snapshotReady;
 
-    // chama o processamento do job direto: a fila em si já tem teste próprio, e um worker de outro processo
-    // (ex.: a API do infra/dev rodando) poderia consumir o job e o publish não aconteceria neste processo.
-    await worker.process({ id: 'teste-rt', data: {
+    // chama o processamento direto (sem passar pelo inbox): um worker de outro processo (ex.: a API local rodando)
+    // poderia consumir a linha e o publish não aconteceria neste processo.
+    await worker.processar({
       id: 1,
       deviceId,
       fixTime: '2026-01-01T12:00:00.000Z',
@@ -90,7 +90,7 @@ describe('tempo real (Redis pub/sub + SSE stream)', () => {
       longitude: -34.88,
       speed: 10,
       attributes: { alarm: 'sos', ignition: true },
-    } });
+    }, 'teste-rt');
     await done;
 
     expect(received[0]).toEqual({ kind: 'snapshot', posicoes: [] });

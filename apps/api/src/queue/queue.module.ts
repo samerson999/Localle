@@ -1,16 +1,12 @@
 import { Global, Module } from '@nestjs/common';
-import { IngestModule } from '../ingest/ingest.module';
-import { PositionsQueue } from './positions.queue';
-import { PositionsWorker } from './positions.worker';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { redisConnectionProvider } from './redis.provider';
 
-// RealtimeHub mora aqui (e não num módulo próprio) porque depende da mesma conexão Redis e é usado pelo
-// worker desta fila — um módulo à parte criaria import circular com o provider de Redis global.
+// Conexão Redis + RealtimeHub (pub/sub do tempo real), globais. O nome QueueModule é histórico: até 05/11/2026 a fila
+// BullMQ do polling morava aqui; com o `ingest_inbox` como fila única de posições, o Redis ficou só para o tempo real.
 @Global()
 @Module({
-  imports: [IngestModule],
-  providers: [redisConnectionProvider, PositionsQueue, PositionsWorker, RealtimeHub],
-  exports: [redisConnectionProvider, PositionsQueue, PositionsWorker, RealtimeHub],
+  providers: [redisConnectionProvider, RealtimeHub],
+  exports: [redisConnectionProvider, RealtimeHub],
 })
 export class QueueModule {}

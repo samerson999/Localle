@@ -33,6 +33,8 @@ export interface NormalizedPosition {
   /** null quando o Traccar não informa. */
   protocol?: string | null;
   attributes: Record<string, unknown>;
+  /** Decidido na admissão (admissao-posicao.ts); ausente = confiável. */
+  horaConfiavel?: boolean;
 }
 
 const KNOTS_TO_KMH = 1.852;

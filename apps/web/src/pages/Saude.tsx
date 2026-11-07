@@ -1,6 +1,6 @@
 // Console da Locale · Saúde da plataforma: medido de verdade pelo backend (/superadmin/saude) — Traccar
-// (devices conectados), comunicação dos rastreadores instalados, fila de ingestão (Redis/BullMQ), inbox do
-// forwarding, banco e SMTP. Cada fonte é isolada: uma fora do ar aparece como "Fora do ar" sem derrubar o resto.
+// (devices conectados), comunicação dos rastreadores instalados, inbox de ingestão (fila única de posições) e
+// conciliação, Redis (tempo real), banco e SMTP. Cada fonte é isolada: uma fora do ar aparece como "Fora do ar" sem derrubar o resto.
 // Disco do servidor, backup e falhas de decodificação por protocolo não têm fonte ainda — a tela não inventa.
 import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Callout, EmptyState } from '../components/ui';
 import { KpiTile, Num } from '../components/story';
@@ -36,7 +36,7 @@ export default function Saude() {
       {header}
       <PageBody>
         {h.gateway.status === 'fora' && <Callout tone="crit">O Traccar não respondeu: nenhuma posição nova chega enquanto ele estiver fora.</Callout>}
-        {h.fila.status === 'fora' && <Callout tone="crit">A fila de ingestão (Redis) não respondeu.</Callout>}
+        {h.redis === 'fora' && <Callout tone="crit">O Redis não respondeu: o mapa para de atualizar sozinho (nenhuma posição se perde — elas ficam no inbox).</Callout>}
         <Section title="Gateway (Traccar) e comunicação">
           <Grid split="4/8" wide equal>
             <Card title="Aparelhos conectados ao Traccar" icon="sinal">
@@ -58,8 +58,14 @@ export default function Saude() {
         </Section>
         <Section title="Ingestão e banco de dados">
           <Grid cols={4} equal>
-            <KpiTile label="Fila aguardando" value={h.fila.aguardando} sub={<>{num(h.fila.ativos)} em processamento · {num(h.fila.falhos)} falhos <Badge tone={BADGE[h.fila.status].tone} className="ml-tight">{BADGE[h.fila.status].label}</Badge></>} status={h.fila.status === 'degradado' ? 'parado' : undefined} />
-            <KpiTile label="Inbox do forwarding" value={h.inbox.pendentes} sub={`Mais antiga: ${duracao(h.inbox.maisAntigaSeg)} · ${num(h.inbox.comErro24h)} com erro em 24 h`} status={h.inbox.maisAntigaSeg !== null && h.inbox.maisAntigaSeg > 300 ? 'crit' : undefined} />
+            <KpiTile label="Inbox do forwarding" value={h.inbox.pendentes}
+              sub={`Mais antiga: ${duracao(h.inbox.maisAntigaSeg)} · ${num(h.inbox.comErro24h)} com erro em 24 h · ${num(h.inbox.esgotadas)} esgotada(s)`}
+              status={(h.inbox.maisAntigaSeg !== null && h.inbox.maisAntigaSeg > 300) || h.inbox.esgotadas > 0 ? 'crit' : undefined} />
+            <KpiTile label="Recuperadas pela conciliação (24 h)" value={h.conciliacao.recuperadas24h}
+              sub={!h.conciliacao.ligada ? 'Conciliação desligada nesta API'
+                : h.conciliacao.ultimaVolta ? `Última volta: ${fmtDT(h.conciliacao.ultimaVolta.iniciadaEm)} · ${num(h.inbox.recuperadasPendentes)} na fila · ${num(h.conciliacao.ultimaVolta.falhas)} falha(s)`
+                : 'Nenhuma volta ainda'}
+              status={h.conciliacao.ligada && (h.conciliacao.ultimaVolta?.falhas ?? 0) > 0 ? 'parado' : undefined} />
             <KpiTile label="Tamanho do banco" display={<Num value={gb(h.banco.tamanhoBytes)} unit="GB" digits={2} size="kpi" />} sub={h.banco.posicoesBytes !== null ? `${num(gb(h.banco.posicoesBytes), 2)} GB em posições` : undefined} />
             <KpiTile label="Posições nas últimas 24 h" value={h.banco.posicoes24h} />
           </Grid>
@@ -69,7 +75,7 @@ export default function Saude() {
             <Table minWidth={0} align={['left', 'right']} head={['Serviço', 'Situação']}
               rows={[
                 ['Traccar (gateway)', <Badge tone={BADGE[h.gateway.status].tone}>{BADGE[h.gateway.status].label}</Badge>],
-                ['Fila de ingestão (Redis)', <Badge tone={BADGE[h.fila.status].tone}>{BADGE[h.fila.status].label}</Badge>],
+                ['Tempo real do mapa (Redis)', <Badge tone={BADGE[h.redis].tone}>{BADGE[h.redis].label}</Badge>],
                 ['E-mail (SMTP)', <Badge tone={BADGE[h.smtp].tone}>{BADGE[h.smtp].label}</Badge>],
               ]} />
             <p className="text-caption text-ink-2 mt-stack">Disco do servidor, backup e restauração ainda não são monitorados pela plataforma.</p>

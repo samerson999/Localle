@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import type IORedis from 'ioredis';
 import { ContratosRepository } from '../contratos/contratos.repository';
 import { FaturamentoService, hojeLocal } from '../contratos/faturamento.service';
 import { FaturasRepository } from '../contratos/faturas.repository';
 import { TraccarClient } from '../ingest/traccar-client';
 import { MailService } from '../mail/mail.service';
-import { PositionsQueue } from '../queue/positions.queue';
+import { REDIS_CONNECTION } from '../queue/redis.provider';
 import { PainelRepository } from './painel.repository';
 
 type Situacao = 'ok' | 'degradado' | 'fora' | 'desligado';
@@ -28,7 +29,7 @@ export class PainelService {
     private readonly faturas: FaturasRepository,
     private readonly faturamento: FaturamentoService,
     private readonly traccar: TraccarClient,
-    private readonly queue: PositionsQueue,
+    @Inject(REDIS_CONNECTION) private readonly redisConn: IORedis,
     private readonly mail: MailService,
   ) {}
 
@@ -77,15 +78,20 @@ export class PainelService {
 
   /** Saúde: cada fonte isolada — uma fora do ar não derruba a tela, vira `fora` com o motivo no log. */
   async saude() {
-    const [banco, inbox, comunicacao, gateway, fila, smtp] = await Promise.all([
+    const [banco, inbox, conciliacao, comunicacao, gateway, redis, smtp] = await Promise.all([
       this.repo.banco(),
       this.repo.inbox(),
+      this.repo.conciliacao(),
       this.repo.comunicacao(),
       this.gateway(),
-      this.fila(),
+      this.redis(),
       this.mail.verify(),
     ]);
-    return { banco, inbox, comunicacao, gateway, fila, smtp, verificadoEm: Date.now() };
+    // ligada/desligada é desta instância (variável de ambiente); a última volta vem do banco (qualquer instância)
+    return {
+      banco, inbox, conciliacao: { ligada: process.env.CONCILIACAO_ENABLED === 'true', ...conciliacao }, comunicacao, gateway, redis, smtp,
+      verificadoEm: Date.now(),
+    };
   }
 
   private async gateway(): Promise<{ status: Situacao; devices: number; online: number }> {
@@ -100,14 +106,20 @@ export class PainelService {
     }
   }
 
-  private async fila(): Promise<{ status: Situacao; aguardando: number; ativos: number; falhos: number; atrasados: number }> {
+  /**
+   * Redis só carrega o tempo real do mapa (a fila de posições é o `ingest_inbox`, ver `inbox`): fora do ar, o mapa para de
+   * atualizar sozinho, mas nenhuma posição se perde.
+   */
+  private async redis(): Promise<Situacao> {
     try {
-      const c = await this.queue.queue.getJobCounts('waiting', 'active', 'failed', 'delayed');
-      const status: Situacao = c.waiting > 1000 ? 'degradado' : 'ok';
-      return { status, aguardando: c.waiting, ativos: c.active, falhos: c.failed, atrasados: c.delayed };
+      await Promise.race([
+        this.redisConn.ping(),
+        new Promise((_, falha) => setTimeout(() => falha(new Error('sem resposta em 3 s')), 3000)),
+      ]);
+      return 'ok';
     } catch (err) {
-      this.logger.warn(`saúde: fila (Redis) não respondeu: ${(err as Error).message}`);
-      return { status: 'fora', aguardando: 0, ativos: 0, falhos: 0, atrasados: 0 };
+      this.logger.warn(`saúde: Redis (tempo real) não respondeu: ${(err as Error).message}`);
+      return 'fora';
     }
   }
 }

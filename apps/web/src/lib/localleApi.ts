@@ -164,10 +164,17 @@ export interface VisaoGeral {
 type Situacao = 'ok' | 'degradado' | 'fora' | 'desligado';
 export interface Saude {
   banco: { tamanhoBytes: number; posicoesBytes: number | null; posicoes24h: number };
-  inbox: { pendentes: number; maisAntigaSeg: number | null; comErro24h: number };
+  /** pendentes/maisAntigaSeg: só tempo real ainda em tentativa; recuperadas (conciliação) e esgotadas à parte. */
+  inbox: { pendentes: number; maisAntigaSeg: number | null; comErro24h: number; recuperadasPendentes: number; esgotadas: number };
+  conciliacao: {
+    ligada: boolean;
+    ultimaVolta: { iniciadaEm: string; concluidaEm: string | null; recuperadas: number; falhas: number; interrompidaPor: string | null } | null;
+    recuperadas24h: number;
+  };
   comunicacao: { instalados: number; agora: number; ate24h: number };
   gateway: { status: Situacao; devices: number; online: number };
-  fila: { status: Situacao; aguardando: number; ativos: number; falhos: number; atrasados: number };
+  /** Redis só carrega o tempo real do mapa; a fila de posições é o inbox (acima). */
+  redis: 'ok' | 'fora';
   smtp: 'ok' | 'fora' | 'desligado';
   verificadoEm: number;
 }

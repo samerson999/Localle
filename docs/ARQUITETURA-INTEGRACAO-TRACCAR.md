@@ -212,6 +212,16 @@ cadastro-primeiro cobre o caso comum (instalação planejada) com menos superfí
 
 ### 1.6 Como ler o banco do Traccar para a conciliação
 
+> **Decisão de 05/11/2026 (implementada em `apps/api/src/ingest/conciliacao.*`): a conciliação usa a API REST
+> (`GET /api/positions?deviceId&from&to`), não SQL em `tc_positions`.** Medido: `tc_positions` guarda
+> `timestamp without time zone` na hora local do container do Traccar — na HML (`TZ=America/Recife`) a posição 108590
+> é `16:34:48.973` no SQL e `19:34:48.973+00:00` no REST; no Traccar de teste (sem `TZ`) é UTC. Ler por SQL dependeria
+> da `TZ` de cada ambiente, sem erro visível se ela mudar. O REST devolve ISO com fuso, no formato do Forwarding (mesmo
+> validador), sem infraestrutura nova. Custo medido na HML: 1 dia do GT06 (6.516 posições, 4 MB) em 0,27–0,43 s.
+> Limitação aceita: o REST filtra por **fixTime**, então posição com atraso maior que a sobreposição só volta por
+> reexecução manual (`POST /superadmin/conciliacao/reexecutar`). O texto abaixo fica como registro da análise original
+> e é o caminho se o volume tornar o REST caro (varredura por `id`, que não tem essa limitação).
+
 - O Postgres do Traccar (schema público, tabelas `tc_positions`, `tc_devices`, `tc_events`, `tc_commands`,
   `tc_groups`) é acessível diretamente — é o mesmo Postgres citado em `docs/ARQUITETURA-BACKEND.md` § 7.2
   ("Postgres do Traccar … pode ser o mesmo cluster, schema separado").
@@ -910,6 +920,80 @@ export interface TraccarEventPayload {
   position?: TraccarPositionPayload['position'];
 }
 ```
+
+### 5.1b Ingestão como está implementada (atualizado em 05/11/2026)
+
+Resumo do que existe no código hoje, depois da auditoria de 05/11/2026 (relatório `improve-codebase-architecture`).
+Onde o texto das seções anteriores diverge disto, vale isto.
+
+```
+Rastreador → Traccar (tc_positions)
+               ├─ Forwarding (push, retry em memória)  → POST /ingest/traccar/* ─┐
+               ├─ Conciliação (REST, por rastreador)    ──────────────────────────┤→ ingest_inbox (fila única, Postgres)
+               └─ Polling da última posição (opcional)  ──────────────────────────┘        │
+                                                                                            ▼
+                     InboxWorker (lease; N faixas por hash do deviceId) → ProcessadorPosicao
+                        admissão (validar, normalizar, hora confiável) → PositionsIngestService (transação, dedup)
+                        → publicação em tempo real (Redis pub/sub, depois do commit)
+```
+
+- **Fila única: `ingest_inbox`.** O BullMQ saiu do caminho das posições; o polling grava no inbox como as outras fontes.
+  O Redis ficou só para o tempo real do mapa (`RealtimeHub`) — fora do ar, o mapa para de atualizar sozinho, mas nenhuma
+  posição se perde. `origem` no payload diz de onde veio (`conciliacao`, `polling`; sem campo = Forwarding).
+- **Conciliação** (`src/ingest/conciliacao.*`, desligada por padrão: `CONCILIACAO_ENABLED=true`). O retry do Forwarding
+  vive na memória do Traccar e tem teto: num teste com o Traccar 6.17.0, 2 min de API fora perderam 95 de 120 posições.
+  A cada volta, por rastreador e janela de fixTime, busca no Traccar (`GET /api/positions?deviceId&from&to`, decisão de
+  REST em vez de SQL na § 1.6) o que não está em `ingest_posicoes_recebidas` nem pendente no inbox, e insere com
+  prioridade 1. Checkpoint por rastreador (`ingest_conciliacao_checkpoints`) avança na mesma transação da inserção.
+  Aparelho sem pacote desde o começo da janela (`lastUpdate` do Traccar) avança sem consultar. Freio: com
+  `CONCILIACAO_MAX_PENDENTES` recuperadas esperando, a volta para. Contagens por volta em
+  `ingest_conciliacao_execucoes`; `GET /superadmin/conciliacao` e `POST /superadmin/conciliacao/reexecutar` (por
+  rastreador e período, sem mexer no checkpoint). Medido no Traccar de teste: 100% de cobertura e zero duplicada em
+  queda de 2 min (361/361) e em `kill -9` no meio da volta (1.561/1.561). Limitação: o REST filtra por fixTime —
+  posição com atraso maior que a sobreposição só volta por reexecução manual.
+- **Prioridade no inbox.** Tempo real (prioridade 0) primeiro; recuperadas (1) preenchem o resto e têm sempre 10 vagas
+  por lote — backlog de recuperação não atrasa o mapa, e fluxo cheio de tempo real não trava a recuperação.
+- **Admissão única** (`admissao-posicao.ts`): toda posição, de qualquer fonte, passa pelo validador do Forwarding e pelo
+  mapper no consumidor. Formato inválido é recusado sem retry (a linha do inbox é concluída com `erro = 'recusada: …'`).
+  fixTime mais de 10 min à frente do serverTime = **hora não confiável**: grava no histórico com o dado original, mas não
+  move o mapa, cercas, regras nem `ultima_posicao_valida_em` (antes, um relógio adiantado congelava o veículo no mapa).
+  O Traccar 6.17 com a configuração padrão já descarta datas muito no futuro (posição de +1 ano não foi gravada nele).
+- **Posição atrasada não regride o estado.** `rastreador_comunicacao.ultimo_pacote_em` passou a ser o serverTime do
+  Traccar (e só avança), e o vínculo cliente/ativo da comunicação só muda com pacote mais novo — antes, uma posição
+  recuperada de horas atrás fazia o aparelho parecer "transmitindo agora".
+- **Paralelismo por faixas** (`INBOX_FAIXAS`, padrão 1 = comportamento anterior). Cada rastreador cai sempre na mesma
+  faixa (hash do deviceId), então a ordem por veículo se mantém dentro do processo. Benchmark local (Docker no Windows,
+  ~7× a latência por consulta da HML): 36 pos/s com 1 faixa, 89 com 4, 140 com 8. Cada faixa ocupa uma conexão
+  durante a gravação: `DATABASE_POOL_MAX` precisa folgar acima de `INBOX_FAIXAS`. Com mais de uma instância da API, duas
+  instâncias podem processar o mesmo rastreador ao mesmo tempo (já era assim antes) — as proteções de ordem
+  (`ultima_posicao`, cercas, sinais) continuam valendo, mas a ordem estrita por veículo só é garantida dentro do processo.
+- **Limpeza do controle de duplicidade.** O worker do inbox apaga, de hora em hora e em lotes, o que
+  `ingest_posicoes_recebidas`/`ingest_eventos_recebidos` receberam há mais de `INGEST_DEDUP_DIAS` (padrão 14) — antes
+  nada apagava (na HML, 60.912 linhas = todas as posições; ~335 GB/ano estimados com 2.000 placas). A conciliação nunca
+  confere antes de `INGEST_DEDUP_DIAS − 1` dias (posição mais velha poderia ser gravada duas vezes).
+- **Desligamento limpo.** `enableShutdownHooks()` no `main.ts`: no SIGTERM do deploy, o worker termina a linha em
+  andamento e devolve o resto do lote sem gastar tentativa; a conciliação para entre janelas; o pool fecha por último.
+- **Traccar com tempo limite.** Toda chamada ao Traccar passa por um caminho só, com `TRACCAR_TIMEOUT_MS` (padrão 15 s);
+  o polling não empilha consultas sobre uma que não voltou.
+- **Saúde** (`GET /superadmin/saude`, tela Saúde do Console): inbox separado em tempo real pendente (e a idade da mais
+  antiga), recuperadas pendentes e esgotadas (que antes inflavam "mais antiga" para sempre); última volta e recuperadas
+  em 24 h da conciliação; Redis como "tempo real". Linhas esgotadas geram um aviso no log de hora em hora. O `/health`
+  do container continua só `select 1` de propósito (fila cheia não deve derrubar a API).
+
+- **Reenvio do Traccar 6.17 quebra fora de sessão (investigado em 06/11/2026).** Quase toda posição chega primeiro com
+  `id = 0` (o Traccar encaminha antes de gravar) e a API responde 503 para ele reenviar — na HML, ~57 mil 503 em 8 dias.
+  O reenvio (`PositionForwarderJson`, TimerTask) procura o device no cache de sessões; se o aparelho não está conectado
+  naquele instante, quebra com `NullPointerException: "device" is null` e a posição **nunca mais é reenviada**. Afeta:
+  aparelhos sem conexão persistente (HTTP/OsmAnd, UDP, os que conectam, mandam e desconectam) e **a última posição antes
+  de um aparelho TCP desconectar** (ex.: ignição desligada) — justamente a posição de estacionamento. No Traccar de teste:
+  4 de 4 posições espaçadas perdidas; em rajada a 1/s, só a última. Na HML (TCP sempre conectado): 4 quebras em 8 dias, e
+  nenhuma posição perdida porque o **polling** (última posição de cada aparelho) as cobria. Consequência: **só desligar o
+  polling depois da conciliação ligada.** A conciliação recupera essas posições na volta seguinte (≤ atraso + intervalo).
+  Correção definitiva possível, ainda não implementada: lembrar os devices que levaram 503 por `id = 0` sem reenvio
+  com id em poucos segundos e disparar uma conciliação só deles (custo proporcional ao que se perdeu, não ao volume).
+
+**Pendente fora do código:** retenção do histórico no próprio Traccar (`tc_positions` cresce para sempre; ~2 TB/ano
+estimados com 2.000 placas) — ver `docs/GUIA-FORWARDING-TRACCAR-HML.md`, seção "Retenção do Traccar".
 
 ### 5.2 Tempo real (API → front)
 

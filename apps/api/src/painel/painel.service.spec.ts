@@ -8,7 +8,7 @@ import { FaturamentoService } from '../contratos/faturamento.service';
 import { FaturasRepository } from '../contratos/faturas.repository';
 import { TraccarClient } from '../ingest/traccar-client';
 import { MailService } from '../mail/mail.service';
-import type { PositionsQueue } from '../queue/positions.queue';
+import type IORedis from 'ioredis';
 import { PainelRepository } from './painel.repository';
 import { mesesAte, PainelService } from './painel.service';
 
@@ -18,11 +18,11 @@ describe('PainelService', () => {
   const contratos = new ContratosRepository(pool);
   const faturas = new FaturasRepository(pool);
   const faturamento = new FaturamentoService(contratos, faturas, new AuditLogRepository(pool), pool);
-  const fila = { queue: { getJobCounts: async () => ({ waiting: 3, active: 1, failed: 0, delayed: 0 }) } } as unknown as PositionsQueue;
+  const redis = { ping: async () => 'PONG' } as unknown as IORedis;
   class TraccarFora extends TraccarClient {
     config() { return { url: 'http://127.0.0.1:1', user: 'x', password: 'x' }; }
   }
-  const painel = new PainelService(new PainelRepository(pool), contratos, faturas, faturamento, new TraccarFora(), fila, new MailService());
+  const painel = new PainelService(new PainelRepository(pool), contratos, faturas, faturamento, new TraccarFora(), redis, new MailService());
   const superadminId = randomUUID();
   const clientes: string[] = [];
   const rastreadores: string[] = [];
@@ -94,11 +94,36 @@ describe('PainelService', () => {
     expect(vencendo.some((c) => c.clientId === cancelado)).toBe(false);
   });
 
-  it('saúde: Traccar fora vira "fora" sem derrubar o resto; fila e banco respondem', async () => {
+  it('saúde: Traccar fora vira "fora" sem derrubar o resto; Redis e banco respondem', async () => {
     const s = await painel.saude();
     expect(s.gateway.status).toBe('fora');
-    expect(s.fila).toMatchObject({ status: 'ok', aguardando: 3 });
+    expect(s.redis).toBe('ok');
     expect(s.banco.tamanhoBytes).toBeGreaterThan(0);
     expect(s.inbox.pendentes).toBeGreaterThanOrEqual(0);
+  });
+
+  it('saúde do inbox: esgotadas e recuperadas não entram em "pendentes" nem em "mais antiga"', async () => {
+    const repo = new PainelRepository(pool);
+    const marca = `saude-${randomUUID()}`;
+    const antes = await repo.inbox();
+    // uma esgotada de 2 dias atrás e uma recuperada pela conciliação (com lease: nenhum worker local as pega)
+    await pool.query(
+      `insert into ingest_inbox (tipo, payload, recebido_em, tentativas, erro, prioridade, lease_por, lease_expira_em) values
+         ('posicao', jsonb_build_object('marca', $1::text), now() - interval '2 days', 10, 'erro de teste', 0, null, null),
+         ('posicao', jsonb_build_object('marca', $1::text), now() - interval '2 days', 0, null, 1, 'teste', now() + interval '1 hour')`,
+      [marca],
+    );
+    try {
+      const depois = await repo.inbox();
+      expect(depois.esgotadas - antes.esgotadas).toBe(1);
+      expect(depois.recuperadasPendentes - antes.recuperadasPendentes).toBe(1);
+      expect(depois.pendentes).toBe(antes.pendentes);
+      expect(depois.maisAntigaSeg === null || depois.maisAntigaSeg < 2 * 86_400 - 60).toBe(true);
+      const s = await painel.saude();
+      expect(s.conciliacao).toMatchObject({ ligada: false });
+      expect(typeof s.conciliacao.recuperadas24h).toBe('number');
+    } finally {
+      await pool.query("delete from ingest_inbox where payload->>'marca' = $1", [marca]);
+    }
   });
 });

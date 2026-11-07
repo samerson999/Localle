@@ -22,6 +22,8 @@ export interface TraccarDevice {
   name: string;
   /** 'online' | 'offline' | 'unknown' — conexão do aparelho com o Traccar agora. */
   status?: string;
+  /** Último pacote recebido do aparelho (qualquer mensagem, não só posição); null se nunca falou. */
+  lastUpdate?: string | null;
 }
 
 /**
@@ -65,6 +67,16 @@ export class TraccarClient {
     return this.request<TraccarPositionPayload[]>(config, 'GET', '/api/positions');
   }
 
+  /**
+   * Histórico de um device (`GET /api/positions?deviceId&from&to`) para a conciliação. O Traccar filtra por **fixTime**,
+   * não pela hora em que recebeu: posição muito atrasada só aparece na janela da hora dela. Datas voltam em ISO com
+   * fuso — ao contrário de `tc_positions`, que guarda a hora local do container sem fuso (HML: America/Recife).
+   */
+  async positionsBetween(config: TraccarConfig, deviceId: number, from: Date, to: Date, timeoutMs = 30_000): Promise<TraccarPositionPayload[]> {
+    const qs = new URLSearchParams({ deviceId: String(deviceId), from: from.toISOString(), to: to.toISOString() });
+    return this.request<TraccarPositionPayload[]>(config, 'GET', `/api/positions?${qs}`, undefined, timeoutMs);
+  }
+
   async findDeviceByUniqueId(config: TraccarConfig, uniqueId: string): Promise<TraccarDevice | null> {
     const devices = await this.request<TraccarDevice[]>(
       config,
@@ -75,8 +87,8 @@ export class TraccarClient {
   }
 
   /** Todos os devices (com `status` de conexão) — tela de saúde da plataforma. */
-  async listDevices(config: TraccarConfig): Promise<TraccarDevice[]> {
-    return this.request<TraccarDevice[]>(config, 'GET', '/api/devices');
+  async listDevices(config: TraccarConfig, timeoutMs?: number): Promise<TraccarDevice[]> {
+    return this.request<TraccarDevice[]>(config, 'GET', '/api/devices', undefined, timeoutMs);
   }
 
   /** `model`: modelo do catálogo, para aparecer também no painel do Traccar. */
@@ -86,9 +98,7 @@ export class TraccarClient {
 
   /** `DELETE /api/devices/:id` (responde sem corpo). Device que já não existe (404) conta como apagado. */
   async deleteDevice(config: TraccarConfig, deviceId: number): Promise<void> {
-    const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
-    const response = await fetch(`${config.url}/api/devices/${deviceId}`, { method: 'DELETE', headers: { Authorization: `Basic ${auth}` } });
-    if (!response.ok && response.status !== 404) throw new Error(`Traccar DELETE /api/devices falhou: ${response.status} ${response.statusText}${await motivo(response)}`);
+    await this.chamar(config, 'DELETE', `/api/devices/${deviceId}`, { aceitar404: true });
   }
 
   /**
@@ -96,13 +106,9 @@ export class TraccarClient {
    * aparelho agora; 202 = enfileirado no Traccar até o aparelho conectar. Nenhum dos dois é execução.
    */
   async sendCommand(config: TraccarConfig, command: { deviceId: number; type: string }): Promise<{ queued: boolean; id: number | null }> {
-    const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
-    const response = await fetch(`${config.url}/api/commands/send`, {
-      method: 'POST',
-      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId: command.deviceId, type: command.type, attributes: {} }),
+    const response = await this.chamar(config, 'POST', '/api/commands/send', {
+      body: { deviceId: command.deviceId, type: command.type, attributes: {} },
     });
-    if (!response.ok) throw new Error(`Traccar POST /api/commands/send falhou: ${response.status} ${response.statusText}${await motivo(response)}`);
     const body = (await response.json().catch(() => null)) as { id?: number } | null;
     return { queued: response.status === 202, id: typeof body?.id === 'number' ? body.id : null };
   }
@@ -150,17 +156,47 @@ export class TraccarClient {
     return this.request<TraccarEventoComando[]>(config, 'GET', `/api/reports/events?${qs}`);
   }
 
-  private async request<T>(config: TraccarConfig, method: string, path: string, body?: unknown): Promise<T> {
-    const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
-    const response = await fetch(`${config.url}${path}`, {
-      method,
-      // Accept explícito: os relatórios do Traccar respondem planilha ou JSON conforme o Accept
-      headers: { Authorization: `Basic ${auth}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) {
-      throw new Error(`Traccar ${method} ${path.split('?')[0]} falhou: ${response.status} ${response.statusText}${await motivo(response)}`);
-    }
+  private async request<T>(config: TraccarConfig, method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+    const response = await this.chamar(config, method, path, { body, timeoutMs });
     return (await response.json()) as T;
   }
+
+  /**
+   * Único caminho até o Traccar: autenticação, tempo limite e mensagem de erro com o motivo. Sem tempo limite, um
+   * Traccar travado (socket aberto, sem resposta) prendia quem chamou indefinidamente — o poller, a conciliação, uma
+   * requisição do usuário. `aceitar404`: para quem trata "não existe" como resultado (apagar device já apagado).
+   */
+  private async chamar(
+    config: TraccarConfig,
+    method: string,
+    path: string,
+    opcoes: { body?: unknown; timeoutMs?: number; aceitar404?: boolean } = {},
+  ): Promise<Response> {
+    const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
+    const timeoutMs = opcoes.timeoutMs ?? traccarTimeoutMs();
+    const rota = `${method} ${path.split('?')[0]}`;
+    let response: Response;
+    try {
+      response = await fetch(`${config.url}${path}`, {
+        method,
+        // Accept explícito: os relatórios do Traccar respondem planilha ou JSON conforme o Accept
+        headers: { Authorization: `Basic ${auth}`, Accept: 'application/json', ...(opcoes.body ? { 'Content-Type': 'application/json' } : {}) },
+        body: opcoes.body ? JSON.stringify(opcoes.body) : undefined,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if ((err as Error).name === 'TimeoutError') throw new Error(`Traccar ${rota} sem resposta em ${timeoutMs} ms`);
+      throw new Error(`Traccar ${rota} inacessível: ${(err as Error).message}`);
+    }
+    if (!response.ok && !(opcoes.aceitar404 && response.status === 404)) {
+      throw new Error(`Traccar ${rota} falhou: ${response.status} ${response.statusText}${await motivo(response)}`);
+    }
+    return response;
+  }
+}
+
+/** Tempo limite padrão de cada chamada ao Traccar (`TRACCAR_TIMEOUT_MS`, padrão 15 s). */
+export function traccarTimeoutMs(): number {
+  const v = Number(process.env.TRACCAR_TIMEOUT_MS);
+  return Number.isFinite(v) && v > 0 ? v : 15_000;
 }
