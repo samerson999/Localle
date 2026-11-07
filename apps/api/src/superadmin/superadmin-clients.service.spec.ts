@@ -65,8 +65,10 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
     expect(admin).toMatchObject({ client_id: client.id, role: 'admin', password_hash: null, email_confirmado_em: null });
     expect(conviteEnviado).toBe(true);
 
-    const log = (await audit.findRecent(50)).filter((e) => e.actor_id === superadminId && e.client_id === client.id);
-    expect(log.map((e) => e.action).sort()).toEqual(['client.create', 'user.create_initial_admin']);
+    // filtrado no banco: findRecent(50) é a janela global, e os outros specs em paralelo também auditam — as linhas
+    // deste teste saíam dela (falha intermitente "expected [] to deeply equal [...]")
+    const log = await pool.query<{ action: string }>('select action from audit_log where actor_id = $1 and client_id = $2', [superadminId, client.id]);
+    expect(log.rows.map((e) => e.action).sort()).toEqual(['client.create', 'user.create_initial_admin']);
 
     const token = await linkRecebido(adminEmail);
     const { rows } = await pool.query('select token_hash from convites where user_id = $1', [admin!.id]);

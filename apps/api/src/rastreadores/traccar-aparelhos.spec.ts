@@ -117,7 +117,8 @@ describe('TraccarAparelhosService', () => {
     expect(await s.atualizar(superadminId)).toEqual({ total: 599, removidos: 1 });
     expect(await repo.findById(m0.id)).toMatchObject({ porta: 6000 }); // mesmo id, porta nova
     expect(await repo.buscar(nome(599), 1)).toEqual([]);
-    const { rows } = await pool.query("select after from audit_log where actor_id = $1 and action = 'traccar_aparelhos.atualizar'", [superadminId]);
+    // order by: sem ele, at(-1) às vezes pegava a auditoria da 1ª atualização (falha intermitente)
+    const { rows } = await pool.query("select after from audit_log where actor_id = $1 and action = 'traccar_aparelhos.atualizar' order by id", [superadminId]);
     expect(rows.at(-1).after).toEqual({ total: 599, removidos: 1 });
   });
 

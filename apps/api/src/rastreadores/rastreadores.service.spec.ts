@@ -488,7 +488,7 @@ describe('RastreadoresService', () => {
         .rejects.toMatchObject({ status: 409 });
       const atualizado = await modelos.atualizar(superadminId, modeloJt808, { porta: 5016 });
       expect(atualizado.porta).toBe(5016);
-      const { rows } = await pool.query("select before, after from audit_log where action = 'rastreador_modelo.atualizar' and target = $1", [modeloJt808]);
+      const { rows } = await pool.query("select before, after from audit_log where action = 'rastreador_modelo.atualizar' and target = $1 order by id", [modeloJt808]);
       expect(rows.at(-1)).toEqual({ before: { porta: 5015 }, after: { porta: 5016 } });
       await expect(modelos.atualizar(superadminId, randomUUID(), { ativo: false })).rejects.toMatchObject({ status: 404 });
     });

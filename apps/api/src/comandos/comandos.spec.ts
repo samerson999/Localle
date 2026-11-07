@@ -181,9 +181,12 @@ describe('comandos ao rastreador', () => {
   it('expira pendente vencido; commandResult depois disso não muda o estado', async () => {
     const c = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'positionSingle', motivo: null });
     expect(c.status).toBe('enviado');
-    expect(await service.expirarVencidos()).toBe(0);
+    // expirarVencidos varre o banco inteiro: contar o total quebrava com vencido de outro teste ou de uma API de dev
+    // ligada no mesmo banco. O que importa é o estado deste comando.
+    await service.expirarVencidos();
+    expect((await service.listar(clientA, assetA)).find((x) => x.id === c.id)?.status).toBe('enviado');
     await pool.query("update comandos set solicitado_em = now() - interval '30 min', expira_em = now() - interval '1 min' where id = $1", [c.id]);
-    expect(await service.expirarVencidos()).toBe(1);
+    expect(await service.expirarVencidos()).toBeGreaterThanOrEqual(1);
     const [expirado] = (await service.listar(clientA, assetA)).filter((x) => x.id === c.id);
     expect(expirado.status).toBe('expirado');
 
@@ -279,7 +282,7 @@ describe('comandos ao rastreador', () => {
       const c = await service.solicitar(clientA, userA, { assetId: assetA, tipo: 'engineResume', motivo: 'recuperado' });
       expect(await service.receberResultado(deviceId, { result: 'RELAY 0 OK' }, new Date())).toBe('respondido');
       await pool.query("update comandos set solicitado_em = now() - interval '30 min', expira_em = now() - interval '1 min' where id = $1", [c.id]);
-      expect(await service.expirarVencidos()).toBe(1);
+      expect(await service.expirarVencidos()).toBeGreaterThanOrEqual(1); // varre o banco inteiro; o estado abaixo é o que conta
       const [expirado] = (await service.listar(clientA, assetA)).filter((x) => x.id === c.id);
       expect(expirado).toMatchObject({ status: 'expirado', resultado: { result: 'RELAY 0 OK', motivo: expect.stringMatching(/estado de bloqueio não mudou/) } });
     });

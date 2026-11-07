@@ -63,7 +63,10 @@ describe('jornada — marcações e espelho de ponto', () => {
     await settings.set(clientA, 'jornada.direcao_continua_cargas_h', 4);
     const antigo = await service.espelho(clientA, motorista, new Date(dia), new Date(dia + 24 * H), new Date(dia + 48 * H));
     expect(antigo.limites.contCargasH).toBe(5.5);
-    const atual = await service.espelho(clientA, motorista, new Date(dia), new Date(), new Date());
+    // changed_at vem do now() do Postgres, que no container roda dezenas de ms à frente do Node: consultar em
+    // `new Date()` logo após gravar às vezes caía antes da mudança. Um minuto de folga testa a regra, não o relógio.
+    const depois = new Date(Date.now() + 60_000);
+    const atual = await service.espelho(clientA, motorista, new Date(dia), depois, depois);
     expect(atual.limites.contCargasH).toBe(4);
     await expect(service.espelho(clientB, motorista, new Date(dia), new Date(dia + 24 * H))).rejects.toMatchObject({ status: 404 });
   });
