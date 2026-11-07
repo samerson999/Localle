@@ -357,7 +357,7 @@ function Lista({ onOpen }: any) {
             <Field label="Marca"><Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></Field>
             <Field label="Modelo / desenho"><Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
             <Field label="Medida"><Input list="tire-sizes" value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} /><datalist id="tire-sizes">{['295/80 R22.5', '275/80 R22.5', '215/75 R17.5', '265/60 R18', '175/70 R14'].map((x) => <option key={x} value={x} />)}</datalist></Field>
-            <Field label="DOT (semana e ano)"><Input value={form.dot} onChange={(e) => setForm({ ...form, dot: e.target.value })} placeholder="1225" /></Field>
+            <Field label="DOT (semana e ano)"><Input mask="digitos" maxDigits={4} value={form.dot} onChange={(e) => setForm({ ...form, dot: e.target.value })} placeholder="1225" /></Field>
             <Field label="Sulco inicial (mm)"><Input type="number" step="0.1" value={form.tread} onChange={(e) => setForm({ ...form, tread: e.target.value })} /></Field>
             <Field label="Valor de compra (R$)"><Input type="number" step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
             <Field label="Data da compra"><Input type="date" value={form.purchaseDate} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} /></Field>

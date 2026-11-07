@@ -118,7 +118,8 @@ export default function Faturamento() {
 function PaymentModal({ linha, competencia, onClose, onDone }: { linha: LinhaFaturamento; competencia: string; onClose: () => void; onDone: () => void }) {
   const f = linha.fatura!;
   const { data: historico } = useAdminQuery(() => adminApi.pagamentos(f.id), [f.id]);
-  const [amount, setAmount] = useState(f.emAberto);
+  const [valor, setValor] = useState(String(f.emAberto));
+  const amount = +valor;
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState('pix');
   const [note, setNote] = useState('');
@@ -141,7 +142,7 @@ function PaymentModal({ linha, competencia, onClose, onDone }: { linha: LinhaFat
       {f.emAberto > 0 && (
         <>
           <FormGroup cols={2}>
-            <Field label="Valor pago (R$)"><Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(+e.target.value)} /></Field>
+            <Field label="Valor pago (R$)"><Input type="number" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} /></Field>
             <Field label="Data do pagamento"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
             <Field label="Forma de pagamento"><Select value={method} onChange={(e) => setMethod(e.target.value)} options={FORMAS} /></Field>
           </FormGroup>

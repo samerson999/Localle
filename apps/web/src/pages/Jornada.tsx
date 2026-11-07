@@ -205,7 +205,7 @@ function Regras() {
       <div className="flex flex-col gap-4 max-w-2xl">
         <div className="grid md:grid-cols-3 gap-field">
           <Field label="Razão social do empregador"><Input value={cfg.companyName ?? s.revenda.clientName} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyName: e.target.value } }))} /></Field>
-          <Field label="CNPJ"><Input value={cfg.companyCnpj || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyCnpj: e.target.value } }))} placeholder="00.000.000/0001-00" /></Field>
+          <Field label="CNPJ"><Input mask="cnpj" value={cfg.companyCnpj || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyCnpj: e.target.value } }))} /></Field>
           <Field label="Endereço"><Input value={cfg.companyAddress || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyAddress: e.target.value } }))} /></Field>
         </div>
         {/* limites moram no Setup do gestor (jornada.*): a lei é piso e o Setup só aceita valor mais rigoroso; aqui só leitura */}

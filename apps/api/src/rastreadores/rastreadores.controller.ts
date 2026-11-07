@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Pars
 import { SuperadminGuard } from '../auth/superadmin.guard';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { CreateRastreadorDto } from './dto/create-rastreador.dto';
-import { CreateSimCardDto } from './dto/create-sim-card.dto';
+import { parseCreateSimCard } from './dto/create-sim-card.dto';
 import { parseUpdateRastreador, type UpdateRastreadorDto } from './dto/update-rastreador.dto';
 import { RastreadoresRepository } from './rastreadores.repository';
 import { RastreadoresService } from './rastreadores.service';
@@ -100,8 +100,8 @@ export class RastreadoresController {
   }
 
   @Post('sim-cards')
-  createSimCard(@CurrentUserId() superadminId: string, @Body() dto: CreateSimCardDto) {
-    return this.service.cadastrarSimCard(superadminId, dto);
+  createSimCard(@CurrentUserId() superadminId: string, @Body() body: unknown) {
+    return this.service.cadastrarSimCard(superadminId, parseCreateSimCard(body));
   }
 
   @Get('sim-cards/all')

@@ -760,10 +760,10 @@ function NovoChipModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
   const { busy, submit } = useSubmit(() => adminApi.createSimCard({ iccid: iccid.trim(), operadora: operadora.trim() || undefined, numero: numero.trim() || undefined }), 'Chip cadastrado.', onDone, onClose);
   return (
     <Modal open onClose={onClose} title="Cadastrar chip" width="max-w-xl" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!iccid.trim()} onClick={submit}>Cadastrar</Button></>}>
-      <Field label="ICCID"><Input autoFocus inputMode="numeric" value={iccid} onChange={(e) => setIccid(e.target.value)} /></Field>
+      <Field label="ICCID"><Input autoFocus mask="digitos" maxDigits={20} value={iccid} onChange={(e) => setIccid(e.target.value)} /></Field>
       <FormGroup cols={2}>
         <Field label="Operadora" hint="Opcional"><Input value={operadora} onChange={(e) => setOperadora(e.target.value)} /></Field>
-        <Field label="Número" hint="Opcional"><Input value={numero} onChange={(e) => setNumero(e.target.value)} /></Field>
+        <Field label="Número" hint="Opcional"><Input mask="telefone" value={numero} onChange={(e) => setNumero(e.target.value)} /></Field>
       </FormGroup>
     </Modal>
   );

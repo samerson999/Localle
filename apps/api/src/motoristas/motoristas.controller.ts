@@ -1,7 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
 import { UNIQUE, violouUnique } from '../db/pg-errors';
-import { booleano, dataOpcional, dicionario, opcao, texto, textoOpcional } from '../common/validar';
+import { booleano, cpfOpcional, dataOpcional, dicionario, opcao, telefoneOpcional, texto, textoOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { SettingsService } from '../settings/settings.service';
@@ -15,16 +15,18 @@ export function parseMotorista(body: unknown): MotoristaInput {
   const b = (body ?? {}) as Record<string, unknown>;
   const cnh = textoOpcional(b.cnh, 'cnh', 20);
   if (cnh && !/^\d{9,11}$/.test(cnh)) throw new BadRequestException('"cnh" precisa ter de 9 a 11 dígitos');
+  const dados = dicionario(b.dados, 'dados');
+  if (dados.cpf !== undefined && !cpfOpcional(dados.cpf, 'dados.cpf')) delete dados.cpf;
   return {
     nome: texto(b.nome, 'nome', 120),
     cnh,
     cnhCategoria: b.cnhCategoria === undefined || b.cnhCategoria === null || b.cnhCategoria === '' ? null : opcao(b.cnhCategoria, 'cnhCategoria', CATEGORIAS),
     cnhValidade: dataOpcional(b.cnhValidade, 'cnhValidade'),
     toxicologicoValidade: dataOpcional(b.toxicologicoValidade, 'toxicologicoValidade'),
-    telefone: textoOpcional(b.telefone, 'telefone', 30),
+    telefone: telefoneOpcional(b.telefone, 'telefone'),
     regime: opcao(b.regime, 'regime', REGIMES, 'cargas'),
     ear: booleano(b.ear, 'ear'),
-    dados: dicionario(b.dados, 'dados'),
+    dados,
   };
 }
 

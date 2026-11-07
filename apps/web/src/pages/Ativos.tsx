@@ -19,6 +19,7 @@ import { AUDIT_LABEL, fieldLabel, auditEntry } from '@localle/shared/audit';
 import { setDriver, linksOf, LINK_SOURCE, DRIVER_PARAMS, effectiveLink, driverConflicts, ackConflict } from '../lib/driverLinks';
 import { LIFECYCLE, lifeOf, setLifecycle, unlinkTracker, opAssets } from '../lib/assetLifecycle';
 import { RetiredToggle } from '../components/RetiredToggle';
+import { mascaraValida, MENSAGEM_INVALIDA } from '../lib/mascaras';
 import { DOC_TYPES, docTypesFor, docLabel, docState, docWhen, worstDoc, DOC_PARAMS, DRIVER_DOC_PARAMS, type DocState } from '@localle/shared/assetDocs';
 
 const blank = (kind = 'veiculo') => ({ id: '', kind, name: '', plate: '', brand: '', model: '', year: '', specs: {} as any, photo: '', icon: '', groupIds: [] as string[], operationId: '', driverId: '', kmSource: kind === 'veiculo' ? 'mescla' : kind === 'implemento' ? 'engate' : 'rastreador', kmOffset: 0, initialKm: '', fuelGoal: '', fuelBudget: '', meter: kind === 'veiculo' || kind === 'implemento' ? 'km' : kind === 'linha_amarela' || kind === 'maquina' ? 'horimetro' : 'nenhum', customFields: [] as any[], journeySource: 'teclado', serial: '', tracker: null as any, active: true, documents: [] as any[] });
@@ -237,10 +238,10 @@ function AssetForm({ a, setA }: any) {
               {isV ? (
                 <>
                   <div className="flex flex-wrap gap-field items-end">
-                    <Field label="Placa" className="w-36"><Input className="font-mono font-semibold uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} placeholder="ABC1D23" /></Field>
+                    <Field label="Placa" className="w-36"><Input mask="placa" className="font-mono font-semibold uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>
                     <Field label="Marca" className="w-40"><Input value={a.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
                     <Field label="Modelo" className="flex-1 min-w-[180px]"><Input list="models" value={a.model} onChange={(e) => set('model', e.target.value)} /><datalist id="models">{Object.keys(SPECS_DB).map((m) => <option key={m} value={m} />)}</datalist></Field>
-                    <Field label="Ano" className="w-28"><Input value={a.year} onChange={(e) => set('year', e.target.value)} placeholder="2024/2025" /></Field>
+                    <Field label="Ano" className="w-28"><Input mask="ano" value={a.year} onChange={(e) => set('year', e.target.value)} /></Field>
                     <div className="flex flex-col gap-field-label"><span className="invisible text-small" aria-hidden="true">·</span><Button variant="ghost" onClick={lookup}>Consultar dados do veículo</Button></div>
                   </div>
                   {msg && <p role="status" className="text-small text-ink-2 bg-card-2 border border-line rounded-ctl p-stack">{msg}</p>}
@@ -249,10 +250,10 @@ function AssetForm({ a, setA }: any) {
                 <>
                   <p className="text-small text-ink-2">{a.kind === 'implemento' ? 'Carreta ou implemento: engata em cavalos diferentes, tem pneus próprios e pode ter rastreador próprio.' : 'Ativos que não são veículos são cadastrados manualmente.'}</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
-                    {a.kind === 'implemento' && <Field label="Placa"><Input className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>}
+                    {a.kind === 'implemento' && <Field label="Placa"><Input mask="placa" className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>}
                     <Field label="Fabricante"><Input value={a.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
                     <Field label="Modelo"><Input value={a.model} onChange={(e) => set('model', e.target.value)} /></Field>
-                    <Field label="Ano"><Input value={a.year} onChange={(e) => set('year', e.target.value)} /></Field>
+                    <Field label="Ano"><Input mask="ano" value={a.year} onChange={(e) => set('year', e.target.value)} /></Field>
                     <Field label="Nº de série / patrimônio"><Input value={a.serial} onChange={(e) => set('serial', e.target.value)} /></Field>
                     {a.kind !== 'implemento' && <Field label="Medidor de uso"><Select value={a.meter} onChange={(e) => set('meter', e.target.value)} options={[{ value: 'horimetro', label: 'Horímetro' }, { value: 'km', label: 'Quilometragem' }, { value: 'nenhum', label: 'Sem medidor' }]} /></Field>}
                   </div>
@@ -296,7 +297,7 @@ function AssetForm({ a, setA }: any) {
                     <ChoiceCard key={k} checked={a.kmSource === k} onSelect={() => set('kmSource', k)} title={l} description={d} />
                   ))}
                 </div>
-                {a.kmSource === 'mescla' && <Field label="Ajuste do odômetro do rastreador (km)" hint="Diferença entre o painel do veículo e o rastreador. Na mescla, vale o maior entre rastreador ajustado e último lançamento." className="max-w-xs"><Input type="number" value={a.kmOffset} onChange={(e) => set('kmOffset', e.target.value)} /></Field>}
+                {a.kmSource === 'mescla' && <Field label="Ajuste do odômetro do rastreador (km)" hint="Diferença entre o painel do veículo e o rastreador. Na mescla, vale o maior entre rastreador ajustado e último lançamento." className="max-w-xs"><Input type="number" min={-9999999} value={a.kmOffset} onChange={(e) => set('kmOffset', e.target.value)} /></Field>}
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-field">
@@ -622,15 +623,15 @@ function Drivers() {
       <Card title="Motoristas" icon="usuario" actions={<Button onClick={() => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' })}><Icon name="mais" size={16} />Novo motorista</Button>}>
         <Table head={['Nome', 'CNH', 'Categoria', 'Validade da CNH', 'Exame toxicológico', 'Telefone', 'Veículo atual', '']} rows={drivers.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="num">{x.cnh}</span>, x.cnhCat, x.cnhDue ? <DocStatus d={{ due: x.cnhDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>, /^[CDE]/.test(x.cnhCat) ? (x.toxDue ? <DocStatus d={{ due: x.toxDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>) : <span className="text-ink-3">não exigido</span>, <span className="num">{x.phone}</span>, <AssetName name={assets.find((a: any) => a.driverId === x.id)?.name} />, <div className="flex gap-3"><TextButton onClick={() => setD({ ...x })}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir o motorista ${x.name}?`, detail: 'Viagens, marcações e eventos antigos continuam com o nome dele.' })) { try { await desativarMotorista(x.id); toast(`Motorista ${x.name} desativado.`); } catch (e: any) { toast('Não foi possível desativar: ' + (e.message || e), { tone: 'crit' }); } } }}>Excluir</TextButton></div>])} />
       </Card>
-      <Modal open={!!d} onClose={() => setD(null)} title={d?.id ? 'Editar motorista' : 'Novo motorista'} footer={<><Button variant="ghost" onClick={() => setD(null)}>Cancelar</Button><Button disabled={!d?.name} onClick={async () => { try { await salvarMotorista(d); toast(d.id ? 'Motorista atualizado.' : 'Motorista cadastrado.'); setD(null); } catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); } }}>Salvar motorista</Button></>}>
+      <Modal open={!!d} onClose={() => setD(null)} title={d?.id ? 'Editar motorista' : 'Novo motorista'} footer={<><Button variant="ghost" onClick={() => setD(null)}>Cancelar</Button><Button disabled={!d?.name} onClick={async () => { const ruim = (['cpf', 'telefone', 'cnh'] as const).find((m) => !mascaraValida(m, d[{ cpf: 'cpf', telefone: 'phone', cnh: 'cnh' }[m]] || '')); if (ruim) { toast(MENSAGEM_INVALIDA[ruim], { tone: 'crit' }); return; } try { await salvarMotorista(d); toast(d.id ? 'Motorista atualizado.' : 'Motorista cadastrado.'); setD(null); } catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); } }}>Salvar motorista</Button></>}>
         {d && <div className="grid grid-cols-1 sm:grid-cols-2 gap-field">
           <Field label="Nome" className="sm:col-span-2"><Input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} /></Field>
-          <Field label="CNH"><Input value={d.cnh} onChange={(e) => setD({ ...d, cnh: e.target.value })} /></Field>
+          <Field label="CNH"><Input mask="cnh" value={d.cnh} onChange={(e) => setD({ ...d, cnh: e.target.value })} /></Field>
           <Field label="Categoria"><Select value={d.cnhCat} onChange={(e) => setD({ ...d, cnhCat: e.target.value })} options={['A', 'B', 'C', 'D', 'E', 'AB', 'AE']} /></Field>
           <Field label="Validade da CNH"><Input type="date" value={d.cnhDue || ''} onChange={(e) => setD({ ...d, cnhDue: e.target.value })} /></Field>
           <Field label="Exame toxicológico vence em" hint="Obrigatório para categorias C, D e E (a cada 2 anos e 6 meses)."><Input type="date" value={d.toxDue || ''} disabled={!/^[CDE]/.test(d.cnhCat)} onChange={(e) => setD({ ...d, toxDue: e.target.value })} /></Field>
-          <Field label="Telefone"><Input value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} /></Field>
-          <Field label="CPF"><Input value={d.cpf || ''} onChange={(e) => setD({ ...d, cpf: e.target.value })} placeholder="000.000.000-00" /></Field>
+          <Field label="Telefone"><Input mask="telefone" value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} /></Field>
+          <Field label="CPF"><Input mask="cpf" value={d.cpf || ''} onChange={(e) => setD({ ...d, cpf: e.target.value })} /></Field>
           <Field label="Matrícula"><Input value={d.registration || ''} onChange={(e) => setD({ ...d, registration: e.target.value })} /></Field>
           <Field label="Atividade (Lei 13.103)"><Select value={d.regime} onChange={(e) => setD({ ...d, regime: e.target.value })} options={[{ value: 'cargas', label: 'Transporte de cargas' }, { value: 'passageiros', label: 'Transporte de passageiros' }]} /></Field>
           <div className="sm:col-span-2"><Check label="CNH com EAR (exerce atividade remunerada): limite de 40 pontos, qualquer que seja a gravidade" checked={!!d.ear} onChange={(v) => setD({ ...d, ear: v })} /></div>

@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { SuperadminGuard } from '../auth/superadmin.guard';
 import { ClientsRepository } from './clients.repository';
-import type { CreateClientDto } from './dto/create-client.dto';
+import { parseCreateClient } from './dto/create-client.dto';
 
 /**
  * Exclusivo do superadmin (Locale): cadastro de cliente é ação administrativa da plataforma, não do
@@ -36,8 +36,8 @@ export class ClientsController {
   }
 
   @Post()
-  create(@Body() dto: CreateClientDto) {
-    return this.repo.create({ name: dto.name, revendaId: dto.revendaId });
+  create(@Body() body: unknown) {
+    return this.repo.create(parseCreateClient(body));
   }
 
   @Patch(':id')

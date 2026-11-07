@@ -97,7 +97,7 @@ function FuelForm({ onClose }: any) {
         <Field label="Km atual" hint={f.kmTracker != null ? (corr ? `Rastreador marcava ${num(f.kmTracker)} km; correção de ${corr > 0 ? '+' : ''}${num(corr)} km fica registrada` : 'Lido do rastreador agora; corrija se o painel mostrar outro valor') : last ? `Último: ${num(last.odometer)} km` : 'Primeiro lançamento'}><Input type="number" value={f.odometer} aria-invalid={!!err} className={err ? '!border-crit' : ''} onChange={(e) => setF({ ...f, odometer: e.target.value, fromTracker: false })} /></Field>
         <Field label="Combustível"><Select value={f.fuel} onChange={(e) => setF({ ...f, fuel: e.target.value })} options={FUELS} /></Field>
         <Field label="Posto"><Input value={f.station} placeholder="Nome do posto" onChange={(e) => setF({ ...f, station: e.target.value })} /></Field>
-        <Field label="CNPJ do posto" hint="Opcional; usado para conferir a nota"><Input value={f.stationCnpj} inputMode="numeric" placeholder="00.000.000/0000-00" onChange={(e) => setF({ ...f, stationCnpj: e.target.value })} /></Field>
+        <Field label="CNPJ do posto" hint="Opcional; usado para conferir a nota"><Input mask="cnpj" value={f.stationCnpj} onChange={(e) => setF({ ...f, stationCnpj: e.target.value })} /></Field>
         <Field label="Motorista"><SearchSelect value={f.driverId} onChange={(v) => setF({ ...f, driverId: v })} placeholder="—" options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
         <Field label="Data e hora"><Input type="datetime-local" value={f.ts} onChange={(e) => setF({ ...f, ts: e.target.value })} /></Field>
       </div>
@@ -222,7 +222,7 @@ function NotaModal({ f, ocrOn, onClose }: any) {
             <Field label="Litros na nota"><Input type="number" step="0.01" value={n.liters} onChange={(e) => setN({ ...n, liters: e.target.value })} /></Field>
             <Field label="Valor da nota (R$)"><Input type="number" step="0.01" value={n.total} onChange={(e) => setN({ ...n, total: e.target.value })} /></Field>
             <Field label="Data de emissão"><Input type="date" value={n.date} onChange={(e) => setN({ ...n, date: e.target.value })} /></Field>
-            <Field label="CNPJ do posto"><Input value={n.cnpj} placeholder="00.000.000/0001-00" onChange={(e) => setN({ ...n, cnpj: e.target.value })} /></Field>
+            <Field label="CNPJ do posto"><Input mask="cnpj" value={n.cnpj} onChange={(e) => setN({ ...n, cnpj: e.target.value })} /></Field>
           </div>
           {msg && (msg.startsWith('Erro') ? <Callout tone="crit">{msg}</Callout> : <p role="status" className="text-small text-ink-2">{msg}</p>)}
           {(n.total !== '' || n.liters !== '') && (div.length ? <Callout tone="crit">Divergência com o lançamento: {div.map((d) => d.detail).join('; ')}.</Callout> : <p className="text-small text-ink-2">A nota confere com o lançamento dentro das tolerâncias.</p>)}

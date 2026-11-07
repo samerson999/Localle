@@ -73,7 +73,7 @@ export default function Login() {
           <h1 className="text-title font-semibold">Bem-vindo de volta</h1>
           <p className="text-body text-ink-2 mt-3 mb-8">Use o e-mail cadastrado pela sua central.</p>
           <div className="flex flex-col gap-4 text-left">
-            <Field label="E-mail ou usuário"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" placeholder="voce@empresa.com.br" /></Field>
+            <Field label="E-mail"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" placeholder="voce@empresa.com.br" /></Field>
             <Field label="Senha"><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} className="h-ctl-lg" autoComplete="current-password" placeholder="Sua senha" /></Field>
             {erro}
             <Button type="submit" size="lg" disabled={busy} className="w-full mt-1">{busy ? 'Entrando…' : 'Acessar plataforma'}</Button>

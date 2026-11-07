@@ -8,6 +8,7 @@ import { pngIconUrl } from '../lib/pngIcons';
 import { useCountUp } from '../lib/motion';
 import { Heading, HeadingLevel, useHeadingLevel } from './primitives';
 import { rectUi, viewportUi } from '../lib/uiZoom';
+import { aplicarMascara, ATRIBUTOS_MASCARA, type Mascara, mascaraValida, MENSAGEM_INVALIDA } from '../lib/mascaras';
 export * from './primitives';
 
 export const cx = (...a: any[]) => a.filter(Boolean).join(' ');
@@ -438,9 +439,36 @@ export function FormActions({ className = '', align = 'end', children }: { class
 }
 const inputCls = 'h-ctl w-full border border-line-strong rounded-ctl px-3 text-body text-ink bg-card placeholder:text-ink-3 hover:border-line-hover focus:outline-none transition-colors disabled:bg-surface-muted disabled:text-ink-3 disabled:border-line disabled:cursor-not-allowed aria-[invalid=true]:border-crit';
 // type date/datetime-local/month/time usa os seletores próprios (DateInput, TimeInput) no lugar dos nativos.
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }>(({ className = '', invalid, ...p }, r) => {
+// mask: restringe e formata enquanto digita (lib/mascaras) e, depois de sair do campo, marca inválido com a mensagem
+// logo abaixo. type="number": mínimo 0 quando não informado (passe min negativo onde negativo faz sentido), sem
+// notação científica (e, +), sem sinal de menos quando o mínimo é ≥ 0 e sem a roda do mouse mudar o valor.
+type InputProps = React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean; mask?: Mascara; maxDigits?: number };
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className = '', invalid, mask, maxDigits, ...p }, r) => {
+  const [saiu, setSaiu] = useState(false);
   if (p.type === 'date' || p.type === 'datetime-local' || p.type === 'month') return <DateInput {...(p as any)} className={className} />;
   if (p.type === 'time') { const { type, ...t } = p; return <TimeInput {...(t as any)} className={className} />; }
+  if (mask) {
+    const { onChange, onBlur, ...resto } = p;
+    const errado = saiu && !mascaraValida(mask, String(p.value ?? ''), maxDigits);
+    const attrs = { ...ATRIBUTOS_MASCARA[mask], ...(maxDigits ? { maxLength: maxDigits } : {}) };
+    return (
+      <>
+        <input ref={r} {...attrs} {...resto} spellCheck={false} aria-invalid={invalid || errado || p['aria-invalid'] || undefined} className={cx(inputCls, className)}
+          onChange={(e) => { e.target.value = aplicarMascara(mask, e.target.value, maxDigits); setSaiu(false); onChange?.(e); }}
+          onBlur={(e) => { setSaiu(true); onBlur?.(e); }} />
+        {errado && <span role="alert" className="text-caption font-medium text-crit-ink flex items-start gap-icon"><span className="ico-line"><Icon name="erro" size={14} /></span>{MENSAGEM_INVALIDA[mask]}</span>}
+      </>
+    );
+  }
+  if (p.type === 'number') {
+    const { onChange, onKeyDown, ...resto } = p;
+    const min = p.min ?? 0;
+    const semNegativo = +min >= 0;
+    return <input ref={r} inputMode={p.step === 'any' || String(p.step ?? '').includes('.') ? 'decimal' : 'numeric'} {...resto} min={min} aria-invalid={invalid || p['aria-invalid'] || undefined} className={cx(inputCls, className)}
+      onKeyDown={(e) => { if (e.key === 'e' || e.key === 'E' || e.key === '+' || (semNegativo && e.key === '-')) e.preventDefault(); onKeyDown?.(e); }}
+      onWheel={(e) => { if (document.activeElement === e.currentTarget) e.currentTarget.blur(); }}
+      onChange={(e) => { if (semNegativo && e.target.value.startsWith('-')) e.target.value = e.target.value.slice(1); onChange?.(e); }} />;
+  }
   return <input ref={r} {...p} aria-invalid={invalid || p['aria-invalid'] || undefined} className={cx(inputCls, className)} />;
 });
 // Busca com lupa e botão de limpar

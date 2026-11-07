@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { parseDate } from './parse-date';
 import { parseUuid } from './parse-uuid';
+import { cnpjValido, cpfValido, telefoneValido } from '@localle/shared/documentos';
 
 /**
  * Validação explícita de corpo (sem class-validator no projeto), compartilhada pelos cadastros novos.
@@ -18,6 +19,25 @@ export function texto(v: unknown, campo: string, max: number, min = 1): string {
 export function textoOpcional(v: unknown, campo: string, max: number): string | null {
   if (v === undefined || v === null || v === '') return null;
   return texto(v, campo, max);
+}
+
+/** Documento/telefone opcional: mesmo critério do front (packages/shared/documentos); guarda como veio (formatado). */
+export function cpfOpcional(v: unknown, campo: string): string | null {
+  const t = textoOpcional(v, campo, 20);
+  if (t && !cpfValido(t)) erro(`"${campo}" não é um CPF válido`);
+  return t;
+}
+
+export function cnpjOpcional(v: unknown, campo: string): string | null {
+  const t = textoOpcional(v, campo, 20);
+  if (t && !cnpjValido(t)) erro(`"${campo}" não é um CNPJ válido`);
+  return t;
+}
+
+export function telefoneOpcional(v: unknown, campo: string): string | null {
+  const t = textoOpcional(v, campo, 20);
+  if (t && !telefoneValido(t)) erro(`"${campo}" precisa ter DDD e número válidos`);
+  return t;
 }
 
 export function numero(v: unknown, campo: string, min: number, max: number, inteiro = false): number {

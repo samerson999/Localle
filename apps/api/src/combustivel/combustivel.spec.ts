@@ -18,7 +18,7 @@ describe('combustível — abastecimentos, divergências pelo Setup e isolamento
   let assetA: string;
 
   const base = (extra: Record<string, unknown> = {}) =>
-    parseAbastecimento({ assetId: assetA, ts: '2026-10-10T08:00:00Z', odometro: 100_000, litros: 100, total: 605, precoLitro: 6.05, combustivel: 'Diesel S10', posto: 'Posto BR-101', postoCnpj: '11.111.111/0001-11', ...extra });
+    parseAbastecimento({ assetId: assetA, ts: '2026-10-10T08:00:00Z', odometro: 100_000, litros: 100, total: 605, precoLitro: 6.05, combustivel: 'Diesel S10', posto: 'Posto BR-101', postoCnpj: '11.222.333/0001-81', ...extra });
 
   beforeAll(async () => {
     clientA = (await pool.query<{ id: string }>('insert into clients (name) values ($1) returning id', [`teste-comb-a-${randomUUID()}`])).rows[0].id;
@@ -48,7 +48,7 @@ describe('combustível — abastecimentos, divergências pelo Setup e isolamento
         ts: '2026-10-12T08:00:00Z',
         odometro: 100_600,
         kmRastreador: 100_500, // 100 km acima da tolerância padrão (50)
-        nf: { litros: 104, total: 610, data: '2026-10-15', cnpj: '22.222.222/0001-22' },
+        nf: { litros: 104, total: 610, data: '2026-10-15', cnpj: '11.444.777/0001-61' },
       }),
     );
     let lista = await service.listar(clientA, new Date('2026-10-01'), new Date('2026-10-31'), assetA);

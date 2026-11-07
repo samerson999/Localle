@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
-import { dataOpcional, dicionario, erro, instante, numero, numeroOpcional, periodo, SEM_LIMITE, texto, textoOpcional, uuid, uuidOpcional } from '../common/validar';
+import { cnpjOpcional, dataOpcional, dicionario, erro, instante, numero, numeroOpcional, periodo, SEM_LIMITE, texto, textoOpcional, uuid, uuidOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type AbastecimentoInput, type AbastecimentoRow, AbastecimentosRepository, type NotaFiscal } from './abastecimentos.repository';
@@ -14,7 +14,7 @@ function parseNota(v: unknown): NotaFiscal | null {
     litros: numeroOpcional(n.litros, 'nf.litros', 0, 100_000),
     total: numeroOpcional(n.total, 'nf.total', 0, 10_000_000),
     data: dataOpcional(n.data, 'nf.data'),
-    cnpj: textoOpcional(n.cnpj, 'nf.cnpj', 20),
+    cnpj: cnpjOpcional(n.cnpj, 'nf.cnpj'),
     chave: textoOpcional(n.chave, 'nf.chave', 60),
   };
 }
@@ -33,7 +33,7 @@ export function parseAbastecimento(body: unknown): AbastecimentoInput {
     precoLitro: numeroOpcional(b.precoLitro, 'precoLitro', 0, 1000),
     combustivel: texto(b.combustivel, 'combustivel', 40),
     posto: textoOpcional(b.posto, 'posto', 120),
-    postoCnpj: textoOpcional(b.postoCnpj, 'postoCnpj', 20),
+    postoCnpj: cnpjOpcional(b.postoCnpj, 'postoCnpj'),
     kmRastreador: numeroOpcional(b.kmRastreador, 'kmRastreador', 0, 10_000_000),
     nf: parseNota(b.nf),
     dados: dicionario(b.dados, 'dados'),
