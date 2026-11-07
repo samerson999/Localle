@@ -6,16 +6,19 @@ name: Deploy produção
 # Requer os secrets do repositório: COOLIFY_WEBHOOK_API, COOLIFY_WEBHOOK_WEB (URL de deploy webhook de
 # cada Resource no Coolify) — ver docs/DEPLOY-COOLIFY.md.
 
+# Gatilho por push desligado enquanto não existe Coolify de produção: sem os secrets, todo push na main falhava.
+# Quando a produção existir, trocar o workflow_dispatch pelo bloco comentado.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/api/**'
-      - 'apps/web/**'
-      - 'packages/shared/**'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'apps/api/**'
+  #     - 'apps/web/**'
+  #     - 'packages/shared/**'
+  #     - 'pnpm-lock.yaml'
+  #     - 'pnpm-workspace.yaml'
+  #     - '.github/workflows/deploy.yml'
 
 concurrency:
   group: deploy-producao

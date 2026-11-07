@@ -9,6 +9,12 @@ export const shorthands: ColumnDefinitions | undefined = undefined;
 // de revendas existir.
 export async function up(pgm: MigrationBuilder): Promise<void> {
   pgm.createExtension('pgcrypto', { ifNotExists: true });
+  // TimescaleDB (posicoes/eventos) e PostGIS (cercas) também nascem aqui, e não só em infra/plataforma/init: o init
+  // roda apenas na criação do volume, e o Coolify da HML não o montou (extensões criadas à mão em 28/10/2026). Ficam na
+  // primeira migration porque uma migration nova com timestamp anterior às que as usam quebraria a checagem de ordem em
+  // bancos já migrados. Idempotente (`if not exists`); o down não as remove — outras tabelas dependem delas.
+  pgm.createExtension('timescaledb', { ifNotExists: true });
+  pgm.createExtension('postgis', { ifNotExists: true });
 
   pgm.createTable('clients', {
     id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },

@@ -15,7 +15,10 @@ services:
       - plataforma-db-data:/home/postgres/pgdata/data
       - ./init:/docker-entrypoint-initdb.d:ro
     ports:
-      - '${DB_HOST_PORT:-5432}:5432'   # em VPS de produção, não publicar; usar só a rede privada entre VPS-APP e VPS-DB
+      # Só no localhost por padrão: a API alcança o banco pela rede do Docker, e acesso de fora vai por túnel SSH. A variável
+      # leva endereço e porta (a HML usa DB_HOST_PORT="127.0.0.1:5432"). Em VPS de produção, não publicar; usar só a rede
+      # privada entre VPS-APP e VPS-DB.
+      - '${DB_HOST_PORT:-127.0.0.1:5432}:5432'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-plataforma}']
       interval: 5s
@@ -35,7 +38,7 @@ services:
       DEFAULT_POOL_SIZE: 25
       AUTH_TYPE: scram-sha-256   # Postgres 16 usa scram-sha-256 por padrão (password_encryption); md5 não autentica contra ele
     ports:
-      - '6432:5432'   # a API conecta aqui, não direto na 5432, quando houver mais de uma instância (imagem edoburu/pgbouncer escuta na 5432 dentro do container)
+      - '${PGBOUNCER_HOST_PORT:-127.0.0.1:6432}:5432'   # a API conecta aqui, não direto na 5432, quando houver mais de uma instância (imagem edoburu/pgbouncer escuta na 5432 dentro do container)
 
 volumes:
   plataforma-db-data:
