@@ -15,3 +15,11 @@ window.addEventListener('unhandledrejection', (ev) => {
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
+
+// PWA: o service worker (public/sw.js) só no build de produção — no `pnpm dev` ele guardaria o shell e atrapalharia o
+// recarregamento do Vite. Falha no registro não impede o app de funcionar, só a instalação.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('Service worker não registrado', err));
+  });
+}
