@@ -108,6 +108,26 @@ describe('isolamento por client_id (assets)', () => {
     await expect(repo.atualizar(clientA, assetOfA, { plate: null, status: null, icone: '../x.png' })).rejects.toThrow();
   });
 
+  it('ficha (dados) e operação: o dono grava; operação de outro cliente é recusada; outro cliente não alcança; ausente não mexe', async () => {
+    const opA = (await pool.query<{ id: string }>("insert into operacoes (client_id, nome) values ($1, 'Contrato A') returning id", [clientA])).rows[0].id;
+    const opB = (await pool.query<{ id: string }>("insert into operacoes (client_id, nome) values ($1, 'Contrato B') returning id", [clientB])).rows[0].id;
+    const ficha = { kind: 'veiculo', brand: 'Volvo', specs: { Motor: 'D13' }, fuelGoal: 2.4 };
+
+    expect(await repo.atualizar(clientA, assetOfA, { plate: null, status: null, operacaoId: opB })).toBe('operacao_invalida');
+    expect(await repo.atualizar(clientB, assetOfA, { plate: null, status: null, dados: { x: 1 }, operacaoId: opB })).toBeNull();
+
+    const salvo = (await repo.atualizar(clientA, assetOfA, { plate: null, status: null, dados: ficha, operacaoId: opA })) as AssetEntity;
+    expect(salvo.dados).toEqual(ficha);
+    expect(salvo.operacao_id).toBe(opA);
+    // trocar só a placa não apaga ficha nem operação
+    const soPlaca = (await repo.atualizar(clientA, assetOfA, { plate: 'FIC1H00', status: null })) as AssetEntity;
+    expect(soPlaca.dados).toEqual(ficha);
+    expect(soPlaca.operacao_id).toBe(opA);
+    // apagar a operação deixa o ativo sem operação, sem apagar o ativo
+    await pool.query('delete from operacoes where id = $1', [opA]);
+    expect((await repo.findOne(clientA, { id: assetOfA }))?.operacao_id).toBeNull();
+  });
+
   it('o próprio dono enxerga e consegue alterar o ativo', async () => {
     const found = await repo.findOne(clientA, { id: assetOfA });
     expect(found?.id).toBe(assetOfA);

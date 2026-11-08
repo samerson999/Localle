@@ -37,6 +37,7 @@ export class AssetsController {
   async update(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAssetDto) {
     const asset = await this.repo.atualizar(clientId, id, parseUpdateAsset(dto));
     if (asset === 'motorista_invalido') throw new BadRequestException('Motorista não encontrado ou desativado');
+    if (asset === 'operacao_invalida') throw new BadRequestException('Operação não encontrada');
     if (!asset) throw new NotFoundException('Ativo não encontrado');
     return asset;
   }

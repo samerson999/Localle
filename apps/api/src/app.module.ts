@@ -21,6 +21,8 @@ import { MultasModule } from './multas/multas.module';
 import { PainelModule } from './painel/painel.module';
 import { DbModule } from './db/db.module';
 import { GruposModule } from './grupos/grupos.module';
+import { OperacoesModule } from './operacoes/operacoes.module';
+import { EmpresaModule } from './empresa/empresa.module';
 import { HealthController } from './health/health.controller';
 import { PollerModule } from './ingest/poller.module';
 import { IngestWebhookModule } from './ingest/webhook.module';
@@ -61,6 +63,8 @@ import { ViagensModule } from './viagens/viagens.module';
     ComandosModule,
     RetencaoModule,
     GruposModule,
+    OperacoesModule,
+    EmpresaModule,
     MotoristasModule,
     JornadaModule,
     MultasModule,

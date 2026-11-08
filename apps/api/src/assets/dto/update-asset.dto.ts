@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { parseUuid } from '../../common/parse-uuid';
+import { objetoLivre } from '../../common/validar';
 import type { AssetStatus } from '../asset.entity';
 
 const STATUSES: AssetStatus[] = ['ativo', 'vendido', 'baixado'];
@@ -11,12 +12,28 @@ export class UpdateAssetDto {
   motoristaId?: string | null;
   /** Ícone ilustrado (nome do arquivo do catálogo do front, ex.: "02-sedan"); `null` volta para a silhueta. */
   icone?: string | null;
+  /** Ficha do cadastro; substitui a anterior inteira. */
+  dados?: Record<string, unknown>;
+  /** Operação do ativo; `null` limpa. */
+  operacaoId?: string | null;
+}
+
+/** Ficha sem foto/anexo: texto e números de um cadastro cabem com folga. */
+export const DADOS_MAX_BYTES = 64 * 1024;
+
+export interface UpdateAssetData {
+  plate: string | null;
+  status: AssetStatus | null;
+  motoristaId?: string | null;
+  icone?: string | null;
+  dados?: Record<string, unknown>;
+  operacaoId?: string | null;
 }
 
 const ICONE = /^[0-9]{2}-[a-z0-9-]{1,60}$/;
 
 /** Sem class-validator no projeto: a validação de entrada é explícita, antes de chegar no repository. */
-export function parseUpdateAsset(body: unknown): { plate: string | null; status: AssetStatus | null; motoristaId?: string | null; icone?: string | null } {
+export function parseUpdateAsset(body: unknown): UpdateAssetData {
   const dto = (body ?? {}) as Record<string, unknown>;
   const plate = dto.plate === undefined ? null : parsePlate(dto.plate);
   let status: AssetStatus | null = null;
@@ -34,8 +51,11 @@ export function parseUpdateAsset(body: unknown): { plate: string | null; status:
     else if (typeof dto.icone === 'string' && ICONE.test(dto.icone)) icone = dto.icone;
     else throw new BadRequestException('"icone" precisa ser o nome de um ícone do catálogo (ex.: 02-sedan) ou null');
   }
-  if (plate === null && status === null && motoristaId === undefined && icone === undefined) throw new BadRequestException('Nada para atualizar');
-  return { plate, status, motoristaId, icone };
+  const dados = dto.dados === undefined ? undefined : objetoLivre(dto.dados, 'dados', DADOS_MAX_BYTES);
+  let operacaoId: string | null | undefined;
+  if (dto.operacaoId !== undefined) operacaoId = dto.operacaoId === null || dto.operacaoId === '' ? null : parseUuid('operacaoId', dto.operacaoId);
+  if (plate === null && status === null && motoristaId === undefined && icone === undefined && dados === undefined && operacaoId === undefined) throw new BadRequestException('Nada para atualizar');
+  return { plate, status, motoristaId, icone, dados, operacaoId };
 }
 
 export function parsePlate(value: unknown): string {

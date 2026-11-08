@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '../db/base.repository';
-import type { AssetEntity, AssetStatus } from './asset.entity';
+import type { AssetEntity } from './asset.entity';
+import type { UpdateAssetData } from './dto/update-asset.dto';
 
 @Injectable()
 export class AssetsRepository extends BaseRepository<AssetEntity> {
@@ -10,12 +11,17 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   async atualizar(
     clientId: string,
     id: string,
-    data: { plate: string | null; status: AssetStatus | null; motoristaId?: string | null; icone?: string | null },
-  ): Promise<AssetEntity | null | 'motorista_invalido'> {
+    data: UpdateAssetData,
+  ): Promise<AssetEntity | null | 'motorista_invalido' | 'operacao_invalida'> {
     // motorista precisa ser do mesmo cliente (sem IDOR por motoristaId); ausente → não mexe; null → limpa
     if (data.motoristaId) {
       const m = await this.pool.query('select 1 from motoristas where client_id = $1 and id = $2 and desativado_em is null', [clientId, data.motoristaId]);
       if (m.rowCount === 0) return 'motorista_invalido';
+    }
+    // idem para a operação: a FK sozinha aceitaria a operação de outro cliente
+    if (data.operacaoId) {
+      const o = await this.pool.query('select 1 from operacoes where client_id = $1 and id = $2', [clientId, data.operacaoId]);
+      if (o.rowCount === 0) return 'operacao_invalida';
     }
     const { rows } = await this.pool.query<AssetEntity>(
       `update assets set
@@ -24,10 +30,13 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
          status = coalesce($4, status),
          motorista_id = case when $5 then $6::uuid else motorista_id end,
          icone = case when $7 then $8::text else icone end,
+         dados = coalesce($9::jsonb, dados),
+         operacao_id = case when $10 then $11::uuid else operacao_id end,
          updated_at = now()
        where client_id = $1 and id = $2
        returning *`,
-      [clientId, id, data.plate, data.status, data.motoristaId !== undefined, data.motoristaId ?? null, data.icone !== undefined, data.icone ?? null],
+      [clientId, id, data.plate, data.status, data.motoristaId !== undefined, data.motoristaId ?? null, data.icone !== undefined, data.icone ?? null,
+        data.dados === undefined ? null : JSON.stringify(data.dados), data.operacaoId !== undefined, data.operacaoId ?? null],
     );
     return rows[0] ?? null;
   }

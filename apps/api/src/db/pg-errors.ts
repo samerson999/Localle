@@ -11,6 +11,7 @@ export const PG_FOREIGN_KEY_VIOLATION = '23503';
 
 export const UNIQUE = {
   grupoNome: 'asset_groups_client_id_name_key',
+  operacaoNome: 'operacoes_client_id_nome_key',
   motoristaCnh: 'motoristas_cnh_uidx',
   marcacaoJornada: 'jornada_marcacoes_motorista_id_ts_tipo_key',
   multaAutoOrgao: 'multas_client_id_auto_orgao_key',

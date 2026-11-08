@@ -127,3 +127,13 @@ export function periodo(de: unknown, ate: unknown, padraoDias = 30, maxDias = 93
   if (fim.getTime() - inicio.getTime() > maxDias * DIA) erro(`Período máximo: ${maxDias} dias`);
   return [inicio, fim];
 }
+
+/**
+ * Objeto JSON livre cujo formato é do front (ficha do ativo, dados da empresa): a API só garante que é objeto e
+ * limita o tamanho serializado — arquivo (foto, anexo em base64) não cabe aqui.
+ */
+export function objetoLivre(v: unknown, campo: string, maxBytes: number): Record<string, unknown> {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) erro(`"${campo}" precisa ser um objeto`);
+  if (Buffer.byteLength(JSON.stringify(v), 'utf8') > maxBytes) erro(`"${campo}" passa do limite de ${Math.round(maxBytes / 1024)} KB`);
+  return v as Record<string, unknown>;
+}
