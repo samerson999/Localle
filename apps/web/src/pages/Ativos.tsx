@@ -225,10 +225,18 @@ function AssetForm({ a, setA }: any) {
     ...(a.id ? [{ key: 'historico', label: 'Histórico' }] : []),
   ];
   // o que impede salvar fica visível no rodapé, com atalho para a aba onde se resolve
-  const pend = !a.plate && (isV || a.kind === 'implemento') ? { aba: 'dados', txt: 'Informe a placa na aba Dados' } : instErr ? { aba: 'rastreador', txt: `Rastreador: ${instErr}` } : null;
+  const pend = !a.plate && (isV || a.kind === 'implemento') ? { aba: 'dados', txt: 'Informe a placa na aba Dados' }
+    : !a.photo && !a.icon ? { aba: 'dados', txt: 'Escolha uma foto ou um ícone na aba Dados' }
+    : instErr ? { aba: 'rastreador', txt: `Rastreador: ${instErr}` } : null;
   return (
-    <Modal open onClose={() => setA(null)} title={a.id ? a.name : 'Novo ativo'} width="max-w-5xl" footer={<>{pend && <TextButton className="mr-auto text-left" onClick={() => setAba(pend.aba)}>{pend.txt}</TextButton>}<Button variant="ghost" onClick={() => setA(null)}>Cancelar</Button><Button loading={busy} disabled={!a.plate || !!instErr} onClick={save}>Salvar ativo</Button></>}>
-      <div role="group" aria-label="Tipo do ativo" className="flex flex-wrap gap-2">{CATEGORIES.map((ct) => { const on = (a.category || categoryOf(a)) === ct.key; return <button key={ct.key} type="button" aria-pressed={on} onClick={() => { const k = ct.kind; setA({ ...blank(k), ...a, category: ct.key, kind: k, meter: k === a.kind ? a.meter : k === 'veiculo' || k === 'implemento' ? 'km' : k === 'linha_amarela' ? 'horimetro' : 'nenhum', kmSource: k === a.kind ? a.kmSource : blank(k).kmSource }); }} className={cx('flex flex-col items-center gap-tight w-[112px] pt-3 pb-3 rounded-ctl text-caption transition-colors', on ? 'bg-card-2 ring-[1.5px] ring-inset ring-ink text-ink font-medium' : 'border border-line text-ink-2 hover:bg-card-2')}><AssetSilhouette category={ct.key} className="w-14 h-6" />{ct.label}</button>; })}</div>
+    <Modal open onClose={() => setA(null)} title={a.id ? a.name : 'Novo ativo'} width="max-w-5xl" footer={<>{pend && <TextButton className="mr-auto text-left" onClick={() => setAba(pend.aba)}>{pend.txt}</TextButton>}<Button variant="ghost" onClick={() => setA(null)}>Cancelar</Button><Button loading={busy} disabled={!a.plate || (!a.photo && !a.icon) || !!instErr} onClick={save}>Salvar ativo</Button></>}>
+      <Field label="Tipo do ativo" className="max-w-xs">
+        <Select aria-label="Tipo do ativo" value={a.category || categoryOf(a)} onChange={(e) => {
+          const key = e.target.value as (typeof CATEGORIES)[number]['key'];
+          const k = CATEGORIES.find((c) => c.key === key)!.kind;
+          setA({ ...blank(k), ...a, category: key, kind: k, meter: k === a.kind ? a.meter : k === 'veiculo' || k === 'implemento' ? 'km' : k === 'linha_amarela' ? 'horimetro' : 'nenhum', kmSource: k === a.kind ? a.kmSource : blank(k).kmSource });
+        }} options={CATEGORIES.map((ct) => ({ value: ct.key, label: ct.label }))} />
+      </Field>
       <Tabs className="mt-group" value={aba} onChange={setAba} tabs={abas} />
       {/* altura mínima: trocar de aba não faz o modal pular de tamanho */}
       <div className="pt-group min-h-[460px]">
@@ -378,11 +386,11 @@ function IconPicker({ category, value, onChange }: { category: string; value: st
       {open && (
         <div className="flex flex-col gap-2">
           <SearchInput className="w-full" placeholder="Buscar ícone" aria-label="Buscar ícone" value={q} onChange={setQ} />
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-72 overflow-y-auto">
+          <div className="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto">
             {ids.map((id) => (
               <button key={id} type="button" aria-pressed={value === id} onClick={() => { onChange(id); setOpen(false); }}
-                className={cx('flex flex-col items-center gap-1 p-tight rounded-ctl text-caption', value === id ? 'bg-card-2 ring-[1.5px] ring-inset ring-ink text-ink font-medium' : 'border border-line text-ink-2 hover:bg-card-2')}>
-                <img src={pngIconUrl(id)} alt="" loading="lazy" decoding="async" className="w-14 h-9 object-contain" /><span className="text-center leading-tight">{pngIconLabel(id)}</span>
+                className={cx('min-w-0 flex flex-col items-center gap-1 p-tight rounded-ctl text-caption', value === id ? 'bg-card-2 ring-[1.5px] ring-inset ring-ink text-ink font-medium' : 'border border-line text-ink-2 hover:bg-card-2')}>
+                <img src={pngIconUrl(id)} alt="" loading="lazy" decoding="async" className="w-14 h-9 object-contain" /><span className="w-full text-center leading-tight break-words hyphens-auto" lang="pt-BR">{pngIconLabel(id)}</span>
               </button>
             ))}
             {!ids.length && <p className="col-span-full text-small text-ink-2">Nenhum ícone com esse nome.</p>}
