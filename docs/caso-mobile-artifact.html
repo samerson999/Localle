@@ -1,0 +1,323 @@
+<title>Mobile vs. Visor</title>
+<style>
+  :root{
+    --ink:#15181F; --ink-2:#555D6E; --ink-3:#8A92A3;
+    --canvas:#F4F5F7; --card:#FFFFFF; --card-2:#F0F1F4;
+    --line:#E3E5EA; --line-strong:#CBCFD8;
+    --brand:#1D5BEA; --brand-soft:#E8EEFD; --brand-ink:#0F3FC0;
+    --pos:#137A3D; --pos-soft:#E1F3E7;
+    --crit:#C4321F; --crit-soft:#FBE4E0;
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+    --phone-bg:#0B0D12; --phone-ink:#F2F3F5; --phone-ink-2:#9AA0AC; --phone-line:#23262E; --phone-brand:#2C6CF5;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#EDEFF3; --ink-2:#AEB4C2; --ink-3:#737A8A;
+      --canvas:#101217; --card:#171A21; --card-2:#1D2129;
+      --line:#262A33; --line-strong:#343A46;
+      --brand:#5B8DFF; --brand-soft:#1B2740; --brand-ink:#CBD9FF;
+      --pos:#5FD98A; --pos-soft:#102C1C;
+      --crit:#FF8370; --crit-soft:#331814;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#EDEFF3; --ink-2:#AEB4C2; --ink-3:#737A8A;
+    --canvas:#101217; --card:#171A21; --card-2:#1D2129;
+    --line:#262A33; --line-strong:#343A46;
+    --brand:#5B8DFF; --brand-soft:#1B2740; --brand-ink:#CBD9FF;
+    --pos:#5FD98A; --pos-soft:#102C1C;
+    --crit:#FF8370; --crit-soft:#331814;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--canvas); color:var(--ink);
+    font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
+    padding-inline:16px; padding-block:48px;
+  }
+  .wrap{max-width:860px; margin:0 auto; display:flex; flex-direction:column; gap:56px;}
+  h1,h2,h3{font-family:'Manrope',ui-sans-serif,system-ui,sans-serif; text-wrap:balance; margin:0; color:var(--ink);}
+  h1{font-size:clamp(28px,5vw,38px); font-weight:800; letter-spacing:-0.01em;}
+  h2{font-size:22px; font-weight:800; letter-spacing:-0.01em;}
+  h3{font-size:15px; font-weight:700;}
+  p{margin:0; line-height:1.6; max-width:65ch;}
+  .lede{color:var(--ink-2); font-size:16px;}
+  .eyebrow{font:600 11px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--brand); margin:0 0 10px;}
+  .kicker{color:var(--ink-3); font-size:13px;}
+
+  header.hero{display:flex; flex-direction:column; gap:14px; padding-bottom:28px; border-bottom:1px solid var(--line);}
+  .hero-meta{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;}
+  .tag{font:600 11px/1 var(--mono); letter-spacing:.03em; padding:6px 10px; border-radius:999px; background:var(--card-2); color:var(--ink-2); border:1px solid var(--line);}
+
+  section{display:flex; flex-direction:column; gap:18px;}
+  .section-head{display:flex; flex-direction:column; gap:6px;}
+
+  /* -- phone mock -- */
+  .pair{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:640px){ .pair{grid-template-columns:1fr;} }
+  .phone-col{display:flex; flex-direction:column; gap:10px;}
+  .phone-label{display:flex; align-items:center; gap:8px; font:700 12px/1 Inter; color:var(--ink-2);}
+  .dot{width:7px; height:7px; border-radius:999px; flex:none;}
+  .dot.visor{background:var(--phone-brand);}
+  .dot.hoje{background:var(--ink-3);}
+  .phone{
+    background:var(--phone-bg); color:var(--phone-ink); border-radius:28px;
+    padding:18px 16px 20px; aspect-ratio:9/16; display:flex; flex-direction:column;
+    border:1px solid #000; box-shadow:0 1px 2px rgba(0,0,0,.2), 0 12px 30px -16px rgba(0,0,0,.45);
+    font-size:12px; position:relative; overflow:hidden;
+  }
+  .phone .topbar{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+  .phone .title-lg{font:800 20px/1.1 Manrope; letter-spacing:-0.01em;}
+  .phone .title-sm{font:700 13px/1 Manrope;}
+  .phone .icons{display:flex; gap:6px; align-items:center;}
+  .ic{width:22px; height:22px; border-radius:999px; background:#2A2E38; display:flex; align-items:center; justify-content:center; flex:none;}
+  .ic.fab{background:var(--phone-brand); border-radius:8px;}
+  .ic svg{width:12px; height:12px;}
+  .phone .num{font:800 30px/1 Manrope; margin-top:14px;}
+  .phone .num small{font:600 12px Inter; color:var(--phone-ink-2); margin-left:6px;}
+  .chip-sm{display:inline-flex; margin-top:8px; font:700 10px/1 Inter; background:#123320; color:#6FE39A; padding:4px 7px; border-radius:6px; width:fit-content;}
+  .phone .filters-row{display:flex; gap:6px; margin-top:12px; flex-wrap:wrap;}
+  .pill-filter{flex:1 1 auto; min-width:0; background:#1C2029; border:1px solid var(--phone-line); border-radius:10px; padding:8px; font-size:10px; color:var(--phone-ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .btn-filter-one{display:inline-flex; align-items:center; gap:5px; background:#1C2029; border:1px solid var(--phone-line); border-radius:10px; padding:8px 10px; font:700 10px Inter; color:var(--phone-ink); width:fit-content; margin-top:12px;}
+  .count-badge{background:var(--phone-brand); color:#fff; border-radius:999px; font:800 9px/1 Inter; padding:2px 5px;}
+  .kpi-grid{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:12px;}
+  .kpi-grid.hero-layout{grid-template-columns:1fr;}
+  .kpi-tile{background:#1C2029; border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:3px;}
+  .kpi-tile .lbl{font:600 8px Inter; color:var(--phone-ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .kpi-tile .val{font:800 13px Manrope;}
+  .kpi-hero{background:#1C2029; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:4px;}
+  .kpi-hero .lbl{font:600 10px Inter; color:var(--phone-ink-2);}
+  .kpi-hero .val{font:800 24px Manrope;}
+  .mini-strip{display:flex; gap:6px; margin-top:6px;}
+  .mini-strip .kpi-tile{flex:1; padding:6px;}
+  .mini-strip .val{font-size:11px;}
+  .card-dk{background:#1C2029; border-radius:12px; padding:10px; margin-top:10px;}
+  .card-dk .t{font:700 11px Inter;}
+  .card-dk .d{font:400 10px Inter; color:var(--phone-ink-2); margin-top:3px; line-height:1.4;}
+  .btn-full{margin-top:auto; background:var(--phone-brand); color:#fff; font:800 11px Inter; text-align:center; padding:10px; border-radius:10px;}
+  .annot{position:relative;}
+  .annot::after{content:attr(data-flag); position:absolute; top:-9px; right:-9px; background:var(--crit); color:#fff; font:800 9px/1 var(--mono); padding:3px 5px; border-radius:5px; white-space:nowrap;}
+  .spacer{flex:1;}
+
+  .takeaway{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; display:flex; gap:12px; align-items:flex-start;}
+  .takeaway .mark{font:800 13px var(--mono); color:var(--brand); flex:none; padding-top:2px;}
+  .takeaway p{color:var(--ink-2); font-size:14px;}
+  .takeaway strong{color:var(--ink); font-weight:700;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top;}
+  th{font:700 11px var(--mono); letter-spacing:.03em; text-transform:uppercase; color:var(--ink-3);}
+  tr:last-child td{border-bottom:none;}
+  .eff{display:inline-flex; font:700 10px var(--mono); padding:3px 8px; border-radius:999px;}
+  .eff.low{background:var(--pos-soft); color:var(--pos);}
+  .eff.med{background:var(--brand-soft); color:var(--brand-ink);}
+  .table-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--card);}
+  .table-wrap table{min-width:560px;}
+
+  ol.priority{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:10px;}
+  ol.priority li{display:flex; gap:14px; align-items:flex-start; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px;}
+  ol.priority .n{font:800 15px var(--mono); color:var(--brand); flex:none; width:22px;}
+  ol.priority .txt strong{display:block; font-size:14px; margin-bottom:3px;}
+  ol.priority .txt span{color:var(--ink-2); font-size:13px;}
+
+  .open-q{display:flex; flex-direction:column; gap:10px;}
+  .open-q li{list-style:none; background:var(--card-2); border-radius:10px; padding:12px 14px; font-size:13.5px; color:var(--ink-2);}
+  .open-q li strong{color:var(--ink);}
+
+  footer{color:var(--ink-3); font-size:12px; border-top:1px solid var(--line); padding-top:18px;}
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">Estudo de caso · UX mobile</p>
+    <h1>Do desktop reaproveitado ao mobile com direção própria</h1>
+    <p class="lede">Comparação entre o padrão mobile da Localle hoje e a referência indicada (app Visor), elemento a elemento — cabeçalho, filtros, KPIs e botões de ação. Companion visual de <code style="font-family:var(--mono); font-size:12.5px; background:var(--card-2); padding:2px 6px; border-radius:5px;">docs/CASO-MOBILE.md</code>.</p>
+    <div class="hero-meta">
+      <span class="tag">viewport ~390px</span>
+      <span class="tag">base: md = 768px</span>
+      <span class="tag">3 pontos de queixa: filtros · ações · KPIs</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">01 — Diagnóstico</p>
+      <h2>A base já é recente. O que falta é hierarquia.</h2>
+      <p class="lede">O dock inferior, o alvo de toque de 44px e a tabela-vira-card já existem e já citam o Visor como referência (datados de 03–07/11/2026 no próprio código). O gap está em três áreas específicas que ainda herdam o layout de desktop: empilhar em vez de priorizar.</p>
+    </div>
+    <div class="takeaway">
+      <span class="mark">→</span>
+      <p><strong>Em uma frase:</strong> o Visor decide o que é mais importante em cada tela e dá espaço pra isso. A Localle mostra tudo do mesmo tamanho, na mesma ordem do desktop, só que mais estreito.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">02 — Cabeçalho</p>
+      <h2>Título visível vs. título só no menu</h2>
+      <p class="lede">O Visor abre a tela com um título grande, de identidade; ao rolar, ele cede lugar a um título pequeno fixo no topo. A Localle pula direto para o título pequeno — o título grande nunca existe.</p>
+    </div>
+    <div class="pair">
+      <div class="phone-col">
+        <div class="phone-label"><span class="dot visor"></span>Visor</div>
+        <div class="phone">
+          <div class="topbar"><div class="title-lg">Visão geral</div>
+            <div class="icons"><div class="ic">◎</div><div class="ic">🔔</div><div class="ic fab">+</div></div>
+          </div>
+          <div class="num">R$ 0 <small>igual</small></div>
+          <div class="chip-sm">+0,0% vs R$ 0,00</div>
+          <div class="spacer"></div>
+          <div class="card-dk"><div class="t">Comece pelo limite mensal</div><div class="d">Defina um limite para ver projeções do saldo.</div></div>
+        </div>
+      </div>
+      <div class="phone-col">
+        <div class="phone-label"><span class="dot hoje"></span>Localle hoje</div>
+        <div class="phone">
+          <div class="topbar"><div class="title-sm">Combustível</div>
+            <div class="icons"><div class="ic">☰</div></div>
+          </div>
+          <div class="annot" data-flag="sr-only">
+            <div class="card-dk" style="margin-top:16px;"><div class="t">(título real é invisível — só o menu diz onde você está)</div></div>
+          </div>
+          <div class="spacer"></div>
+          <div class="card-dk"><div class="t">Ritmo do mês</div><div class="d">conteúdo começa sem nenhuma âncora de "cheguei numa tela nova"</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="takeaway"><span class="mark">→</span><p><strong>Recomendação baixo esforço:</strong> trazer um H1 visível, grande, no topo do conteúdo que rola — sem precisar de scroll-driven ainda. A transição large→compact (como o Visor) é a evolução natural depois.</p></div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">03 — Filtros</p>
+      <h2>Um botão com contagem vs. uma pilha de selects</h2>
+      <p class="lede">Telas com 3+ filtros (ex. BI de combustível: grupo, operação, marca, modelo) empilham um select embaixo do outro antes do usuário ver qualquer dado.</p>
+    </div>
+    <div class="pair">
+      <div class="phone-col">
+        <div class="phone-label"><span class="dot visor"></span>Padrão sugerido</div>
+        <div class="phone">
+          <div class="topbar"><div class="title-sm">BI de combustível</div><div class="icons"><div class="ic">⋯</div></div></div>
+          <div class="btn-filter-one">⚙ Filtros <span class="count-badge">2</span></div>
+          <div class="spacer"></div>
+          <div class="card-dk"><div class="t">Conteúdo visível já na primeira dobra</div><div class="d">filtros abrem num sheet só quando tocados</div></div>
+        </div>
+      </div>
+      <div class="phone-col">
+        <div class="phone-label"><span class="dot hoje"></span>Localle hoje</div>
+        <div class="phone">
+          <div class="topbar"><div class="title-sm">BI de combustível</div><div class="icons"><div class="ic">⋯</div></div></div>
+          <div class="annot" data-flag="4×">
+            <div class="filters-row" style="flex-direction:column;">
+              <div class="pill-filter">Todos os grupos ▾</div>
+              <div class="pill-filter">Todas as operações ▾</div>
+              <div class="pill-filter">Todas as marcas ▾</div>
+              <div class="pill-filter">Todos os modelos ▾</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="takeaway"><span class="mark">→</span><p><strong>Recomendação:</strong> 2 filtros → <code style="font-family:var(--mono);">grid-cols-2</code>. 3+ filtros → botão "Filtros" com contagem, abrindo o <code style="font-family:var(--mono);">FloatingPanel</code> que já existe e já vira sheet no mobile.</p></div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">04 — KPIs</p>
+      <h2>Um número que importa vs. cinco números pequenos</h2>
+      <p class="lede">Grades de 5–7 KPIs encolhem para 2 colunas no mobile — a fonte já usa <code style="font-family:var(--mono);">clamp()</code> pra não estourar, mas o resultado ainda compete por atenção.</p>
+    </div>
+    <div class="pair">
+      <div class="phone-col">
+        <div class="phone-label"><span class="dot visor"></span>1 hero + faixa de contexto</div>
+        <div class="phone">
+          <div class="topbar"><div class="title-sm">Combustível</div><div class="icons"><div class="ic">⋯</div></div></div>
+          <div class="kpi-hero"><div class="lbl">Ainda cabe no teto</div><div class="val">R$ 80.000</div></div>
+          <div class="mini-strip">
+            <div class="kpi-tile"><div class="lbl">km/L</div><div class="val">—</div></div>
+            <div class="kpi-tile"><div class="lbl">R$/km</div><div class="val">—</div></div>
+            <div class="kpi-tile"><div class="lbl">Na meta</div><div class="val">0/0</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-col">
+        <div class="phone-label"><span class="dot hoje"></span>Localle hoje</div>
+        <div class="phone">
+          <div class="topbar"><div class="title-sm">Combustível</div><div class="icons"><div class="ic">⋯</div></div></div>
+          <div class="annot" data-flag="5 iguais">
+            <div class="kpi-grid">
+              <div class="kpi-tile"><div class="lbl">Gasto</div><div class="val">R$0</div></div>
+              <div class="kpi-tile"><div class="lbl">Preço/L</div><div class="val">—</div></div>
+              <div class="kpi-tile"><div class="lbl">Consumo</div><div class="val">—</div></div>
+              <div class="kpi-tile"><div class="lbl">R$/km</div><div class="val">—</div></div>
+              <div class="kpi-tile"><div class="lbl">Na meta</div><div class="val">0/0</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="takeaway"><span class="mark">→</span><p><strong>Recomendação:</strong> escolher o KPI mais acionável por tela e promovê-lo a <code style="font-family:var(--mono);">KpiHero</code> (já existe no design system); os demais seguem em grade, como contexto — não como protagonistas.</p></div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">05 — Botão de ação</p>
+      <h2>Mesmo lugar sempre vs. lugar que muda por tela</h2>
+      <p class="lede">No Visor, o "+" fica sempre no canto superior direito, pequeno, em toda tela. Na Localle, a ação primária mora dentro do card de conteúdo, ao lado do filtro — e muda de forma e posição por página.</p>
+    </div>
+    <div class="pair">
+      <div class="phone-col">
+        <div class="phone-label"><span class="dot visor"></span>Visor</div>
+        <div class="phone">
+          <div class="topbar"><div class="title-sm">Metas</div><div class="icons"><div class="ic">⚙</div><div class="ic fab">+</div></div></div>
+          <div class="spacer"></div>
+          <div class="btn-full">+ Nova meta</div>
+        </div>
+      </div>
+      <div class="phone-col">
+        <div class="phone-label"><span class="dot hoje"></span>Localle hoje</div>
+        <div class="phone">
+          <div class="topbar"><div class="title-sm">Combustível</div><div class="icons"><div class="ic">⋯</div></div></div>
+          <div class="pill-filter" style="margin-top:14px;">Todos os veículos ▾</div>
+          <div class="annot" data-flag="2º plano">
+            <div class="btn-full" style="margin-top:8px;">+ Lançar abastecimento</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="takeaway"><span class="mark">→</span><p><strong>Recomendação:</strong> mover o "+" de criação para a barra superior fixa, sempre no mesmo lugar. Botões full-width ficam reservados para chamadas de estado vazio dentro do conteúdo — como o próprio Visor faz.</p></div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">06 — Prioridade</p>
+      <h2>Por impacto × esforço</h2>
+    </div>
+    <ol class="priority">
+      <li><span class="n">01</span><span class="txt"><strong>Botão de ação fixo na barra superior</strong><span>baixo esforço · resolve a queixa de "ações" direto</span></span></li>
+      <li><span class="n">02</span><span class="txt"><strong>Filtros em sheet (3+ filtros)</strong><span>esforço médio · reaproveita o FloatingPanel existente</span></span></li>
+      <li><span class="n">03</span><span class="txt"><strong>1 KPI hero + grade de contexto</strong><span>esforço médio · maior salto perceptível de "outro patamar"</span></span></li>
+      <li><span class="n">04</span><span class="txt"><strong>Título visível no topo do conteúdo</strong><span>baixo esforço · sem scroll-driven ainda</span></span></li>
+      <li><span class="n">05</span><span class="txt"><strong>Large title → compact title no scroll</strong><span>esforço maior · só depois do item 4, se ainda fizer falta</span></span></li>
+    </ol>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">07 — Decidido em 08/11/2026</p>
+      <h2>Três decisões fechadas, plano pronto para virar implementação</h2>
+    </div>
+    <ul class="open-q">
+      <li><strong>Botão fixo:</strong> só nas telas com ação de criação clara — nas demais, a barra fica só com o título.</li>
+      <li><strong>Critério do KPI hero:</strong> o mais acionável da tela (ex. Ritmo do mês), escolhido por módulo — não o mais consultado.</li>
+      <li><strong>Escopo do sheet de filtros:</strong> toda tela de lista com filtros, de uma vez — não só o caso mais extremo.</li>
+    </ul>
+  </section>
+
+  <footer>Baseado no levantamento do código em <code style="font-family:var(--mono);">apps/web/src/components/{ui,story,Layout,Sidebar}.tsx</code> e nas capturas do app Visor enviadas em 08/11/2026. Documento completo em <code style="font-family:var(--mono);">docs/CASO-MOBILE.md</code>.</footer>
+
+</div>
