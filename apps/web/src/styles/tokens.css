@@ -152,6 +152,10 @@
   --counter-crit-ink: #FFFFFF;
   --brand-soft: color-mix(in srgb, var(--brand-fill) 5%, white); /* área de upload, item selecionado */
   --brand-soft-line: color-mix(in srgb, var(--brand-fill) 25%, white);
+  /* rodapé de leitura de um ChartCard (TipBand, referência Visor): mesma regra do TipCard, no máximo
+     um por tela — é outro lugar de conteúdo na cor da revenda, não os dois ao mesmo tempo. */
+  --brand-tip-band: linear-gradient(180deg, var(--brand-fill) 0%, var(--brand-fill) 65%, color-mix(in srgb, var(--brand-fill) 70%, black) 100%);
+  --brand-tip-band-text: color-mix(in srgb, var(--brand-fill) 25%, white); /* corpo do texto sobre a faixa; o trecho em destaque usa --on-dark */
 
   /* ---------- espaçamento (base 4px; os nomes dizem onde usar) ---------- */
   /* Escala: só estes passos. Fora dela (2, 6, 10, 14, 28 px…) não se usa. Os nomes abaixo dizem ONDE usar;

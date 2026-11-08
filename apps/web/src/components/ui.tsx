@@ -341,13 +341,32 @@ export function DescRow({ label, children, stacked, extra, className = '' }: { l
 // Card hoje); fica disponível para quando surgir um caso assim — não aplicar "pra garantir" sem um caso real.
 // Espaços: padding 24 (dense 16); cabeçalho → conteúdo 16 (dense 12; KPI 12, título → número); rodapé com divisor, 16 acima e abaixo.
 // O título é h2 direto na página e h3 dentro de uma Section (nível pelo contexto, sem pular).
-export function Card({ className = '', title, icon, actions, to, onOpen, footer, children, dense, head = 'default', subtitle, variant = 'default' }: { className?: string; title?: React.ReactNode; icon?: string; actions?: React.ReactNode; to?: string; onOpen?: () => void; footer?: React.ReactNode; children?: React.ReactNode; dense?: boolean; head?: 'default' | 'kpi'; subtitle?: React.ReactNode; variant?: 'default' | 'inset' }) {
+// `band`: rodapé "dica" (ex. TipBand) — variant="tip-frame" é o único que aceita; o card vira uma moldura na
+// cor da revenda (4px, referência Visor) com uma caixa branca por dentro para o conteúdo e a faixa encostada
+// na mesma moldura, sem caixa branca separando — por isso não combina com `footer` (que fica dentro da caixa
+// branca normalmente, mas não faz sentido junto da faixa).
+export function Card({ className = '', title, icon, actions, to, onOpen, footer, band, children, dense, head = 'default', subtitle, variant = 'default' }: { className?: string; title?: React.ReactNode; icon?: string; actions?: React.ReactNode; to?: string; onOpen?: () => void; footer?: React.ReactNode; band?: React.ReactNode; children?: React.ReactNode; dense?: boolean; head?: 'default' | 'kpi'; subtitle?: React.ReactNode; variant?: 'default' | 'inset' | 'tip-frame' }) {
   const level = useHeadingLevel();
-  return (
-    <section className={cx('rounded-card min-w-0 flex flex-col', variant === 'inset' ? 'bg-card-2 border border-line' : 'bg-card shadow-card', dense ? 'p-card-sm bleed-card-sm' : 'p-card bleed-card', className)}>
+  const padCls = dense ? 'p-card-sm bleed-card-sm' : 'p-card bleed-card';
+  const inner = (
+    <>
       {(title || actions || to || onOpen) && <CardHeader title={title} subtitle={subtitle} icon={icon} actions={actions} to={to} onOpen={onOpen} className={head === 'kpi' ? 'mb-kpi-title' : dense ? 'mb-card-head-sm' : 'mb-card-head'} />}
       <div className="flex-1 min-w-0 min-h-0"><HeadingLevel level={level + 1}>{children}</HeadingLevel></div>
       {footer && <CardFooter>{footer}</CardFooter>}
+    </>
+  );
+  if (variant === 'tip-frame') {
+    return (
+      <section className={cx('rounded-card min-w-0 flex flex-col gap-hair bg-brand-tip-band p-hair shadow-card', className)}>
+        <div className={cx('rounded-card bg-card min-w-0 flex flex-col', padCls)}>{inner}</div>
+        {band}
+      </section>
+    );
+  }
+  return (
+    <section className={cx('rounded-card min-w-0 flex flex-col', variant === 'inset' ? 'bg-card-2 border border-line' : 'bg-card shadow-card', padCls, className)}>
+      {inner}
+      {band && <div className={cx('-mx-bleed rounded-b-card overflow-hidden', dense ? '-mb-card-sm mt-card-foot' : '-mb-card mt-card-foot')}>{band}</div>}
     </section>
   );
 }

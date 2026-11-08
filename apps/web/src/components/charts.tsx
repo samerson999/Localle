@@ -628,11 +628,11 @@ export function ProjectionChart({ labels, actual, projected, budget, format = (v
   );
 }
 
-// ---------- ritmo do mês: acumulado contra o ritmo ideal até o teto, cor pela situação de cada dia ----------
-// Sem eixo y: os números ficam no cabeçalho do card. Etiqueta no ponto de hoje com a distância para o ritmo ideal.
-// verde dentro do ritmo · laranja até 20% acima · rosa acima · vermelho passou do teto
+// ---------- ritmo do mês: acumulado contra o ritmo ideal até o teto ----------
+// Minimalista (referência Visor): sem eixo, sem grade — só a curva preenchida, a linha pontilhada do ritmo
+// ideal e o ponto de hoje. A cor da curva e do ponto reflete a situação atual (verde no ritmo, laranja até
+// 20% acima, rosa acima, vermelho passou do teto); a leitura em texto (cabeçalho do card) dá o detalhe.
 const PACE_LINE: Record<PaceStatus, string> = { under: 'var(--pos)', approaching: 'var(--warn)', over: 'var(--loss)', exceeded: 'var(--crit)' };
-const PACE_TAG: Record<PaceStatus, string> = { under: 'var(--pos)', approaching: 'var(--warn-ink)', over: 'var(--loss-ink)', exceeded: 'var(--crit-ink)' };
 export function PaceChart({ labels, spent, cap, format = (v: number) => String(v), height = 170 }: {
   labels: string[]; spent: number[]; cap: number; format?: (v: number) => string; height?: number;
 }) {
@@ -647,11 +647,7 @@ export function PaceChart({ labels, spent, cap, format = (v: number) => String(v
   const x = (i: number) => left + (W - left - right) * (n <= 1 ? 0.5 : i / (n - 1));
   const y = (v: number) => top + (H - top - bottom) * (1 - v / hi);
   const pts = spent.map((v, i): Pt => [x(i), y(v)]);
-  const segs = monoSegs(pts);
   const now = last >= 0 ? st(last) : 'under';
-  const diff = last >= 0 ? ideal(last) - spent[last] : 0;
-  const tag = `${format(Math.abs(diff))} ${diff >= 0 ? 'abaixo' : 'acima'} do ritmo`;
-  const tagW = textW(tag, 12) + 16;
   const idx = typeof tip.active === 'number' ? tip.active : null;
   const body = (i: number) => (
     <TipBody title={labels[i]} rows={[
@@ -660,10 +656,6 @@ export function PaceChart({ labels, spent, cap, format = (v: number) => String(v
     ]} foot={i <= last ? `${PACE_LABEL[st(i)]} · ${format(Math.abs(ideal(i) - spent[i]))} ${ideal(i) >= spent[i] ? 'abaixo' : 'acima'}` : `Teto do mês ${format(cap)}`} />
   );
   const move = (e: React.PointerEvent | React.MouseEvent, pin: boolean) => { const i = nearest(e.clientX, ref.current, left, W - left - right, n); tip.show(i, anchorIn(ref.current, x(i), y(i <= last ? Math.max(spent[i], ideal(i)) : ideal(i))), body(i), pin); };
-  // etiqueta acima do ponto de hoje; se não couber, abaixo
-  const tx = last >= 0 ? Math.max(0, Math.min(W - tagW, x(last) - tagW / 2)) : 0, cx0 = last >= 0 ? Math.max(4, Math.min(tagW - 14, x(last) - tx - 5)) : 0;
-  const below = last >= 0 && y(spent[last]) - 34 < 0;
-  const ty = last >= 0 ? (below ? y(spent[last]) + 14 : y(spent[last]) - 34) : 0;
   return (
     <figure className="m-0">
       <SrTable caption="Gasto acumulado e ritmo ideal" head={['Dia', 'Acumulado', 'Ritmo ideal']} rows={labels.map((l, i) => [l, i <= last ? format(spent[i]) : '—', format(ideal(i))])} />
@@ -673,21 +665,10 @@ export function PaceChart({ labels, spent, cap, format = (v: number) => String(v
             <linearGradient id={`${gid}a`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor={PACE_LINE[now]} stopOpacity="0.2" /><stop offset="1" stopColor={PACE_LINE[now]} stopOpacity="0" /></linearGradient>
             {edgeFade(gid, left, W - right, H)}
           </defs>
-          <line x1={left} x2={W - right} y1={y(0)} y2={y(0)} stroke="var(--line)" />
-          <line x1={x(0)} y1={y(ideal(0))} x2={x(n - 1)} y2={y(cap)} stroke="var(--target)" strokeWidth={1.5} strokeDasharray="5 5" />
-          {[0, n - 1].map((i) => <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? 'start' : 'end'} {...AXIS}>{labels[i]}</text>)}
+          <line x1={x(0)} y1={y(ideal(0))} x2={x(n - 1)} y2={y(cap)} stroke="var(--line-strong)" strokeWidth={1.5} strokeDasharray="4 4" />
           {last >= 1 && <path d={`${smooth(pts)}L${x(last)},${y(0)}L${x(0)},${y(0)}Z`} fill={`url(#${gid}a)`} />}
-          <g mask={`url(#${gid}m)`}>
-            {segs.map((c, i) => <path key={i} d={`M${pts[i][0].toFixed(1)},${pts[i][1].toFixed(1)}${c}`} fill="none" stroke={PACE_LINE[st(i + 1)]} strokeWidth={2.5} strokeLinecap="round" />)}
-          </g>
-          {last >= 0 && idx == null && <g>
-            <circle cx={x(last)} cy={y(spent[last])} r={5.5} fill={PACE_LINE[now]} stroke="var(--card)" strokeWidth={2} />
-            <g transform={`translate(${tx},${ty})`}>
-              <rect width={tagW} height={22} rx={6} fill={PACE_TAG[now]} />
-              <path d={below ? `M${cx0},0l5,-6l5,6z` : `M${cx0},22l5,6l5,-6z`} fill={PACE_TAG[now]} />
-              <text x={tagW / 2} y={15} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--on-dark)" fontFamily="var(--font-sans)">{tag}</text>
-            </g>
-          </g>}
+          {last >= 1 && <path d={smooth(pts)} fill="none" stroke={PACE_LINE[now]} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />}
+          {last >= 0 && idx == null && <circle cx={x(last)} cy={y(spent[last])} r={5.5} fill={PACE_LINE[now]} stroke="var(--card)" strokeWidth={2} />}
           {idx != null && <g pointerEvents="none">
             <line x1={x(idx)} x2={x(idx)} y1={top} y2={H - bottom} stroke="var(--ink-3)" strokeDasharray="3 3" />
             <circle cx={x(idx)} cy={y(ideal(idx))} r={3.5} fill="var(--card)" stroke="var(--target)" strokeWidth={1.5} />

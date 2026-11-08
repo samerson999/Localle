@@ -27,6 +27,7 @@ a { text-underline-offset: 3px; }
    por --bleed, para o texto alinhar com o título do card (Card, Panel, Modal, FloatingPanel aplicam a classe) */
 .bleed-card { --bleed: var(--pad-card); }
 .bleed-card-sm { --bleed: var(--pad-card-sm); }
+.bg-brand-tip-band { background: var(--brand-tip-band); }
 .num { font-variant-numeric: var(--num-numeric); font-feature-settings: 'tnum' 1; }
 .font-mono { font-variant-numeric: var(--mono-numeric); }
 

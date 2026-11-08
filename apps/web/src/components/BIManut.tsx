@@ -95,7 +95,7 @@ export function BIGestor({ A, B, a, openWos }: { A: Kpis; B?: Kpis; a: [number, 
         <KpiTile label="Panes não planejadas" value={A.failures} delta={{ value: diff(A.failures, B?.failures), unit: '', digits: 0, good: 'down' }} />
         <KpiTile label="Na oficina agora" value={shop.length} status={shop.length ? 'parado' : undefined} sub={shop.length ? <>Mais antigo há <span className="num">{hm(Date.now() - (shop[0].since || 0))}</span></> : 'Nenhum veículo parado'} />
       </div>
-      <Grid cols={2} wide>
+      <Grid cols={2} wide equal>
         <ChartCard title="Falhas mais frequentes" icon="alerta" period={`${rangeText(a)} · panes não planejadas`} sentence={failSentence} state={totalF ? 'ready' : 'empty'} empty={{ title: 'Nenhuma pane no período' }}>
           <ul className="flex flex-col gap-1">
             {fails.map((f, i) => (

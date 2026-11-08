@@ -270,6 +270,7 @@ function BI() {
   const pace = monthPace(filtered ? s.fuelings.filter((f: any) => capIds.has(f.assetId)) : s.fuelings);
   const paceLabels = Array.from({ length: pace.days }, (_, i) => `${String(i + 1).padStart(2, '0')}/${String(pace.month + 1).padStart(2, '0')}`);
   const spentNow = pace.cum[pace.today - 1] || 0, left = cap - spentNow, proj = (spentNow / pace.today) * pace.days;
+  const daysLeft = pace.days - pace.today;
   const paceNow = paceStatus(spentNow, idealAt(cap, pace.today, pace.days), cap);
   const brl0 = (v: number) => brl(v).replace(/,\d\d$/, '');
   const kmlSentence = !vk.length ? 'Sem consumo calculado no período.' : below.length ? `${below.length} de ${vk.length} veículos abaixo da meta; ${below[0].name} está ${num((1 - below[0].kml! / below[0].goal!.kml) * 100, 0)}% abaixo (${num(below[0].kml!, 2)} contra ${num(below[0].goal!.kml, 1)} km/L).` : `Todos os ${vk.length} veículos com consumo calculado estão na meta.`;
@@ -291,15 +292,16 @@ function BI() {
         <KpiTile label="Veículos na meta" value={A.withGoal ? (A.inGoal / A.withGoal) * 100 : null} unit="%" sub={`${A.inGoal} de ${A.withGoal} com meta`} />
       </Grid>
       <Grid cols={2} wide equal>
-        <ChartCard title="Ritmo do mês" icon="combustivel" period={`${monthLabel(monthKey(Date.now()))} · ${filtered ? `teto de ${capped.length} ${capped.length === 1 ? 'veículo filtrado' : 'veículos filtrados'}` : 'teto da frota'}`}
-          state={cap > 0 ? 'ready' : 'empty'} empty={{ title: 'Sem teto mensal', detail: filtered ? 'Nenhum veículo filtrado tem teto mensal. Defina na aba Metas.' : 'Defina o teto mensal da frota na aba Metas.' }}
-          sentence={cap > 0 ? `${PACE_LABEL[paceNow]}. Mantido o ritmo, o mês fecha em ${brl0(proj)}, ${brl0(Math.abs(cap - proj))} ${proj > cap ? 'acima' : 'abaixo'} do teto.` : undefined}>
+        <ChartCard state={cap > 0 ? 'ready' : 'empty'} empty={{ title: 'Sem teto mensal', detail: filtered ? 'Nenhum veículo filtrado tem teto mensal. Defina na aba Metas.' : 'Defina o teto mensal da frota na aba Metas.' }}
+          tips={cap > 0 ? [
+            `${PACE_LABEL[paceNow]}. Mantido o ritmo, o mês fecha em ${brl0(proj)}, ${brl0(Math.abs(cap - proj))} ${proj > cap ? 'acima' : 'abaixo'} do teto.`,
+            daysLeft > 0 ? (left >= 0 ? `Dá pra gastar até ${brl0(left / daysLeft)}/dia nos ${daysLeft} dias que faltam, sem estourar o teto.` : `O teto já passou; segure os abastecimentos até o fim do mês para não piorar.`) : `Último dia do mês.`,
+          ] : undefined}>
           <div className="flex flex-col gap-1 mb-3">
             <span className="text-small text-ink-2">{left >= 0 ? 'Ainda cabe no teto' : 'Passou do teto em'}</span>
             <div className="flex items-baseline gap-2 flex-wrap"><Num value={Math.abs(left)} prefix="R$" size="kpi" /><span className="text-body text-ink-2 num">/ {brl0(cap)}</span></div>
           </div>
           <PaceChart labels={paceLabels} spent={pace.cum} cap={cap} format={brl0} />
-          <p className="text-caption text-ink-2 mt-3 flex flex-wrap items-center gap-x-4 gap-y-1"><span className="inline-flex items-center gap-tight"><svg width="18" height="8" aria-hidden="true"><line x1="1" x2="17" y1="4" y2="4" stroke="var(--target)" strokeWidth="1.5" strokeDasharray="3 3" /></svg>Ritmo ideal (teto ÷ dias do mês)</span><span>Linha: verde no ritmo, laranja até 20% acima, rosa acima, vermelho passou do teto</span></p>
         </ChartCard>
         <ChartCard title="Gasto por mês" icon="grafico" state={monthRows.length ? 'ready' : 'empty'} empty={{ title: 'Sem abastecimentos no período' }}
           sentence={monthRows.length ? `${brl(A.total).replace(/,\d\d$/, '')} no período${B?.total ? `, ${pct(Math.abs(A.total / B.total - 1), 1)} ${A.total > B.total ? 'acima' : 'abaixo'} do período anterior` : ''}.` : undefined}>

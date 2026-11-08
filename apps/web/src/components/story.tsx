@@ -159,14 +159,56 @@ export function ChartFoot({ sentence, action }: { sentence: React.ReactNode; act
 
 export type LoadState = 'ready' | 'loading' | 'empty' | 'error';
 
+// Rodapé "dica" de um ChartCard: faixa na cor da revenda (gradiente), com a leitura em destaque e, havendo
+// mais de uma, setas + pontos para passar entre elas (referência Visor). Mesma regra do TipCard — no máximo
+// uma faixa dessas por tela; não usar junto com TipCard na mesma tela.
+export function TipBand({ items }: { items: React.ReactNode[] }) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (items.length <= 1) return;
+    const id = setInterval(() => setI((x) => (x + 1) % items.length), 6000);
+    return () => clearInterval(id);
+  }, [items.length]);
+  if (!items.length) return null;
+  const idx = Math.min(i, items.length - 1);
+  return (
+    <div className="p-stack flex flex-col gap-tight">
+      <div className="flex items-center gap-icon">
+        <Icon name="info" size={16} className="text-on-dark" />
+        <span className="text-small font-medium text-on-dark">Dica da Localle</span>
+      </div>
+      <div className="grid">
+        {items.map((item, j) => (
+          <p key={j} aria-hidden={j !== idx} className={cx('col-start-1 row-start-1 text-small text-on-dark-2 leading-snug transition-all duration-300 ease-out',
+            j === idx ? 'opacity-100 translate-x-0' : 'opacity-0 pointer-events-none', j < idx ? '-translate-x-1' : j > idx ? 'translate-x-1' : '')}>{item}</p>
+        ))}
+      </div>
+      {items.length > 1 && (
+        <div className="flex items-center gap-tight">
+          <IconButton aria-label="Dica anterior" tone="on-dark" size="sm" onClick={() => setI((idx - 1 + items.length) % items.length)}><Icon name="voltar" size={16} /></IconButton>
+          <div className="flex items-center gap-tight mx-auto" role="tablist" aria-label="Dicas">
+            {items.map((_, j) => <button key={j} type="button" role="tab" aria-selected={j === idx} aria-label={`Dica ${j + 1} de ${items.length}`} onClick={() => setI(j)}
+              className={cx('h-1.5 rounded-pill transition-all', j === idx ? 'w-6 bg-on-dark' : 'w-1.5 bg-on-dark-3 hover:bg-on-dark-2')} />)}
+          </div>
+          <IconButton aria-label="Próxima dica" tone="on-dark" size="sm" onClick={() => setI((idx + 1) % items.length)}><Icon name="chevron" size={16} /></IconButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Card de gráfico: cabeçalho (ícone + título + ↗, período como apoio), conteúdo e os estados de carregamento, vazio e erro.
 // Mesmos espaços do Card: cabeçalho → gráfico 16; rodapé com divisor, 16 acima e abaixo.
-// Rodapé: `insight` (motivo da rota + frase + ›, como nas referências) ou `sentence` + `action` (leitura com botão).
-export function ChartCard({ title, icon, to, period, children, sentence, action, insight, insightTo, state = 'ready', empty, onRetry, className = '', aside }: { title: string; icon?: string; to?: string; period?: string; children: React.ReactNode; sentence?: React.ReactNode; action?: Action; insight?: React.ReactNode; insightTo?: string; state?: LoadState; empty?: { title: string; detail?: string }; onRetry?: () => void; className?: string; aside?: React.ReactNode }) {
+// Rodapé: `insight` (motivo da rota + frase + ›, como nas referências), `sentence` + `action` (leitura com botão)
+// ou `tips` (TipBand, cor da revenda — usar só quando o card pedir destaque maior que o rodapé padrão).
+// `title` opcional: quando a faixa de dica (tips) já conta a leitura, um card mais limpo (sem cabeçalho) pode
+// omitir título/ícone/período — ver "Ritmo do mês" em Combustivel.tsx.
+export function ChartCard({ title, icon, to, period, children, sentence, action, insight, insightTo, tips, state = 'ready', empty, onRetry, className = '', aside }: { title?: string; icon?: string; to?: string; period?: string; children: React.ReactNode; sentence?: React.ReactNode; action?: Action; insight?: React.ReactNode; insightTo?: string; tips?: React.ReactNode[]; state?: LoadState; empty?: { title: string; detail?: string }; onRetry?: () => void; className?: string; aside?: React.ReactNode }) {
   const ready = state !== 'loading' && state !== 'error' && state !== 'empty';
-  const foot = !ready ? undefined : insight ? <Insight to={insightTo}>{insight}</Insight> : sentence ? <ChartFoot sentence={sentence} action={action} /> : undefined;
+  const hasTips = ready && !!tips?.length;
+  const foot = !ready || hasTips ? undefined : insight ? <Insight to={insightTo}>{insight}</Insight> : sentence ? <ChartFoot sentence={sentence} action={action} /> : undefined;
   return (
-    <Card className={className} title={title} subtitle={period} icon={icon} to={to} actions={aside} footer={foot}>
+    <Card className={className} title={title} subtitle={period} icon={icon} to={to} actions={aside} footer={foot} band={hasTips ? <TipBand items={tips!} /> : undefined} variant={hasTips ? 'tip-frame' : 'default'}>
       <div aria-busy={state === 'loading'} className="h-full flex flex-col">
         {state === 'loading' ? <div className="flex flex-col gap-stack"><Skeleton className="h-4 w-1/3" /><Skeleton className="h-40 w-full" /><Skeleton className="h-4 w-2/3" /></div>
           : state === 'error' ? <ErrorState detail="O servidor não respondeu a tempo. Os dados da tela não foram alterados." onRetry={onRetry} />
