@@ -383,7 +383,12 @@ export const equipeApi = {
   reenviarConvite: (id: string) => apiSend<Entrega>('POST', `/users/${id}/convite`),
   desativar: (id: string) => apiSend<MembroEquipe>('POST', `/users/${id}/desativar`),
   reativar: (id: string) => apiSend<MembroEquipe>('POST', `/users/${id}/reativar`),
+  permissoes: () => apiGet<PermissaoPapel[]>('/permissions'),
+  definirPermissao: (role: PermissaoPapel['role'], key: string, allowed: boolean) => apiSend<PermissaoPapel>('PUT', `/permissions/${role}/${key}`, { allowed }),
+  restaurarPermissao: (role: PermissaoPapel['role'], key: string) => apiSend<PermissaoPapel>('DELETE', `/permissions/${role}/${key}`),
 };
+/** Uma linha por (permissão, papel); `origin: 'cliente'` = alterada pela empresa, `editableByClient: false` = travada pela Localle. */
+export interface PermissaoPapel { key: string; label: string; role: 'admin' | 'gestor' | 'operador'; allowed: boolean; origin: 'cliente' | 'padrao'; editableByClient: boolean }
 
 /** Ativo novo nasce na API (é nele que o rastreador é instalado); devolve o id do store (lc_…). */
 export async function criarAtivo(plate: string): Promise<string> {

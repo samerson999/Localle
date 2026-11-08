@@ -2,9 +2,9 @@
 // cria a própria senha), reenvia o convite e desativa/reativa o acesso. Rotas /users (permissão
 // "permissoes.gerenciar" — na prática, o admin). Novo admin só pela Localle.
 import { useState } from 'react';
-import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, Input, Radio, Callout, EmptyState, toast, confirmAction } from '../components/ui';
+import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, Input, Radio, Check, Callout, EmptyState, toast, confirmAction } from '../components/ui';
 import { useStore } from '../lib/store';
-import { equipeApi, useAdminQuery, type MembroEquipe } from '../lib/localleApi';
+import { equipeApi, useAdminQuery, type MembroEquipe, type PermissaoPapel } from '../lib/localleApi';
 import { ConviteLink, avisarEntrega } from '../components/ConviteLink';
 import { fmtD } from '@localle/shared/utils';
 
@@ -65,11 +65,49 @@ export default function EquipeCliente() {
               />
             </Card>
           </Section>
+          <Permissoes />
         </>}
       </PageBody>
       {convidando && <ConvidarModal onClose={() => setConvidando(false)} onDone={(r, email) => { reload(); avisarEntrega(r, email, setLink); }} />}
       {link && <ConviteLink email={link.email} link={link.link} onClose={() => setLink(null)} />}
     </div>
+  );
+}
+
+// O papel admin não é editável pelo cliente (a API recusa) e permissão travada pela Localle aparece sem caixa
+function Permissoes() {
+  const { data, error, loading } = useAdminQuery(equipeApi.permissoes);
+  const [salvando, setSalvando] = useState('');
+  // o que a API devolveu em cada alteração vale por cima da carga inicial (sem recarregar a tabela inteira)
+  const [alterado, setAlterado] = useState<Record<string, PermissaoPapel>>({});
+  const linhas = [...new Map((data || []).map((p) => [p.key, p.label])).entries()];
+  const de = (key: string, role: PermissaoPapel['role']) => alterado[`${role}:${key}`] || data?.find((p) => p.key === key && p.role === role);
+  const mudar = async (fn: () => Promise<PermissaoPapel>, id: string) => {
+    setSalvando(id);
+    try { const p = await fn(); setAlterado((a) => ({ ...a, [id]: p })); } catch (e: any) { toast('Permissão não alterada: ' + (e.message || e), { tone: 'crit' }); } finally { setSalvando(''); }
+  };
+  const celula = (key: string, role: PermissaoPapel['role']) => {
+    const p = de(key, role);
+    if (!p) return '—';
+    if (role === 'admin' || !p.editableByClient) return <span className="text-small text-ink-2">{p.allowed ? 'Sim' : 'Não'}{!p.editableByClient && role !== 'admin' ? ' · fixo' : ''}</span>;
+    const id = `${role}:${key}`;
+    return (
+      <span className="inline-flex items-center gap-tight">
+        <Check aria-label={`${p.label} para ${PAPEL[role].label}`} checked={p.allowed} disabled={salvando === id} onChange={(v) => mudar(() => equipeApi.definirPermissao(role, key, v), id)} />
+        {p.origin === 'cliente' && <TextButton disabled={salvando === id} onClick={() => mudar(() => equipeApi.restaurarPermissao(role, key), id)}>Padrão</TextButton>}
+      </span>
+    );
+  };
+  return (
+    <Section title="Permissões por perfil">
+      <Card>
+        {error && <Callout tone="crit" className="mb-card-head">Não foi possível carregar as permissões: {error}</Callout>}
+        <p className="text-small text-ink-2 mb-card-head">Vale na hora para todas as pessoas do perfil. "Padrão" volta ao que a plataforma define; o Administrador tem acesso fixo.</p>
+        <Table minWidth={640} loading={loading && !data} align={['left', 'left', 'left', 'left']}
+          head={['Permissão', PAPEL.admin.label, PAPEL.gestor.label, PAPEL.operador.label]}
+          rows={linhas.map(([key, label]) => [<span className="font-medium">{label}</span>, celula(key, 'admin'), celula(key, 'gestor'), celula(key, 'operador')])} />
+      </Card>
+    </Section>
   );
 }
 
@@ -89,7 +127,7 @@ function ConvidarModal({ onClose, onDone }: { onClose: () => void; onDone: (r: {
       <div role="radiogroup" aria-label="Perfil" className="flex flex-col gap-2">
         {(['gestor', 'operador'] as const).map((r) => <Radio key={r} name="perfil" label={PAPEL[r].label} description={PAPEL[r].desc} checked={role === r} onChange={() => setRole(r)} />)}
       </div>
-      <p className="text-caption text-ink-2">A pessoa recebe um link para criar a própria senha; ninguém mais conhece a senha dela. O que cada perfil pode fazer é ajustado em Configurações.</p>
+      <p className="text-caption text-ink-2">A pessoa recebe um link para criar a própria senha; ninguém mais conhece a senha dela. O que cada perfil pode fazer é ajustado nesta tela, em Permissões por perfil.</p>
     </Modal>
   );
 }
