@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { lancarEventoRanking, salvarMatrizRanking, useCarregando } from '../lib/localleApi';
+import { lancarEventoRanking, removerEventoRanking, salvarMatrizRanking, useCarregando } from '../lib/localleApi';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack, SetupLink, useUrlTab } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, ChartCard, DeltaChip, StatusDot, Num } from '../components/story';
 import { Icon } from '../components/icons';
 import { EVENT_CATEGORIES, FUTURE_CATEGORIES } from '@localle/shared/catalog';
 import { localTypes, localRanking, journeyEvents, Ranking as RankingT, EvType } from '@localle/shared/ranking';
-import { fmtD, num, toInputD, DAY } from '@localle/shared/utils';
+import { fmtD, fmtDT, num, toInputD, DAY } from '@localle/shared/utils';
 
 const PERIOD: Record<string, string> = { semana: 'semana', mes: 'mês', trimestre: 'trimestre' };
 
@@ -175,10 +175,21 @@ function Matriz() {
 
 function RegisterEvent({ types }: { types: EvType[] }) {
   const s = useStoreData();
-  const [e, setE] = useState({ driverId: s.drivers[0].id, type: 'excesso_velocidade', value: '' });
+  const [e, setE] = useState({ driverId: s.drivers[0]?.id || '', type: 'excesso_velocidade', value: '' });
   const t = types.find((x) => x.code === e.type);
+  // só o que foi lançado à mão pode ser desfeito aqui; evento do rastreador, CAN ou regra é fato apurado
+  const manuais = (s.events || []).filter((x: any) => x.source === 'manual' && /^[0-9a-f-]{36}$/i.test(x.id)).sort((a: any, b: any) => b.ts - a.ts).slice(0, 20);
+  const excluir = async (x: any, label: string, nome: string) => {
+    if (!(await confirmAction({ title: 'Excluir este lançamento?', detail: `${label} de ${nome}, em ${fmtDT(x.ts)}. Os pontos saem do ranking.`, confirmLabel: 'Excluir' }))) return;
+    try { await removerEventoRanking(x.id); toast('Lançamento excluído.'); } catch (er: any) { toast('Não foi possível excluir: ' + (er.message || er), { tone: 'crit' }); }
+  };
+  if (!s.drivers.length) return null;
   return (
-    <Card title="Lançar evento manualmente" icon="mais">
+    <Card title="Lançar evento manualmente" icon="mais" footer={manuais.length ? <Table dense minWidth={560} align={['left', 'left', 'left', 'right']} head={['Quando', 'Motorista', 'Evento', '']} rows={manuais.map((x: any) => {
+      const label = types.find((y) => y.code === x.type)?.label || x.type;
+      const nome = s.drivers.find((d: any) => d.id === x.driverId)?.name || (s.driversInativos || []).find((d: any) => d.id === x.driverId)?.name || '—';
+      return [<span className="num text-small">{fmtDT(x.ts)}</span>, nome, <span>{label}{x.value != null ? <span className="text-ink-2"> · {x.value}</span> : null}</span>, <TextButton tone="danger" onClick={() => excluir(x, label, nome)}>Excluir</TextButton>];
+    })} /> : undefined}>
       <div className="flex flex-wrap gap-2 items-end max-md:[&>*]:w-full">
         <Field label="Motorista"><SearchSelect className="w-48 max-md:w-full" value={e.driverId} onChange={(v) => setE({ ...e, driverId: v })} options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
         <Field label="Evento"><Select className="w-64 max-md:w-full" value={e.type} onChange={(x) => setE({ ...e, type: x.target.value })} options={types.filter((x) => x.active).map((x) => ({ value: x.code, label: x.label }))} /></Field>

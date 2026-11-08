@@ -777,6 +777,7 @@ export async function salvarMatrizRanking(tipos: any[]) {
   await syncRanking();
 }
 export async function lancarEventoRanking(e: any) { await apiSend('POST', '/ranking/eventos', M.eventToEventoRankingBody(e)); await syncRanking(); }
+export async function removerEventoRanking(id: string) { await apiSend('DELETE', `/ranking/eventos/${id}`); await syncRanking(); }
 
 export async function syncViagens() {
   const [matrizes, viagens] = await Promise.all([apiGet<any[]>('/viagens/matrizes'), apiGet<any[]>('/viagens')]);
