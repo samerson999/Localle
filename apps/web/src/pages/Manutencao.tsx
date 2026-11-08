@@ -3,7 +3,10 @@ import { opAssets } from '../lib/assetLifecycle';
 import { auditEntry } from '@localle/shared/audit';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { removerPlano, salvarOs, salvarPlano, useCarregando } from '../lib/localleApi';
+import { gerarPreventivas, removerPlano, salvarOs, salvarPlano, useCarregando } from '../lib/localleApi';
+
+// uma geração por vez, mesmo que a tela remonte enquanto as OS ainda estão sendo criadas
+let gerandoPreventivas = false;
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Badge, Tabs, Modal, PageHeader, Textarea, FilePick, EmptyState, ErrorState, Skeleton, Panel, InlineInput, cx, TextButton, toast, confirmAction, Grid, Stack, FormGroup, IconButton, useUrlTab, useUrlItem, LoadingBlock, Missing } from '../components/ui';
 import { planStatus, generateDueOrders, SERVICES, OS_STATUS, CRIT_DEFAULT } from '@localle/shared/maint';
 import { brl, fmtD, fmtDT, num, HOUR, uid, isPlate, sum } from '@localle/shared/utils';
@@ -31,7 +34,17 @@ function ManutencaoLocal() {
   useUrlItem('os', (id) => s.workOrders.find((w: any) => w.id === id), setOs, [s.workOrders]);
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[2], 'anterior'));
   const [grp, setGrp] = useState('');
-  useEffect(() => { const st = useStore.getState(); const add = generateDueOrders(st); if (add.length) st.patch((x: any) => ({ workOrders: [...x.workOrders, ...add], ...auditEntry({ session: { name: 'Sistema' } }, { coll: 'workOrders', refId: '', label: 'Preventivas vencidas', action: `gerou ${add.length} OS preventivas automaticamente`, count: add.length, note: add.map((o: any) => o.title).join(', ') }) })); }, []);
+  // só depois da carga da API: com a lista antiga do navegador, o plano que já tem OS aberta geraria outra
+  useEffect(() => {
+    if (carregando || gerandoPreventivas) return;
+    const add = generateDueOrders(useStore.getState());
+    if (!add.length) return;
+    gerandoPreventivas = true;
+    gerarPreventivas(add)
+      .then((criadas) => { if (criadas.length) useStore.getState().patch(() => auditEntry({ session: { name: 'Sistema' } }, { coll: 'workOrders', refId: '', label: 'Preventivas vencidas', action: `gerou ${criadas.length} OS preventivas automaticamente`, count: criadas.length, note: criadas.map((o: any) => o.title).join(', ') })); })
+      .catch((e: any) => toast('Não foi possível gerar as OS preventivas: ' + (e.message || e), { tone: 'crit' }))
+      .finally(() => { gerandoPreventivas = false; });
+  }, [carregando]);
   const isBI = BI_TABS.includes(tab);
   const openWos = s.workOrders.filter((w: any) => !['concluida', 'cancelada'].includes(w.status) && w.shopInAt).map((w: any) => ({ asset: s.assets.find((a: any) => a.id === w.assetId)?.name, title: w.title, since: w.shopInAt }));
   return (

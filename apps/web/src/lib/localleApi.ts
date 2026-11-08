@@ -751,6 +751,14 @@ export async function salvarOs(w: any) {
   return M.osToWorkOrder(salvo);
 }
 
+/** OS preventivas que os planos pedem (generateDueOrders) nascem no backend; ativo fora do backend não tem como ter OS lá. */
+export async function gerarPreventivas(os: any[]) {
+  const reais = os.filter((o) => isRealAsset({ id: o.assetId }));
+  for (const o of reais) await apiSend('POST', '/manutencao/os', M.workOrderToOsBody({ ...o, id: undefined }));
+  if (reais.length) await syncManutencao();
+  return reais;
+}
+
 export async function syncChecklist() {
   const [modelos, respostas] = await Promise.all([apiGet<any[]>('/checklist/modelos'), apiGet<any[]>(`/checklist/respostas?${desde(180)}`)]);
   patch(() => ({ checklistTemplates: modelos.map(M.modeloToTemplate), checklistResponses: respostas.map(M.respostaToResponse) }));
