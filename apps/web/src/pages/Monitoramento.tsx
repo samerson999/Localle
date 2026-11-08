@@ -266,8 +266,9 @@ export default function Monitoramento() {
           </div>
           <div>
             <MapControls items={[
-              // no toque o zoom é pela pinça; os botões só ocupavam o mapa
-              ...(mobile ? [] : [{ icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() }, { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() }]),
+              // também no toque: a pinça é gesto de dois dedos, e quem não consegue fazê-la precisa dos botões (WCAG 2.5.1)
+              { icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() },
+              { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() },
               { icon: 'centralizar', label: 'Ver a frota toda', onClick: fitAll },
               { icon: 'tela-cheia', label: mapaCheio ? 'Sair da tela cheia' : 'Mapa em tela cheia', onClick: mapaCheio ? sairMapaCheio : entrarMapaCheio },
             ]} />

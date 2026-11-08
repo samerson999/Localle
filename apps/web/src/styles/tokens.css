@@ -266,12 +266,13 @@
 }
 
 /* ---------- toque (celular e tablet) ---------- */
-/* Dedo não é cursor: controles sobem para perto do alvo recomendado de 44px. O desktop mantém a densidade acima.
+/* Dedo não é cursor: controles sobem para o alvo de 44px (decisão de 07/11/2026, inclusive os pequenos — botão de ícone,
+   chip, controle do mapa). O desktop mantém a densidade acima.
    Campo de texto com menos de 16px faz o Safari do iPhone dar zoom na página a cada foco (regra em base.css). */
 @media (pointer: coarse) {
   :root {
     --h-ctl: 44px;
-    --h-ctl-sm: 40px;
+    --h-ctl-sm: 44px;
     --fs-field-touch: 16px;
   }
 }

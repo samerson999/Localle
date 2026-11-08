@@ -495,8 +495,8 @@ export function SearchInput({ value, onChange, placeholder = 'Buscar', className
   return (
     <div className={cx('relative', className)}>
       <Icon name="busca" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
-      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={p['aria-label'] || placeholder} className={cx(inputCls, 'pl-10 pr-10 [&::-webkit-search-cancel-button]:hidden')} />
-      {value && <button type="button" aria-label="Limpar busca" onClick={() => onChange('')} className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
+      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={p['aria-label'] || placeholder} className={cx(inputCls, 'pl-10 pr-10 [@media(pointer:coarse)]:pr-11 [&::-webkit-search-cancel-button]:hidden')} />
+      {value && <button type="button" aria-label="Limpar busca" onClick={() => onChange('')} className="absolute right-1 [@media(pointer:coarse)]:right-0 top-1/2 -translate-y-1/2 w-7 h-7 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
     </div>
   );
 }
@@ -625,8 +625,8 @@ export function SearchSelect({ options, value, onChange, onQuery, placeholder = 
       <input ref={input} role="combobox" aria-expanded={open} aria-controls={lid} aria-autocomplete="list" aria-label={p['aria-label']}
         value={query} placeholder={placeholder} onKeyDown={key}
         onFocus={show} onChange={(e) => { setQuery(e.target.value); if (!open) show(); }}
-        className={cx(inputCls, 'pl-10 pr-10')} />
-      {(query || value) && <button type="button" aria-label="Limpar" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
+        className={cx(inputCls, 'pl-10 pr-10 [@media(pointer:coarse)]:pr-11')} />
+      {(query || value) && <button type="button" aria-label="Limpar" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="absolute right-1 [@media(pointer:coarse)]:right-0 top-1/2 -translate-y-1/2 w-7 h-7 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
       {pres.mounted && createPortal(
         <ul ref={list} id={lid} role="listbox" aria-label={p['aria-label']} onMouseDown={(e) => e.preventDefault()}
           style={{ left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.width }}
@@ -778,7 +778,7 @@ const sliderText = 'transition-colors duration-[250ms]';
 // e a opção ativa é trazida para a vista (useSlider).
 const segTrack = 'relative inline-flex flex-wrap max-md:flex-nowrap max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden w-fit max-w-full gap-1 p-1 bg-card rounded-pill';
 const segIndicator = 'absolute rounded-pill bg-brand-fill';
-const segItem = (size: 'sm' | 'md', on: boolean, style: unknown) => cx('relative shrink-0 whitespace-nowrap px-3 rounded-pill font-medium inline-flex items-center gap-tight', size === 'sm' ? 'h-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:min-w-11 justify-center text-caption' : 'h-8 [@media(pointer:coarse)]:h-10 text-small', sliderText, on ? cx('text-brand-fill-ink', !style && 'bg-brand-fill') : 'text-ink-2 hover:text-ink');
+const segItem = (size: 'sm' | 'md', on: boolean, style: unknown) => cx('relative shrink-0 whitespace-nowrap px-3 rounded-pill font-medium inline-flex items-center gap-tight', size === 'sm' ? 'h-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11 justify-center text-caption' : 'h-8 [@media(pointer:coarse)]:h-11 text-small', sliderText, on ? cx('text-brand-fill-ink', !style && 'bg-brand-fill') : 'text-ink-2 hover:text-ink');
 
 // Contador neutro (abas, filtros, listas). O do "Precisa de você" é o único vermelho (Layout).
 export function CountBadge({ n, className = '' }: { n: number; className?: string }) {

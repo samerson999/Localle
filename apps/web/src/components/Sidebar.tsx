@@ -291,7 +291,7 @@ export function SidebarSubMenu({ items }: { items: { key: string; to: string; ic
       <span aria-hidden="true" className={cx('absolute left-[23px] top-0 bottom-3 w-px bg-line transition-opacity duration-150 motion-reduce:transition-none', mini && 'opacity-0')} />
       {items.map((s) => (
         <NavLink key={s.key} to={s.to} data-slot="sidebar-menu-button" title={mini ? s.label : undefined} aria-label={mini ? s.label : undefined}
-          className={({ isActive }) => cx('relative z-[1] flex items-center gap-3 h-9 [@media(pointer:coarse)]:h-10 pr-3 rounded-ctl text-small overflow-hidden transition-[color,background-color,padding] duration-150 motion-reduce:transition-none', mini ? 'pl-[15px]' : 'pl-[36px]', isActive ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
+          className={({ isActive }) => cx('relative z-[1] flex items-center gap-3 h-9 [@media(pointer:coarse)]:h-11 pr-3 rounded-ctl text-small overflow-hidden transition-[color,background-color,padding] duration-150 motion-reduce:transition-none', mini ? 'pl-[15px]' : 'pl-[36px]', isActive ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
           <Icon name={s.icon} size={18} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{s.label}</span>
         </NavLink>
       ))}
