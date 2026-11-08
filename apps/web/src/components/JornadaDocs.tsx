@@ -31,7 +31,7 @@ export function JornadaDocs({ company }: { company: { name: string; cnpj?: strin
   const cfg = s.journeyCfg || { maxExtra: 2 };
   const { print, portal } = usePrint();
   const [kind, setKind] = useState('marcacao');
-  const [d, setD] = useState(s.drivers[0].id);
+  const [d, setD] = useState(s.drivers[0]?.id || '');
   const [from, setFrom] = useState(toInputD(Date.now() - 30 * DAY));
   const [picked, setPicked] = useState<string[]>([]);
   const [measure, setMeasure] = useState('escrita');
@@ -50,6 +50,8 @@ export function JornadaDocs({ company }: { company: { name: string; cnpj?: strin
   const suggestion = LADDER[Math.min(LADDER.length - 1, prev.length ? LADDER.indexOf(prev[prev.length - 1].kind) + 1 : 0)];
   const register = (k: string, ids: string[], detail: string) => s.patch((st: any) => ({ discipline: [...(st.discipline || []), { id: uid('md'), ts: Date.now(), date, kind: k, driverIds: ids, detail, by: st.session?.name || 'Gestor' }], ...(ids.length > 1 ? auditEntry(st, { coll: 'discipline', refId: '', label: detail || k, action: `registrou documento para ${ids.length} motoristas em lote`, count: ids.length }) : {}) }));
   const today = new Date(date + 'T12:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  if (!s.drivers.length) return <Card><EmptyState illustration="ilu-jornada" title="Nenhum motorista cadastrado" detail="Cadastre um motorista em Ativos para emitir termos e medidas." /></Card>;
 
   const docMarcacao = (
     <Doc>

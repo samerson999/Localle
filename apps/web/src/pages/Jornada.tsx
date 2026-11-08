@@ -105,11 +105,12 @@ function Painel({ goDocs, period }: { goDocs: () => void; period: PeriodValue })
 
 function Marcacoes() {
   const s = useStoreData();
-  const [d, setD] = useState(s.drivers[0].id);
+  const [d, setD] = useState(s.drivers[0]?.id || '');
   const [type, setType] = useState('inicio_jornada');
   const [ts, setTs] = useState(toInputDT(Date.now()));
   const [src, setSrc] = useState('app');
   const marks = s.journey.filter((m: any) => m.driverId === d).sort((a: any, b: any) => b.ts - a.ts).slice(0, 80);
+  if (!s.drivers.length) return <Card title="Registrar marcação" icon="mais"><EmptyState illustration="ilu-jornada" title="Nenhum motorista cadastrado" detail="Cadastre um motorista em Ativos para lançar ou receber marcações de jornada." /></Card>;
   return (
     <Stack gap="grid">
       <Card title="Registrar marcação" icon="mais">
@@ -133,7 +134,7 @@ function Folha() {
   const s = useStoreData();
   const cfg = useCfg();
   const { print, portal } = usePrint();
-  const [d, setD] = useState(s.drivers[0].id);
+  const [d, setD] = useState(s.drivers[0]?.id || 'todos');
   const nowD = new Date();
   const [mode, setMode] = useState('mes');
   const [ym, setYm] = useState(`${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}`);
@@ -144,6 +145,7 @@ function Folha() {
   const company = { name: cfg.companyName || s.revenda.clientName, cnpj: cfg.companyCnpj, address: cfg.companyAddress };
   const sheet = (drv: any) => <FolhaPonto key={drv.id} driver={drv} marks={s.journey.filter((x: any) => x.driverId === drv.id)} from={range[0]} to={range[1]} company={company} maxExtra={cfg.maxExtra} cfg={cfg} issuedBy={s.session?.name} assetName={s.assets.find((a: any) => a.driverId === drv.id)?.name} />;
   const selected = d === 'todos' ? s.drivers : s.drivers.filter((x: any) => x.id === d);
+  if (!s.drivers.length) return <Card><EmptyState illustration="ilu-jornada" title="Nenhum motorista cadastrado" detail="Cadastre um motorista em Ativos para emitir a folha de ponto." /></Card>;
   return (
     <Stack gap="grid">
       <Card>
@@ -168,10 +170,11 @@ function Folha() {
 function Termo() {
   const s = useStoreData();
   const { print, portal } = usePrint();
-  const [d, setD] = useState(s.drivers[0].id);
+  const [d, setD] = useState(s.drivers[0]?.id || '');
   const drv = s.drivers.find((x: any) => x.id === d);
   const company = s.revenda.clientName;
   const cfg = useCfg();
+  if (!s.drivers.length) return <Card><EmptyState illustration="ilu-jornada" title="Nenhum motorista cadastrado" detail="Cadastre um motorista em Ativos para emitir o termo de orientação." /></Card>;
   return (
     <Stack gap="grid">
       <Card className="no-print"><div className="flex flex-wrap gap-3 items-end max-md:[&>*]:w-full"><Field label="Motorista"><Select className="w-52 max-md:w-full" value={d} onChange={(e) => setD(e.target.value)} options={s.drivers.map((x: any) => ({ value: x.id, label: x.name }))} /></Field><Button variant="dark" onClick={() => print(<div className="doc-sheet" style={{ fontSize: 14, maxWidth: 760, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: document.getElementById('termo-doc')?.innerHTML || '' }} />)}><Icon name="imprimir" size={18} />Imprimir para assinatura</Button></div><div className="mt-3"><LegalNote /></div></Card>
