@@ -3,12 +3,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore, useStoreData } from '../lib/store';
 import { registrarMarcacao, removerMarcacao, salvarEmpresa, useCarregando } from '../lib/localleApi';
 import { mascaraValida } from '../lib/mascaras';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid, SetupLink, DescList, DescRow, useUrlTab } from '../components/ui';
-import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid, SetupLink, DescList, DescRow, useUrlTab, useIsMobile } from '../components/ui';
+import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { ColumnChart, CompareBars } from '../components/charts';
 import { computeDays, HARDEN, clampLegal, jornadaLimits } from '@localle/shared/jornada';
 import { JornadaDocs, LegalNote } from '../components/JornadaDocs';
-import { KpiTile, ChartCard, StatusDot, AssetName } from '../components/story';
+import { KpiTile, KpiHero, ChartCard, StatusDot, AssetName } from '../components/story';
 import { Icon } from '../components/icons';
 import { FolhaPonto } from '../components/FolhaPonto';
 import { usePrint } from '../components/PrintPortal';
@@ -24,7 +24,7 @@ export default function Jornada() {
   return (
     <div>
       <PageHeader icon="jornada" title="Gestão de jornada" subtitle="Controle de ponto do motorista conforme a Lei 13.103/2015" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'painel', label: 'Visão geral' }, { key: 'marcacoes', label: 'Marcações' }, { key: 'folha', label: 'Folha de ponto' }, { key: 'termo', label: 'Termo de orientação' }, { key: 'documentos', label: 'Termos e medidas' }, { key: 'regras', label: 'Regras' }]} />{tab === 'painel' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'painel', label: 'Visão geral' }, { key: 'marcacoes', label: 'Marcações' }, { key: 'folha', label: 'Folha de ponto' }, { key: 'termo', label: 'Termo de orientação' }, { key: 'documentos', label: 'Termos e medidas' }, { key: 'regras', label: 'Regras' }]} />{tab === 'painel' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
       <TabPanel id={tab} loading={carregando}>
       {tab === 'painel' && <Painel goDocs={() => setTab('documentos')} period={period} />}
       {tab === 'marcacoes' && <Marcacoes />}
@@ -71,15 +71,30 @@ function Painel({ goDocs, period }: { goDocs: () => void; period: PeriodValue })
   const worst = per[0];
   const repeat = per.filter((r) => r.n >= REPEAT.min);
   const kpi = (c: string, sub: string) => { const k = CODES.find((x) => x.key === c)!; const v = n(A, c); return <KpiTile key={c} label={k.label} value={v} status={v ? 'parado' : undefined} delta={{ value: hasB ? v - n(B!, c) : null, unit: '', digits: 0, good: 'down' }} sub={sub} />; };
+  const mobile = useIsMobile();
+  const secundarios = (
+    <>
+      {kpi('pausa', `Acima de ${hm(L.contCargas)} de direção contínua`)}
+      {kpi('interjornada', `Mínimo ${L.inter / 3600000}h entre jornadas`)}
+      {kpi('jornada', `Até ${L.base / 3600000}h + ${L.maxExtraH}h extras`)}
+      <KpiTile label="Horas extras" value={extraIn(a) / 3600000} unit="h" digits={0} delta={{ value: hasB && b && extraIn(b) ? ((extraIn(a) - extraIn(b)) / extraIn(b)) * 100 : null, unit: '%', good: 'down' }} sub="De todos os motoristas" />
+    </>
+  );
   return (
     <Stack gap="grid">
-      <Grid cols={5} equal>
-        <KpiTile label="Descumprimentos" value={A.length} status={A.length ? 'parado' : undefined} delta={{ value: hasB ? A.length - B!.length : null, unit: '', digits: 0, good: 'down' }} sub={`${new Set(A.map((x) => x.d.id)).size} motoristas`} />
-        {kpi('pausa', `Direção contínua acima de ${hm(L.contCargas)} (cargas)`)}
-        {kpi('interjornada', `Mínimo ${L.inter / 3600000}h entre jornadas`)}
-        {kpi('jornada', `Até ${L.base / 3600000}h + ${L.maxExtraH}h extras`)}
-        <KpiTile label="Horas extras" value={extraIn(a) / 3600000} unit="h" digits={0} delta={{ value: hasB && b && extraIn(b) ? ((extraIn(a) - extraIn(b)) / extraIn(b)) * 100 : null, unit: '%', good: 'down' }} sub="Soma de todos os motoristas" />
-      </Grid>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Descumprimentos é a pergunta central de conformidade da Lei 13.103 */}
+          <KpiHero title="Descumprimentos" period={rangeText(a)} value={A.length}
+            delta={{ value: hasB ? A.length - B!.length : null, unit: '', good: 'down' }} sentence={`${new Set(A.map((x) => x.d.id)).size} motoristas no período`} />
+          <Grid cols={4} equal>{secundarios}</Grid>
+        </Stack>
+      ) : (
+        <Grid cols={5} equal>
+          <KpiTile label="Descumprimentos" value={A.length} status={A.length ? 'parado' : undefined} delta={{ value: hasB ? A.length - B!.length : null, unit: '', digits: 0, good: 'down' }} sub={`${new Set(A.map((x) => x.d.id)).size} motoristas`} />
+          {secundarios}
+        </Grid>
+      )}
       <ChartCard title={step === DAY ? 'Descumprimentos por dia' : 'Descumprimentos por semana'} icon="jornada" period="Todos os tipos" state={A.length ? 'ready' : 'empty'} empty={{ title: 'Nenhum descumprimento no período', detail: 'As marcações do período respeitaram os limites da Lei 13.103.' }}
         sentence={A.length ? `${CODES.map((c) => ({ c, v: n(A, c.key) })).sort((p, q) => q.v - p.v)[0].c.label} é o descumprimento mais comum (${pct(CODES.map((c) => n(A, c.key)).sort((p, q) => q - p)[0] / A.length, 0)} do total).` : undefined}>
         {prev ? <CompareBars groups={chart.map((c, i) => ({ label: c.label, cur: c.value, prev: prev[i] }))} format={(v) => num(v)} curLabel="Período atual" prevLabel="Período anterior" good="down" height={220} />

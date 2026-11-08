@@ -18,7 +18,7 @@ export default function Revenda() {
   return (
     <div>
       <PageHeader title="Painel da revenda" subtitle="Personalize a plataforma, escolha os módulos que você vende e acompanhe os acessos consumidos" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'cliente', label: 'Cliente e suporte' }, { key: 'marca', label: 'Identidade visual' }, { key: 'modulos', label: 'Módulos' }, { key: 'licencas', label: 'Licenças e faturamento' }]} /></div>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'cliente', label: 'Cliente e suporte' }, { key: 'marca', label: 'Identidade visual' }, { key: 'modulos', label: 'Módulos' }, { key: 'licencas', label: 'Licenças e faturamento' }]} /></div>
       <TabPanel id={tab}>
         {tab === 'cliente' && <SupportAccess />}
         {tab === 'marca' && <Marca />}

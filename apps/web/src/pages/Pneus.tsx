@@ -3,10 +3,11 @@ import { opAssets, isOut } from '../lib/assetLifecycle';
 import { useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { TireProvider, useTires } from '../lib/tireRepo';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, Panel, EmptyState, ErrorState, Progress, TabPanel, toast, confirmAction, DescList, DescRow, SearchInput, Grid, Stack, useUrlTab, useUrlItem, Missing, SetupLink } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, Panel, EmptyState, ErrorState, Progress, TabPanel, toast, confirmAction, DescList, DescRow, SearchInput, Grid, Stack, useUrlTab, useUrlItem, Missing, SetupLink, useIsMobile } from '../components/ui';
+import { useMobilePageAction } from '../components/Layout';
 import { Dropzone } from '../components/Dropzone';
-import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
-import { KpiTile, ChartCard, StatusDot, StatusGlyph, Num, IdChip, AssetName, numSizeClass } from '../components/story';
+import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
+import { KpiTile, KpiHero, ChartCard, StatusDot, StatusGlyph, Num, IdChip, AssetName, numSizeClass } from '../components/story';
 import { ColumnChart, CompareBars, LineChart, TipItem } from '../components/charts';
 import { Icon } from '../components/icons';
 import { TIRE_STATUS, LEVEL, LAYOUTS, LEGAL_MIN_MM, ROLE_LABEL, MOVE_LABEL, layoutKey, layoutOf, positionsFor, posLabel, roleOf, lifeLabel, movesOf, wearBy } from '@localle/shared/pneus';
@@ -30,7 +31,7 @@ function PneusInner() {
   return (
     <div>
       <PageHeader icon="pneus" title="Gestão de pneus" subtitle="Posições, sulcos, vidas, movimentações, desgaste e custo por km" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head">
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
         <RetiredToggle />
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'visao', label: 'Visão geral' }, { key: 'veiculos', label: 'Por veículo' }, { key: 'medicoes', label: 'Medir sulcos' }, { key: 'desgaste', label: 'Desgaste e custo' }, { key: 'lista', label: 'Todos os pneus' }, { key: 'estoque', label: 'Estoque' }, { key: 'config', label: 'Parâmetros' }]} />
         {tab === 'visao' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}
@@ -52,7 +53,7 @@ function PneusInner() {
 const useAll = () => { const R = useTires(); return R.tires.map((t: any) => ({ t, st: R.stats(t) })); };
 const aName = (s: any, id: string) => s.assets.find((a: any) => a.id === id)?.name || '—';
 // moeda: fonte da interface com algarismos tabulares (nunca mono)
-const Money = ({ v, size = 'body' }: { v: number | null | undefined; size?: 'body' | 'small' | 'lg' | 'kpi' }) => <Num value={v} prefix="R$" digits={2} size={size} count={size === 'kpi'} />;
+const Money = ({ v, size = 'body' }: { v: number | null | undefined; size?: 'body' | 'small' | 'lg' | 'kpi' | 'display' }) => <Num value={v} prefix="R$" digits={2} size={size} count={size === 'kpi' || size === 'display'} />;
 
 // Identificação gravada no pneu: logo da empresa (quando cadastrado) + número (código, em chip mono)
 function TireTag({ t, size = 'sm' }: { t: any; size?: 'sm' | 'md' }) {
@@ -93,14 +94,29 @@ function Visao({ onOpen, period }: any) {
   const stock = all.filter((x: any) => x.t.status === 'estoque');
   const spendSentence = B && B.total ? `Gasto ${A.total >= B.total ? 'subiu' : 'caiu'} ${num(Math.abs(rel(A.total, B.total)!), 0)}% em relação ao período anterior; ${A.nNew} pneus novos e ${A.nRecap} recapagens no período.` : `${A.nNew} pneus novos e ${A.nRecap} recapagens no período.`;
   const ilegal = lv('ilegal').length;
+  const mobile = useIsMobile();
+  const secundarios = (
+    <>
+      <KpiTile label="Custo por 1.000 km" display={<Money v={A.cpk} size="kpi" />} delta={{ value: rel(A.cpk, B?.cpk), unit: '%', good: 'down' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados</>} />
+      <KpiTile label="Recapagens" value={A.nRecap} delta={{ value: B ? A.nRecap - B.nRecap : null, unit: '', digits: 0, good: 'up' }} sub="Fração do custo de um novo" />
+      <KpiTile label="Descartados" value={A.scrapped} delta={{ value: B ? A.scrapped - B.scrapped : null, unit: '', digits: 0, good: 'down' }} sub={`${stock.length} em estoque`} />
+    </>
+  );
   return (
     <Stack gap="grid">
-      <Grid cols={4} equal>
-        <KpiTile label="Gasto com pneus" display={<Money v={A.total} size="kpi" />} delta={{ value: rel(A.total, B?.total), unit: '%', good: 'down' }} sub={`${brl(A.compras)} em novos · ${brl(A.recap)} em recapagem`} />
-        <KpiTile label="Custo por 1.000 km" display={<Money v={A.cpk} size="kpi" />} delta={{ value: rel(A.cpk, B?.cpk), unit: '%', good: 'down' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados pelos pneus</>} />
-        <KpiTile label="Recapagens" value={A.nRecap} delta={{ value: B ? A.nRecap - B.nRecap : null, unit: '', digits: 0, good: 'up' }} sub="Cada recapagem custa uma fração do pneu novo" />
-        <KpiTile label="Descartados" value={A.scrapped} delta={{ value: B ? A.scrapped - B.scrapped : null, unit: '', digits: 0, good: 'down' }} sub={`${stock.length} pneus em estoque · ${brl(sum(stock.map((x: any) => x.st.life.cost)))}`} />
-      </Grid>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Gasto com pneus é o número que mais interessa ao dono nessa tela */}
+          <KpiHero title="Gasto com pneus" period={rangeText(a)} value={A.total} display={<Money v={A.total} size="display" />}
+            delta={{ value: rel(A.total, B?.total), unit: '%', good: 'down' }} sentence={`${brl(A.compras)} em novos · ${brl(A.recap)} em recapagem`} />
+          <Grid cols={3} equal>{secundarios}</Grid>
+        </Stack>
+      ) : (
+        <Grid cols={4} equal>
+          <KpiTile label="Gasto com pneus" display={<Money v={A.total} size="kpi" />} delta={{ value: rel(A.total, B?.total), unit: '%', good: 'down' }} sub={`${brl(A.compras)} em novos · ${brl(A.recap)} em recapagem`} />
+          {secundarios}
+        </Grid>
+      )}
       <Grid split="7/5" wide equal>
         <ChartCard title="Gasto mensal com pneus" icon="grafico" period="Pneus novos e recapagem" sentence={spendSentence} state={A.lives.length || (prev || []).some(Boolean) ? 'ready' : 'empty'}>
           <div className="flex-1 min-h-0 flex flex-col justify-center">
@@ -341,9 +357,11 @@ function Lista({ onOpen }: any) {
   const list = all.filter((x: any) => (!st || x.t.status === st) && (!q || (x.t.fireNumber + x.t.brand + x.t.size).toLowerCase().includes(q.toLowerCase())));
   const fire = (n: string) => (mark ? `${mark}-${n}` : n).toUpperCase();
   const dup = form?.number && R.tires.some((t: any) => t.fireNumber === fire(form.number));
+  const novoPneu = () => setForm({ number: '', brand: '', model: '', size: '295/80 R22.5', dot: '', recappable: true, maxLives: R.cfg.maxLives ?? 3, cost: '', purchaseDate: toInputD(Date.now()), supplier: '', tread: 18, location: 'Almoxarifado Matriz' });
+  useMobilePageAction({ label: 'Cadastrar pneu', icon: 'mais', onClick: novoPneu });
   return (
     <>
-      <Card title={`Pneus (${list.length})`} icon="pneus" actions={<div className="flex gap-2 flex-wrap items-center max-md:w-full"><SearchInput className="w-56 max-md:w-full" placeholder="Número, marca, medida" value={q} onChange={(v) => { setQ(v); setMore(25); }} aria-label="Buscar pneu" /><Button onClick={() => setForm({ number: '', brand: '', model: '', size: '295/80 R22.5', dot: '', recappable: true, maxLives: R.cfg.maxLives ?? 3, cost: '', purchaseDate: toInputD(Date.now()), supplier: '', tread: 18, location: 'Almoxarifado Matriz' })}><Icon name="mais" size={16} />Cadastrar pneu</Button></div>}>
+      <Card title={`Pneus (${list.length})`} icon="pneus" actions={<div className="flex gap-2 flex-wrap items-center max-md:w-full"><SearchInput className="w-56 max-md:w-full" placeholder="Número, marca, medida" value={q} onChange={(v) => { setQ(v); setMore(25); }} aria-label="Buscar pneu" /><Button onClick={novoPneu} className="max-md:hidden"><Icon name="mais" size={16} />Cadastrar pneu</Button></div>}>
         <div className="mb-4"><Pills value={st} onChange={(k) => { setSt(k); setMore(25); }} options={[{ key: '', label: 'Todos' }, ...Object.entries(TIRE_STATUS).map(([k, v]) => ({ key: k, label: v.label }))]} /></div>
         <Table minWidth={1080} align={['left', 'left', 'left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'right']}
           emptyState={<EmptyState illustration="ilu-busca-veiculo" layout="row" title="Nenhum pneu com esses filtros" detail="Troque a situação ou limpe a busca." />}

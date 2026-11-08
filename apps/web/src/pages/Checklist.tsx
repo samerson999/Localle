@@ -5,11 +5,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { salvarOs, useCarregando } from '../lib/localleApi';
 import { assetKm } from '@localle/shared/km';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, FilePick, EmptyState, ErrorState, Skeleton, Check, Textarea, cx, TextButton, Callout, Panel, IconButton, FilterChip, DescList, DescRow, confirmAction, toast, Grid, Stack, LoadingBlock, useUrlTab } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, FilePick, EmptyState, ErrorState, Skeleton, Check, Textarea, cx, TextButton, Callout, Panel, IconButton, FilterChip, DescList, DescRow, confirmAction, toast, Grid, Stack, LoadingBlock, useUrlTab, useIsMobile } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
-import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
+import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { Icon } from '../components/icons';
-import { KpiTile, ChartCard, DeltaChip, AssetName } from '../components/story';
+import { KpiTile, KpiHero, ChartCard, DeltaChip, AssetName } from '../components/story';
 import { ChartLegend, FILL, CATS, TipItem } from '../components/charts';
 import { CkProvider, useCk } from '../lib/checklistRepo';
 import { QTYPES, SCHED, ROLES, WD, occurrences, isFlagged, ChecklistBi } from '@localle/shared/checklist';
@@ -28,7 +28,7 @@ function Inner() {
   return (
     <div>
       <PageHeader icon="checklist" title="Checklist" subtitle="Modelos, grupos de respondentes, adesão e painel de respostas" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'bi', label: 'BI e adesão' }, { key: 'modelos', label: 'Modelos' }, { key: 'grupos', label: 'Grupos e pessoas' }, { key: 'preencher', label: 'Preencher (app)' }, { key: 'respostas', label: 'Respostas' }]} />{tab === 'bi' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'bi', label: 'BI e adesão' }, { key: 'modelos', label: 'Modelos' }, { key: 'grupos', label: 'Grupos e pessoas' }, { key: 'preencher', label: 'Preencher (app)' }, { key: 'respostas', label: 'Respostas' }]} />{tab === 'bi' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
       {R.error && <Callout tone="crit" className="mb-card-head">{R.error}</Callout>}
       {carregando ? <LoadingBlock /> : <>
       {tab === 'bi' && <BI period={period} />}
@@ -87,6 +87,7 @@ function BI({ period }: { period: PeriodValue }) {
   const [d, setD] = useState<{ A?: ChecklistBi; B?: ChecklistBi; err?: string }>({});
   const s = useStoreData();
   const [sent, setSent] = useState<Record<string, number>>({});
+  const mobile = useIsMobile();
   const { a, b } = periodRanges(period);
   // lembrete só registrado (envio por notificação do app ou WhatsApp ainda não existe)
   const remind = (persons: string[]) => { const now = Date.now(); s.patch((st: any) => ({ reminders: [...persons.map((p) => ({ id: uid('lb'), ts: now, person: p, origin: 'checklist' })), ...(st.reminders || [])].slice(0, 300), ...(persons.length > 1 ? auditEntry(st, { coll: 'checklist', refId: '', label: 'Lembrete de checklist', action: `enviou lembrete a ${persons.length} pessoas em lote`, count: persons.length }) : {}) })); setSent((x) => ({ ...x, ...Object.fromEntries(persons.map((p) => [p, now])) })); };
@@ -144,15 +145,29 @@ function BI({ period }: { period: PeriodValue }) {
   for (const x of A.missing) { const k = x.person + '|' + x.template; const m = (missMap[k] ||= { person: x.person, template: x.template, n: 0, last: x.date }); m.n++; if (x.date > m.last) m.last = x.date; }
   const miss = Object.values(missMap).sort((x, y) => y.n - x.n);
 
+  const secundarios = (
+    <>
+      <KpiTile label="Tempo de preenchimento" value={A.avg_fill_s != null ? A.avg_fill_s / 60 : null} unit="min" digits={1} status={(A.avg_fill_s ?? 0) / 60 > TIME_GOAL_MIN ? 'parado' : undefined} delta={{ value: A.avg_fill_s != null && B?.avg_fill_s != null ? (A.avg_fill_s - B.avg_fill_s) / 60 : null, unit: 'min', good: 'down' }} sub={`Meta até ${TIME_GOAL_MIN} min`} />
+      <KpiTile label="Veículos com problema" value={avar(A) != null ? avar(A)! * 100 : null} unit="%" status={(avar(A) ?? 0) > 0.2 ? 'parado' : undefined} delta={{ value: ppDelta(avar(A), avar(B)), good: 'down' }} sub={`${A.assets_flagged} de ${A.assets_checked} vistoriados`} />
+      <KpiTile label="Não lançados" value={A.expected - A.done} delta={{ value: B ? A.expected - A.done - (B.expected - B.done) : null, unit: '', digits: 0, good: 'down' }} sub="Previstos sem resposta" />
+    </>
+  );
   return (
     <Stack gap="grid">
       {toolbar}
-      <Grid cols={4} equal>
-        <KpiTile label="Adesão ao preenchimento" value={adh(A) != null ? adh(A)! * 100 : null} unit="%" digits={1} status={(adh(A) ?? 1) < LOW ? 'parado' : undefined} delta={{ value: ppDelta(adh(A), adh(B)), good: 'up' }} sub={`${num(A.done)} de ${num(A.expected)} previstos`} />
-        <KpiTile label="Tempo médio de preenchimento" value={A.avg_fill_s != null ? A.avg_fill_s / 60 : null} unit="min" digits={1} status={(A.avg_fill_s ?? 0) / 60 > TIME_GOAL_MIN ? 'parado' : undefined} delta={{ value: A.avg_fill_s != null && B?.avg_fill_s != null ? (A.avg_fill_s - B.avg_fill_s) / 60 : null, unit: 'min', good: 'down' }} sub={`Meta até ${TIME_GOAL_MIN} min · ${num(A.responses)} respostas`} />
-        <KpiTile label="Veículos com problema apontado" value={avar(A) != null ? avar(A)! * 100 : null} unit="%" status={(avar(A) ?? 0) > 0.2 ? 'parado' : undefined} delta={{ value: ppDelta(avar(A), avar(B)), good: 'down' }} sub={`${A.assets_flagged} de ${A.assets_checked} veículos vistoriados`} />
-        <KpiTile label="Checklists não lançados" value={A.expected - A.done} delta={{ value: B ? A.expected - A.done - (B.expected - B.done) : null, unit: '', digits: 0, good: 'down' }} sub="Previstos sem resposta no prazo" />
-      </Grid>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Adesão é a pergunta central — o checklist só vale o que for de fato preenchido */}
+          <KpiHero title="Adesão ao preenchimento" period={rangeText(a)} value={adh(A) != null ? adh(A)! * 100 : null} unit="%" digits={1}
+            delta={{ value: ppDelta(adh(A), adh(B)), good: 'up' }} sentence={`${num(A.done)} de ${num(A.expected)} previstos no período`} />
+          <Grid cols={3} equal>{secundarios}</Grid>
+        </Stack>
+      ) : (
+        <Grid cols={4} equal>
+          <KpiTile label="Adesão ao preenchimento" value={adh(A) != null ? adh(A)! * 100 : null} unit="%" digits={1} status={(adh(A) ?? 1) < LOW ? 'parado' : undefined} delta={{ value: ppDelta(adh(A), adh(B)), good: 'up' }} sub={`${num(A.done)} de ${num(A.expected)} previstos`} />
+          {secundarios}
+        </Grid>
+      )}
       <Grid split="7/5" wide equal>
         <ChartCard title="Adesão: previstos × preenchidos" icon="checklist" sentence={adhSentence}
           aside={<ChartLegend items={[{ kind: 'real', label: 'Preenchidos' }, { kind: 'loss', label: `Abaixo de ${pct(LOW, 0)}` }]} />}

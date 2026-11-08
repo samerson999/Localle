@@ -8,6 +8,7 @@ import { gerarPreventivas, removerPlano, salvarOs, salvarPlano, useCarregando } 
 // uma geração por vez, mesmo que a tela remonte enquanto as OS ainda estão sendo criadas
 let gerandoPreventivas = false;
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Badge, Tabs, Modal, PageHeader, Textarea, FilePick, EmptyState, ErrorState, Skeleton, Panel, InlineInput, cx, TextButton, toast, confirmAction, Grid, Stack, FormGroup, IconButton, useUrlTab, useUrlItem, LoadingBlock, Missing } from '../components/ui';
+import { useMobilePageAction } from '../components/Layout';
 import { planStatus, generateDueOrders, SERVICES, OS_STATUS, CRIT_DEFAULT } from '@localle/shared/maint';
 import { brl, fmtD, fmtDT, num, HOUR, uid, isPlate, sum } from '@localle/shared/utils';
 import { BIDono, BIGestor, useMaintKpis } from '../components/BIManut';
@@ -47,13 +48,14 @@ function ManutencaoLocal() {
   }, [carregando]);
   const isBI = BI_TABS.includes(tab);
   const openWos = s.workOrders.filter((w: any) => !['concluida', 'cancelada'].includes(w.status) && w.shopInAt).map((w: any) => ({ asset: s.assets.find((a: any) => a.id === w.assetId)?.name, title: w.title, since: w.shopInAt }));
+  useMobilePageAction({ label: 'Nova OS', icon: 'mais', onClick: () => setOs({ isNew: true }) });
   return (
     <div>
       <PageHeader icon="manutencao" title="Manutenção" subtitle="Disponibilidade da frota, preventivas, ordens de serviço e custos" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head">
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
         <RetiredToggle />
         <Tabs value={tab} onChange={setTab} tabs={TABS} />
-        <Button className="ml-auto" onClick={() => setOs({ isNew: true })}><Icon name="mais" size={18} />Nova OS</Button>
+        <Button className="ml-auto max-md:hidden" onClick={() => setOs({ isNew: true })}><Icon name="mais" size={18} />Nova OS</Button>
         {(tab === 'dono' || tab === 'gestor') && <div className="w-44"><Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Frota inteira' }, ...s.groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></div>}
         {isBI && <PeriodCompare value={period} onChange={setPeriod} />}
       </div>

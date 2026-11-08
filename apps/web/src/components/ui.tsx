@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { fileToDataURL } from '../lib/fileData';
@@ -59,7 +59,7 @@ export function Spinner({ size = 16, className = '' }: { size?: number; classNam
 export function Button({ variant = 'primary', size = 'md', loading = false, className = '', children, disabled, ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: 'sm' | 'md' | 'lg'; loading?: boolean }) {
   return (
     <button type="button" {...p} disabled={disabled || loading} aria-busy={loading || undefined}
-      className={cx('inline-flex items-center justify-center rounded-btn font-medium transition-colors duration-150 whitespace-nowrap', loading ? 'cursor-progress' : 'disabled:opacity-45 disabled:cursor-not-allowed', BTN_S[size], BTN_V[variant], className)}>
+      className={cx('inline-flex items-center justify-center rounded-btn font-medium transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 whitespace-nowrap', loading ? 'cursor-progress' : 'disabled:opacity-45 disabled:cursor-not-allowed', BTN_S[size], BTN_V[variant], className)}>
       {loading && <Spinner />}{children}
     </button>
   );
@@ -81,7 +81,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>((
   // touch = 44×44 (alvo de toque recomendado), só para a barra fixa do mobile; sm/md seguem os tokens de controle
   // (32/40 no desktop; com dedo, 40/44 — tokens.css › toque).
   const sizeCls = size === 'sm' ? 'w-ctl-sm h-ctl-sm rounded-btn' : size === 'touch' ? 'w-11 h-11 rounded-ctl' : 'w-ctl h-ctl rounded-ctl';
-  return <button ref={r} type="button" {...p} className={cx('inline-flex items-center justify-center shrink-0 transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed', sizeCls, t, className)} />;
+  return <button ref={r} type="button" {...p} className={cx('inline-flex items-center justify-center shrink-0 transition-[color,background-color,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 disabled:opacity-30 disabled:cursor-not-allowed', sizeCls, t, className)} />;
 });
 
 // Faixa de aviso dentro da página: warn = estado temporário/pendente, crit = erro.
@@ -879,6 +879,37 @@ export function FilterChip({ label, onRemove }: { label: React.ReactNode; onRemo
     </span>
   );
 }
+// Gatilho do FilterSheet no cabeçalho único do mobile (Layout.tsx): o ícone de filtro mora ao lado do título
+// e da ação de criar, não solto no meio do conteúdo — um registro por tela, igual ao useMobilePageAction.
+export const MobileFilterCtx = createContext<{ slot: { count: number; onOpen: () => void } | null; set: (s: { count: number; onOpen: () => void } | null) => void } | null>(null);
+// Filtros de lista no mobile (item 2 de docs/PLANO-MOBILE.md): no desktop, `children` renderiza inline, sem mudança.
+// Abaixo de md, os mesmos filtros (Select, SearchSelect, o que for) ficam escondidos dentro de um Sheet; quem abre
+// é o ícone de filtro no cabeçalho (registrado via `MobileFilterCtx`), não um botão solto aqui no conteúdo — mantém
+// o cabeçalho como o único lugar de ações da tela, igual à referência do Visor. `count` é calculado por quem chama
+// (quantos filtros estão fora do valor padrão).
+export function FilterSheet({ label = 'Filtros', count = 0, children }: { label?: string; count?: number; children: React.ReactNode }) {
+  const mobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+  const pres = usePresence(open);
+  const headerSlot = useContext(MobileFilterCtx);
+  const openRef = useRef(() => setOpen(true)); openRef.current = () => setOpen(true);
+  useEffect(() => {
+    if (!mobile || !headerSlot) return;
+    headerSlot.set({ count, onOpen: () => openRef.current() });
+    return () => headerSlot.set(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobile, headerSlot, count]);
+  if (!mobile) return <>{children}</>;
+  return (
+    // modal (não FloatingPanel): filtro é um diálogo que se escolhe e fecha, não um painel de detalhe para
+    // espiar com o conteúdo por trás — modal={false} abriria recolhido, exigindo arrastar para ver os campos.
+    pres.mounted ? (
+      <Sheet modal label={label} title={label} onClose={() => setOpen(false)} closing={pres.closing}>
+        <div className="flex flex-col gap-field">{children}</div>
+      </Sheet>
+    ) : null
+  );
+}
 // Conteúdo da aba: fade curto (--t-swap) a cada troca, sem deslocamento. Use com a mesma key da aba.
 // Valor que mora no Setup do gestor (camadas empresa e grupo) mostrado dentro de um módulo: só leitura, com o caminho
 // para ajustar. O padrão e os limites vêm do Setup da Localle (plataforma); o gestor adapta a operação no dele.
@@ -1026,7 +1057,10 @@ export function PageHeader({ title, children, period, crumbs }: { icon?: Paramet
   const acoes = !!(period || children);
   return (
     <header className={cx('flex flex-col', acoes ? 'mb-page-head' : 'mb-card-head')}>
-      <h1 className="sr-only">{title}</h1>
+      {/* desktop: sr-only (o menu já diz onde se está, PRODUCT.md). Mobile: oculto por completo — o
+          <h1> visível mora na barra fixa do Layout (item 4 de docs/PLANO-MOBILE.md, cabeçalho único
+          no padrão do Visor); ter os dois ao mesmo tempo duplicaria o heading da página. */}
+      <h1 className="md:sr-only max-md:hidden">{title}</h1>
       {crumbs && <Breadcrumbs items={crumbs} />}
       <div className={cx('flex flex-wrap items-center gap-x-6 gap-y-tight min-h-ctl md:pr-[var(--top-reserve,0px)]', !acoes && 'max-md:hidden')}>
         {acoes && <div className="flex flex-wrap items-center gap-tight min-w-0 max-w-full">{period}{children}</div>}

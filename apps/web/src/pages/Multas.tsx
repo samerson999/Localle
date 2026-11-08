@@ -3,9 +3,10 @@ import { opAssets } from '../lib/assetLifecycle';
 import { useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { indicarCondutor, salvarMulta, useCarregando } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, TabPanel, TextButton, Progress, DateInput, Callout, cx, toast, Panel, SearchInput, EmptyState, Stack, Grid, useUrlTab, useUrlItem } from '../components/ui';
-import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
-import { KpiTile, ChartCard, StatusDot, NeedsList, Num, AssetName, IdChip, type StatusKind } from '../components/story';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, TabPanel, TextButton, Progress, DateInput, Callout, cx, toast, Panel, SearchInput, EmptyState, Stack, Grid, useUrlTab, useUrlItem, useIsMobile } from '../components/ui';
+import { useMobilePageAction } from '../components/Layout';
+import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
+import { KpiTile, KpiHero, ChartCard, StatusDot, NeedsList, Num, AssetName, IdChip, type StatusKind } from '../components/story';
 import { ColumnChart, TipItem } from '../components/charts';
 import { Icon } from '../components/icons';
 import { CTB } from '@localle/shared/catalog';
@@ -33,7 +34,7 @@ export default function Multas() {
   return (
     <div>
       <PageHeader icon="multas" title="Gestão de multas" subtitle="Lançamento, indicação do condutor e risco de suspensão da CNH" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head">
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
         <RetiredToggle />
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'visao', label: 'Visão geral' }, { key: 'lista', label: 'Multas' }, { key: 'cnh', label: 'Pontos na CNH' }]} />
         {tab === 'visao' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}
@@ -90,15 +91,31 @@ function Visao({ onOpen, period }: { onOpen: (f: any) => void; period: PeriodVal
   const lost = (r: [number, number]) => s.fines.filter((x: any) => indicationState(x) === 'vencida' && indicationDue(x) >= r[0] && indicationDue(x) <= r[1]);
   const lostA = lost(a), lostB = b ? lost(b) : null;
   const risk = cnhRisk(s).filter((r: any) => r.pct >= FINE_PARAMS.riskWarnPct);
+  const mobile = useIsMobile();
+  // legendas curtas (1 fato, não 2–3 encadeados) — a leitura completa já está no "Precisa de você" e no detalhe
+  const secundarios = (
+    <>
+      <KpiTile label="Pontos gerados" value={sum(A.map((x: any) => x.points))} delta={{ value: B && B.length ? sum(A.map((x: any) => x.points)) - sum(B.map((x: any) => x.points)) : null, unit: '', digits: 0, good: 'down' }} sub={`${A.filter((x: any) => x.severity === 'Gravíssima').length} gravíssimas`} />
+      <KpiTile label="Indicações a fazer" value={pending.length} status={pending.some((x: any) => indicationState(x) === 'critica') ? 'crit' : pending.length ? 'parado' : undefined} sub={`${pending.filter((x: any) => indicationState(x) === 'critica').length} críticas`} />
+      <KpiTile label="Prazos perdidos" value={lostA.length} status={lostA.length ? 'loss' : undefined} delta={{ value: lostB ? lostA.length - lostB.length : null, unit: '', digits: 0, good: 'down' }} sub={lostA.length ? `${brl(sum(lostA.map((x: any) => x.value)))} sem indicação` : 'Nenhum no período'} />
+      <KpiTile label="Motoristas em risco na CNH" value={risk.length} status={risk.length ? 'parado' : undefined} sub={`Acima de ${pct(FINE_PARAMS.riskWarnPct, 0)} em 12 meses`} />
+    </>
+  );
   return (
     <Stack gap="grid">
-      <Grid cols={5} equal>
-        <KpiTile label="Custo em multas" display={<Num value={cost} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(cost, costB), unit: '%', good: 'down' }} sub={`${A.length} ${A.length === 1 ? 'infração' : 'infrações'} no período`} />
-        <KpiTile label="Pontos gerados" value={sum(A.map((x: any) => x.points))} delta={{ value: B && B.length ? sum(A.map((x: any) => x.points)) - sum(B.map((x: any) => x.points)) : null, unit: '', digits: 0, good: 'down' }} sub={`${A.filter((x: any) => x.severity === 'Gravíssima').length} gravíssimas`} />
-        <KpiTile label="Indicações a fazer" value={pending.length} status={pending.some((x: any) => indicationState(x) === 'critica') ? 'crit' : pending.length ? 'parado' : undefined} sub={`${pending.filter((x: any) => indicationState(x) === 'critica').length} nos últimos ${FINE_PARAMS.indicationCriticalDays} dias (no Precisa de você); aviso a ${FINE_PARAMS.indicationAlertDays} dias`} />
-        <KpiTile label="Prazos de indicação perdidos" value={lostA.length} status={lostA.length ? 'loss' : undefined} delta={{ value: lostB ? lostA.length - lostB.length : null, unit: '', digits: 0, good: 'down' }} sub={lostA.length ? `${brl(sum(lostA.map((x: any) => x.value)))} em multas sem condutor indicado` : 'Nenhum no período'} />
-        <KpiTile label="Motoristas em risco na CNH" value={risk.length} status={risk.length ? 'parado' : undefined} sub={`Acima de ${pct(FINE_PARAMS.riskWarnPct, 0)} do limite em 12 meses`} />
-      </Grid>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Custo em multas é o que mais pesa pro gestor decidir — contesta, paga, treina motorista */}
+          <KpiHero title="Custo em multas" period={rangeText(a)} value={cost} display={<Num value={cost} prefix="R$" digits={2} size="display" count />}
+            delta={{ value: rel(cost, costB), unit: '%', good: 'down' }} sentence={`${A.length} ${A.length === 1 ? 'infração' : 'infrações'} no período`} />
+          <Grid cols={4} equal>{secundarios}</Grid>
+        </Stack>
+      ) : (
+        <Grid cols={5} equal>
+          <KpiTile label="Custo em multas" display={<Num value={cost} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(cost, costB), unit: '%', good: 'down' }} sub={`${A.length} ${A.length === 1 ? 'infração' : 'infrações'} no período`} />
+          {secundarios}
+        </Grid>
+      )}
       <Grid split="7/5" wide equal>
         <ChartCard title="Custo por mês" icon="multas" state={months.length ? 'ready' : 'empty'} sentence={peak ? `${peak.mes} foi o mês mais caro: ${brl(peak.valor)} em ${peak.qtd} ${peak.qtd === 1 ? 'multa' : 'multas'}. Em aberto hoje: ${brl(openCost)}.` : undefined}>
           <div className="flex-1 min-h-0 flex flex-col justify-center">
@@ -146,8 +163,9 @@ function Lista({ onOpen }: { onOpen: (f: any) => void }) {
     .filter((f: any) => (flt === 'indicar' ? PENDING.includes(indicationState(f)) : flt === 'perdido' ? indicationState(f) === 'vencida' : flt === 'todas' || f.status === flt))
     .filter((f: any) => !q || [f.auto, N.a(f.assetId), N.d(f.driverId), f.description, f.code].some((x) => norm(x).includes(norm(q))))
     .sort((p: any, r: any) => (flt === 'indicar' ? indicationDue(p) - indicationDue(r) : r.ts - p.ts));
+  useMobilePageAction({ label: 'Lançar multa', icon: 'mais', onClick: () => onOpen(blank()) });
   return (
-    <Card title="Multas" icon="multas" actions={<Button onClick={() => onOpen(blank())}><Icon name="mais" size={16} />Lançar multa</Button>}>
+    <Card title="Multas" icon="multas" actions={<Button onClick={() => onOpen(blank())} className="max-md:hidden"><Icon name="mais" size={16} />Lançar multa</Button>}>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <Pills value={flt} onChange={(k) => { setFlt(k); setMore(25); }} options={[{ key: 'indicar', label: 'Indicar condutor' }, { key: 'perdido', label: 'Prazo perdido' }, { key: 'aberta', label: 'Em aberto' }, { key: 'recurso', label: 'Em recurso' }, { key: 'paga', label: 'Pagas' }, { key: 'todas', label: 'Todas' }]} />
         <SearchInput className="ml-auto w-full sm:w-72" aria-label="Buscar multa" value={q} onChange={setQ} placeholder="Auto, placa, motorista ou infração" />

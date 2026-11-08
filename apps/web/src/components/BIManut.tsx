@@ -3,9 +3,9 @@
 import { hadTracker } from '@localle/shared/assetStatus';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { Card, Select, Table, Tabs, EmptyState, ErrorState } from './ui';
+import { Card, Select, Table, Tabs, EmptyState, ErrorState, useIsMobile } from './ui';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from './PeriodCompare';
-import { KpiTile, ChartCard, StatusDot, Num, DeltaChip, IdChip, AssetName, type LoadState } from './story';
+import { KpiTile, KpiHero, ChartCard, StatusDot, Num, DeltaChip, IdChip, AssetName, type LoadState } from './story';
 import { StackedColumns, TipItem } from './charts';
 import { fetchKpis, Kpis } from '@localle/shared/maintKpis';
 import { brl, num, pct, fmtDT, hm, abbr, isPlate, monthKey, monthLabel } from '@localle/shared/utils';
@@ -46,14 +46,30 @@ export function BIDono({ A, B, a, b }: { A: Kpis; B?: Kpis; a: [number, number];
   const top = A.by_asset[0];
   const sentence = !A.cost_total ? 'Nenhuma OS concluída no período.'
     : `A corretiva foi ${pct(cs || 0, 0)} do custo${csB != null ? `, ${num(Math.abs(((cs || 0) - csB) * 100), 1)} p.p. ${(cs || 0) >= csB ? 'a mais' : 'a menos'} que no período anterior` : ''}; o mês mais caro foi ${peak.l} (${brlShort(peak.v)}).`;
+  const mobile = useIsMobile();
+  const secundarios = (
+    <>
+      <KpiTile label="Custo por km" display={<Num value={A.cost_per_km} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(A.cost_per_km, B?.cost_per_km), unit: '%', good: 'down' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados</>} />
+      <KpiTile label="Corretiva no custo" value={cs != null ? cs * 100 : null} unit="%" digits={1} delta={{ value: cs != null && csB != null ? (cs - csB) * 100 : null, good: 'down' }} sub={`${brl(A.cost_corr).replace(',00', '')} em ${A.n_corr} OS corretivas`} />
+      <KpiTile label="Disponibilidade" value={A.availability != null ? A.availability * 100 : null} unit="%" digits={1} delta={{ value: diff(A.availability, B?.availability) != null ? diff(A.availability, B?.availability)! * 100 : null, good: 'up' }} sub={`${num(A.downtime_h)} h paradas na oficina`} />
+    </>
+  );
   return (
     <Stack gap="grid">
-      <Grid cols={4} equal>
-        <KpiTile label="Custo de manutenção" display={<Num value={A.cost_total} prefix="R$" size="kpi" count />} delta={{ value: rel(A.cost_total, B?.cost_total), unit: '%', good: 'down' }} sub={`${A.n_prev + A.n_corr} OS executadas`} />
-        <KpiTile label="Custo por km" display={<Num value={A.cost_per_km} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(A.cost_per_km, B?.cost_per_km), unit: '%', good: 'down' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados</>} />
-        <KpiTile label="Corretiva no custo" value={cs != null ? cs * 100 : null} unit="%" digits={1} delta={{ value: cs != null && csB != null ? (cs - csB) * 100 : null, good: 'down' }} sub={`${brl(A.cost_corr).replace(',00', '')} em ${A.n_corr} OS corretivas`} />
-        <KpiTile label="Disponibilidade" value={A.availability != null ? A.availability * 100 : null} unit="%" digits={1} delta={{ value: diff(A.availability, B?.availability) != null ? diff(A.availability, B?.availability)! * 100 : null, good: 'up' }} sub={`${num(A.downtime_h)} h paradas na oficina`} />
-      </Grid>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Custo de manutenção é o número que o dono mais procura primeiro — mesma leitura
+              que o gráfico de preventiva × corretiva logo abaixo detalha. */}
+          <KpiHero title="Custo de manutenção" period={rangeText(a)} value={A.cost_total} display={<Num value={A.cost_total} prefix="R$" size="display" count />}
+            delta={{ value: rel(A.cost_total, B?.cost_total), unit: '%', good: 'down' }} sentence={`${A.n_prev + A.n_corr} OS executadas no período`} />
+          <Grid cols={3} equal>{secundarios}</Grid>
+        </Stack>
+      ) : (
+        <Grid cols={4} equal>
+          <KpiTile label="Custo de manutenção" display={<Num value={A.cost_total} prefix="R$" size="kpi" count />} delta={{ value: rel(A.cost_total, B?.cost_total), unit: '%', good: 'down' }} sub={`${A.n_prev + A.n_corr} OS executadas`} />
+          {secundarios}
+        </Grid>
+      )}
       <ChartCard title="Preventiva × corretiva por mês" icon="grafico" period={`${rangeText(a)} · custos em R$`} sentence={sentence}
         action={top ? { label: `Ver custo de ${top.name}`, onClick: () => document.getElementById('custo-por-veiculo')?.scrollIntoView({ behavior: 'smooth' }) } : undefined}
         state={A.cost_total || (B?.cost_total ?? 0) ? 'ready' : 'empty'} empty={{ title: 'Sem custos no período', detail: 'Nenhuma OS foi concluída com custo neste período.' }}>
@@ -82,19 +98,36 @@ export function BIGestor({ A, B, a, openWos }: { A: Kpis; B?: Kpis; a: [number, 
   // retrato de hoje, independente do período: mesma regra do "Precisa de você"
   const s = useStoreData();
   const critNow = useMemo(() => maintNeeds(s, planStatus).filter((n) => n.level === 'crit').length, [s.plans, s.workOrders, s.vehicles]);
+  const mobile = useIsMobile();
+  const secundarios = (
+    <>
+      <KpiTile label="Tempo entre falhas (MTBF)" value={days(A.mtbf_h)} unit="dias" digits={1} delta={{ value: rel(A.mtbf_h, B?.mtbf_h), unit: '%', good: 'up' }} sub={A.failures === 1 ? '1 pane não planejada' : `${A.failures} panes não planejadas`} />
+      <KpiTile label="Km entre falhas (MKBF)" value={A.mkbf} unit="km" delta={{ value: rel(A.mkbf, B?.mkbf), unit: '%', good: 'up' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados</>} />
+      <KpiTile label="Tempo de reparo (MTTR)" value={A.mttr_h} unit="h" digits={1} delta={{ value: diff(A.mttr_h, B?.mttr_h), unit: 'h', good: 'down' }} sub="Da entrada na oficina à liberação" />
+      <KpiTile label="OS críticas no período" value={A.overdue_critical} status={A.overdue_critical ? 'crit' : undefined} delta={{ value: diff(A.overdue_critical, B?.overdue_critical), unit: '', digits: 0, good: 'down' }} sub={`Passaram do prazo (${CRIT_DEFAULT.days}d / ${num(CRIT_DEFAULT.km)} km)`} />
+      <KpiTile label="OS críticas agora" value={critNow} status={critNow ? 'crit' : undefined} sub={critNow ? 'Em aberto hoje, independente do período' : 'Nenhuma OS crítica hoje'} />
+      <KpiTile label="Preventivas com atraso" display={A.plan_done == null ? <Num value={null} size="kpi" count /> : <span className="flex items-baseline gap-tight"><Num value={A.late_done} size="kpi" count /><span className="text-body text-ink-2 num">de {A.plan_done}</span></span>} sub={A.late_done ? `Atraso médio de ${num(A.avg_delay_days, 1)} dias` : 'Nenhuma com atraso'} />
+      <KpiTile label="Panes não planejadas" value={A.failures} delta={{ value: diff(A.failures, B?.failures), unit: '', digits: 0, good: 'down' }} />
+      <KpiTile label="Na oficina agora" value={shop.length} status={shop.length ? 'parado' : undefined} sub={shop.length ? <>Mais antigo há <span className="num">{hm(Date.now() - (shop[0].since || 0))}</span></> : 'Nenhum veículo parado'} />
+    </>
+  );
   return (
     <Stack gap="grid">
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <KpiTile label="Disponibilidade" value={A.availability != null ? A.availability * 100 : null} unit="%" digits={1} delta={{ value: diff(A.availability, B?.availability) != null ? diff(A.availability, B?.availability)! * 100 : null, good: 'up' }} sub={`${num(A.downtime_h)} h paradas na oficina`} />
-        <KpiTile label="Tempo entre falhas (MTBF)" value={days(A.mtbf_h)} unit="dias" digits={1} delta={{ value: rel(A.mtbf_h, B?.mtbf_h), unit: '%', good: 'up' }} sub={A.failures === 1 ? '1 pane não planejada' : `${A.failures} panes não planejadas`} />
-        <KpiTile label="Km entre falhas (MKBF)" value={A.mkbf} unit="km" delta={{ value: rel(A.mkbf, B?.mkbf), unit: '%', good: 'up' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados</>} />
-        <KpiTile label="Tempo de reparo (MTTR)" value={A.mttr_h} unit="h" digits={1} delta={{ value: diff(A.mttr_h, B?.mttr_h), unit: 'h', good: 'down' }} sub="Da entrada na oficina à liberação" />
-        <KpiTile label="OS que estiveram críticas no período" value={A.overdue_critical} status={A.overdue_critical ? 'crit' : undefined} delta={{ value: diff(A.overdue_critical, B?.overdue_critical), unit: '', digits: 0, good: 'down' }} sub={`Passaram do prazo de crítico do plano (padrão ${CRIT_DEFAULT.days} dias ou ${num(CRIT_DEFAULT.km)} km), em aberto ou já executadas`} />
-        <KpiTile label="OS críticas agora" value={critNow} status={critNow ? 'crit' : undefined} sub={critNow ? 'Em aberto hoje, independente do período' : 'Nenhuma OS crítica hoje'} />
-        <KpiTile label="Preventivas com atraso" display={A.plan_done == null ? <Num value={null} size="kpi" count /> : <span className="flex items-baseline gap-tight"><Num value={A.late_done} size="kpi" count /><span className="text-body text-ink-2 num">de {A.plan_done}</span></span>} sub={A.late_done ? `Atraso médio de ${num(A.avg_delay_days, 1)} dias` : 'Nenhuma com atraso'} />
-        <KpiTile label="Panes não planejadas" value={A.failures} delta={{ value: diff(A.failures, B?.failures), unit: '', digits: 0, good: 'down' }} />
-        <KpiTile label="Na oficina agora" value={shop.length} status={shop.length ? 'parado' : undefined} sub={shop.length ? <>Mais antigo há <span className="num">{hm(Date.now() - (shop[0].since || 0))}</span></> : 'Nenhum veículo parado'} />
-      </div>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Disponibilidade é o indicador operacional que o gestor mais acompanha —
+              a pergunta "quantos veículos estão disponíveis agora" vem antes de qualquer outro número. */}
+          <KpiHero title="Disponibilidade" period={rangeText(a)} value={A.availability != null ? A.availability * 100 : null} unit="%" digits={1}
+            delta={{ value: diff(A.availability, B?.availability) != null ? diff(A.availability, B?.availability)! * 100 : null, good: 'up' }}
+            sentence={`${num(A.downtime_h)} h paradas na oficina no período`} />
+          <div className="grid grid-cols-2 gap-3">{secundarios}</div>
+        </Stack>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <KpiTile label="Disponibilidade" value={A.availability != null ? A.availability * 100 : null} unit="%" digits={1} delta={{ value: diff(A.availability, B?.availability) != null ? diff(A.availability, B?.availability)! * 100 : null, good: 'up' }} sub={`${num(A.downtime_h)} h paradas na oficina`} />
+          {secundarios}
+        </div>
+      )}
       <Grid cols={2} wide equal>
         <ChartCard title="Falhas mais frequentes" icon="alerta" period={`${rangeText(a)} · panes não planejadas`} sentence={failSentence} state={totalF ? 'ready' : 'empty'} empty={{ title: 'Nenhuma pane no período' }}>
           <ul className="flex flex-col gap-1">

@@ -253,10 +253,10 @@ export function KpiCard({ icon, title, to, value, prefix, unit, digits = 0, sub,
 
 // Card de KPI principal
 export interface KpiRow { label: string; value: React.ReactNode; delta?: { value: number | null; unit?: string; digits?: number; good?: 'up' | 'down' } }
-export function KpiHero({ title, period, value, unit, digits = 1, delta, sentence, goal, scale = [0, 100], rows = [], state = 'ready', onRetry }: {
+export function KpiHero({ title, period, value, unit, digits = 1, delta, sentence, goal, scale = [0, 100], rows = [], state = 'ready', onRetry, display }: {
   title: string; period?: string; value: number | null; unit?: string; digits?: number;
   delta?: { value: number | null; unit?: string; suffix?: string; good?: 'up' | 'down' }; sentence?: React.ReactNode;
-  goal?: { value: number; label: string }; scale?: [number, number]; rows?: KpiRow[]; state?: LoadState; onRetry?: () => void;
+  goal?: { value: number; label: string }; scale?: [number, number]; rows?: KpiRow[]; state?: LoadState; onRetry?: () => void; display?: React.ReactNode;
 }) {
   const pos = (v: number) => `${Math.max(0, Math.min(100, ((v - scale[0]) / (scale[1] - scale[0])) * 100))}%`;
   return (
@@ -267,7 +267,7 @@ export function KpiHero({ title, period, value, unit, digits = 1, delta, sentenc
         : state === 'empty' || value == null ? <EmptyState icon="relogio" title="Ainda sem dados suficientes" detail="O indicador aparece quando houver pelo menos um dia de operação no período." />
         : <>
           <div className="flex flex-wrap items-baseline gap-x-grid gap-y-tight [container-type:inline-size]">
-            <Num value={value} unit={unit} digits={digits} count size="display" />
+            {display ?? <Num value={value} unit={unit} digits={digits} count size="display" />}
             {delta && <DeltaChip {...delta} />}
           </div>
           {sentence && <p className="text-body leading-snug text-ink-2 mt-kpi-meta max-w-[52ch]">{sentence}</p>}
@@ -412,7 +412,9 @@ export function PeriodButton({ label, compare, children }: { label: string; comp
       <button ref={btn} type="button" aria-expanded={open} aria-haspopup={children ? 'dialog' : undefined} onClick={() => children && setOpen(!open)} className="h-ctl max-w-full pl-3 pr-2 rounded-btn bg-card border border-line-strong flex items-center gap-icon text-body hover:bg-card-2 hover:border-line-hover transition-colors">
         <Icon name="calendario" size={18} className="text-ink-2 shrink-0" />
         <span className="font-medium num whitespace-nowrap">{label}</span>
-        {compare && <span className="text-ink-2 num truncate">vs {compare}</span>}
+        {/* "vs X" some no mobile: ao lado de outros filtros, o botão já virava a parte mais poluída da barra
+            — a comparação continua visível assim que abre a folha, só não precisa caber no botão fechado. */}
+        {compare && <span className="max-md:hidden text-ink-2 num truncate">vs {compare}</span>}
         <Icon name="abaixo" size={16} className="text-ink-3 shrink-0" />
       </button>
       {open && !mobile && children && <div role="dialog" aria-label="Escolher período" className="absolute right-0 top-12 z-[600] bg-card border border-line rounded-pop p-4 shadow-pop anim-page min-w-[280px]">{children(close)}</div>}

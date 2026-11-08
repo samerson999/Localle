@@ -5,10 +5,11 @@ import { MapContainer, TileLayer } from 'react-leaflet';
 import { useStore, assetKm } from '../lib/store';
 import { cancelarViagem, criarViagem, removerMatrizViagem, salvarMatrizViagem, useCarregando } from '../lib/localleApi';
 import { registerGate } from '../lib/gate';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, EmptyState, Progress, TabPanel, toast, Check, DescList, DescRow, confirmAction, Grid, Stack, useUrlTab } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, EmptyState, Progress, TabPanel, toast, Check, DescList, DescRow, confirmAction, Grid, Stack, useUrlTab, useIsMobile } from '../components/ui';
+import { useMobilePageAction } from '../components/Layout';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
-import { KpiTile, ChartCard, StatusDot, StatusGlyph, Num, AssetName } from '../components/story';
+import { KpiTile, KpiHero, ChartCard, StatusDot, StatusGlyph, Num, AssetName } from '../components/story';
 import { StackedColumns } from '../components/charts';
 import { TILE, ATTR, GlideMarker, FenceShapes } from '../components/MapBits';
 import { categoryOf } from '../components/assetArt';
@@ -23,7 +24,7 @@ export default function Viagens() {
   return (
     <div>
       <PageHeader title="Gestão de viagens" subtitle="Portaria, quem está na rua, viagens externas e viagens recorrentes" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head">
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
         <RetiredToggle />
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'visao', label: 'Visão geral' }, { key: 'portaria', label: 'Portaria' }, { key: 'rua', label: 'Quem está na rua' }, { key: 'externas', label: 'Viagens externas' }, { key: 'recorrentes', label: 'Viagens recorrentes' }]} />
         {tab === 'visao' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}
@@ -72,14 +73,31 @@ function Visao({ period }: { period: PeriodValue }) {
   const rows = Object.entries(A.perAsset).map(([aid, t]) => ({ aid, t, trips: tripsIn(s, a[0], a[1]).filter((x: any) => x.assetId === aid).length })).sort((p, q) => q.t.nt - p.t.nt);
   const movingNow = s.assets.filter((x: any) => x.kind === 'veiculo' && s.vehicles[x.id]?.moving && !s.vehicles[x.id]?.noSignal && !s.trips.some((t: any) => t.assetId === x.id && t.status === 'em_andamento'));
   const worst = rows[0];
+  const mobile = useIsMobile();
+  const secundarios = (
+    <>
+      <KpiTile label="Viagens concluídas" value={nA} delta={{ value: nB != null ? nA - nB : null, unit: '', digits: 0, good: 'up' }} />
+      <KpiTile label="Km sem carga" value={emptyPct(A.total)} unit="%" digits={0} delta={{ value: B && emptyPct(B.total) != null && emptyPct(A.total) != null ? emptyPct(A.total)! - emptyPct(B.total)! : null, unit: 'p.p.', good: 'down' }} sub={<><Num value={A.total.kmEmpty} unit="km" size="small" /> nas externas</>} />
+      <KpiTile label="Cumprimento da matriz" value={cA != null ? cA * 100 : null} unit="%" digits={0} delta={{ value: cA != null && cB != null ? (cA - cB) * 100 : null, unit: 'p.p.', good: 'up' }} sub={`±${TRIP_PARAMS.tolMin} min de tolerância`} />
+    </>
+  );
   return (
     <Stack gap="grid">
-      <Grid cols={4} equal>
-        <KpiTile label="Viagens externas concluídas" value={nA} delta={{ value: nB != null ? nA - nB : null, unit: '', digits: 0, good: 'up' }} />
-        <KpiTile label="Rodando sem viagem" value={A.total.nt / 3600} unit="h" delta={{ value: rel(A.total.nt, B?.total.nt), unit: '%', good: 'down' }} sub={<><Num value={A.total.kmNt} unit="km" size="small" /> sem viagem atribuída</>} />
-        <KpiTile label="Km em viagem sem carga" value={emptyPct(A.total)} unit="%" digits={0} delta={{ value: B && emptyPct(B.total) != null && emptyPct(A.total) != null ? emptyPct(A.total)! - emptyPct(B.total)! : null, unit: 'p.p.', good: 'down' }} sub={<><Num value={A.total.kmEmpty} unit="km" size="small" /> nas viagens externas</>} />
-        <KpiTile label="Cumprimento da matriz" value={cA != null ? cA * 100 : null} unit="%" digits={0} delta={{ value: cA != null && cB != null ? (cA - cB) * 100 : null, unit: 'p.p.', good: 'up' }} sub={`Paradas no horário (±${TRIP_PARAMS.tolMin} min)`} />
-      </Grid>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Rodando sem viagem é o desvio que mais custa — km rodado sem atribuição nenhuma */}
+          <KpiHero title="Rodando sem viagem" period={rangeText(a)} value={A.total.nt / 3600} unit="h"
+            delta={{ value: rel(A.total.nt, B?.total.nt), unit: '%', good: 'down' }} sentence={`${num(A.total.kmNt)} km sem viagem atribuída`} />
+          <Grid cols={3} equal>{secundarios}</Grid>
+        </Stack>
+      ) : (
+        <Grid cols={4} equal>
+          <KpiTile label="Viagens externas concluídas" value={nA} delta={{ value: nB != null ? nA - nB : null, unit: '', digits: 0, good: 'up' }} />
+          <KpiTile label="Rodando sem viagem" value={A.total.nt / 3600} unit="h" delta={{ value: rel(A.total.nt, B?.total.nt), unit: '%', good: 'down' }} sub={<><Num value={A.total.kmNt} unit="km" size="small" /> sem viagem atribuída</>} />
+          <KpiTile label="Km em viagem sem carga" value={emptyPct(A.total)} unit="%" digits={0} delta={{ value: B && emptyPct(B.total) != null && emptyPct(A.total) != null ? emptyPct(A.total)! - emptyPct(B.total)! : null, unit: 'p.p.', good: 'down' }} sub={<><Num value={A.total.kmEmpty} unit="km" size="small" /> nas viagens externas</>} />
+          <KpiTile label="Cumprimento da matriz" value={cA != null ? cA * 100 : null} unit="%" digits={0} delta={{ value: cA != null && cB != null ? (cA - cB) * 100 : null, unit: 'p.p.', good: 'up' }} sub={`Paradas no horário (±${TRIP_PARAMS.tolMin} min)`} />
+        </Grid>
+      )}
       <Grid split="7/5" wide equal>
         <ChartCard title={step === DAY ? 'Km rodados por dia' : 'Km rodados por semana'} icon="grafico" sentence={A.total.kmNt + A.total.kmEmpty > 0 ? `${num(((A.total.kmNt + A.total.kmEmpty) / Math.max(1, A.total.kmLoaded + A.total.kmTrip + A.total.kmEmpty + A.total.kmNt)) * 100, 0)}% dos km do período foram sem viagem ou em viagem sem carga.` : undefined}>
           <div className="flex-1 min-h-0 flex flex-col justify-center">
@@ -207,9 +225,10 @@ function Externas() {
   const [more, setMore] = useState(25);
   const all = s.trips.filter((x: any) => x.type === 'externo').sort((p: any, q: any) => (q.startedAt || Infinity) - (p.startedAt || Infinity));
   const list = all.filter((x: any) => (flt === 'abertas' ? ['aguardando', 'em_andamento'].includes(x.status) : x.status === flt));
+  useMobilePageAction({ label: 'Nova viagem', icon: 'mais', onClick: () => setT({ stops: [], visited: [] }) });
   return (
     <>
-      <Card title="Viagens externas" icon="viagens" actions={<Button onClick={() => setT({ stops: [], visited: [] })}><Icon name="mais" size={16} />Nova viagem</Button>}>
+      <Card title="Viagens externas" icon="viagens" actions={<Button onClick={() => setT({ stops: [], visited: [] })} className="max-md:hidden"><Icon name="mais" size={16} />Nova viagem</Button>}>
         <p className="text-small text-ink-2 mb-3 max-w-[90ch]">A viagem começa ao sair da cerca de origem e passa pela carga, pela descarga e pelo destino. O trecho entre carga e descarga conta como "com carga". Ao concluir, o veículo que continua rodando sem viagem é sinalizado ao monitoramento.</p>
         <div className="mb-4"><Pills value={flt} onChange={(k) => { setFlt(k); setMore(25); }} options={[{ key: 'abertas', label: 'Abertas' }, { key: 'concluida', label: 'Concluídas' }, { key: 'cancelada', label: 'Canceladas' }]} /></div>
         <Table minWidth={1180} emptyState={<EmptyState illustration="ilu-viagens" layout="row" title="Nenhuma viagem nesta lista" detail="Troque o filtro ou cadastre uma nova viagem." />} head={['Viagem', 'Veículo', 'Carga', 'Etapas', 'Situação', 'Duração', '']} rows={list.slice(0, more).map((x: any) => [
@@ -248,9 +267,11 @@ function Recorrentes() {
   const [edit, setEdit] = useState<any>(null);
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[0], 'anterior'));
   const { a, b } = periodRanges(period);
+  const novaRecorrente = () => setEdit({ name: '', assetId: '', driverId: '', days: [1, 2, 3, 4, 5], stops: [{ fenceId: '', time: '08:00' }], sleep: {} });
+  useMobilePageAction({ label: 'Nova viagem recorrente', icon: 'mais', onClick: novaRecorrente });
   return (
     <Stack gap="grid">
-      <div className="flex flex-wrap items-center gap-2"><p className="text-small text-ink-2 mr-auto max-w-[80ch]">Viagens que se repetem na semana: paradas com horário previsto e onde o veículo dorme. O cumprimento compara o planejado com as cercas em que o veículo entrou (tolerância de ±{TRIP_PARAMS.tolMin} min).</p><Button onClick={() => setEdit({ name: '', assetId: '', driverId: '', days: [1, 2, 3, 4, 5], stops: [{ fenceId: '', time: '08:00' }], sleep: {} })}><Icon name="mais" size={16} />Nova viagem recorrente</Button></div>
+      <div className="flex flex-wrap items-center gap-2"><p className="text-small text-ink-2 mr-auto max-w-[80ch]">Viagens que se repetem na semana: paradas com horário previsto e onde o veículo dorme. O cumprimento compara o planejado com as cercas em que o veículo entrou (tolerância de ±{TRIP_PARAMS.tolMin} min).</p><Button onClick={novaRecorrente} className="max-md:hidden"><Icon name="mais" size={16} />Nova viagem recorrente</Button></div>
       <Grid cols={2} wide equal>
         {s.matrices.map((m: any) => (
           <Card key={m.id} title={m.name} icon="rota" actions={<div className="flex gap-3"><TextButton onClick={() => setEdit(JSON.parse(JSON.stringify(m)))}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir a viagem recorrente "${m.name}"?`, detail: 'Ela deixa de gerar viagens novas. As viagens já criadas continuam.' })) { try { await removerMatrizViagem(m.id); toast('Viagem recorrente excluída.'); } catch (e: any) { toast('Não foi possível excluir: ' + (e.message || e), { tone: 'crit' }); } } }}>Excluir</TextButton></div>}>

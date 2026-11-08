@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore, assetKm, useStoreData } from '../lib/store';
 import { isRealAsset, salvarAbastecimento, salvarFichaAtivo, salvarOperacao, useCarregando } from '../lib/localleApi';
 import { registerOdometer } from '../lib/odometer';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack, Missing, SetupLink, useUrlTab } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack, Missing, SetupLink, useUrlTab, FilterSheet, useIsMobile } from '../components/ui';
+import { useMobilePageAction } from '../components/Layout';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
-import { KpiTile, ChartCard, DeltaChip, StatusDot, Num, AssetName } from '../components/story';
+import { KpiTile, KpiHero, ChartCard, DeltaChip, StatusDot, Num, AssetName } from '../components/story';
 import { CompareBars, ColumnChart, TipItem, PaceChart } from '../components/charts';
 import { monthPace, idealAt, paceStatus, PACE_LABEL } from '../lib/pace';
 import { Icon } from '../components/icons';
@@ -24,7 +25,7 @@ export default function Combustivel() {
   return (
     <div>
       <PageHeader icon="combustivel" title="Gestão de combustível" subtitle="Abastecimentos, notas fiscais, confiabilidade, metas e BI de consumo" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'lanc', label: 'Abastecimentos' }, { key: 'notas', label: 'Notas fiscais' }, { key: 'bi', label: 'BI de abastecimento' }, { key: 'metas', label: 'Metas' }]} /></div>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'lanc', label: 'Abastecimentos' }, { key: 'notas', label: 'Notas fiscais' }, { key: 'bi', label: 'BI de abastecimento' }, { key: 'metas', label: 'Metas' }]} /></div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'lanc' && <Lancamentos />}
         {tab === 'notas' && <Notas />}
@@ -42,11 +43,12 @@ function Lancamentos() {
   const drivers = useStore((s) => s.drivers);
   const [open, setOpen] = useState(false);
   const [aid, setAid] = useState('');
+  useMobilePageAction({ label: 'Lançar abastecimento', icon: 'mais', onClick: () => setOpen(true) });
   const list = [...fuelings].filter((f: any) => !aid || f.assetId === aid).sort((a: any, b: any) => b.ts - a.ts).slice(0, 150);
   const n = (id: string) => assets.find((a: any) => a.id === id)?.name;
   return (
     <>
-      <Card title="Abastecimentos" icon="combustivel" actions={<div className="flex flex-wrap gap-2 max-md:w-full"><div className="w-48 max-md:w-full"><SearchSelect aria-label="Veículo" value={aid} onChange={setAid} placeholder="Todos os veículos" options={assets.filter((a: any) => a.kind === 'veiculo').map((a: any) => ({ value: a.id, label: a.name }))} /></div><Button onClick={() => setOpen(true)} className="max-md:w-full"><Icon name="mais" size={16} />Lançar abastecimento</Button></div>}>
+      <Card title="Abastecimentos" icon="combustivel" actions={<div className="flex flex-wrap gap-2 max-md:w-full"><div className="w-48 max-md:w-full"><SearchSelect aria-label="Veículo" value={aid} onChange={setAid} placeholder="Todos os veículos" options={assets.filter((a: any) => a.kind === 'veiculo').map((a: any) => ({ value: a.id, label: a.name }))} /></div><Button onClick={() => setOpen(true)} className="max-md:hidden"><Icon name="mais" size={16} />Lançar abastecimento</Button></div>}>
         <Table minWidth={980} align={['left', 'left', 'left', 'right', 'right', 'right', 'right', 'left', 'left']}
           emptyState={<EmptyState illustration="ilu-combustivel" layout="row" title="Nenhum abastecimento lançado" detail={aid ? 'Este veículo ainda não tem abastecimentos. Troque o veículo ou lance um abastecimento.' : 'Lance o primeiro abastecimento para acompanhar consumo e gasto.'} />}
           head={['Data', 'Veículo', 'Motorista', 'Km', 'Litros', 'Valor', 'R$/L', 'Posto', 'Nota']} rows={list.map((f: any) => {
@@ -92,7 +94,7 @@ function FuelForm({ onClose }: any) {
     <Modal open onClose={onClose} title="Lançar abastecimento" width="max-w-3xl" footer={<><Missing className="mr-auto self-center" items={[err ? 'corrigir o km' : !odo && 'o km do odômetro', !(+f.liters > 0) && 'os litros', !(+f.total > 0) && 'o valor total']} /><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button disabled={!ok} onClick={save}>Salvar abastecimento</Button></>}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
         <Field label="Veículo"><SearchSelect value={f.assetId} onChange={(v) => setF({ ...init(v), liters: f.liters, total: f.total, photos: f.photos })} options={vehs.map((a: any) => ({ value: a.id, label: a.name }))} /></Field>
-        <Field label="Litros"><Input type="number" step="0.01" inputMode="decimal" autoFocus value={f.liters} onChange={(e) => setF({ ...f, liters: e.target.value })} /></Field>
+        <Field label="Litros"><Input type="number" step="0.01" inputMode="decimal" value={f.liters} onChange={(e) => setF({ ...f, liters: e.target.value })} /></Field>
         <Field label="Valor total (R$)"><Input type="number" step="0.01" inputMode="decimal" value={f.total} onChange={(e) => setF({ ...f, total: e.target.value })} /></Field>
         <Field label="Km atual" hint={f.kmTracker != null ? (corr ? `Rastreador marcava ${num(f.kmTracker)} km; correção de ${corr > 0 ? '+' : ''}${num(corr)} km fica registrada` : 'Lido do rastreador agora; corrija se o painel mostrar outro valor') : last ? `Último: ${num(last.odometer)} km` : 'Primeiro lançamento'}><Input type="number" value={f.odometer} aria-invalid={!!err} className={err ? '!border-crit' : ''} onChange={(e) => setF({ ...f, odometer: e.target.value, fromTracker: false })} /></Field>
         <Field label="Combustível"><Select value={f.fuel} onChange={(e) => setF({ ...f, fuel: e.target.value })} options={FUELS} /></Field>
@@ -235,6 +237,7 @@ function NotaModal({ f, ocrOn, onClose }: any) {
 // ---------------------------------------------------------------- BI
 function BI() {
   const s = useStoreData();
+  const mobile = useIsMobile();
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[2], 'anterior'));
   const [flt, setFlt] = useState({ grp: '', op: '', brand: '', model: '' });
   const { a, b } = periodRanges(period);
@@ -277,20 +280,37 @@ function BI() {
   return (
     <Stack gap="grid">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="w-44"><Select aria-label="Grupo" value={flt.grp} onChange={(e) => setFlt({ ...flt, grp: e.target.value })} options={[{ value: '', label: 'Todos os grupos' }, ...s.groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></div>
-        <div className="w-48"><Select aria-label="Tipo de operação" value={flt.op} onChange={(e) => setFlt({ ...flt, op: e.target.value })} options={[{ value: '', label: 'Todas as operações' }, ...s.operations.map((o: any) => ({ value: o.id, label: o.name }))]} /></div>
-        <div className="w-40"><Select aria-label="Marca" value={flt.brand} onChange={(e) => setFlt({ ...flt, brand: e.target.value })} options={opts('brand', 'Todas as marcas')} /></div>
-        <div className="w-48"><Select aria-label="Modelo" value={flt.model} onChange={(e) => setFlt({ ...flt, model: e.target.value })} options={opts('model', 'Todos os modelos')} /></div>
+        <FilterSheet count={[flt.grp, flt.op, flt.brand, flt.model].filter(Boolean).length}>
+          <div className="w-44 max-md:w-full"><Select aria-label="Grupo" value={flt.grp} onChange={(e) => setFlt({ ...flt, grp: e.target.value })} options={[{ value: '', label: 'Todos os grupos' }, ...s.groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></div>
+          <div className="w-48 max-md:w-full"><Select aria-label="Tipo de operação" value={flt.op} onChange={(e) => setFlt({ ...flt, op: e.target.value })} options={[{ value: '', label: 'Todas as operações' }, ...s.operations.map((o: any) => ({ value: o.id, label: o.name }))]} /></div>
+          <div className="w-40 max-md:w-full"><Select aria-label="Marca" value={flt.brand} onChange={(e) => setFlt({ ...flt, brand: e.target.value })} options={opts('brand', 'Todas as marcas')} /></div>
+          <div className="w-48 max-md:w-full"><Select aria-label="Modelo" value={flt.model} onChange={(e) => setFlt({ ...flt, model: e.target.value })} options={opts('model', 'Todos os modelos')} /></div>
+        </FilterSheet>
         <span className="text-small text-ink-2 num mr-auto">{sel.length} veículos · {A.rows.length} abastecimentos</span>
         <PeriodCompare value={period} onChange={setPeriod} />
       </div>
-      <Grid cols={5} equal>
-        <KpiTile label="Gasto" display={<Num value={A.total} prefix="R$" size="kpi" count />} delta={{ value: rel(A.total, B?.total), unit: '%', good: 'down' }} sub={`${num(A.liters)} litros`} />
-        <KpiTile label="Preço médio do litro" display={<Num value={A.price} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(A.price, B?.price), unit: '%', good: 'down' }} />
-        <KpiTile label="Consumo médio" value={A.kml} unit="km/L" digits={2} delta={{ value: rel(A.kml, B?.kml), unit: '%', good: 'up' }} sub={s.fuelGoals?.company?.kml ? `Meta da empresa ${num(s.fuelGoals.company.kml, 1)} km/L` : undefined} />
-        <KpiTile label="Custo por km" display={<Num value={A.perKm} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(A.perKm, B?.perKm), unit: '%', good: 'down' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados</>} />
-        <KpiTile label="Veículos na meta" value={A.withGoal ? (A.inGoal / A.withGoal) * 100 : null} unit="%" sub={`${A.inGoal} de ${A.withGoal} com meta`} />
-      </Grid>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Gasto é o número que o gestor mais procura primeiro (quanto a frota já custou),
+              o mesmo que o "Ritmo do mês" logo abaixo detalha — os demais seguem como grade de contexto. */}
+          <KpiHero title="Gasto" period={rangeText(a)} value={A.total} display={<Num value={A.total} prefix="R$" size="display" count />}
+            delta={{ value: rel(A.total, B?.total), unit: '%', good: 'down' }} sentence={`${num(A.liters)} litros no período`} />
+          <Grid cols={4} equal>
+            <KpiTile label="Preço médio do litro" display={<Num value={A.price} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(A.price, B?.price), unit: '%', good: 'down' }} />
+            <KpiTile label="Consumo médio" value={A.kml} unit="km/L" digits={2} delta={{ value: rel(A.kml, B?.kml), unit: '%', good: 'up' }} sub={s.fuelGoals?.company?.kml ? `Meta da empresa ${num(s.fuelGoals.company.kml, 1)} km/L` : undefined} />
+            <KpiTile label="Custo por km" display={<Num value={A.perKm} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(A.perKm, B?.perKm), unit: '%', good: 'down' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados</>} />
+            <KpiTile label="Veículos na meta" value={A.withGoal ? (A.inGoal / A.withGoal) * 100 : null} unit="%" sub={`${A.inGoal} de ${A.withGoal} com meta`} />
+          </Grid>
+        </Stack>
+      ) : (
+        <Grid cols={5} equal>
+          <KpiTile label="Gasto" display={<Num value={A.total} prefix="R$" size="kpi" count />} delta={{ value: rel(A.total, B?.total), unit: '%', good: 'down' }} sub={`${num(A.liters)} litros`} />
+          <KpiTile label="Preço médio do litro" display={<Num value={A.price} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(A.price, B?.price), unit: '%', good: 'down' }} />
+          <KpiTile label="Consumo médio" value={A.kml} unit="km/L" digits={2} delta={{ value: rel(A.kml, B?.kml), unit: '%', good: 'up' }} sub={s.fuelGoals?.company?.kml ? `Meta da empresa ${num(s.fuelGoals.company.kml, 1)} km/L` : undefined} />
+          <KpiTile label="Custo por km" display={<Num value={A.perKm} prefix="R$" digits={2} size="kpi" count />} delta={{ value: rel(A.perKm, B?.perKm), unit: '%', good: 'down' }} sub={<><Num value={A.km} unit="km" size="small" /> rodados</>} />
+          <KpiTile label="Veículos na meta" value={A.withGoal ? (A.inGoal / A.withGoal) * 100 : null} unit="%" sub={`${A.inGoal} de ${A.withGoal} com meta`} />
+        </Grid>
+      )}
       <Grid cols={2} wide equal>
         <ChartCard state={cap > 0 ? 'ready' : 'empty'} empty={{ title: 'Sem teto mensal', detail: filtered ? 'Nenhum veículo filtrado tem teto mensal. Defina na aba Metas.' : 'Defina o teto mensal da frota na aba Metas.' }}
           tips={cap > 0 ? [

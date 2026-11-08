@@ -1,8 +1,8 @@
-import { Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { useNeedsYou } from '../lib/needs';
-import { cx, IconButton, Skeleton, confirmAction } from './ui';
+import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx } from './ui';
 import { Icon } from './icons';
 import { OdometerAsk } from './RemoteBits';
 import { useRastreioSync } from '../lib/rastreioApi';
@@ -70,6 +70,23 @@ function AvisoBackend() {
   );
 }
 
+// Ação de criação da barra superior mobile (item 1 do plano, docs/PLANO-MOBILE.md): só existe quando a página
+// chama useMobilePageAction — nas telas sem ação de criação clara, a barra fica só com o título. Registro por
+// contexto (não prop) porque a barra vive no Layout, acima do Outlet; useRef guarda o onClick sempre atualizado
+// sem reabrir o registro a cada render da página (só label/icon mudam o registro).
+type MobileAction = { label: string; icon?: string; onClick: () => void };
+const MobileActionCtx = createContext<{ action: MobileAction | null; set: (a: MobileAction | null) => void } | null>(null);
+export function useMobilePageAction(action: MobileAction | null) {
+  const ctx = useContext(MobileActionCtx);
+  const ref = useRef(action); ref.current = action;
+  useEffect(() => {
+    if (!ctx || !action) return;
+    ctx.set({ label: action.label, icon: action.icon, onClick: () => ref.current?.onClick() });
+    return () => ctx.set(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx, action?.label, action?.icon]);
+}
+
 function Counter({ n, pulse = 0, className = '' }: { n: number; pulse?: number; className?: string }) {
   // key = pulse: remonta e toca o pulso uma vez a cada item crítico novo
   return <span key={pulse} className={cx(pulse > 0 && 'pulse-once', 'min-w-[20px] h-5 px-2 rounded-pill bg-crit text-on-dark text-caption font-semibold flex items-center justify-center num', className)} aria-hidden="true">{n > 99 ? '99+' : n}</span>;
@@ -106,6 +123,30 @@ function LayoutBody() {
     seen.current = new Set(ids);
   }, [needIds]);
   const [panel, setPanel] = useState(false);
+  const [mobileAction, setMobileAction] = useState<MobileAction | null>(null);
+  const [mobileFilter, setMobileFilter] = useState<{ count: number; onOpen: () => void } | null>(null);
+  // título grande → compacto ao rolar (item 5, docs/PLANO-MOBILE.md): só no mobile, escreve opacity/
+  // transform direto nos elementos via rAF — não é estado do React, rolar não pode disparar re-render
+  // a cada pixel. Reduced motion: pula direto para o estado final (sem a transição contínua).
+  const titleLgRef = useRef<HTMLHeadingElement>(null);
+  const titleSmRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!isMobile) return;
+    const COLLAPSE_PX = 36;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const t = reduce ? (window.scrollY > 0 ? 1 : 0) : Math.min(1, Math.max(0, window.scrollY / COLLAPSE_PX));
+      const lg = titleLgRef.current, sm = titleSmRef.current;
+      if (lg) { lg.style.opacity = String(1 - t); lg.style.transform = `translateY(${t * -6}px)`; }
+      if (sm) { sm.style.opacity = String(t); sm.style.transform = `translateY(${(1 - t) * 6}px)`; }
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
+  }, [isMobile, loc.pathname]);
   // largura do botão flutuante "Precisa de você": o cabeçalho da página reserva esse espaço à direita (--top-reserve)
   // para ficar na mesma linha dele sem ser coberto
   const needsBtn = useRef<HTMLButtonElement>(null);
@@ -204,6 +245,8 @@ function LayoutBody() {
   );
 
   return (
+    <MobileActionCtx.Provider value={{ action: mobileAction, set: setMobileAction }}>
+    <MobileFilterCtx.Provider value={{ slot: mobileFilter, set: setMobileFilter }}>
     <div className="flex flex-col flex-1 min-w-0 md:flex-row" style={{ ['--sb-w' as any]: `${sbw}px` }}>
       {/* primeiro Tab da página: pula o menu inteiro. HashRouter: href="#conteudo" trocaria a rota, então o clique só move o foco */}
       <a href="#conteudo" onClick={(e) => { e.preventDefault(); document.getElementById('conteudo')?.focus(); }}
@@ -270,9 +313,31 @@ function LayoutBody() {
       </Sidebar>
       <SidebarInset>
         <div style={{ ['--top-reserve' as any]: reserve && !session.support ? `calc(${reserve}px + var(--gap-grid))` : '0px' }} className="flex flex-col flex-1 min-w-0">
-          {/* celular: barra superior só diz onde se está; navegação, busca e críticos ficam na barra inferior */}
-          <div className="md:hidden no-print sticky top-0 z-[800] flex items-center gap-2 px-4 h-14 bg-canvas border-b border-line">
-            <BrandMark size={30} /><span className="font-semibold text-body truncate mr-auto">{atual?.label ?? rev.branding.name}</span>
+          {/* celular: cabeçalho único, no padrão "clean e adaptável" do Visor — título grande à esquerda
+              (o nome da seção já identifica a tela, dispensa repetir a logo: ela segue acessível no
+              menu "Mais") e a ação de criar à direita, mesmo lugar em toda tela que tiver uma. Item 1+4
+              de docs/PLANO-MOBILE.md fundidos num só cabeçalho em vez de barra pequena + título abaixo.
+              O título grande esmaece/sobe e um título pequeno centralizado some/desce no lugar dele
+              conforme rola (item 5) — só opacity/transform, escritos direto no DOM via rAF (useEffect
+              abaixo), sem re-render do React a cada pixel de scroll. */}
+          <div className="md:hidden no-print sticky top-0 z-[800] flex items-center gap-3 px-page h-16 bg-canvas overflow-hidden">
+            <div className="relative flex-1 min-w-0 self-stretch">
+              <h1 ref={titleLgRef} className="absolute inset-y-0 left-0 right-0 flex items-center text-h2 font-semibold truncate">{atual?.label ?? rev.branding.name}</h1>
+              <span ref={titleSmRef} aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-body font-semibold truncate opacity-0 pointer-events-none">{atual?.label ?? rev.branding.name}</span>
+            </div>
+            {mobileFilter && (
+              <button type="button" aria-label={`Filtros${mobileFilter.count ? `, ${mobileFilter.count} ativos` : ''}`} onClick={mobileFilter.onOpen}
+                className="relative w-11 h-11 shrink-0 rounded-btn text-ink-2 flex items-center justify-center transition-transform duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:text-ink hover:bg-card-2">
+                <Icon name="filtro" size={20} />
+                {mobileFilter.count > 0 && <span aria-hidden="true" className="absolute top-2 right-2 w-2 h-2 rounded-pill bg-brand-fill" />}
+              </button>
+            )}
+            {mobileAction && (
+              <button type="button" aria-label={mobileAction.label} onClick={mobileAction.onClick}
+                className="w-11 h-11 shrink-0 rounded-btn bg-brand-fill text-brand-fill-ink flex items-center justify-center transition-transform duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-fill-hover">
+                <Icon name={mobileAction.icon ?? 'mais'} size={18} />
+              </button>
+            )}
           </div>
           {/* desktop: "Precisa de você" fica no topo à direita, na mesma linha do cabeçalho da página (que reserva a largura dele
               por --top-reserve). Com a faixa de suporte aberta, volta a ocupar uma linha própria acima dela. Não acompanha o scroll. */}
@@ -288,7 +353,7 @@ function LayoutBody() {
           )}
           {/* faixas fixas sob a barra: suporte e falha de backend empilham num contêiner só (cada uma sticky por conta
               própria parava no mesmo top e uma cobria a outra) */}
-          <div className="no-print sticky top-14 z-[30] flex flex-col">
+          <div className="no-print sticky max-md:top-16 md:top-14 z-[30] flex flex-col">
           {session.support && (
             <div role="status" className="flex flex-wrap items-center gap-x-stack gap-y-hair px-page md:px-page-md py-tight bg-ink text-on-dark text-small">
               <Icon name="cadeado" size={16} className="shrink-0" /><span className="mr-auto">Acesso de suporte a <b>{session.support.client}</b> desde {fmtT(session.support.at)} · {session.support.reason}</span>
@@ -304,5 +369,7 @@ function LayoutBody() {
       <NeedsPanel open={panel} onClose={() => setPanel(false)} anchor={needsBtn.current} />
       <CommandPalette open={cmdk} onClose={() => setCmdk(false)} modules={mods} />
     </div>
+    </MobileFilterCtx.Provider>
+    </MobileActionCtx.Provider>
   );
 }

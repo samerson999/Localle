@@ -109,7 +109,7 @@ export default function Rastreadores() {
         <Button variant="quiet" onClick={() => setModal('chip')}>Cadastrar chip</Button>
         <Button onClick={() => setModal('rastreador')}>Cadastrar rastreador</Button>
       </PageHeader>
-      <div className="flex flex-wrap items-center gap-tight mb-card-head">
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
         <Tabs value={tab} onChange={setTab} tabs={[{ key: 'inventario', label: 'Inventário' }, { key: 'transmissao', label: 'Transmissão' }]} />
       </div>
       <TabPanel id={tab}>

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { lancarEventoRanking, removerEventoRanking, salvarMatrizRanking, useCarregando } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack, SetupLink, useUrlTab } from '../components/ui';
-import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
-import { KpiTile, ChartCard, DeltaChip, StatusDot, Num } from '../components/story';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack, SetupLink, useUrlTab, useIsMobile } from '../components/ui';
+import { useMobilePageAction } from '../components/Layout';
+import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
+import { KpiTile, KpiHero, ChartCard, DeltaChip, StatusDot, Num } from '../components/story';
 import { Icon } from '../components/icons';
 import { EVENT_CATEGORIES, FUTURE_CATEGORIES } from '@localle/shared/catalog';
 import { localTypes, localRanking, journeyEvents, Ranking as RankingT, EvType } from '@localle/shared/ranking';
@@ -33,7 +34,7 @@ export default function Ranking() {
   return (
     <div>
       <PageHeader title="Ranking de motoristas" subtitle="Eventos do rastreador, telemetria, regras da empresa e jornada" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'ranking', label: 'Ranking' }, { key: 'matriz', label: 'Matriz de eventos e pesos' }, { key: 'campanhas', label: 'Campanhas' }]} />{tab === 'ranking' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'ranking', label: 'Ranking' }, { key: 'matriz', label: 'Matriz de eventos e pesos' }, { key: 'campanhas', label: 'Campanhas' }]} />{tab === 'ranking' && <div className="ml-auto min-w-0 max-w-full"><PeriodCompare value={period} onChange={setPeriod} /></div>}</div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'ranking' && <Board period={period} />}
         {tab === 'matriz' && <Matriz />}
@@ -48,6 +49,7 @@ const CAT_SHORT: Record<string, string> = { basico: 'Básico', telemetria: 'Tele
 function Board({ period }: { period: PeriodValue }) {
   const s = useStoreData();
   const [d, setD] = useState<{ A?: RankingT; B?: RankingT; err?: string }>({});
+  const mobile = useIsMobile();
   const { a, b } = periodRanges(period);
   useEffect(() => {
     let alive = true;
@@ -74,15 +76,29 @@ function Board({ period }: { period: PeriodValue }) {
   const campaigns = (s.campaigns || []).filter((c: any) => new Date(c.to + 'T23:59').getTime() >= Date.now() && new Date(c.from + 'T00:00').getTime() <= Date.now());
   const fleetSentence = `${inside} de ${A.drivers.length} motoristas dentro do limite${zero ? `; ${zero} sem nenhum ponto no período` : ''}${att.length ? `. ${att.length === 1 ? `${att[0].name} está` : `${att.length} motoristas estão`} em atenção.` : '.'}`;
 
+  const secundarios = (
+    <>
+      <KpiTile label="Em atenção" value={att.length} status={att.length ? 'parado' : undefined} delta={{ value: attB != null ? att.length - attB : null, unit: '', digits: 0, good: 'down' }} sub={`Acima de ${num(A.limit_scaled, 1)} pontos`} />
+      <KpiTile label="Pontos da frota" value={tot(A)} delta={{ value: rel(tot(A), tot(B)), unit: '%', good: 'down' }} sub={`${num(A.drivers.reduce((x, y) => x + y.events, 0))} eventos`} />
+      <KpiTile label="Pontos a cada 100 km" value={per100(A)} digits={1} delta={{ value: rel(per100(A), per100(B)), unit: '%', good: 'down' }} sub={<><Num value={km(A)} unit="km" size="small" /> rodados</>} />
+    </>
+  );
   return (
     <Stack gap="grid">
       {toolbar}
-      <Grid cols={4} equal>
-        <KpiTile label="Dentro do limite" value={inside} sub={`de ${A.drivers.length} motoristas`} delta={{ value: B ? inside - (B.drivers.length - attB!) : null, unit: '', digits: 0, good: 'up' }} />
-        <KpiTile label="Em atenção" value={att.length} status={att.length ? 'parado' : undefined} delta={{ value: attB != null ? att.length - attB : null, unit: '', digits: 0, good: 'down' }} sub={`Acima de ${num(A.limit_scaled, 1)} pontos`} />
-        <KpiTile label="Pontos da frota" value={tot(A)} delta={{ value: rel(tot(A), tot(B)), unit: '%', good: 'down' }} sub={`${num(A.drivers.reduce((x, y) => x + y.events, 0))} eventos`} />
-        <KpiTile label="Pontos a cada 100 km" value={per100(A)} digits={1} delta={{ value: rel(per100(A), per100(B)), unit: '%', good: 'down' }} sub={<><Num value={km(A)} unit="km" size="small" /> rodados</>} />
-      </Grid>
+      {mobile ? (
+        <Stack gap="grid">
+          {/* hero mobile: Dentro do limite é a pergunta central do ranking — a frota está se comportando? */}
+          <KpiHero title="Dentro do limite" period={rangeText(a)} value={inside} unit={`de ${A.drivers.length}`}
+            delta={{ value: B ? inside - (B.drivers.length - attB!) : null, unit: '', good: 'up' }} sentence={`${A.drivers.length} motoristas no período`} />
+          <Grid cols={3} equal>{secundarios}</Grid>
+        </Stack>
+      ) : (
+        <Grid cols={4} equal>
+          <KpiTile label="Dentro do limite" value={inside} sub={`de ${A.drivers.length} motoristas`} delta={{ value: B ? inside - (B.drivers.length - attB!) : null, unit: '', digits: 0, good: 'up' }} />
+          {secundarios}
+        </Grid>
+      )}
       <Grid cols={2} wide equal>
         <ChartCard title="Destaques do período" icon="trofeu" sentence={fleetSentence}>
           <div className="grid sm:grid-cols-2 gap-6">
@@ -208,11 +224,13 @@ function Campanhas() {
   const [c, setC] = useState<any>(null);
   const all = [...s.events, ...journeyEvents(s)];
   const cats = Object.keys(EVENT_CATEGORIES).filter((c) => !FUTURE_CATEGORIES.includes(c));
+  const novaCampanha = () => setC({ name: '', from: toInputD(Date.now()), to: toInputD(Date.now() + 30 * DAY), eventTypes: ['excesso_velocidade'], maxPerVehicle: 0, prize: '', groupId: '' });
+  useMobilePageAction({ label: 'Nova campanha', icon: 'mais', onClick: novaCampanha });
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <p className="text-small text-ink-2 mr-auto max-w-[80ch]">Campanhas premiam quem cumpre a meta no período. Valem para qualquer evento do ranking, inclusive jornada e regras da empresa.</p>
-        <Button onClick={() => setC({ name: '', from: toInputD(Date.now()), to: toInputD(Date.now() + 30 * DAY), eventTypes: ['excesso_velocidade'], maxPerVehicle: 0, prize: '', groupId: '' })}><Icon name="mais" size={16} />Nova campanha</Button>
+        <Button onClick={novaCampanha} className="max-md:hidden"><Icon name="mais" size={16} />Nova campanha</Button>
       </div>
       <Grid cols={2} wide equal>
         {s.campaigns.length === 0 &&<Card className="xl:col-span-2"><EmptyState illustration="ilu-campanhas" layout="row" title="Nenhuma campanha" detail="Crie uma campanha com meta ou tolerância zero e uma premiação." /></Card>}

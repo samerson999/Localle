@@ -4,7 +4,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore, assetKm, useStoreData } from '../lib/store';
 import { atualizarIconeAtivo, atualizarPlacaAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, reativarMotorista, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
 import { backendIdOf } from '../lib/localleMap';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem, FilterSheet } from '../components/ui';
+import { useMobilePageAction } from '../components/Layout';
 import { couplingsOf, currentCoupling, compositionOf, compositionName, compositionError, setComposition, tractorHistory, TRAILER_TYPE, MAX_ITEMS, type TrailerType } from '@localle/shared/couplings';
 import { Num, StatusDot, AssetName, IdChip, KpiTile, type StatusKind } from '../components/story';
 import { Icon } from '../components/icons';
@@ -32,12 +33,13 @@ export default function Ativos() {
   const assets = useStore((s) => s.assets);
   useUrlItem('ativo', (id) => assets.find((x: any) => x.id === id), (a: any) => { setTab('ativos'); setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) }))); }, [assets]);
   const tabs = <Tabs value={tab} onChange={setTab} tabs={[{ key: 'ativos', label: 'Ativos' }, { key: 'grupos', label: 'Grupos' }, { key: 'motoristas', label: 'Motoristas' }, { key: 'operacoes', label: 'Operações' }, { key: 'alteracoes', label: 'Alterações' }]} />;
+  useMobilePageAction(tab === 'ativos' ? { label: 'Novo ativo', icon: 'mais', onClick: () => setEdit(blank()) } : null);
   return (
     <div>
       <PageHeader icon="ativos" title="Gestão de ativos" subtitle="Veículos, linha amarela, máquinas e equipamentos rastreados" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head">
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
         {tabs}
-        {tab === 'ativos' && <Button onClick={() => setEdit(blank())}><Icon name="mais" size={18} />Novo ativo</Button>}
+        {tab === 'ativos' && <Button onClick={() => setEdit(blank())} className="max-md:hidden"><Icon name="mais" size={18} />Novo ativo</Button>}
       </div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'ativos' && <AssetList onOpen={(a: any) => setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) })))} />}
@@ -86,6 +88,9 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
       <Card>
         <div className="flex flex-wrap items-center gap-stack mb-card-head">
           <SearchInput className="w-full sm:w-80" placeholder="Buscar placa, modelo, motorista ou IMEI" aria-label="Buscar ativo" value={q} onChange={setQ} />
+          <FilterSheet count={cat ? 1 : 0}>
+            <div className="w-48 max-md:w-full"><Select aria-label="Categoria" value={cat} onChange={(e) => setCat(e.target.value)} options={[{ value: '', label: 'Todas as categorias' }, ...CATEGORIES.map((c) => ({ value: c.key, label: c.label }))]} /></div>
+          </FilterSheet>
           <p className="text-small text-ink-2 num" aria-live="polite">{list.length === all.length ? `${all.length} ativos` : `${list.length} de ${all.length} ativos`}</p>
           <RetiredToggle />
           {(cat || noTracker || docDue || q) && <Button variant="link" size="sm" onClick={() => { setCat(''); setNoTracker(false); setDocDue(false); setQ(''); }}>Limpar filtros</Button>}
@@ -649,8 +654,9 @@ function Grupos() {
     if (!(await confirmAction({ title: `Excluir ${g.name}?`, detail: 'Os ativos deixam de fazer parte dele, mas não são apagados.' }))) return;
     try { await removerGrupo(g.id); toast(`${g.name} excluído.`); } catch (e: any) { toast('Não foi possível excluir: ' + (e.message || e), { tone: 'crit' }); }
   };
+  useMobilePageAction({ label: 'Novo grupo', icon: 'mais', onClick: () => setEdit({ name: '', assetIds: [] }) });
   return (
-    <Card title="Grupos de veículos" icon="equipe" actions={<Button size="sm" onClick={() => setEdit({ name: '', assetIds: [] })}><Icon name="mais" size={16} />Novo grupo</Button>}>
+    <Card title="Grupos de veículos" icon="equipe" actions={<Button size="sm" onClick={() => setEdit({ name: '', assetIds: [] })} className="max-md:hidden"><Icon name="mais" size={16} />Novo grupo</Button>}>
       <Table head={['Grupo', 'Ativos', '']} align={['left', 'left', 'right']}
         emptyState={<EmptyState icon="equipe" title="Nenhum grupo criado" detail="Agrupe ativos por filial, contrato ou tipo de operação para filtrar mapa, relatórios e parâmetros do Setup." action={<Button size="sm" onClick={() => setEdit({ name: '', assetIds: [] })}>Criar grupo</Button>} />}
         rows={groups.map((g: any) => {
@@ -740,10 +746,11 @@ function Drivers() {
   const assets = useStore((s) => s.assets);
   const { upsert, remove } = useStore.getState();
   const [d, setD] = useState<any>(null);
+  useMobilePageAction({ label: 'Novo motorista', icon: 'mais', onClick: () => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' }) });
   return (
     <>
       <DriverConflicts />
-      <Card title="Motoristas" icon="usuario" actions={<Button onClick={() => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' })}><Icon name="mais" size={16} />Novo motorista</Button>}>
+      <Card title="Motoristas" icon="usuario" actions={<Button onClick={() => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' })} className="max-md:hidden"><Icon name="mais" size={16} />Novo motorista</Button>}>
         <Table head={['Nome', 'CNH', 'Categoria', 'Validade da CNH', 'Exame toxicológico', 'Telefone', 'Veículo atual', '']} rows={drivers.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="num">{x.cnh}</span>, x.cnhCat, x.cnhDue ? <DocStatus d={{ due: x.cnhDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>, /^[CDE]/.test(x.cnhCat) ? (x.toxDue ? <DocStatus d={{ due: x.toxDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>) : <span className="text-ink-3">não exigido</span>, <span className="num">{x.phone}</span>, <AssetName name={assets.find((a: any) => a.driverId === x.id)?.name} />, <div className="flex gap-3"><TextButton onClick={() => setD({ ...x })}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Desativar o motorista ${x.name}?`, detail: 'Ele sai das telas e seletores. Viagens, marcações e eventos antigos continuam com o nome dele, e dá para reativar depois.' })) { try { await desativarMotorista(x.id); toast(`Motorista ${x.name} desativado.`); } catch (e: any) { toast('Não foi possível desativar: ' + (e.message || e), { tone: 'crit' }); } } }}>Desativar</TextButton></div>])} />
       </Card>
       {inativos.length > 0 && <Card title="Motoristas desativados" icon="usuario">

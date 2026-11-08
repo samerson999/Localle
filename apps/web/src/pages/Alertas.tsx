@@ -2,6 +2,7 @@ import { marcarAlertasLidos, removerRegra, salvarRegra, useCarregando } from '..
 import { useState } from 'react';
 import { useStore } from '../lib/store';
 import { Button, Card, Field, FormGroup, Input, Select, Table, Check, Badge, PageTabs, Modal, TextButton, TabPanel, confirmAction, toast, IconButton, EmptyState, Stack, Cluster, Missing, useUrlTab } from '../components/ui';
+import { useMobilePageAction } from '../components/Layout';
 import { StatusDot, AssetName, IdChip, priorityKind } from '../components/story';
 import { Icon } from '../components/icons';
 import { MonitorHeader } from '../components/MonitorTabs';
@@ -57,9 +58,10 @@ function Rules() {
   const falhou = (e: any) => toast('Não foi possível salvar a regra: ' + (e?.message || e), { tone: 'crit' });
   const setCond = (i: number, k: string, v: string) => { const c = r.conditions.map((x: any, j: number) => (j === i ? { ...x, [k]: v, ...(k === 'field' ? { op: RULE_FIELDS[v].ops[0], value: RULE_FIELDS[v].values?.[0] || (v.includes('cerca') ? 'Cliente' : '') } : {}) } : x)); setR({ ...r, conditions: c }); };
   const describe = (rule: any) => rule.conditions.map((c: any) => `${RULE_FIELDS[c.field]?.label} ${c.op} ${c.value}`).join(' e ');
+  useMobilePageAction({ label: 'Nova regra', icon: 'mais', onClick: () => setR(blankRule()) });
   return (
     <>
-      <Card title="Regras ativas" icon="alerta" actions={<Button onClick={() => setR(blankRule())}><Icon name="mais" size={16} />Nova regra</Button>}>
+      <Card title="Regras ativas" icon="alerta" actions={<Button onClick={() => setR(blankRule())} className="max-md:hidden"><Icon name="mais" size={16} />Nova regra</Button>}>
         <p className="text-small text-ink-2 mb-card-head">As regras são avaliadas a cada posição recebida, cruzando dados do rastreador, sensores, cercas e regras da empresa (horário, dia).</p>
         <Table head={['Regra', 'Condições', 'Escopo', 'Prioridade', 'Disparos', 'Ativa', '']} rows={rules.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="text-small">{describe(x)}</span>, 'Todos', <Prio p={x.priority} />, <span className="num">{x.disparos30d ?? alerts.filter((a: any) => a.ruleId === x.id).length}</span>,
           <Check aria-label={`Regra ${x.name} ativa`} checked={x.active} onChange={(v) => salvarRegra({ ...x, active: v }).then(() => toast(v ? `Regra "${x.name}" ativada.` : `Regra "${x.name}" desativada.`), falhou)} />, <div className="flex gap-3"><TextButton onClick={() => setR(JSON.parse(JSON.stringify(x)))}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir a regra "${x.name}"?`, detail: 'Ela para de gerar alertas. Os alertas já gerados continuam no histórico.' })) { removerRegra(x.id).then(() => toast('Regra excluída.', { action: { label: 'Desfazer', onClick: () => salvarRegra({ ...x, id: undefined }).catch(falhou) } }), falhou); } }}>Excluir</TextButton></div>])} />
