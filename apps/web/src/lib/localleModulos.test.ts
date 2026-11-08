@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  abastecimentoToFueling, driverToMotoristaBody, eventToEventoRankingBody, fineToMultaBody, fuelingToAbastecimentoBody, groupIdsByAsset, grupoToGroup,
+  abastecimentoToFueling, ativoDaApi, driverToMotoristaBody, fichaDoAtivo, temFicha, eventToEventoRankingBody, fineToMultaBody, fuelingToAbastecimentoBody, groupIdsByAsset, grupoToGroup,
   marcacaoToMark, markToMarcacaoBody, matrizToMatrix, matrixToMatrizBody, modeloToTemplate, motoristaToDriver, multaToFine, osToWorkOrder, planoToPlan, planToPlanoBody,
   responseToRespostaBody, respostaToResponse, tiposToRankCfg, tripToViagemBody, viagemToTrip, workOrderToOsBody,
 } from './localleModulos';
@@ -72,5 +72,37 @@ describe('ranking e viagens', () => {
     const t = viagemToTrip({ id: 'v', tipo: 'externo', nome: 'Coleta', asset_id: U, motorista_id: 'm1', matriz_id: null, origem_cerca_id: 'f1', carga_cerca_id: null, descarga_cerca_id: null, destino_cerca_id: 'f1', carga: null, status: 'em_andamento', iniciada_em: '2026-10-20T08:00:00.000Z', carregada_em: null, descarregada_em: null, encerrada_em: null, origem_inicio: 'rastreador', dados: {} });
     expect(t).toMatchObject({ assetId: 'lc_' + U, loadFenceId: '', startedAt: Date.parse('2026-10-20T08:00:00.000Z'), loadedAt: undefined, startSource: 'rastreador', stops: [] });
     expect(tripToViagemBody(t)).toMatchObject({ tipo: 'externo', assetId: U, motoristaId: 'm1', origemCercaId: 'f1', cargaCercaId: null, destinoCercaId: 'f1', carga: null });
+  });
+});
+
+describe('ficha do ativo (assets.dados)', () => {
+  const row = (o: any = {}) => ({ id: U, plate: 'ABC1D23', status: 'ativo', status_desde: '2026-11-01T12:00:00Z', icone: null, operacao_id: null, dados: {}, ...o });
+
+  it('fichaDoAtivo leva só campos do cadastro e tira o arquivo dos documentos', () => {
+    const f = fichaDoAtivo({ id: 'lc_' + U, plate: 'ABC1D23', photo: 'data:x', tracker: { id: 't' }, groupIds: ['g'], brand: 'Volvo', documents: [{ id: 'd1', type: 'crlv', file: 'data:pdf', fileName: 'crlv.pdf' }] });
+    expect(f).toEqual({ brand: 'Volvo', documents: [{ id: 'd1', type: 'crlv', fileName: 'crlv.pdf' }] });
+  });
+
+  it('sem ficha na API mantém o que o navegador tinha; com ficha, a da API vale e o arquivo local volta pelo id', () => {
+    const prev = { id: 'lc_' + U, plate: 'ABC1D23', brand: 'Scania', operationId: 'op1', photo: 'data:foto', documents: [{ id: 'd1', file: 'data:pdf' }] };
+    expect(ativoDaApi(row(), prev)).toMatchObject({ brand: 'Scania', operationId: 'op1', photo: 'data:foto' });
+    const a = ativoDaApi(row({ dados: { brand: 'Volvo', documents: [{ id: 'd1', fileName: 'x.pdf' }] }, operacao_id: 'op2' }), prev);
+    expect(a).toMatchObject({ brand: 'Volvo', operationId: 'op2', photo: 'data:foto', documents: [{ id: 'd1', fileName: 'x.pdf', file: 'data:pdf' }] });
+  });
+
+  it('ativo que o navegador não conhecia nasce com os padrões e o nome da placa', () => {
+    expect(ativoDaApi(row(), undefined)).toMatchObject({ id: 'lc_' + U, name: 'ABC1D23', kind: 'veiculo', groupIds: [], operationId: '' });
+  });
+
+  it('situação vendido/baixado vem do status da API; voltar a ativo na API desfaz a saída local', () => {
+    expect(ativoDaApi(row({ status: 'baixado' }), undefined).lifecycle).toMatchObject({ status: 'baixa', at: Date.parse('2026-11-01T12:00:00Z') });
+    const vendidoLocal = { lifecycle: { status: 'vendido', at: 1, note: 'comprador X', history: [{ to: 'vendido' }] } };
+    expect(ativoDaApi(row({ status: 'vendido' }), vendidoLocal).lifecycle).toEqual(vendidoLocal.lifecycle);
+    expect(ativoDaApi(row(), vendidoLocal).lifecycle).toMatchObject({ status: 'ativo', history: [{ to: 'vendido' }] });
+  });
+
+  it('temFicha só para cadastro além da placa', () => {
+    expect(temFicha({ plate: 'ABC1D23', name: 'ABC1D23', kind: 'veiculo', specs: {} })).toBe(false);
+    expect(temFicha({ plate: 'ABC1D23', name: 'Caminhão 08' })).toBe(true);
   });
 });

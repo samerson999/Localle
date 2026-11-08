@@ -2,7 +2,7 @@ import { RetiredToggle } from '../components/RetiredToggle';
 import { opAssets, operatedIn } from '../lib/assetLifecycle';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { salvarAbastecimento, useCarregando } from '../lib/localleApi';
+import { isRealAsset, salvarAbastecimento, salvarFichaAtivo, salvarOperacao, useCarregando } from '../lib/localleApi';
 import { registerOdometer } from '../lib/odometer';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack, Missing, SetupLink, useUrlTab } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
@@ -336,6 +336,9 @@ function Metas() {
   const [saved, setSavedAt] = useState(0);
   useEffect(() => { if (saved) { const t = setTimeout(() => toast('Metas salvas.'), 600); return () => clearTimeout(t); } }, [saved]);
   const touch = () => setSavedAt(Date.now());
+  // meta do veículo vai na ficha do ativo e a da operação na operação (API); grava ao sair do campo
+  const gravarFicha = (id: string) => { if (!isRealAsset({ id })) return touch(); salvarFichaAtivo(id).then(touch).catch((e: any) => toast('Meta não gravada: ' + (e.message || e), { tone: 'crit' })); };
+  const gravarOperacao = (o: any, meta: number) => { if (!/^[0-9a-f-]{36}$/i.test(o.id)) return touch(); salvarOperacao({ id: o.id, name: o.name, metaKml: meta || null }).then(touch).catch((e: any) => toast('Meta não gravada: ' + (e.message || e), { tone: 'crit' })); };
   const fleetSpend = monthSpend(s, () => true);
   const vehs = opAssets(s).filter((a: any) => a.kind === 'veiculo');
   const Budget = ({ spent, cap }: { spent: number; cap?: number }) => !cap ? <span className="text-ink-2 text-small">Sem teto</span> : (
@@ -354,7 +357,7 @@ function Metas() {
       </Card>
       <Grid cols={2} wide equal>
         <Card title="Por tipo de operação">
-          <Table minWidth={420} align={['left', 'right', 'left']} head={['Operação', 'Veículos', 'Meta (km/L)']} rows={s.operations.map((o: any) => [<span className="font-medium">{o.name}</span>, <span className="num">{vehs.filter((a: any) => a.operationId === o.id).length}</span>, <Input className="w-28" type="number" step="0.1" aria-label={`Meta ${o.name}`} value={goals.operations?.[o.id] || ''} onChange={(e) => { set({ ...goals, operations: { ...goals.operations, [o.id]: +e.target.value } }); touch(); }} />])} />
+          <Table minWidth={420} align={['left', 'right', 'left']} head={['Operação', 'Veículos', 'Meta (km/L)']} rows={s.operations.map((o: any) => [<span className="font-medium">{o.name}</span>, <span className="num">{vehs.filter((a: any) => a.operationId === o.id).length}</span>, <Input className="w-28" type="number" step="0.1" aria-label={`Meta ${o.name}`} value={goals.operations?.[o.id] || ''} onChange={(e) => set({ ...goals, operations: { ...goals.operations, [o.id]: +e.target.value } })} onBlur={(e) => gravarOperacao(o, +e.target.value)} />])} />
         </Card>
         <Card title="Por grupo" actions={<SetupLink aba="combustivel" />}>
           <Table minWidth={420} align={['left', 'right', 'left']} head={['Grupo', 'Veículos', 'Meta (km/L)']} rows={s.groups.map((g: any) => [<span className="font-medium">{g.name}</span>, <span className="num">{vehs.filter((a: any) => a.groupIds.includes(g.id)).length}</span>, goals.groups?.[g.id] ? <span className="num">{num(goals.groups[g.id], 1)} km/L</span> : <span className="text-ink-2 text-small">Herda da empresa</span>])} />
@@ -363,9 +366,9 @@ function Metas() {
       <Card title="Por veículo">
         <Table minWidth={860} head={['Veículo', 'Operação', 'Meta própria (km/L)', 'Meta que vale', 'Teto mensal (R$)', 'Gasto no mês']} rows={vehs.map((a: any) => { const g = goalFor(s, a); const sp = monthSpend(s, (f) => f.assetId === a.id); return [
           <AssetName name={a.name} />, s.operations.find((o: any) => o.id === a.operationId)?.name || '—',
-          <Input className="w-24" type="number" step="0.1" aria-label={`Meta ${a.name}`} value={a.fuelGoal || ''} placeholder="herda" onChange={(e) => { s.upsert('assets', { id: a.id, fuelGoal: +e.target.value }); touch(); }} />,
+          <Input className="w-24" type="number" step="0.1" aria-label={`Meta ${a.name}`} value={a.fuelGoal || ''} placeholder="herda" onChange={(e) => s.upsert('assets', { id: a.id, fuelGoal: +e.target.value })} onBlur={() => gravarFicha(a.id)} />,
           <span className="text-small num">{g ? `${num(g.kml, 1)} km/L · ${g.from}` : '—'}</span>,
-          <Input className="w-28" type="number" aria-label={`Teto ${a.name}`} value={a.fuelBudget || ''} onChange={(e) => { s.upsert('assets', { id: a.id, fuelBudget: +e.target.value }); touch(); }} />,
+          <Input className="w-28" type="number" aria-label={`Teto ${a.name}`} value={a.fuelBudget || ''} onChange={(e) => s.upsert('assets', { id: a.id, fuelBudget: +e.target.value })} onBlur={() => gravarFicha(a.id)} />,
           <Budget spent={sp} cap={a.fuelBudget} />]; })} />
       </Card>
     </Stack>

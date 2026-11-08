@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, useStoreData } from '../lib/store';
-import { registrarMarcacao, removerMarcacao, useCarregando } from '../lib/localleApi';
+import { registrarMarcacao, removerMarcacao, salvarEmpresa, useCarregando } from '../lib/localleApi';
+import { mascaraValida } from '../lib/mascaras';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid, SetupLink, DescList, DescRow, useUrlTab } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { ColumnChart, CompareBars } from '../components/charts';
@@ -203,13 +204,15 @@ function Regras() {
   const s = useStoreData();
   const cfg = useCfg();
   const [err, setErr] = useState<Record<string, string>>({});
+  // empregador do espelho de ponto mora na API (/empresa); grava ao sair do campo, com o valor do store
+  const gravarEmpresa = () => { const c = useStore.getState().journeyCfg || {}; if (c.companyCnpj && !mascaraValida('cnpj', c.companyCnpj)) return; salvarEmpresa(c).catch((e: any) => toast('Dados do empregador não gravados: ' + (e.message || e), { tone: 'crit' })); };
   return (
     <Card title="Parâmetros de jornada" icon="config">
       <div className="flex flex-col gap-4 max-w-2xl">
         <div className="grid md:grid-cols-3 gap-field">
-          <Field label="Razão social do empregador"><Input value={cfg.companyName ?? s.revenda.clientName} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyName: e.target.value } }))} /></Field>
-          <Field label="CNPJ"><Input mask="cnpj" value={cfg.companyCnpj || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyCnpj: e.target.value } }))} /></Field>
-          <Field label="Endereço"><Input value={cfg.companyAddress || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyAddress: e.target.value } }))} /></Field>
+          <Field label="Razão social do empregador"><Input value={cfg.companyName ?? s.revenda.clientName} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyName: e.target.value } }))} onBlur={gravarEmpresa} /></Field>
+          <Field label="CNPJ"><Input mask="cnpj" value={cfg.companyCnpj || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyCnpj: e.target.value } }))} onBlur={gravarEmpresa} /></Field>
+          <Field label="Endereço"><Input value={cfg.companyAddress || ''} onChange={(e) => s.patch(() => ({ journeyCfg: { ...cfg, companyAddress: e.target.value } }))} onBlur={gravarEmpresa} /></Field>
         </div>
         {/* limites moram no Setup do gestor (jornada.*): a lei é piso e o Setup só aceita valor mais rigoroso; aqui só leitura */}
         <div>

@@ -175,3 +175,52 @@ export function tripToViagemBody(t: any) {
     origemCercaId: t.originFenceId || null, cargaCercaId: t.loadFenceId || null, descargaCercaId: t.unloadFenceId || null, destinoCercaId: t.destFenceId || null, carga: t.cargo || null,
   };
 }
+
+// ---------- ficha do ativo (assets.dados) ----------
+// O que do cadastro do ativo vai para a API. Fica de fora: id/placa/ícone/motorista (colunas próprias), grupos
+// (vínculo no grupo), operação (`operacao_id`), rastreador (instalação), foto e arquivo dos documentos (sem
+// armazenamento de arquivo na API ainda: continuam no navegador).
+export const FICHA_CAMPOS = ['kind', 'category', 'name', 'brand', 'model', 'year', 'serial', 'specs', 'customFields', 'meter', 'kmSource', 'kmOffset', 'initialKm',
+  'fuelGoal', 'fuelBudget', 'journeySource', 'trailerType', 'tireLayout', 'can', 'active', 'lifecycle', 'documents', 'odometerCheckDone', 'installation', 'kmCalculated'] as const;
+
+export function fichaDoAtivo(a: any): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of FICHA_CAMPOS) if (a[k] !== undefined) out[k] = a[k];
+  if (Array.isArray(a.documents)) out.documents = a.documents.map(({ file: _f, ...d }: any) => d);
+  return out;
+}
+/** Tem algo do cadastro além do que a API já sabe (para migrar o que estava só no navegador). */
+export const temFicha = (a: any) => !!(a && (a.brand || a.model || a.serial || (a.name && a.name !== a.plate) || Object.keys(a.specs || {}).length || (a.customFields || []).length
+  || (a.documents || []).length || +a.fuelGoal || +a.fuelBudget || a.lifecycle || (a.kind && a.kind !== 'veiculo')));
+
+const ATIVO_PADRAO = { kind: 'veiculo', meter: 'km', kmSource: 'rastreador', kmOffset: 0, customFields: [], active: true, photo: '', journeySource: 'teclado', fuelBudget: 0, fuelGoal: 0, specs: {}, groupIds: [], documents: [] };
+const SITUACAO_DA_API: Record<string, string> = { vendido: 'vendido', baixado: 'baixa' };
+
+/**
+ * Linha de GET /assets → ativo do store. A ficha da API vale quando existe; sem ficha (ativo que nunca foi salvo
+ * com ela), fica o que o navegador tinha. O arquivo dos documentos só existe no navegador e é mantido pelo id.
+ * A situação vendido/baixado é a da API (status); o histórico e a anotação vêm da ficha.
+ */
+export function ativoDaApi(row: any, prev: any) {
+  const dados = row.dados && Object.keys(row.dados).length ? row.dados : null;
+  const base = { ...ATIVO_PADRAO, name: row.plate, ...prev, ...(dados || {}) };
+  if (dados && Array.isArray(dados.documents)) {
+    const arquivo = new Map<string, any>((prev?.documents || []).filter((d: any) => d.file).map((d: any) => [d.id, d]));
+    base.documents = dados.documents.map((d: any) => (arquivo.has(d.id) ? { ...d, file: arquivo.get(d.id).file } : d));
+  }
+  const fora = SITUACAO_DA_API[row.status];
+  const atual = base.lifecycle?.status || 'ativo';
+  const lifecycle = fora
+    ? (atual === fora ? base.lifecycle : { status: fora, at: Date.parse(row.status_desde), note: '', history: base.lifecycle?.history || [] })
+    : (atual === 'vendido' || atual === 'baixa' ? { status: 'ativo', at: Date.parse(row.status_desde), note: '', history: base.lifecycle?.history || [] } : base.lifecycle);
+  return {
+    ...base, id: assetIdFor(row.id), plate: row.plate, icon: row.icone ?? base.icon ?? '',
+    operationId: row.operacao_id || (dados ? '' : prev?.operationId || ''),
+    ...(lifecycle ? { lifecycle } : {}),
+  };
+}
+
+// ---------- operações ----------
+export function operacaoToOperation(o: any) {
+  return { id: o.id, name: o.nome, metaKml: o.metaKml };
+}

@@ -4,6 +4,8 @@
 import { create } from 'zustand';
 import { useStore, assetKm } from './store';
 import { uid } from '@localle/shared/utils';
+import { salvarFichaAtivo } from './localleApi';
+import { toast } from '../components/ui';
 
 // Pergunta única após a instalação: o primeiro lançamento manual diverge muito do km calculado?
 export const useOdoAsk = create<{ ask: null | { assetId: string; informed: number; expected: number } }>(() => ({ ask: null }));
@@ -28,6 +30,8 @@ export function applyOdometerCorrection(assetId: string, km: number) {
   const v = s.vehicles[assetId];
   s.upsert('assets', { id: assetId, kmOffset: Math.round(km - (v?.odometer || 0)) });
   registerOdometer(assetId, km, 'ajuste', s.session?.name || 'Gestor');
+  // o ajuste muda o km usado por manutenção e metas para todos: vai na ficha do ativo (API)
+  salvarFichaAtivo(assetId).catch((e: any) => toast('Ajuste do odômetro não gravado: ' + (e.message || e), { tone: 'crit' }));
 }
 
 // Vínculo do rastreador com os dados da instalação (odômetro inicial, foto e técnico)

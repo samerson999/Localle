@@ -337,6 +337,11 @@ export async function desinstalarRastreador(instalacaoId: string) {
   await apiSend('POST', `/rastreadores/instalacoes/${instalacaoId}/desinstalar`);
   await syncFrota();
 }
+/** Situação da tela → status do ativo na API; "parado temporariamente" continua ativo lá (mantém rastreador e telas). */
+export async function atualizarSituacaoAtivo(assetId: string, situacao: string) {
+  const status = situacao === 'vendido' ? 'vendido' : situacao === 'baixa' ? 'baixado' : 'ativo';
+  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { status });
+}
 export async function atualizarPlacaAtivo(assetId: string, plate: string) {
   await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { plate });
 }
@@ -675,6 +680,8 @@ export async function syncMotoristas() {
   const driverOf = new Map(assets.map((a) => [assetIdFor(a.id), a.motorista_id || '']));
   patch((s) => ({
     drivers: motoristas.map(M.motoristaToDriver).filter((d) => d.active),
+    // desativados ficam fora das telas operacionais; só a lista de motoristas mostra, para reativar
+    driversInativos: motoristas.map(M.motoristaToDriver).filter((d) => !d.active),
     assets: s.assets.map((a: any) => (driverOf.has(a.id) ? { ...a, driverId: driverOf.get(a.id) } : a)),
   }));
 }
@@ -684,6 +691,7 @@ export async function salvarMotorista(d: any) {
   return M.motoristaToDriver(salvo);
 }
 export async function desativarMotorista(id: string) { await apiSend('POST', `/motoristas/${id}/desativar`); await syncMotoristas(); }
+export async function reativarMotorista(id: string) { await apiSend('POST', `/motoristas/${id}/reativar`); await syncMotoristas(); }
 /** Motorista do cadastro do veículo (origem "escala"): grava no ativo real; os vínculos por origem continuam locais. */
 export async function definirMotoristaDoAtivo(assetId: string, driverId: string) {
   await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { motoristaId: driverId || null });
@@ -699,13 +707,108 @@ export async function syncGrupos() {
   }));
 }
 export async function salvarGrupo(g: { id?: string; name: string }) {
-  await apiSend(g.id ? 'PUT' : 'POST', g.id ? `/grupos/${g.id}` : '/grupos', { name: g.name });
+  const salvo = await apiSend<{ id: string }>(g.id ? 'PUT' : 'POST', g.id ? `/grupos/${g.id}` : '/grupos', { name: g.name });
   await syncGrupos();
+  return salvo.id;
 }
 export async function removerGrupo(id: string) { await apiSend('DELETE', `/grupos/${id}`); await syncGrupos(); }
 export async function definirAtivosDoGrupo(id: string, assetIds: string[]) {
   await apiSend('PUT', `/grupos/${id}/ativos`, { assetIds: assetIds.filter((a) => isRealAsset({ id: a })).map(backendIdOf) });
   await syncGrupos();
+}
+/** Grupos marcados na ficha do ativo: o vínculo mora no grupo, então só os grupos que ganharam ou perderam o ativo são regravados. */
+export async function definirGruposDoAtivo(assetId: string, groupIds: string[]) {
+  await definirGruposEmLote({ [assetId]: groupIds });
+}
+/** Vários ativos de uma vez (importação): uma gravação por grupo alterado, não uma por ativo. */
+export async function definirGruposEmLote(porAtivo: Record<string, string[]>) {
+  const grupos = useStore.getState().groups.filter((g: any) => UUID.test(g.id));
+  let mudou = 0;
+  for (const g of grupos) {
+    const ids = new Set<string>(g.assetIds);
+    for (const [assetId, groupIds] of Object.entries(porAtivo)) { if (groupIds.includes(g.id)) ids.add(assetId); else ids.delete(assetId); }
+    if (ids.size === g.assetIds.length && g.assetIds.every((x: string) => ids.has(x))) continue;
+    await apiSend('PUT', `/grupos/${g.id}/ativos`, { assetIds: [...ids].filter((a) => isRealAsset({ id: a })).map(backendIdOf) });
+    mudou++;
+  }
+  if (mudou) await syncGrupos();
+}
+
+// ---------- ficha do ativo (assets.dados), operações e empresa: cadastro que ficava só no navegador ----------
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const fold = (x: string) => x.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+/** Grava a ficha e a operação do ativo real como estão no store (chamar depois do upsert local). */
+export async function salvarFichaAtivo(assetId: string) {
+  const a = useStore.getState().assets.find((x: any) => x.id === assetId);
+  if (!a || !isRealAsset(a)) return;
+  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { dados: M.fichaDoAtivo(a), operacaoId: UUID.test(a.operationId || '') ? a.operationId : null });
+}
+
+/**
+ * Cadastro dos ativos (todos, inclusive vendidos/baixados, que o mapa não traz). Ativo sem ficha na API mas com
+ * cadastro no navegador (feito antes de a ficha ir para a API) é enviado agora, uma vez, para não se perder.
+ */
+export async function syncCadastroAtivos() {
+  const rows = await apiGet<any[]>('/assets?incluirInativos=true');
+  const antes: Record<string, any> = Object.fromEntries(useStore.getState().assets.map((a: any) => [a.id, a]));
+  const migrar = rows.filter((r) => !Object.keys(r.dados || {}).length && M.temFicha(antes[assetIdFor(r.id)])).map((r) => assetIdFor(r.id));
+  patch((s) => {
+    const assets = [...s.assets];
+    for (const r of rows) {
+      const id = assetIdFor(r.id);
+      const i = assets.findIndex((x: any) => x.id === id);
+      const a = M.ativoDaApi(r, i >= 0 ? assets[i] : undefined);
+      if (i >= 0) assets[i] = a; else assets.push(a);
+    }
+    return { assets };
+  });
+  for (const id of migrar) await salvarFichaAtivo(id).catch((e) => console.warn('[localle] ficha do ativo não migrada', id, mensagemDeErro(e)));
+}
+
+/** Operações da API; as criadas só no navegador são enviadas (casando pelo nome) e os ativos passam a apontar para a da API. */
+export async function syncOperacoes() {
+  const ops = await apiGet<any[]>('/operacoes');
+  const st = useStore.getState();
+  const locais = (st.operations || []).filter((o: any) => !UUID.test(o.id));
+  const troca: Record<string, string> = {};
+  for (const o of locais) {
+    let alvo = ops.find((x) => fold(x.nome) === fold(o.name));
+    if (!alvo) {
+      try { alvo = await apiSend<any>('POST', '/operacoes', { nome: o.name, metaKml: st.fuelGoals?.operations?.[o.id] || null }); ops.push(alvo); }
+      catch (e) { console.warn('[localle] operação não migrada', o.name, mensagemDeErro(e)); continue; }
+    }
+    troca[o.id] = alvo.id;
+  }
+  patch((s) => ({
+    // a que não pôde ir para a API (sem permissão) continua na tela
+    operations: [...ops.map(M.operacaoToOperation), ...(s.operations || []).filter((o: any) => !UUID.test(o.id) && !troca[o.id])],
+    assets: s.assets.map((a: any) => (troca[a.operationId] ? { ...a, operationId: troca[a.operationId] } : a)),
+    fuelGoals: { ...(s.fuelGoals || {}), operations: { ...Object.fromEntries(Object.entries(s.fuelGoals?.operations || {}).filter(([k]) => !UUID.test(k) && !troca[k])), ...Object.fromEntries(ops.filter((o) => o.metaKml).map((o) => [o.id, o.metaKml])) } },
+  }));
+  // ativos reais que apontavam para a operação local passam a apontar para a da API
+  const novos = new Set(Object.values(troca));
+  const trocados = useStore.getState().assets.filter((a: any) => isRealAsset(a) && novos.has(a.operationId));
+  for (const a of trocados) await salvarFichaAtivo(a.id).catch((e) => console.warn('[localle] operação do ativo não migrada', a.id, mensagemDeErro(e)));
+}
+export async function salvarOperacao(o: { id?: string; name: string; metaKml?: number | null }) {
+  await apiSend(o.id ? 'PUT' : 'POST', o.id ? `/operacoes/${o.id}` : '/operacoes', { nome: o.name, metaKml: o.metaKml || null });
+  await syncOperacoes();
+}
+export async function removerOperacao(id: string) { await apiSend('DELETE', `/operacoes/${id}`); await syncOperacoes(); }
+
+/** Empregador do espelho de ponto (jornada). O que estava só no navegador vai para a API na primeira carga. */
+export async function syncEmpresa() {
+  const e = await apiGet<{ razaoSocial: string | null; cnpj: string | null; endereco: string | null }>('/empresa');
+  const cfg = useStore.getState().journeyCfg || {};
+  if (!e.razaoSocial && !e.cnpj && !e.endereco && (cfg.companyName || cfg.companyCnpj || cfg.companyAddress)) {
+    await salvarEmpresa({ companyName: cfg.companyName, companyCnpj: cfg.companyCnpj, companyAddress: cfg.companyAddress }).catch((err) => console.warn('[localle] dados do empregador não migrados', mensagemDeErro(err)));
+    return;
+  }
+  patch((s) => ({ journeyCfg: { ...(s.journeyCfg || {}), companyName: e.razaoSocial || undefined, companyCnpj: e.cnpj || '', companyAddress: e.endereco || '' } }));
+}
+export async function salvarEmpresa(c: { companyName?: string; companyCnpj?: string; companyAddress?: string }) {
+  await apiSend('PUT', '/empresa', { razaoSocial: c.companyName || null, cnpj: c.companyCnpj || null, endereco: c.companyAddress || null });
 }
 
 export async function syncJornada() {
@@ -810,10 +913,11 @@ export async function etapaViagem(id: string, etapa: 'iniciada' | 'carregada' | 
 export async function cancelarViagem(id: string) { await apiSend('POST', `/viagens/${id}/cancelar`); await syncViagens(); }
 
 /** Carga inicial de todos os módulos depois do login (cada um independente: um erro não derruba os outros). */
-const MODULOS_SYNC = ['motoristas', 'grupos', 'jornada', 'multas', 'combustível', 'manutenção', 'checklist', 'ranking', 'viagens'];
+const MODULOS_SYNC = ['motoristas', 'grupos', 'cadastro', 'empresa', 'jornada', 'multas', 'combustível', 'manutenção', 'checklist', 'ranking', 'viagens'];
 export async function syncModulos() {
   const partes: [string, () => Promise<unknown>][] = [
-    ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],
+    // operações antes da ficha: o ativo aponta para a operação já com o id da API
+    ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['cadastro', () => syncOperacoes().then(syncCadastroAtivos)], ['empresa', syncEmpresa], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],
     ['manutenção', syncManutencao], ['checklist', syncChecklist], ['ranking', syncRanking], ['viagens', syncViagens],
   ];
   const r = await Promise.allSettled(partes.map(([nome, f]) => f().finally(() => marcarPronto(nome))));

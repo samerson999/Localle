@@ -1,6 +1,7 @@
 import { CATEGORIES, categoryOf, categoryLabel } from '../components/assetArt';
 import { useStore } from './store';
 import { setDriver } from './driverLinks';
+import { criarAtivo, definirGruposEmLote, definirMotoristaDoAtivo, isRealAsset, salvarFichaAtivo, salvarGrupo, salvarOperacao } from './localleApi';
 import { auditEntry } from '@localle/shared/audit';
 
 // Planilha de ativos (Ativos › Importar/Exportar): cadastro em massa para quem chega com centenas de placas.
@@ -89,21 +90,35 @@ export function planImport(rows: any[][], s: any): ImportPlan {
   return { lines, newGroups: [...newGroups], newOperations: [...newOps] };
 }
 
-// grava as linhas válidas; grupos e operações novos são criados antes. Devolve [criados, atualizados].
-export function applyImport(plan: ImportPlan, blank: (kind?: string) => any): [number, number] {
+// grava as linhas válidas; grupos e operações novos são criados antes (na API). Devolve [criados, atualizados].
+// Ativo com placa existe na API (cria se for novo) e leva ficha, motorista e grupos; sem placa continua só no navegador.
+// Grupos são gravados no fim, uma vez por grupo alterado (não uma por ativo).
+export async function applyImport(plan: ImportPlan, blank: (kind?: string) => any): Promise<[number, number]> {
   const s = useStore.getState();
-  plan.newGroups.forEach((name) => s.upsert('groups', { name })); // importação em lote continua local; grupos reais são criados na tela de Grupos
-  plan.newOperations.forEach((name) => s.upsert('operations', { name }));
+  for (const name of plan.newGroups) await salvarGrupo({ name });
+  for (const name of plan.newOperations) await salvarOperacao({ name });
   const { groups, operations: ops } = useStore.getState() as any;
   let c = 0, u = 0;
+  const gruposNaApi: Record<string, string[]> = {};
   for (const l of plan.lines) {
     if (l.action === 'erro') continue;
     const { _groups, _op, driverId, ...d } = l.data;
     const groupIds = _groups.map((g: string) => groups.find((x: any) => fold(x.name) === fold(g))?.id).filter(Boolean);
     const operationId = _op ? ops.find((x: any) => fold(x.name) === fold(_op))?.id : undefined;
-    if (l.existingId) { s.upsert('assets', { id: l.existingId, ...d, ...(_groups.length && { groupIds }), ...(operationId && { operationId }) }); if (driverId) setDriver(l.existingId, driverId, 'escala'); u++; }
-    else { const it = s.upsert('assets', { ...blank(d.kind || 'veiculo'), ...d, groupIds, operationId: operationId || '' }); if (driverId) setDriver(it.id, driverId, 'escala'); c++; }
+    let id = l.existingId;
+    if (id) s.upsert('assets', { id, ...d, ...(_groups.length && { groupIds }), ...(operationId && { operationId }) });
+    else {
+      const real = d.plate ? await criarAtivo(d.plate) : undefined;
+      id = s.upsert('assets', { ...blank(d.kind || 'veiculo'), ...d, ...(real && { id: real }), groupIds, operationId: operationId || '' }).id as string;
+    }
+    if (isRealAsset({ id })) {
+      await salvarFichaAtivo(id);
+      if (driverId) await definirMotoristaDoAtivo(id, driverId);
+      if (_groups.length || !l.existingId) gruposNaApi[id] = groupIds;
+    } else if (driverId) setDriver(id, driverId, 'escala');
+    if (l.existingId) u++; else c++;
   }
+  await definirGruposEmLote(gruposNaApi);
   // resumo da importação no registro (cada linha também aparece individualmente como criou/alterou)
   s.patch((st: any) => auditEntry(st, { coll: 'assets', refId: '', label: 'Importação de planilha', action: `importou ${c + u} ativos em lote`, count: c + u, note: `${c} criados, ${u} atualizados, ${plan.lines.filter((l) => l.action === 'erro').length} recusados` }));
   return [c, u];

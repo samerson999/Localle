@@ -20,7 +20,8 @@ export function toAsset(row: CurrentRow, prev: any, liveGroupId: string) {
     kind: 'veiculo', meter: 'km', kmSource: 'rastreador', kmOffset: 0, customFields: [], active: true, photo: '', journeySource: 'teclado', fuelBudget: 0, fuelGoal: 0, specs: {},
     ...prev,
     id: assetIdFor(row.assetId),
-    name: row.plate,
+    // apelido do cadastro fica; nome que era só a placa acompanha a placa
+    name: prev?.name && prev.name !== prev.plate ? prev.name : row.plate,
     plate: row.plate,
     // ícone ilustrado é do cadastro na API; resposta sem o campo (API antiga) mantém o do navegador
     icon: row.icone === undefined ? prev?.icon : row.icone || '',

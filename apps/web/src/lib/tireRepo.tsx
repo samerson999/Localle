@@ -6,6 +6,7 @@ import { useStore, useStoreData } from './store';
 import { assetKm } from '@localle/shared/km';
 import { tireStats, DEFAULT_TIRE_CFG, positionsFor, LAYOUTS } from '@localle/shared/pneus';
 import { toast } from '../components/ui';
+import { salvarFichaAtivo } from './localleApi';
 import { uid } from '@localle/shared/utils';
 
 export interface TireRepo {
@@ -59,6 +60,8 @@ function useLocalRepo(): TireRepo {
       const orphan = s.tires.filter((x: any) => x.status === 'montado' && x.assetId === assetId && !slots.includes(x.position));
       if (orphan.length) { toast(`Não dá para trocar para ${LAYOUTS[key].label}.`, { tone: 'crit', detail: `Desmonte antes ${orphan.map((x: any) => x.fireNumber).join(', ')}: a posição deles não existe no novo tipo.` }); return false; }
       s.upsert('assets', { id: assetId, tireLayout: key });
+      // o tipo de eixo é do ativo (ficha na API), mesmo com os pneus ainda no navegador
+      salvarFichaAtivo(assetId).catch((e: any) => toast('Tipo de eixo não gravado: ' + (e.message || e), { tone: 'crit' }));
       return true;
     },
     create: async (f) => { const d = f.purchasedAt; s.upsert('tires', { fireNumber: f.fire.toUpperCase(), brand: f.brand, model: f.model, size: f.size, dot: f.dot, recappable: f.recappable, maxLives: f.recappable ? f.maxLives : 1, purchaseDate: d, supplier: f.supplier, location: f.location, status: 'estoque', lives: [{ n: 1, kind: 'novo', date: d, cost: f.cost, supplier: f.supplier, tread: f.tread }], mounts: [], measurements: [] }); },

@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { atualizarIconeAtivo, atualizarPlacaAtivo, criarAtivo, definirMotoristaDoAtivo, desativarMotorista, desinstalarRastreador, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
+import { atualizarIconeAtivo, atualizarPlacaAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, reativarMotorista, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
 import { backendIdOf } from '../lib/localleMap';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem } from '../components/ui';
 import { couplingsOf, currentCoupling, compositionOf, compositionName, compositionError, setComposition, tractorHistory, TRAILER_TYPE, MAX_ITEMS, type TrailerType } from '@localle/shared/couplings';
 import { Num, StatusDot, AssetName, IdChip, KpiTile, type StatusKind } from '../components/story';
 import { Icon } from '../components/icons';
 import { Dropzone } from '../components/Dropzone';
-import { CATEGORIES, categoryOf, categoryLabel, AssetSilhouette } from '../components/assetArt';
+import { CATEGORIES, categoryOf, categoryLabel } from '../components/assetArt';
 import { PNG_ICON_IDS, PNG_ICON_SUGGESTION, pngIconUrl, pngIconLabel } from '../lib/pngIcons';
 import { SPECS_DB, MODEL_BRAND } from '@localle/shared/catalog';
 import { num, fmtD, fmtDT, isPlate } from '@localle/shared/utils';
@@ -41,8 +41,8 @@ export default function Ativos() {
       </div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'ativos' && <AssetList onOpen={(a: any) => setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) })))} />}
-        {tab === 'grupos' && <SimpleList coll="groups" title="Grupos de veículos" placeholder="Ex.: Frota Caruaru" />}
-        {tab === 'operacoes' && <SimpleList coll="operations" title="Operações" placeholder="Ex.: Contrato Prefeitura" />}
+        {tab === 'grupos' && <Grupos />}
+        {tab === 'operacoes' && <Operacoes />}
         {tab === 'motoristas' && <Drivers />}
         {tab === 'alteracoes' && <AuditLog />}
       </TabPanel>
@@ -137,14 +137,22 @@ function ImportPreview({ plan, onClose }: { plan: ImportPlan | null; onClose: ()
   const n = (k: string) => lines.filter((l) => l.action === k).length;
   const ok = n('criar') + n('atualizar');
   const shown = only === 'erro' ? lines.filter((l) => l.action === 'erro' || l.warnings.length) : lines;
-  const confirm = () => {
-    const [c, u] = applyImport(plan!, blank);
-    toast(`${c} ${c === 1 ? 'ativo criado' : 'ativos criados'} e ${u} ${u === 1 ? 'atualizado' : 'atualizados'}.`);
-    onClose();
+  const [busy, setBusy] = useState(false);
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      const [c, u] = await applyImport(plan!, blank);
+      toast(`${c} ${c === 1 ? 'ativo criado' : 'ativos criados'} e ${u} ${u === 1 ? 'atualizado' : 'atualizados'}.`);
+      onClose();
+    } catch (e: any) {
+      toast('Importação incompleta: ' + (e.message || e), { tone: 'crit' });
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <Modal open={!!plan} onClose={onClose} title="Importar ativos" width="max-w-4xl"
-      footer={<><Button variant="link" onClick={() => downloadAssets(null, true)}>Baixar modelo</Button><span className="flex-1" /><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button disabled={!ok} onClick={confirm}>Importar {ok} {ok === 1 ? 'linha' : 'linhas'}</Button></>}>
+      footer={<><Button variant="link" onClick={() => downloadAssets(null, true)}>Baixar modelo</Button><span className="flex-1" /><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!ok} onClick={confirm}>Importar {ok} {ok === 1 ? 'linha' : 'linhas'}</Button></>}>
       <div className="flex flex-wrap gap-x-section gap-y-stack">
         <div><p className="text-small text-ink-2">Novos</p><Num value={n('criar')} size="lg" className="block" /></div>
         <div><p className="text-small text-ink-2">Atualizados (mesma placa)</p><Num value={n('atualizar')} size="lg" className="block" /></div>
@@ -198,6 +206,7 @@ function AssetForm({ a, setA }: any) {
       else if (orig && orig.plate !== plate) await atualizarPlacaAtivo(id, plate);
       if ((a.icon || '') !== (orig?.icon || '') || (a.icon && id !== a.id)) await atualizarIconeAtivo(id, a.icon || '');
       const saved = s.upsert('assets', { ...a, driverId: orig ? orig.driverId : '', id, plate, name: a.name || a.plate.toUpperCase(), fuelGoal: +a.fuelGoal || 0, fuelBudget: +a.fuelBudget || 0, kmOffset: +a.kmOffset || 0 });
+      if (isRealAsset(saved)) await definirGruposDoAtivo(saved.id, a.groupIds || []);
       if ((a.driverId || '') !== (orig?.driverId || '')) { if (isRealAsset(saved)) definirMotoristaDoAtivo(saved.id, a.driverId).catch((e: any) => toast('Motorista não gravado: ' + (e.message || e), { tone: 'crit' })); else setDriver(saved.id, a.driverId, 'escala'); }
       if (newLink) {
         const r = livres.find((x) => x.id === rid)!;
@@ -205,6 +214,8 @@ function AssetForm({ a, setA }: any) {
         // foto do painel e km calculado continuam no navegador (a API guarda técnico, data e km inicial)
         linkTrackerWithInstall(saved.id, { id: r.id, imei: r.imei, model: r.modelo || '', live: true, source: 'localle' }, { initialKm: inst.calc ? null : +inst.km, photo: inst.photo, technician: inst.tech.trim(), kmCalculated: inst.calc, installedAt: new Date(inst.date).getTime() });
       }
+      // ficha por último: a instalação acima ajusta o km (kmOffset) e grava os dados dela no ativo
+      if (isRealAsset(saved)) await salvarFichaAtivo(saved.id);
       await syncFrota();
       setA(null);
     } catch (e: any) {
@@ -497,6 +508,26 @@ function Situacao({ a, onDone }: { a: any; onDone: () => void }) {
   const [to, setTo] = useState(cur);
   const [note, setNote] = useState('');
   const out = LIFECYCLE[to].out;
+  const [busy, setBusy] = useState(false);
+  // ativo real: o rastreador sai da instalação na API antes (com o status ainda ativo a frota recarrega sem ele) e o status vai junto
+  const aplicar = async () => {
+    setBusy(true);
+    try {
+      if (isRealAsset(a)) {
+        if (out && a.tracker?.instalacaoId) await desinstalarRastreador(a.tracker.instalacaoId);
+        await atualizarSituacaoAtivo(a.id, to);
+      }
+      setLifecycle(a.id, to, note.trim());
+      // anotação e histórico da mudança ficam na ficha (o status já foi acima)
+      if (isRealAsset(a)) await salvarFichaAtivo(a.id);
+      toast(`${a.name}: ${LIFECYCLE[to].label.toLowerCase()}.`);
+      onDone();
+    } catch (e: any) {
+      toast('Não foi possível mudar a situação: ' + (e.message || e), { tone: 'crit' });
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="flex flex-col gap-stack border border-line rounded-ctl p-card-sm">
       <span className="text-small font-semibold">Situação</span>
@@ -505,7 +536,7 @@ function Situacao({ a, onDone }: { a: any; onDone: () => void }) {
       {to !== cur && <>
         <p className="text-caption text-ink-2">{LIFECYCLE[to].hint}.</p>
         <Field label={out ? 'Motivo, comprador ou nº do boletim' : 'Observação'}><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-        <Button size="sm" variant={out ? 'danger' : 'soft'} disabled={out && !note.trim()} onClick={() => { setLifecycle(a.id, to, note.trim()); toast(`${a.name}: ${LIFECYCLE[to].label.toLowerCase()}.`); onDone(); }}>Confirmar: {LIFECYCLE[to].label}</Button>
+        <Button size="sm" variant={out ? 'danger' : 'soft'} loading={busy} disabled={out && !note.trim()} onClick={aplicar}>Confirmar: {LIFECYCLE[to].label}</Button>
       </>}
     </div>
   );
@@ -607,21 +638,105 @@ function Composicao({ tractorId }: { tractorId: string }) {
   );
 }
 
-function SimpleList({ coll, title, placeholder }: any) {
-  const items = useStore((s) => s[coll]);
+// grupos da API (uuid); o "Frota real (rastreador)" é só da tela e não se edita aqui
+const ehGrupoApi = (g: any) => /^[0-9a-f-]{36}$/i.test(g.id);
+
+function Grupos() {
+  const groups = useStore(useShallow((s) => s.groups.filter(ehGrupoApi)));
   const assets = useStore((s) => opAssets(s)); // contagem só da frota atual
-  const { upsert, remove } = useStore.getState();
-  const [n, setN] = useState('');
+  const [edit, setEdit] = useState<{ id?: string; name: string; assetIds: string[] } | null>(null);
+  const excluir = async (g: any) => {
+    if (!(await confirmAction({ title: `Excluir ${g.name}?`, detail: 'Os ativos deixam de fazer parte dele, mas não são apagados.' }))) return;
+    try { await removerGrupo(g.id); toast(`${g.name} excluído.`); } catch (e: any) { toast('Não foi possível excluir: ' + (e.message || e), { tone: 'crit' }); }
+  };
   return (
-    <Card title={title} icon={coll === 'groups' ? 'equipe' : 'rota'}>
-      <div className="flex gap-tight mb-card-head max-w-lg"><Input value={n} onChange={(e) => setN(e.target.value)} placeholder={placeholder} /><Button disabled={!n} onClick={async () => { try { if (coll === 'groups') await salvarGrupo({ name: n }); else upsert(coll, { name: n }); toast(`${n} adicionado.`); setN(''); } catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); } }}>Adicionar</Button></div>
-      <Table head={['Nome', 'Ativos', '']} rows={items.map((g: any) => [<InlineInput aria-label="Nome" className="font-medium w-full" value={g.name} onChange={(e) => upsert(coll, { id: g.id, name: e.target.value })} onBlur={(e) => { if (coll === 'groups') salvarGrupo({ id: g.id, name: e.target.value }).catch((er: any) => toast('Nome não gravado: ' + (er.message || er), { tone: 'crit' })); }} />, assets.filter((a: any) => coll === 'groups' ? a.groupIds?.includes(g.id) : a.operationId === g.id).map((a: any) => a.name).join(', ') || '—', <TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir ${g.name}?`, detail: 'Os ativos deixam de fazer parte dele, mas não são apagados.' })) { try { if (coll === 'groups') await removerGrupo(g.id); else remove(coll, g.id); toast(`${g.name} excluído.`); } catch (e: any) { toast('Não foi possível excluir: ' + (e.message || e), { tone: 'crit' }); } } }}>Excluir</TextButton>])} />
+    <Card title="Grupos de veículos" icon="equipe" actions={<Button size="sm" onClick={() => setEdit({ name: '', assetIds: [] })}><Icon name="mais" size={16} />Novo grupo</Button>}>
+      <Table head={['Grupo', 'Ativos', '']} align={['left', 'left', 'right']}
+        emptyState={<EmptyState icon="equipe" title="Nenhum grupo criado" detail="Agrupe ativos por filial, contrato ou tipo de operação para filtrar mapa, relatórios e parâmetros do Setup." action={<Button size="sm" onClick={() => setEdit({ name: '', assetIds: [] })}>Criar grupo</Button>} />}
+        rows={groups.map((g: any) => {
+          const membros = assets.filter((a: any) => g.assetIds.includes(a.id));
+          return [
+            <span className="font-medium">{g.name}</span>,
+            membros.length ? <span><span className="num">{membros.length}</span> · <span className="text-ink-2">{membros.slice(0, 4).map((a: any) => a.name).join(', ')}{membros.length > 4 ? '…' : ''}</span></span> : <span className="text-ink-2">Nenhum ativo</span>,
+            <span className="inline-flex gap-tight"><TextButton onClick={() => setEdit({ id: g.id, name: g.name, assetIds: [...g.assetIds] })}>Editar</TextButton><TextButton tone="danger" onClick={() => excluir(g)}>Excluir</TextButton></span>,
+          ];
+        })} />
+      {edit && <GrupoForm g={edit} onClose={() => setEdit(null)} />}
+    </Card>
+  );
+}
+
+function GrupoForm({ g, onClose }: { g: { id?: string; name: string; assetIds: string[] }; onClose: () => void }) {
+  // só ativos que existem na API entram em grupo (o vínculo é gravado lá)
+  const assets = useStore(useShallow((s) => opAssets(s).filter(isRealAsset)));
+  const [name, setName] = useState(g.name);
+  const [sel, setSel] = useState<string[]>(g.assetIds);
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  const termo = q.trim().toLowerCase();
+  const visiveis = assets.filter((a: any) => !termo || `${a.name} ${a.plate || ''}`.toLowerCase().includes(termo));
+  const todos = visiveis.length > 0 && visiveis.every((a: any) => sel.includes(a.id));
+  const salvar = async () => {
+    setBusy(true);
+    try {
+      const id = name.trim() !== g.name || !g.id ? await salvarGrupo({ id: g.id, name: name.trim() }) : g.id;
+      const antes = [...g.assetIds].sort().join();
+      if ([...sel].sort().join() !== antes) await definirAtivosDoGrupo(id, sel);
+      toast(g.id ? `${name.trim()} atualizado.` : `${name.trim()} criado.`);
+      onClose();
+    } catch (e: any) {
+      toast('Não foi possível salvar o grupo: ' + (e.message || e), { tone: 'crit' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal open onClose={onClose} title={g.id ? `Editar ${g.name}` : 'Novo grupo'} footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!name.trim()} onClick={salvar}>Salvar grupo</Button></>}>
+      <div className="flex flex-col gap-group">
+        <Field label="Nome do grupo"><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="Ex.: Frota Caruaru" /></Field>
+        <div className="flex flex-col gap-stack">
+          <div className="flex flex-wrap items-center gap-tight">
+            <span className="text-small font-semibold mr-auto">Ativos do grupo <span className="text-ink-2 font-normal num">({sel.length} de {assets.length})</span></span>
+            <SearchInput value={q} onChange={setQ} placeholder="Buscar placa ou nome" aria-label="Buscar ativo" className="w-56" />
+          </div>
+          {assets.length === 0 ? <p className="text-small text-ink-2">Nenhum ativo cadastrado ainda.</p> : <>
+            <Check label={todos ? 'Desmarcar os listados' : 'Marcar os listados'} checked={todos} indeterminate={!todos && visiveis.some((a: any) => sel.includes(a.id))}
+              onChange={(v) => setSel(v ? [...new Set([...sel, ...visiveis.map((a: any) => a.id)])] : sel.filter((id) => !visiveis.some((a: any) => a.id === id)))} />
+            <div className="grid sm:grid-cols-2 gap-tight max-h-[320px] overflow-y-auto border border-line rounded-ctl p-tight">
+              {visiveis.map((a: any) => <Check key={a.id} label={a.name} description={a.plate && a.plate !== a.name ? a.plate : undefined} checked={sel.includes(a.id)} onChange={(v) => setSel(v ? [...sel, a.id] : sel.filter((x) => x !== a.id))} />)}
+              {visiveis.length === 0 && <p className="text-small text-ink-2">Nenhum ativo encontrado.</p>}
+            </div>
+          </>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// operações moram na API (operacoes); renomear grava ao sair do campo
+function Operacoes() {
+  const items = useStore((s) => s.operations);
+  const assets = useStore((s) => opAssets(s)); // contagem só da frota atual
+  const [n, setN] = useState('');
+  const [nomes, setNomes] = useState<Record<string, string>>({});
+  const erro = (pre: string) => (e: any) => toast(pre + (e.message || e), { tone: 'crit' });
+  const criar = async () => { try { await salvarOperacao({ name: n.trim() }); toast(`${n.trim()} adicionada.`); setN(''); } catch (e: any) { erro('Não foi possível salvar: ')(e); } };
+  const renomear = (o: any) => { const nome = (nomes[o.id] ?? o.name).trim(); if (!nome || nome === o.name) return; salvarOperacao({ id: o.id, name: nome, metaKml: o.metaKml }).then(() => setNomes(({ [o.id]: _, ...r }) => r)).catch(erro('Nome não gravado: ')); };
+  const excluir = async (o: any) => { if (await confirmAction({ title: `Excluir ${o.name}?`, detail: 'Os ativos deixam de fazer parte dela, mas não são apagados.' })) { try { await removerOperacao(o.id); toast(`${o.name} excluída.`); } catch (e: any) { erro('Não foi possível excluir: ')(e); } } };
+  return (
+    <Card title="Operações" icon="rota">
+      <div className="flex gap-tight mb-card-head max-w-lg"><Input value={n} onChange={(e) => setN(e.target.value)} placeholder="Ex.: Contrato Prefeitura" /><Button disabled={!n.trim()} onClick={criar}>Adicionar</Button></div>
+      <Table head={['Nome', 'Ativos', '']} rows={items.map((o: any) => [
+        <InlineInput aria-label="Nome" className="font-medium w-full" value={nomes[o.id] ?? o.name} onChange={(e) => setNomes({ ...nomes, [o.id]: e.target.value })} onBlur={() => renomear(o)} />,
+        assets.filter((a: any) => a.operationId === o.id).map((a: any) => a.name).join(', ') || '—',
+        <TextButton tone="danger" onClick={() => excluir(o)}>Excluir</TextButton>])} />
     </Card>
   );
 }
 
 function Drivers() {
   const drivers = useStore((s) => s.drivers);
+  const inativos = useStore((s) => s.driversInativos || []);
   const assets = useStore((s) => s.assets);
   const { upsert, remove } = useStore.getState();
   const [d, setD] = useState<any>(null);
@@ -629,8 +744,12 @@ function Drivers() {
     <>
       <DriverConflicts />
       <Card title="Motoristas" icon="usuario" actions={<Button onClick={() => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' })}><Icon name="mais" size={16} />Novo motorista</Button>}>
-        <Table head={['Nome', 'CNH', 'Categoria', 'Validade da CNH', 'Exame toxicológico', 'Telefone', 'Veículo atual', '']} rows={drivers.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="num">{x.cnh}</span>, x.cnhCat, x.cnhDue ? <DocStatus d={{ due: x.cnhDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>, /^[CDE]/.test(x.cnhCat) ? (x.toxDue ? <DocStatus d={{ due: x.toxDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>) : <span className="text-ink-3">não exigido</span>, <span className="num">{x.phone}</span>, <AssetName name={assets.find((a: any) => a.driverId === x.id)?.name} />, <div className="flex gap-3"><TextButton onClick={() => setD({ ...x })}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Excluir o motorista ${x.name}?`, detail: 'Viagens, marcações e eventos antigos continuam com o nome dele.' })) { try { await desativarMotorista(x.id); toast(`Motorista ${x.name} desativado.`); } catch (e: any) { toast('Não foi possível desativar: ' + (e.message || e), { tone: 'crit' }); } } }}>Excluir</TextButton></div>])} />
+        <Table head={['Nome', 'CNH', 'Categoria', 'Validade da CNH', 'Exame toxicológico', 'Telefone', 'Veículo atual', '']} rows={drivers.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="num">{x.cnh}</span>, x.cnhCat, x.cnhDue ? <DocStatus d={{ due: x.cnhDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>, /^[CDE]/.test(x.cnhCat) ? (x.toxDue ? <DocStatus d={{ due: x.toxDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>) : <span className="text-ink-3">não exigido</span>, <span className="num">{x.phone}</span>, <AssetName name={assets.find((a: any) => a.driverId === x.id)?.name} />, <div className="flex gap-3"><TextButton onClick={() => setD({ ...x })}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Desativar o motorista ${x.name}?`, detail: 'Ele sai das telas e seletores. Viagens, marcações e eventos antigos continuam com o nome dele, e dá para reativar depois.' })) { try { await desativarMotorista(x.id); toast(`Motorista ${x.name} desativado.`); } catch (e: any) { toast('Não foi possível desativar: ' + (e.message || e), { tone: 'crit' }); } } }}>Desativar</TextButton></div>])} />
       </Card>
+      {inativos.length > 0 && <Card title="Motoristas desativados" icon="usuario">
+        <Table dense head={['Nome', 'CNH', '']} align={['left', 'left', 'right']} rows={inativos.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="num">{x.cnh || '—'}</span>,
+          <TextButton onClick={async () => { try { await reativarMotorista(x.id); toast(`Motorista ${x.name} reativado.`); } catch (e: any) { toast('Não foi possível reativar: ' + (e.message || e), { tone: 'crit' }); } }}>Reativar</TextButton>])} />
+      </Card>}
       <Modal open={!!d} onClose={() => setD(null)} title={d?.id ? 'Editar motorista' : 'Novo motorista'} footer={<><Button variant="ghost" onClick={() => setD(null)}>Cancelar</Button><Button disabled={!d?.name} onClick={async () => { const ruim = (['cpf', 'telefone', 'cnh'] as const).find((m) => !mascaraValida(m, d[{ cpf: 'cpf', telefone: 'phone', cnh: 'cnh' }[m]] || '')); if (ruim) { toast(MENSAGEM_INVALIDA[ruim], { tone: 'crit' }); return; } try { await salvarMotorista(d); toast(d.id ? 'Motorista atualizado.' : 'Motorista cadastrado.'); setD(null); } catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); } }}>Salvar motorista</Button></>}>
         {d && <div className="grid grid-cols-1 sm:grid-cols-2 gap-field">
           <Field label="Nome" className="sm:col-span-2"><Input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} /></Field>
