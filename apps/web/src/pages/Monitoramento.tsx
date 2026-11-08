@@ -4,12 +4,11 @@ import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-lea
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, vehicleStatus, contarStatusFrota, assetKm } from '../lib/store';
-import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb } from '../components/ui';
+import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb, IconButton } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { glyphOf, silhouetteOf } from '../components/assetArt';
 import { GlideMarker, ClusteredVehicles, Address, FenceShapes, MapButton, MapControls, VehicleListItem, MAP_STYLES, type MapStyleKey } from '../components/MapBits';
-import { Num, Plate, AssetName, StatusDot, StatusLine, statusKind, STATUS_LABEL, KpiTile, Timeline, type StatusKind } from '../components/story';
-import { StackedColumns } from '../components/charts';
+import { Num, Plate, AssetName, StatusDot, StatusLine, statusKind, STATUS_LABEL, KpiTile, type StatusKind } from '../components/story';
 import { Icon } from '../components/icons';
 import { tv } from '../lib/tokens';
 import { useCriticalMap, resolveReasons, recentTreatments, type CritReason } from '../lib/critical';
@@ -145,19 +144,6 @@ export default function Monitoramento() {
     return km / 1000;
   }, [assets, history]);
   const velMedia = moving.length ? moving.reduce((s: number, x: any) => s + x.v.speed, 0) / moving.length : 0;
-  const movimentacao = useMemo(() => {
-    const now = Date.now(), step = 3 * DAY / 24;
-    const buckets = Array.from({ length: 8 }, (_, i) => ({ from: now - (8 - i) * step, to: now - (7 - i) * step, mov: 0, par: 0 }));
-    for (const a of assets) for (const p of history[a.id] || []) {
-      const b = buckets.find((bk) => p[0] >= bk.from && p[0] < bk.to);
-      if (b) (p[3] > 2 ? b.mov++ : b.par++);
-    }
-    return buckets.map((b) => ({ label: fmtT(b.to), values: [b.mov, b.par] }));
-  }, [assets, history]);
-  const ultimosEventos = useMemo(() => [...alerts].sort((a: any, b: any) => b.ts - a.ts).slice(0, 5).map((a: any) => ({
-    tone: a.priority === 'alta' ? 'cost' as const : 'plan' as const,
-    ts: a.ts, title: a.title, detail: [assets.find((x: any) => x.id === a.assetId)?.name, a.detail].filter(Boolean).join(' · '),
-  })), [alerts, assets]);
   useEffect(() => { if (view === 'mapa') map?.invalidateSize(); }, [view, map]); // o mapa volta de display:none
   useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
   // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
@@ -193,7 +179,7 @@ export default function Monitoramento() {
       <Stack gap="grid">
       <Tabs className="md:hidden" value={view} onChange={(k) => setView(k as 'mapa' | 'lista')} tabs={[{ key: 'mapa', label: 'Mapa' }, { key: 'lista', label: 'Lista', count: shown.length }]} />
       <div role={full ? 'dialog' : undefined} aria-label={full ? 'Monitoramento em tela cheia' : undefined}
-        className={cx(full && 'fixed inset-0 z-[1100] bg-canvas flex flex-col gap-stack p-3')}>
+        className={cx('flex flex-col', full ? 'fixed inset-0 z-[1100] bg-canvas gap-stack p-3' : 'gap-grid')}>
       {full && (
         <div className="flex flex-wrap items-center gap-stack shrink-0">
           <div className="min-w-0 mr-auto">
@@ -211,6 +197,7 @@ export default function Monitoramento() {
           <Button variant="secondary" size="sm" className="max-md:order-1 max-md:w-ctl max-md:h-ctl max-md:!px-0" onClick={sairTelaCheia} title="Sair da tela cheia (Esc)" aria-label="Sair da tela cheia"><Icon name="tela-cheia" size={16} className="max-md:hidden" /><Icon name="fechar" size={20} className="md:hidden" /><span className="max-md:hidden">Sair da tela cheia</span></Button>
         </div>
       )}
+      {!full && <FaixaFrota total={list.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
       <div className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
         <Card dense className={full
           ? cx('w-[360px] shrink-0 h-full max-md:hidden', !visao.cards && 'hidden')
@@ -334,7 +321,6 @@ export default function Monitoramento() {
           </Card>
         )}
         </div>
-        {!full && <PainelFrota total={list.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} movimentacao={movimentacao} eventos={ultimosEventos} />}
       </div>
       </div>
       </Stack>
@@ -345,57 +331,41 @@ export default function Monitoramento() {
   );
 }
 
-// Coluna da direita (04/11/2026, referência do usuário): o mapa no centro e, ao lado, mini painéis com a leitura da
-// frota. Cada número vem da frota carregada; o insight é uma frase sobre esses mesmos números, nunca estimativa. Os
-// status da "Frota agora" filtram a lista (clicar de novo volta para todos). Abaixo de xl a coluna desce para baixo do
-// mapa, em duas colunas.
-const STATUS_FROTA: { k: 'mov' | 'par' | 'des' | 'sem'; kind: StatusKind; label: string; bar: string }[] = [
-  { k: 'mov', kind: 'mov', label: 'Em movimento', bar: 'bg-[var(--status-mov)]' },
-  { k: 'par', kind: 'parado', label: 'Parado ligado', bar: 'bg-[var(--status-parado)]' },
-  { k: 'des', kind: 'off', label: 'Desligado', bar: 'bg-[var(--status-off)]' },
-  { k: 'sem', kind: 'nosignal', label: 'Sem sinal', bar: 'hatch-prev' },
+// Faixa de KPIs acima do mapa e da lista (transformado de painel lateral em 07/11/2026, pedido do usuário).
+// Total + os 4 status filtram a lista (clicar de novo volta para todos); percurso e velocidade só informam.
+const STATUS_FROTA: { k: 'mov' | 'par' | 'des' | 'sem'; kind: StatusKind; label: string }[] = [
+  { k: 'mov', kind: 'mov', label: 'Em movimento' },
+  { k: 'par', kind: 'parado', label: 'Parado ligado' },
+  { k: 'des', kind: 'off', label: 'Desligado' },
+  { k: 'sem', kind: 'nosignal', label: 'Sem sinal' },
 ];
 
-function PainelFrota({ total, counts, st, onStatus, kmHoje, velMedia, emMovimento, movimentacao, eventos }: {
+function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[number]; count: number; pct: number; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" aria-pressed={active} onClick={onClick} title={active ? 'Mostrar todos na lista' : `Filtrar a lista: ${s.label.toLowerCase()}`}
+      className={cx('text-left bg-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size] border transition-colors',
+        active ? 'border-brand-fill ring-1 ring-inset ring-brand-fill' : 'border-transparent shadow-card hover:bg-card-2')}>
+      <StatusDot kind={s.kind} label={s.label} />
+      <div className="flex items-baseline gap-tight mt-kpi-title">
+        <Num value={count} size="kpi" count />
+        <span className="num text-small text-ink-3">{pct}%</span>
+      </div>
+    </button>
+  );
+}
+
+function FaixaFrota({ total, counts, st, onStatus, kmHoje, velMedia, emMovimento }: {
   total: number; counts: Record<'mov' | 'par' | 'des' | 'sem', number>; st: string; onStatus: (k: string) => void;
-  kmHoje: number; velMedia: number; emMovimento: number; movimentacao: { label: string; values: number[] }[]; eventos: { tone: 'plan' | 'cost'; ts: number; title: string; detail?: string }[];
+  kmHoje: number; velMedia: number; emMovimento: number;
 }) {
   const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
-  const insight = counts.sem > 0 ? `${counts.sem} ${counts.sem === 1 ? 'veículo sem sinal' : 'veículos sem sinal'}: confira o rastreador ou o chip.`
-    : counts.par > 0 ? `${counts.par} ${counts.par === 1 ? 'parado' : 'parados'} com o motor ligado: consumo sem deslocamento.`
-    : `${pct(counts.mov)}% da frota em movimento agora.`;
   return (
-    <aside aria-label="Painel da frota" className="flex-[1_1_100%] xl:flex-[0_0_320px] min-w-0 grid md:grid-cols-2 xl:flex xl:flex-col gap-grid xl:h-[calc(100vh/var(--ui-zoom)-128px)] xl:min-h-[560px] xl:overflow-y-auto xl:-m-1 xl:p-1">
-      <Card dense title="Frota agora">
-        <div className="flex items-baseline gap-tight"><Num value={total} size="kpi" count /><span className="text-small text-ink-2">rastreados</span></div>
-        <div className="flex h-2 rounded-pill overflow-hidden bg-surface-muted mt-stack" aria-hidden="true">
-          {STATUS_FROTA.map((s) => counts[s.k] > 0 && <span key={s.k} className={cx('h-full', s.bar)} style={{ width: `${(counts[s.k] / Math.max(1, total)) * 100}%` }} />)}
-        </div>
-        <ul className="flex flex-col mt-stack -mx-2">
-          {STATUS_FROTA.map((s) => (
-            <li key={s.k}>
-              <button type="button" aria-pressed={st === s.k} onClick={() => onStatus(s.k)} title={st === s.k ? 'Mostrar todos na lista' : `Filtrar a lista: ${s.label.toLowerCase()}`}
-                className={cx('w-full flex items-center gap-tight h-8 [@media(pointer:coarse)]:h-11 px-2 rounded-tight text-small row-hover', st === s.k ? 'bg-surface-selected' : 'hover:bg-card-2')}>
-                <StatusDot kind={s.kind} label={s.label} className="mr-auto" />
-                <span className="num font-medium text-ink">{counts[s.k]}</span>
-                <span className="num text-ink-3 w-10 text-right">{pct(counts[s.k])}%</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="text-caption text-ink-2 border-t border-line pt-stack mt-stack">{insight}</p>
-      </Card>
-      <div className="grid grid-cols-2 gap-grid">
-        <KpiTile label="Percurso hoje" value={kmHoje} unit="km" digits={0} sub="soma da frota" />
-        <KpiTile label="Velocidade média" value={emMovimento ? velMedia : null} unit="km/h" digits={0} sub={emMovimento ? `de ${emMovimento} em movimento` : 'nenhum em movimento'} />
-      </div>
-      <Card dense title="Movimentação nas últimas 24h">
-        <StackedColumns data={movimentacao} series={[{ label: 'Em movimento', tone: 'real' }, { label: 'Parados', tone: 'loss' }]} height={150} />
-      </Card>
-      <Card dense title="Últimos eventos" to="/monitoramento/alertas">
-        {eventos.length ? <Timeline items={eventos} /> : <EmptyState icon="ok" title="Nenhum evento recente" />}
-      </Card>
-    </aside>
+    <section aria-label="KPIs da frota" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-grid">
+      <KpiTile label="Frota" value={total} digits={0} sub="rastreados" />
+      {STATUS_FROTA.map((s) => <StatusKpi key={s.k} s={s} count={counts[s.k]} pct={pct(counts[s.k])} active={st === s.k} onClick={() => onStatus(s.k)} />)}
+      <KpiTile label="Percurso hoje" value={kmHoje} unit="km" digits={0} sub="soma da frota" />
+      <KpiTile label="Velocidade média" value={emMovimento ? velMedia : null} unit="km/h" digits={0} sub={emMovimento ? `de ${emMovimento} em movimento` : 'nenhum em movimento'} />
+    </section>
   );
 }
 
@@ -432,11 +402,17 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
           { label: 'Compartilhar localização', icon: 'compartilhar', onClick: onShare },
         ]} trigger={({ ref, open, toggle }) => <button ref={ref} type="button" aria-label="Mais ações do veículo" aria-haspopup="menu" aria-expanded={open} onClick={toggle} className={cx(buttonClass('secondary'), '!px-0 w-ctl')}><Icon name="mais-opcoes" size={20} /></button>} />
       </> : <>
-        <Link to={`/monitoramento/replay?a=${a.id}`} className={buttonClass('secondary', 'sm')}><Icon name="rota" size={16} />Percurso</Link>
-        <FilePick accept="image/*" onFile={(data) => setPhoto(data)} className={buttonClass('secondary', 'sm')}><Icon name="camera" size={16} />{a.photo ? 'Trocar foto' : 'Enviar foto'}</FilePick>
-        <Button variant="secondary" size="sm" onClick={onShare}><Icon name="compartilhar" size={16} />Compartilhar</Button>
-        <Button variant="secondary" size="sm" className="ml-auto" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>
-        {bloqueio}
+        {/* desktop: Percurso/foto/Compartilhar são atalhos secundários (só ícone, com título) à esquerda;
+            Comandos e Bloquear são a ação principal do painel e ficam agrupados à direita. */}
+        <Link to={`/monitoramento/replay?a=${a.id}`} title="Percurso" className={cx(buttonClass('secondary', 'sm'), '!px-0 w-ctl-sm')}><Icon name="rota" size={16} /></Link>
+        <span title={a.photo ? 'Trocar foto' : 'Enviar foto'}>
+          <FilePick accept="image/*" onFile={(data) => setPhoto(data)} className={cx(buttonClass('secondary', 'sm'), '!px-0 w-ctl-sm')}><Icon name="camera" size={16} /></FilePick>
+        </span>
+        <IconButton aria-label="Compartilhar localização" size="sm" onClick={onShare}><Icon name="compartilhar" size={16} /></IconButton>
+        <div className="ml-auto flex items-center gap-tight">
+          <Button variant="secondary" size="sm" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>
+          {bloqueio}
+        </div>
       </>}>
       <div className="flex items-center gap-grid">
         <AssetThumb asset={a} className="w-28 h-16" />
