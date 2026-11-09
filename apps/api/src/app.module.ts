@@ -29,6 +29,7 @@ import { IngestWebhookModule } from './ingest/webhook.module';
 import { ManutencaoModule } from './manutencao/manutencao.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { MotoristasModule } from './motoristas/motoristas.module';
+import { NotificacoesModule } from './notificacoes/notificacoes.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PneusModule } from './pneus/pneus.module';
 import { QueueModule } from './queue/queue.module';
@@ -58,6 +59,7 @@ import { ViagensModule } from './viagens/viagens.module';
     MonitoringModule,
     CercasModule,
     AlertasModule,
+    NotificacoesModule,
     RegrasModule,
     LinksModule,
     ComandosModule,

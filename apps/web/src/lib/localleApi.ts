@@ -21,14 +21,40 @@ const RECONNECT_MS = [1000, 3000, 10000, 30000];
 
 
 // ---------- sessão ----------
-// O token vive em sessionStorage (some ao fechar a aba) e em memória (fallback quando o storage é bloqueado).
+// Sessão persistente (docs/PLANO-APK-TWA.md §§ 2-3): o token vive em localStorage (sobrevive ao fechar o
+// app/aba — é o que faz abrir pelo toque numa notificação não pedir login de novo) e em memória (fallback
+// quando o storage é bloqueado). Sem teto de dias (decisão do usuário, igual ao padrão de app nativo): só
+// termina por logout, troca de senha ou desativação — todos já derrubam a sessão no backend na hora.
 let memToken: string | null = null;
 export function getToken(): string | null {
-  try { return sessionStorage.getItem(TOKEN_KEY) ?? memToken; } catch { return memToken; }
+  try { return localStorage.getItem(TOKEN_KEY) ?? memToken; } catch { return memToken; }
 }
 function setToken(t: string | null) {
   memToken = t;
-  try { if (t) sessionStorage.setItem(TOKEN_KEY, t); else sessionStorage.removeItem(TOKEN_KEY); } catch { /* storage bloqueado: fica só em memória */ }
+  try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch { /* storage bloqueado: fica só em memória */ }
+}
+
+const RENOVACAO_MS = 60 * 60 * 1000; // token dura 8h; renovar de hora em hora deixa folga de sobra
+
+/**
+ * Chama no boot do app (main.tsx). `POST /auth/renovar` só funciona com token ainda válido — por isso
+ * roda de tempos em tempos e sempre que o app volta a ficar visível (ex.: usuário reabriu pelo toque numa
+ * notificação push depois de horas com o app em segundo plano), nunca espera o usuário interagir.
+ */
+export function iniciarRenovacaoSessao(): void {
+  const tentar = async () => {
+    if (!getToken()) return;
+    try {
+      const { accessToken } = await apiSend<{ accessToken: string }>('POST', '/auth/renovar');
+      setToken(accessToken);
+    } catch {
+      // 401 (sessão realmente encerrada: logout/senha trocada/desativado/teto de dias) já chama
+      // encerrarSessao() dentro de apiSend; qualquer outro erro (rede) tenta de novo no próximo ciclo.
+    }
+  };
+  void tentar();
+  setInterval(tentar, RENOVACAO_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void tentar(); });
 }
 
 /** Token recusado pela API (expirado, usuário desativado): derruba também a sessão do front. */
@@ -75,7 +101,11 @@ export async function login(email: string, password: string): Promise<'gestor' |
   throw new Error('E-mail ou senha inválidos');
 }
 
-export function logout() { setToken(null); }
+/** Desinscreve o push antes de derrubar o token — precisa da sessão ainda válida para a chamada à API. */
+export async function logout(): Promise<void> {
+  await desativarPush().catch(() => {});
+  setToken(null);
+}
 
 /** Confere a senha do usuário logado (confirmação de comando ao rastreador), sem trocar a sessão. */
 export async function confirmarSenha(email: string, password: string): Promise<boolean> {
@@ -136,6 +166,56 @@ async function apiSend<T>(method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', path: str
   const data = await r.json().catch(() => null);
   if (!r.ok) throw erroHttp(r.status, data);
   return data as T;
+}
+
+// ---------- notificações push (docs/PLANO-APK-TWA.md §§ 2-3) ----------
+// O navegador devolve a `applicationServerKey` como base64 "URL-safe"; a Push API espera Uint8Array.
+function urlBase64ParaUint8Array(base64: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const base64Padrao = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64Padrao);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+export type EstadoPush = 'ativo' | 'inativo' | 'bloqueado' | 'nao_suportado';
+
+function suportaPush(): boolean {
+  return 'serviceWorker' in navigator && 'PushManager' in window;
+}
+
+export async function estadoPush(): Promise<EstadoPush> {
+  if (!suportaPush()) return 'nao_suportado';
+  if (Notification.permission === 'denied') return 'bloqueado';
+  const reg = await navigator.serviceWorker.ready;
+  return (await reg.pushManager.getSubscription()) ? 'ativo' : 'inativo';
+}
+
+/** Pede a permissão no toque (nunca ao abrir o app) e registra o aparelho na API. `false`: negada, bloqueada, ou canal não configurado neste ambiente (503 da API). */
+export async function ativarPush(): Promise<boolean> {
+  if (!suportaPush()) return false;
+  if ((await Notification.requestPermission()) !== 'granted') return false;
+  let publicKey: string;
+  try {
+    publicKey = (await apiGet<{ publicKey: string }>('/notificacoes/chave-publica')).publicKey;
+  } catch {
+    return false;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ParaUint8Array(publicKey) }));
+  const json = sub.toJSON();
+  await apiSend('POST', '/notificacoes/aparelhos', { endpoint: json.endpoint, keys: json.keys, userAgent: navigator.userAgent });
+  return true;
+}
+
+/** Desinscreve no navegador e apaga na API — melhor esforço (chamado no logout; nunca deve travá-lo). */
+export async function desativarPush(): Promise<void> {
+  if (!suportaPush()) return;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  const endpoint = sub.endpoint;
+  await sub.unsubscribe().catch(() => {});
+  await apiSend('DELETE', '/notificacoes/aparelhos', { endpoint }).catch(() => {});
 }
 
 // ---------- Painel da Locale (rotas de superadmin) ----------

@@ -84,15 +84,15 @@ describe('SuperadminEquipeService', () => {
 
     const r = await convidar();
     await service(semEmail).aceitarConvite(tokenDo(r.link), 'senha-do-colega-123');
-    expect(await ativos.isSuperadmin(r.superadmin.id)).toBe(true);
+    expect(await ativos.isSuperadmin(r.superadmin.id, Math.floor(Date.now() / 1000) + 60)).toBe(true);
 
     const desativado = await service(semEmail).setAtivo(eu, r.superadmin.id, false);
     expect(desativado.desativado_em).not.toBeNull();
-    expect(await ativos.isSuperadmin(r.superadmin.id)).toBe(false);
+    expect(await ativos.isSuperadmin(r.superadmin.id, Math.floor(Date.now() / 1000) + 60)).toBe(false);
     await expect(login.login(r.superadmin.email, 'senha-do-colega-123')).rejects.toThrow(/inválidos/);
 
     await service(semEmail).setAtivo(eu, r.superadmin.id, true);
-    expect(await ativos.isSuperadmin(r.superadmin.id)).toBe(true);
+    expect(await ativos.isSuperadmin(r.superadmin.id, Math.floor(Date.now() / 1000) + 60)).toBe(true);
     await expect(login.login(r.superadmin.email, 'senha-do-colega-123')).resolves.toHaveProperty('accessToken');
   });
 

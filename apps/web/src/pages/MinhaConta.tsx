@@ -1,9 +1,40 @@
 // Minha conta: dados de acesso e troca da própria senha (exige a atual). Usuário de cliente usa
 // POST /auth/senha; equipe da Localle, POST /superadmin/senha.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, PageHeader, PageBody, Section, Field, Input, Button, FormGroup, toast } from '../components/ui';
 import { useStore } from '../lib/store';
-import { trocarSenha } from '../lib/localleApi';
+import { ativarPush, estadoPush, trocarSenha, type EstadoPush } from '../lib/localleApi';
+
+function NotificacoesPush() {
+  const [estado, setEstado] = useState<EstadoPush | 'carregando'>('carregando');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void estadoPush().then(setEstado); }, []);
+
+  const ativar = async () => {
+    setBusy(true);
+    try {
+      if (await ativarPush()) { setEstado('ativo'); toast('Notificações ativadas neste aparelho.'); }
+      else { setEstado(await estadoPush()); toast.error('Não foi possível ativar — confira a permissão de notificação do navegador.'); }
+    } finally { setBusy(false); }
+  };
+
+  if (estado === 'nao_suportado') return null; // navegador/contexto sem suporte: não mostra a seção
+  return (
+    <Section title="Notificações">
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-field">
+          <div className="flex flex-col gap-hair">
+            <span className="text-body font-medium">Alertas push neste aparelho</span>
+            <span className="text-small text-ink-2">
+              {estado === 'carregando' ? 'Verificando…' : estado === 'ativo' ? 'Ativadas — você recebe mesmo com o app em segundo plano.' : estado === 'bloqueado' ? 'Bloqueadas nas configurações do navegador.' : 'Desativadas.'}
+            </span>
+          </div>
+          {estado !== 'ativo' && estado !== 'bloqueado' && <Button onClick={ativar} loading={busy}>Ativar notificações</Button>}
+        </div>
+      </Card>
+    </Section>
+  );
+}
 
 export default function MinhaConta() {
   const session = useStore((s) => s.session);
@@ -40,6 +71,7 @@ export default function MinhaConta() {
             </div>
           </Card>
         </Section>
+        {!locale && <NotificacoesPush />}
         <Section title="Trocar senha">
           <Card>
             <form onSubmit={(e) => { e.preventDefault(); void salvar(); }} className="flex flex-col gap-field max-w-lg">

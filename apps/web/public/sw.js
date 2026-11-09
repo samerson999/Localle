@@ -64,3 +64,37 @@ async function arquivo(req) {
   }
   return resp;
 }
+
+// Push (docs/PLANO-APK-TWA.md § 3): payload é {alertaId, assetId, tipo, titulo, prioridade} — dado, não
+// URL (o SW decide a rota). `tag` por veículo+tipo: um alerta novo do mesmo veículo/tipo substitui o
+// anterior em vez de empilhar notificação. `requireInteraction` só na prioridade alta (não dispensa sozinha).
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  let dados;
+  try { dados = event.data.json(); } catch { return; }
+  event.waitUntil(self.registration.showNotification(dados.titulo || 'Localle', {
+    body: dados.tipo || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: dados.assetId && dados.tipo ? `${dados.assetId}:${dados.tipo}` : undefined,
+    requireInteraction: dados.prioridade === 'alta',
+    data: { assetId: dados.assetId || null, alertaId: dados.alertaId || null },
+  }));
+});
+
+// Foca uma aba já aberta (navega para Alertas) em vez de abrir outra; só abre nova se não houver nenhuma.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const destino = '/#/alertas';
+  event.waitUntil((async () => {
+    const clientes = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of clientes) {
+      if ('focus' in c) {
+        await c.focus();
+        if ('navigate' in c) await c.navigate(destino);
+        return;
+      }
+    }
+    await self.clients.openWindow(destino);
+  })());
+});

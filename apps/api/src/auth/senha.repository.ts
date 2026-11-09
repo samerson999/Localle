@@ -60,17 +60,16 @@ export class SenhaRepository {
 
   async definirSenha(executor: Queryable, userId: string, passwordHash: string): Promise<void> {
     await executor.query(
-      'update users set password_hash = $2, email_confirmado_em = coalesce(email_confirmado_em, now()), updated_at = now() where id = $1',
+      'update users set password_hash = $2, email_confirmado_em = coalesce(email_confirmado_em, now()), senha_alterada_em = now(), updated_at = now() where id = $1',
       [userId, passwordHash],
     );
   }
 
   async trocarSenha(executor: Queryable, clientId: string, userId: string, passwordHash: string): Promise<boolean> {
-    const { rowCount } = await executor.query('update users set password_hash = $3, updated_at = now() where client_id = $1 and id = $2', [
-      clientId,
-      userId,
-      passwordHash,
-    ]);
+    const { rowCount } = await executor.query(
+      'update users set password_hash = $3, senha_alterada_em = now(), updated_at = now() where client_id = $1 and id = $2',
+      [clientId, userId, passwordHash],
+    );
     return (rowCount ?? 0) > 0;
   }
 }

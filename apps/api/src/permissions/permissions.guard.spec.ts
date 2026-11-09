@@ -20,7 +20,7 @@ describe('PermissionsGuard', () => {
     const permissions = { isAllowed: vi.fn() } as unknown as PermissionsService;
     const guard = new PermissionsGuard(reflector, permissions);
 
-    const result = await guard.canActivate(makeContext({ userId: 'u1', clientId: 'c1', role: 'operador' }));
+    const result = await guard.canActivate(makeContext({ userId: 'u1', clientId: 'c1', role: 'operador', sessionStart: 0 }));
     expect(result).toBe(true);
     expect(permissions.isAllowed).not.toHaveBeenCalled();
   });
@@ -30,7 +30,7 @@ describe('PermissionsGuard', () => {
     const permissions = { isAllowed: vi.fn().mockResolvedValue(false) } as unknown as PermissionsService;
     const guard = new PermissionsGuard(reflector, permissions);
 
-    await expect(guard.canActivate(makeContext({ userId: 'u1', clientId: 'c1', role: 'operador' }))).rejects.toThrow(
+    await expect(guard.canActivate(makeContext({ userId: 'u1', clientId: 'c1', role: 'operador', sessionStart: 0 }))).rejects.toThrow(
       ForbiddenException,
     );
   });
@@ -40,7 +40,7 @@ describe('PermissionsGuard', () => {
     const permissions = { isAllowed: vi.fn().mockResolvedValue(true) } as unknown as PermissionsService;
     const guard = new PermissionsGuard(reflector, permissions);
 
-    const result = await guard.canActivate(makeContext({ userId: 'u1', clientId: 'c1', role: 'gestor' }));
+    const result = await guard.canActivate(makeContext({ userId: 'u1', clientId: 'c1', role: 'gestor', sessionStart: 0 }));
     expect(result).toBe(true);
   });
 
@@ -50,7 +50,7 @@ describe('PermissionsGuard', () => {
     const guard = new PermissionsGuard(reflector, permissions);
 
     await expect(
-      guard.canActivate(makeContext({ userId: 'sa1', clientId: null, role: 'superadmin' })),
+      guard.canActivate(makeContext({ userId: 'sa1', clientId: null, role: 'superadmin', sessionStart: 0 })),
     ).rejects.toThrow(ForbiddenException);
     expect(permissions.isAllowed).not.toHaveBeenCalled();
   });

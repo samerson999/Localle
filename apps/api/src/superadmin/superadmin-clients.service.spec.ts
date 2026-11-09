@@ -120,15 +120,15 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
     const { client, admin } = await service.createClient(superadminId, { name: nome(), admin: { email: adminEmail } });
     criados.push(client.id);
     await convites.aceitar(await linkRecebido(adminEmail), 'minha-senha-forte');
-    expect(await activeUsers.isActive(admin!.id)).toBe(true); // sem contrato (implantação) acessa
+    expect(await activeUsers.isActive(admin!.id, Math.floor(Date.now() / 1000) + 60)).toBe(true); // sem contrato (implantação) acessa
 
     const { rows: [c] } = await pool.query<{ id: string }>("insert into contratos (client_id, status) values ($1, 'suspenso') returning id", [client.id]);
     await expect(auth.login(adminEmail, 'minha-senha-forte')).rejects.toMatchObject({ status: 403 });
     await expect(auth.login(adminEmail, 'senha-errada')).rejects.toMatchObject({ status: 401 }); // não revela a suspensão
-    expect(await activeUsers.isActive(admin!.id)).toBe(false);
+    expect(await activeUsers.isActive(admin!.id, Math.floor(Date.now() / 1000) + 60)).toBe(false);
 
     await pool.query("update contratos set status = 'ativo' where id = $1", [c.id]);
-    expect(await activeUsers.isActive(admin!.id)).toBe(true);
+    expect(await activeUsers.isActive(admin!.id, Math.floor(Date.now() / 1000) + 60)).toBe(true);
     expect((await auth.login(adminEmail, 'minha-senha-forte')).accessToken).toBeTruthy();
   });
 

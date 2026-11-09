@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
 import { CurrentUserId } from '../clients/current-role.decorator';
+import type { RequestAuth } from './auth.guard';
 import { AuthService } from './auth.service';
 import type { LoginDto } from './dto/login.dto';
 import { signAuthToken } from './jwt';
@@ -71,14 +72,18 @@ export class AuthController {
 
   /**
    * Token novo com as mesmas claims, para o front renovar antes das 8 h expirarem sem pedir a senha de
-   * novo. Só chega aqui token válido de usuário ainda ativo (AuthGuard) — é isso que impede um usuário
-   * desativado de se manter conectado renovando.
+   * novo — base da sessão persistente (docs/PLANO-APK-TWA.md § 2-3). Só chega aqui token válido de
+   * usuário ainda ativo e com a senha não trocada depois da emissão (AuthGuard). `sessionStart` é
+   * preservado (nunca reiniciado): é o que dá um teto de verdade à sessão (`SESSAO_MAX_DIAS`, jwt.ts),
+   * mesmo que o front renove indefinidamente antes de cada expiração de 8h.
    */
   @Post('renovar')
-  renovar(@Req() req: { auth: { userId: string; clientId: string | null; role: 'admin' | 'gestor' | 'operador' | 'superadmin' } }) {
+  renovar(@Req() req: { auth: RequestAuth }) {
     const a = req.auth;
     const accessToken =
-      a.role === 'superadmin' ? signAuthToken({ sub: a.userId, role: 'superadmin' }) : signAuthToken({ sub: a.userId, clientId: a.clientId!, role: a.role });
+      a.role === 'superadmin'
+        ? signAuthToken({ sub: a.userId, role: 'superadmin', sessionStart: a.sessionStart })
+        : signAuthToken({ sub: a.userId, clientId: a.clientId, role: a.role, sessionStart: a.sessionStart });
     return { accessToken };
   }
 }

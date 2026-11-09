@@ -53,7 +53,10 @@ export class SuperadminRepository {
   }
 
   async definirSenha(id: string, passwordHash: string, executor: Queryable = this.pool): Promise<void> {
-    await executor.query('update superadmins set password_hash = $2, updated_at = now() where id = $1', [id, passwordHash]);
+    await executor.query(
+      'update superadmins set password_hash = $2, senha_alterada_em = now(), updated_at = now() where id = $1',
+      [id, passwordHash],
+    );
   }
 
   /** Revoga convites ainda abertos do mesmo superadmin e emite um novo (só o hash do token é gravado). */

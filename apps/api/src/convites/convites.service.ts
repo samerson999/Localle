@@ -107,7 +107,7 @@ export class ConvitesService {
       if (await this.activeUsers.isClientBlocked(c.client_id)) throw new ForbiddenException('Acesso do cliente suspenso. Fale com a Locale.');
       await tx.query('update convites set usado_em = now() where id = $1', [c.id]);
       await tx.query(
-        'update users set password_hash = $2, email_confirmado_em = coalesce(email_confirmado_em, now()), updated_at = now() where id = $1',
+        'update users set password_hash = $2, email_confirmado_em = coalesce(email_confirmado_em, now()), senha_alterada_em = now(), updated_at = now() where id = $1',
         [c.user_id, passwordHash],
       );
       await this.audit.record(

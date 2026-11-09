@@ -1,5 +1,5 @@
-import { marcarAlertasLidos, removerRegra, salvarRegra, useCarregando } from '../lib/localleApi';
-import { useState } from 'react';
+import { ativarPush, estadoPush, marcarAlertasLidos, removerRegra, salvarRegra, useCarregando } from '../lib/localleApi';
+import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { Button, Card, Field, FormGroup, Input, Select, Table, Check, Badge, PageTabs, Modal, TextButton, TabPanel, confirmAction, toast, IconButton, EmptyState, Stack, Cluster, Missing, useUrlTab } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
@@ -35,6 +35,28 @@ export default function Alertas() {
   );
 }
 
+function AtivarPushButton() {
+  const [estado, setEstado] = useState<'carregando' | 'inativo' | 'outro'>('carregando');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void estadoPush().then((e) => setEstado(e === 'inativo' ? 'inativo' : 'outro')); }, []);
+  if (estado !== 'inativo') return null;
+  return (
+    <Button
+      variant="quiet"
+      loading={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          if (await ativarPush()) { setEstado('outro'); toast('Notificações ativadas neste aparelho.'); }
+          else toast.error('Não foi possível ativar — confira a permissão de notificação do navegador.');
+        } finally { setBusy(false); }
+      }}
+    >
+      Ativar notificações
+    </Button>
+  );
+}
+
 function AlertLog() {
   const alerts = useStore((s) => s.alerts);
   const assets = useStore((s) => s.assets);
@@ -43,7 +65,7 @@ function AlertLog() {
   const list = [...alerts].reverse().filter((a: any) => (!pr || a.priority === pr) && (!onlyUnread || !a.read));
   const patch = useStore.getState().patch;
   return (
-    <Card title={`Alertas (${list.length})`} icon="alerta" actions={<div className="flex gap-stack items-center flex-wrap max-md:w-full max-md:[&>*]:flex-1"><Select aria-label="Prioridade" className="w-40 max-md:w-full" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} /><Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} /></div>}>
+    <Card title={`Alertas (${list.length})`} icon="alerta" actions={<div className="flex gap-stack items-center flex-wrap max-md:w-full max-md:[&>*]:flex-1"><AtivarPushButton /><Select aria-label="Prioridade" className="w-40 max-md:w-full" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} /><Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} /></div>}>
       <Table head={['Quando', 'Prioridade', 'Alerta', 'Ativo', 'Detalhe', '']} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Nenhum alerta com esses filtros" />} rows={list.map((a: any) => [<span className="num whitespace-nowrap">{fmtDT(a.ts)}</span>, <Prio p={a.priority} />, <span className="font-medium">{a.title}</span>, <AssetName name={assets.find((x: any) => x.id === a.assetId)?.name} />, <span className="text-small text-ink-2">{a.detail}</span>, a.read ? <span className="text-caption text-ink-2">Lido</span> : <TextButton onClick={() => { patch((s: any) => ({ alerts: s.alerts.map((x: any) => (x.id === a.id ? { ...x, read: true } : x)) })); marcarAlertasLidos([a.id]).catch((e) => toast('Não foi possível marcar como lido: ' + (e.message || e), { tone: 'crit' })); }}>Marcar como lido</TextButton>])} />
     </Card>
   );

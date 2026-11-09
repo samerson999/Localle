@@ -12,11 +12,11 @@ describe('SuperadminGuard', () => {
   const guard = new SuperadminGuard();
 
   it('autoriza token de superadmin', () => {
-    expect(guard.canActivate(makeContext({ userId: 'sa1', clientId: null, role: 'superadmin' }))).toBe(true);
+    expect(guard.canActivate(makeContext({ userId: 'sa1', clientId: null, role: 'superadmin', sessionStart: 0 }))).toBe(true);
   });
 
   it('bloqueia token de usuário de cliente, mesmo admin', () => {
-    expect(() => guard.canActivate(makeContext({ userId: 'u1', clientId: 'c1', role: 'admin' }))).toThrow(
+    expect(() => guard.canActivate(makeContext({ userId: 'u1', clientId: 'c1', role: 'admin', sessionStart: 0 }))).toThrow(
       ForbiddenException,
     );
   });

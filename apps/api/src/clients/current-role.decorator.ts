@@ -20,3 +20,20 @@ export const CurrentUserId = createParamDecorator((_: unknown, ctx: ExecutionCon
   }
   return userId;
 });
+
+/**
+ * Início da sessão do token atual (unix seconds) — usado onde uma conexão de longa duração (SSE) precisa
+ * reconferir periodicamente se a senha não foi trocada depois (realtime.controller.ts), sem reabrir a
+ * conexão a cada checagem. `sessionStart` nunca é mais recente que o `iat` real do token (preservado nas
+ * renovações, nunca reiniciado) — então usá-lo no lugar do `iat` exato é sempre igual ou mais rígido:
+ * pode, no máximo, encerrar a conexão um pouco mais cedo do que o estritamente necessário, nunca aceitar
+ * como válida uma sessão que a checagem com o `iat` exato já teria recusado.
+ */
+export const CurrentSessionStart = createParamDecorator((_: unknown, ctx: ExecutionContext): number => {
+  const request = ctx.switchToHttp().getRequest();
+  const sessionStart = request.auth?.sessionStart;
+  if (sessionStart === undefined) {
+    throw new InternalServerErrorException('@CurrentSessionStart() usado numa rota sem AuthGuard');
+  }
+  return sessionStart;
+});

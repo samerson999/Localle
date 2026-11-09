@@ -5,8 +5,8 @@ import { IS_PUBLIC_KEY } from './public.decorator';
 import { verifyAuthToken, type Role } from './jwt';
 
 export type RequestAuth =
-  | { userId: string; clientId: string; role: Role }
-  | { userId: string; clientId: null; role: 'superadmin' };
+  | { userId: string; clientId: string; role: Role; sessionStart: number }
+  | { userId: string; clientId: null; role: 'superadmin'; sessionStart: number };
 
 export interface AuthenticatedRequest extends Request {
   auth?: RequestAuth;
@@ -50,19 +50,27 @@ export class AuthGuard implements CanActivate {
     } catch {
       throw new UnauthorizedException('Token inválido ou expirado');
     }
-    // Token válido de usuário desativado (ou apagado) depois da emissão: o JWT não carrega esse estado,
-    // então a checagem é no banco. Mesma mensagem genérica — não revela o motivo.
+
+    // Token anterior à sessão persistente (sem `sessionStart`): usa o próprio `iat` como início da sessão.
+    // Sem teto de dias (decisão do usuário): a sessão só termina por logout, troca de senha ou desativação,
+    // conferidos abaixo — `sessionStart` só serve de proxy do `iat` para o recheck do SSE (realtime.controller.ts).
+    const sessionStart = payload.sessionStart ?? payload.iat;
+    if (sessionStart === undefined) throw new UnauthorizedException('Token inválido ou expirado');
+
+    // Token válido de usuário desativado, ou com a senha trocada depois da emissão: o JWT não carrega esse
+    // estado, então a checagem é no banco a cada requisição. Mesma mensagem genérica — não revela o motivo.
+    const tokenIat = payload.iat!; // sempre presente: jsonwebtoken grava automaticamente ao assinar
     const ativo =
       payload.role === 'superadmin'
-        ? await this.activeUsers.isSuperadmin(payload.sub)
-        : await this.activeUsers.isActive(payload.sub);
+        ? await this.activeUsers.isSuperadmin(payload.sub, tokenIat)
+        : await this.activeUsers.isActive(payload.sub, tokenIat);
     if (!ativo) {
       throw new UnauthorizedException('Token inválido ou expirado');
     }
     request.auth =
       payload.role === 'superadmin'
-        ? { userId: payload.sub, clientId: null, role: 'superadmin' as const }
-        : { userId: payload.sub, clientId: payload.clientId, role: payload.role };
+        ? { userId: payload.sub, clientId: null, role: 'superadmin' as const, sessionStart }
+        : { userId: payload.sub, clientId: payload.clientId, role: payload.role, sessionStart };
     return true;
   }
 }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Alerta } from '@localle/shared/realtime';
 import { BaseRepository } from '../db/base.repository';
 import type { Queryable } from '../db/queryable';
+import { enfileirarNotificacao } from '../notificacoes/notificacao-fila.repository';
 
 interface AlertaRow {
   id: string;
@@ -69,7 +70,10 @@ export async function inserirAlerta(executor: Queryable, a: NovoAlerta): Promise
        null::text as tratado_por_email, tratamento_motivo, tratamento_obs`,
     [a.clientId, a.assetId, a.eventoId, a.origem, a.tipo, a.titulo, a.detalhe, a.prioridade, a.ts],
   );
-  return toAlerta(rows[0]);
+  const alerta = toAlerta(rows[0]);
+  // mesma transação do alerta (docs/PLANO-APK-TWA.md § 2): push nunca atrasa nem derruba a gravação do alerta
+  await enfileirarNotificacao(executor, a.clientId, alerta.id);
+  return alerta;
 }
 
 /** `client_id` é sempre o primeiro filtro, como no BaseRepository. */

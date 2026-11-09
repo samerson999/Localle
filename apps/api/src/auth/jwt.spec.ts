@@ -32,6 +32,17 @@ describe('jwt — assinatura e verificação', () => {
     expect(() => verifyAuthToken(tampered)).toThrow();
   });
 
+  it('sessionStart: ausente na 1ª emissão vira o próprio instante da assinatura; passado explícito (renovação) é preservado', () => {
+    const primeiro = verifyAuthToken(signAuthToken({ sub: 'user-1', clientId: 'client-1', role: 'gestor' }));
+    expect(primeiro.sessionStart).toBe(primeiro.iat);
+
+    const renovado = verifyAuthToken(
+      signAuthToken({ sub: 'user-1', clientId: 'client-1', role: 'gestor', sessionStart: primeiro.sessionStart! - 1000 }),
+    );
+    expect(renovado.sessionStart).toBe(primeiro.sessionStart! - 1000);
+    expect(renovado.iat).not.toBe(renovado.sessionStart); // o iat da renovação é novo; sessionStart não muda
+  });
+
   it('rejeita token assinado com outro segredo', () => {
     const token = signAuthToken({ sub: 'user-1', clientId: 'client-1', role: 'admin' });
     const originalSecret = process.env.JWT_SECRET;
