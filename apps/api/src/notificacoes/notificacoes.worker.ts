@@ -52,7 +52,15 @@ export class NotificacoesWorker implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (process.env.NOTIFICACOES_WORKER_ENABLED === 'false') return;
-    webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+    // Variável de ambiente mal configurada (ex.: VAPID_SUBJECT sem "mailto:"/"https://") não pode derrubar
+    // a API inteira — achado real em produção (09/11/2026): web-push lança no setVapidDetails e isso
+    // propagava pelo onModuleInit do Nest, travando a subida de TODA a aplicação por causa só deste módulo.
+    try {
+      webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+    } catch (err) {
+      this.logger.error(`Worker de notificações push não ligado: VAPID_SUBJECT inválido (${(err as Error).message})`);
+      return;
+    }
     this.logger.log(`Worker de notificações push ligado (${this.workerId})`);
     this.agendar(0);
     this.limpeza = setInterval(() => void this.limpar(), LIMPEZA_MS);
