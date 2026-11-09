@@ -319,7 +319,7 @@ function OsModal({ init, onClose }: any) {
                   {e.type.startsWith('video') && <video src={e.data} controls className="w-full h-24 rounded-tight bg-ink" />}
                   {e.type.startsWith('audio') && <audio src={e.data} controls className="w-full" />}
                   <span className="text-caption text-ink-2 truncate">{e.name}</span>
-                  <TextButton tone="danger" className="self-start text-caption" onClick={() => set('evidences', w.evidences.filter((x: any) => x.id !== e.id))}>Remover</TextButton>
+                  <TextButton tone="danger" className="self-start text-caption" onClick={async () => { if (await confirmAction({ title: `Remover ${e.name}?`, detail: 'O arquivo sai da OS ao salvar.', confirmLabel: 'Remover' })) set('evidences', w.evidences.filter((x: any) => x.id !== e.id)); }}>Remover</TextButton>
                 </div>
               ))}
               <FilePick multiple accept="image/*,video/*,audio/*" onFile={(d, f) => setW((cur: any) => ({ ...cur, evidences: [...cur.evidences, { id: uid('e'), type: f.type, name: f.name, data: d, ts: Date.now() }] }))} className="h-28 rounded-ctl border border-dashed border-line-strong bg-card-2 hover:bg-surface-muted text-small text-ink-2 flex flex-col items-center justify-center gap-1"><Icon name="camera" size={20} className="text-ink-3" />Foto, áudio ou vídeo curto</FilePick>

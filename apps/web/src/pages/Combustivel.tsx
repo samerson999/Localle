@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore, assetKm, useStoreData } from '../lib/store';
 import { isRealAsset, salvarAbastecimento, salvarFichaAtivo, salvarOperacao, useCarregando } from '../lib/localleApi';
 import { registerOdometer } from '../lib/odometer';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, Grid, Stack, Missing, SetupLink, useUrlTab, FilterSheet, useIsMobile } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Modal, PageHeader, cx, TextButton, Callout, Radio, Switch, EmptyState, Progress, TabPanel, toast, confirmAction, Grid, Stack, Missing, SetupLink, useUrlTab, FilterSheet, useIsMobile } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
@@ -118,7 +118,7 @@ function FuelForm({ onClose }: any) {
             <div key={p.id} className={cx('rounded-ctl p-2 flex flex-col gap-tight border', p.isNota ? 'border-ink' : 'border-line')}>
               <img src={p.data} alt="" loading="lazy" decoding="async" className="w-full h-24 object-cover rounded-chip" />
               <Radio name="nota" label="Esta é a nota fiscal" checked={p.isNota} onChange={() => setF({ ...f, photos: f.photos.map((x: any) => ({ ...x, isNota: x.id === p.id })) })} />
-              <TextButton tone="danger" className="self-start" onClick={() => setF({ ...f, photos: f.photos.filter((x: any) => x.id !== p.id) })}>Remover</TextButton>
+              <TextButton tone="danger" className="self-start" onClick={async () => { if (await confirmAction({ title: p.isNota ? 'Remover a foto da nota fiscal?' : 'Remover esta foto?', detail: 'A foto sai do abastecimento ao salvar.', confirmLabel: 'Remover' })) setF((cur: any) => ({ ...cur, photos: cur.photos.filter((x: any) => x.id !== p.id) })); }}>Remover</TextButton>
             </div>
           ))}
           <Dropzone multiple label="Adicionar fotos" className="h-36" onChange={(d) => setF((cur: any) => ({ ...cur, photos: [...cur.photos, { id: uid('ph'), data: d, isNota: cur.photos.length === 0 }] }))} />

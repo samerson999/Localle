@@ -570,7 +570,7 @@ function Documentos({ a, set }: { a: any; set: (k: string, v: any) => void }) {
           <div className="flex flex-col gap-field-label min-w-0"><span className="invisible text-small" aria-hidden="true">·</span><div className="h-ctl flex items-center min-w-0">{d.due ? <DocStatus d={d} /> : <span className="text-small text-ink-2">Informe o vencimento</span>}</div></div>
           <div className="flex flex-col gap-field-label"><span className="invisible text-small" aria-hidden="true">·</span><div className="h-ctl flex items-center gap-1">
             <FilePick accept="image/*,application/pdf" maxMB={4} onFile={(data, f) => set('documents', docs.map((x, j) => (j === i ? { ...x, file: data, fileName: f.name } : x)))} className="h-9 px-2 rounded-btn text-small link-brand hover:bg-card-2 max-w-[140px] min-w-0 inline-flex items-center gap-1"><Icon name="anexo" size={16} className="shrink-0" /><span className="truncate min-w-0">{d.fileName ? d.fileName : 'Anexar'}</span></FilePick>
-            <TextButton tone="danger" onClick={() => set('documents', docs.filter((_, j) => j !== i))} aria-label={`Remover ${docLabel(d)}`}>Remover</TextButton>
+            <TextButton tone="danger" onClick={async () => { if ((d.number || d.due || d.file || d.name) && !(await confirmAction({ title: `Remover ${docLabel(d)}?`, detail: d.file ? 'O número, o vencimento e o arquivo anexado saem do cadastro ao salvar.' : 'O número e o vencimento saem do cadastro ao salvar, e o aviso de vencimento deixa de existir.', confirmLabel: 'Remover' }))) return; set('documents', docs.filter((x) => x.id !== d.id)); }} aria-label={`Remover ${docLabel(d)}`}>Remover</TextButton>
           </div></div>
         </div>
       ))}

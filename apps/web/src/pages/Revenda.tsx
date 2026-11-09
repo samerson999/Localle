@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { Button, Card, Field, Input, Table, Badge, Tabs, PageHeader, Pills, cx, TextButton, Switch, TabPanel, EmptyState, toast, Grid, Stack, useUrlTab } from '../components/ui';
+import { Button, Card, Field, Input, Table, Badge, Tabs, PageHeader, Pills, cx, TextButton, Switch, TabPanel, EmptyState, toast, confirmAction, Grid, Stack, useUrlTab } from '../components/ui';
 import { Icon } from '../components/icons';
 import { Dropzone } from '../components/Dropzone';
 import SupportAccess from '../components/SupportAccess';
@@ -139,7 +139,7 @@ function Licencas() {
             <Field label="Modelo"><Input value={st.model} onChange={(e) => setSt({ ...st, model: e.target.value })} /></Field>
             <Button disabled={st.imei.length < 10} onClick={() => { if ((s.trackerStock || []).some((y: any) => y.imei === st.imei)) return toast('Este IMEI já está no estoque.', { tone: 'crit' }); s.patch((x: any) => ({ trackerStock: [...(x.trackerStock || []), { ...st }] })); toast(`Rastreador ${st.imei} incluído no estoque.`); setSt({ ...st, imei: '' }); }}><Icon name="mais" size={16} />Adicionar</Button>
           </div>
-          <Table minWidth={360} head={['IMEI', 'Modelo', '']} rows={stock.map((t: any) => [<IdChip size="sm">{t.imei}</IdChip>, t.model, <TextButton tone="danger" onClick={() => { s.patch((x: any) => ({ trackerStock: x.trackerStock.filter((y: any) => y.imei !== t.imei) })); toast(`Rastreador ${t.imei} removido do estoque.`, { action: { label: 'Desfazer', onClick: () => s.patch((x: any) => ({ trackerStock: [...(x.trackerStock || []), t] })) } }); }}>Remover</TextButton>])}
+          <Table minWidth={360} head={['IMEI', 'Modelo', '']} rows={stock.map((t: any) => [<IdChip size="sm">{t.imei}</IdChip>, t.model, <TextButton tone="danger" onClick={async () => { if (!(await confirmAction({ title: `Remover ${t.imei} do estoque?`, detail: 'O rastreador deixa de aparecer para vincular a um veículo.', confirmLabel: 'Remover' }))) return; s.patch((x: any) => ({ trackerStock: x.trackerStock.filter((y: any) => y.imei !== t.imei) })); toast(`Rastreador ${t.imei} removido do estoque.`, { action: { label: 'Desfazer', onClick: () => s.patch((x: any) => ({ trackerStock: [...(x.trackerStock || []), t] })) } }); }}>Remover</TextButton>])}
             emptyState={<EmptyState illustration="ilu-estoque" layout="row" title="Nenhum rastreador em estoque" detail="Cadastre o IMEI acima para ter o rastreador à mão na hora de vincular a um veículo." />} />
         </Card>
         <Card title="Veículos sem rastreador">

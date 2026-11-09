@@ -264,7 +264,7 @@ function SlotPanel({ aid, pos, onOpen, onClose }: any) {
             <Field label="Retirar e enviar para"><Pills value={dest} onChange={setDest} options={[{ key: 'estoque', label: 'Estoque' }, { key: 'recapagem', label: 'Recapadora' }, { key: 'sucata', label: 'Descarte' }]} /></Field>
             {dest === 'sucata' && <Field label="Motivo do descarte"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: corte lateral" /></Field>}
             {dest === 'recapagem' && (st.livesLeft <= 0 || !t.recappable) && <Callout tone="crit">Este pneu não tem mais vidas de recapagem.</Callout>}
-            <Button variant="ghost" className="self-start" disabled={(dest === 'sucata' && !reason) || (dest === 'recapagem' && (st.livesLeft <= 0 || !t.recappable))} onClick={async () => { await R.unmount(t.id, km, dest, reason); toast(`${t.fireNumber} retirado: ${dest === 'estoque' ? 'voltou ao estoque' : dest === 'recapagem' ? 'enviado à recapadora' : 'descartado'}.`); onClose(); }}>Retirar pneu</Button>
+            <Button variant="ghost" className="self-start" disabled={(dest === 'sucata' && !reason) || (dest === 'recapagem' && (st.livesLeft <= 0 || !t.recappable))} onClick={async () => { if (dest === 'sucata' && !(await confirmAction({ title: `Retirar e descartar o pneu ${t.fireNumber}?`, detail: `Motivo: ${reason}. O pneu vai para a sucata e não pode mais ser montado nem recapado.`, confirmLabel: 'Descartar' }))) return; await R.unmount(t.id, km, dest, reason); toast(`${t.fireNumber} retirado: ${dest === 'estoque' ? 'voltou ao estoque' : dest === 'recapagem' ? 'enviado à recapadora' : 'descartado'}.`); onClose(); }}>Retirar pneu</Button>
           </Panel>
         </div>
       )}
@@ -439,7 +439,7 @@ function TireDetail({ id, onClose }: any) {
       <div className="flex flex-wrap gap-3 items-end">
         {t.status === 'estoque' && t.recappable && st.livesLeft > 0 && <Button variant="dark" onClick={async () => { await R.sendRecap(t.id); toast(`${t.fireNumber} enviado à recapadora.`); }}>Enviar para recapagem</Button>}
         {t.status === 'recapagem' && (st.livesLeft > 0 ? <Button onClick={() => setRec({ cost: R.cfg.recapCost || 650, supplier: 'Recapadora Nordeste', band: '', tread: 16 })}>Registrar retorno da recapagem</Button> : <Callout tone="crit">Vidas esgotadas: este pneu não pode ser recapado de novo.</Callout>)}
-        {t.status !== 'sucata' && t.status !== 'montado' && <div className="flex gap-2 items-end"><Field label="Motivo do descarte"><Input value={scrap} onChange={(e) => setScrap(e.target.value)} placeholder="Ex.: corte lateral" /></Field><Button variant="danger" disabled={!scrap} onClick={async () => { await R.scrap(t.id, scrap); toast(`${t.fireNumber} descartado.`); }}>Descartar</Button></div>}
+        {t.status !== 'sucata' && t.status !== 'montado' && <div className="flex gap-2 items-end"><Field label="Motivo do descarte"><Input value={scrap} onChange={(e) => setScrap(e.target.value)} placeholder="Ex.: corte lateral" /></Field><Button variant="danger" disabled={!scrap} onClick={async () => { if (!(await confirmAction({ title: `Descartar o pneu ${t.fireNumber}?`, detail: `Motivo: ${scrap}. O pneu vai para a sucata e não pode mais ser montado nem recapado.`, confirmLabel: 'Descartar' }))) return; await R.scrap(t.id, scrap); toast(`${t.fireNumber} descartado.`); }}>Descartar</Button></div>}
         {t.status === 'montado' && <span className="text-small text-ink-2">Para retirar, fazer rodízio ou medir, use "Por veículo".</span>}
       </div>
       {rec && (

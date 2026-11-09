@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-lea
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, vehicleStatus, contarStatusFrota, assetKm } from '../lib/store';
-import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb, IconButton } from '../components/ui';
+import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, confirmAction, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb, IconButton } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { glyphOf, silhouetteOf } from '../components/assetArt';
 import { GlideMarker, ClusteredVehicles, Address, FenceShapes, MapButton, MapControls, VehicleListItem, MAP_STYLES, type MapStyleKey } from '../components/MapBits';
@@ -491,6 +491,7 @@ function ShareModal({ asset, onClose }: { asset: any; onClose: () => void }) {
             <StatusDot kind={st === 'ativo' ? 'mov' : 'off'} label={st === 'ativo' ? `até ${fmtDT(x.expiresAt)}` : st === 'revogado' ? 'Desativado' : 'Expirado'} />,
             x.by === me ? ((real ? x.opens : opens[x.token])?.length ? <span className="flex flex-col text-small"><span className="num font-medium">{(real ? x.opens : opens[x.token]).length} {(real ? x.opens : opens[x.token]).length === 1 ? 'vez' : 'vezes'}</span><span className="text-caption text-ink-2 num" title={(real ? x.opens : opens[x.token]).map((t: number) => fmtDT(t)).join(', ')}>última {fmtDT((real ? x.opens : opens[x.token]).at(-1))}</span></span> : <span className="text-small text-ink-2">Ainda não aberto</span>) : <span className="text-small text-ink-2">Só quem criou vê</span>,
             st === 'ativo' ? <span className="flex gap-stack">{x.token && <TextButton onClick={() => copy(x.token)}>Copiar</TextButton>}<TextButton tone="danger" onClick={async () => {
+              if (!(await confirmAction({ title: 'Desativar este link?', detail: `${x.to ? `${x.to} perde` : 'Quem tem o link perde'} o acesso à localização na hora. Para compartilhar de novo, gere outro link.`, confirmLabel: 'Desativar' }))) return;
               try { if (real) { await revogarLink(x.id); recarregar(); } else revokeShare(x.token); toast('Link desativado.'); }
               catch (e: any) { toast.error(e.message || String(e), 'Não foi possível desativar'); }
             }}>Desativar</TextButton></span> : null];

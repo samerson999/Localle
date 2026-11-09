@@ -193,7 +193,7 @@ export default function Rastreadores() {
                 <Badge tone={m.ativo ? 'green' : 'gray'}>{m.ativo ? 'Ativo' : 'Desativado'}</Badge>,
                 <div className="flex gap-3 justify-end">
                   <TextButton onClick={() => setEditandoModelo(m)}>Editar</TextButton>
-                  <TextButton tone={m.ativo ? 'danger' : 'brand'} onClick={() => acao(() => adminApi.atualizarModelo(m.id, { ativo: !m.ativo }), m.ativo ? 'Modelo desativado: não aparece mais no cadastro.' : 'Modelo reativado.')}>{m.ativo ? 'Desativar' : 'Reativar'}</TextButton>
+                  <TextButton tone={m.ativo ? 'danger' : 'brand'} onClick={async () => { if (m.ativo && !(await confirmAction({ title: `Desativar o modelo ${nomeModelo(m)}?`, detail: 'Ele deixa de aparecer no cadastro de rastreadores. Os rastreadores já cadastrados continuam. Dá para reativar depois.', confirmLabel: 'Desativar' }))) return; acao(() => adminApi.atualizarModelo(m.id, { ativo: !m.ativo }), m.ativo ? 'Modelo desativado: não aparece mais no cadastro.' : 'Modelo reativado.'); }}>{m.ativo ? 'Desativar' : 'Reativar'}</TextButton>
                   {m.rastreadores === 0 && <TextButton tone="danger" onClick={() => excluirModelo(m)}>Excluir</TextButton>}
                 </div>,
               ])} />

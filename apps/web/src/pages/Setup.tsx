@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../lib/store';
 import { setupApi, syncParametros, type SetupHistorico, type SetupParametro } from '../lib/localleApi';
-import { Badge, Button, Callout, Card, Field, Input, Modal, PageHeader, Pills, SearchInput, Select, Switch, Table, Tabs, TabPanel, TextButton, cx, toast, EmptyState, Skeleton, useUrlTab } from '../components/ui';
+import { Badge, Button, Callout, Card, Field, Input, Modal, PageHeader, Pills, SearchInput, Select, Switch, Table, Tabs, TabPanel, TextButton, cx, toast, confirmAction, EmptyState, Skeleton, useUrlTab } from '../components/ui';
 import { Stack } from '../components/primitives';
 import { Icon } from '../components/icons';
 import { fmtDT } from '@localle/shared/utils';
@@ -47,6 +47,7 @@ export default function Setup() {
     catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); throw e; }
   };
   const restaurar = async (p: SetupParametro) => {
+    if (!(await confirmAction({ title: `Restaurar o padrão de ${p.label}?`, detail: `O valor definido ${groupId ? 'para este grupo' : 'para a sua operação'} é descartado e o parâmetro volta a herdar ${groupId ? 'o valor da operação' : 'o padrão da plataforma'}. A mudança fica no histórico.`, confirmLabel: 'Restaurar padrão', tone: 'primary' }))) return;
     try { aplicar(await setupApi.restaurar(p.key, groupId)); toast(`${p.label}: voltou a herdar.`); void syncParametros().catch(() => {}); }
     catch (e: any) { toast('Não foi possível restaurar: ' + (e.message || e), { tone: 'crit' }); }
   };
