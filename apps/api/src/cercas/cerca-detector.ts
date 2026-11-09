@@ -72,7 +72,7 @@ export async function detectarCercas(
     eventos.push(await gravar(client, p, c, 'cerca_entrada'));
   }
   for (const c of saiu) {
-    await client.query('delete from cerca_presenca where asset_id = $1 and cerca_id = $2', [p.assetId, c.id]);
+    await client.query('delete from cerca_presenca where asset_id = $1 and cerca_id = $2 and client_id = $3', [p.assetId, c.id, p.clientId]);
     eventos.push(await gravar(client, p, c, 'cerca_saida'));
   }
   return eventos;

@@ -12,5 +12,10 @@
     "preview": "pnpm --filter web preview",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test"
+  },
+  "pnpm": {
+    "overrides": {
+      "multer": ">=2.1.0"
+    }
   }
 }
