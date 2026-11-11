@@ -25,6 +25,19 @@ export async function enfileirarNotificacao(executor: Queryable, clientId: strin
 }
 
 /**
+ * Alerta que subiu de nível (sem_posicao) notifica de novo: a linha do mesmo `alerta_id` volta para a fila,
+ * zerada. Se ainda não tinha sido entregue, só segue pendente — o push sai uma vez, já com o nível novo.
+ */
+export async function reenfileirarNotificacao(executor: Queryable, clientId: string, alertaId: string): Promise<void> {
+  await executor.query(
+    `insert into notificacao_fila (client_id, alerta_id) values ($1, $2)
+     on conflict (alerta_id) do update
+       set processado_em = null, tentativas = 0, erro = null, lease_por = null, lease_expira_em = null`,
+    [clientId, alertaId],
+  );
+}
+
+/**
  * `notificacao_fila` não é acessada por rota de cliente (só o worker interno) — por isso não estende
  * `BaseRepository`; protocolo de lease igual ao `InboxRepository` (ingest/inbox.repository.ts).
  */

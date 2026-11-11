@@ -5,12 +5,13 @@ import { PermissionsModule } from '../permissions/permissions.module';
 import { AlertasController } from './alertas.controller';
 import { AlertasRepository } from './alertas.repository';
 import { AlertasService } from './alertas.service';
+import { SemPosicaoWorker } from './sem-posicao.worker';
 
 // RealtimeHub vem do QueueModule (global). A criação de alertas pela ingestão usa `inserirAlerta`
 // (função sobre a transação dela), não este módulo.
 @Module({
   imports: [AuthGuardsModule, PermissionsModule, AuditModule],
   controllers: [AlertasController],
-  providers: [AlertasRepository, AlertasService],
+  providers: [AlertasRepository, AlertasService, SemPosicaoWorker],
 })
 export class AlertasModule {}

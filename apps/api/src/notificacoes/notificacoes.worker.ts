@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import type { Pool } from 'pg';
 import * as webpush from 'web-push';
+import { TIPO_SEM_POSICAO } from '../alertas/sem-posicao';
 import { PG_POOL } from '../db/pg-pool.provider';
 import type { Role } from '../auth/jwt';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -137,7 +138,8 @@ export class NotificacoesWorker implements OnModuleInit, OnModuleDestroy {
       if (!(await this.permissions.isAllowed(clientId, u.role, 'monitoramento.ver'))) continue;
       const prefs = await this.preferencias.listar(clientId, u.id);
       const pref = prefs.find((p) => p.tipo === alerta.tipo);
-      const ativo = pref ? pref.ativo : alerta.prioridade === 'alta';
+      // sem posição notifica em todo nível (4 h, 12 h, 24 h) por padrão — decisão de 11/11/2026
+      const ativo = pref ? pref.ativo : alerta.prioridade === 'alta' || alerta.tipo === TIPO_SEM_POSICAO;
       if (ativo) idsComAcesso.push(u.id);
     }
     return this.aparelhos.listarDoCliente(clientId, idsComAcesso);
