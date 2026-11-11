@@ -51,10 +51,11 @@ function ManutencaoLocal() {
   useMobilePageAction({ label: 'Nova OS', icon: 'mais', onClick: () => setOs({ isNew: true }) });
   return (
     <div>
-      <PageHeader icon="manutencao" title="Manutenção" subtitle="Disponibilidade da frota, preventivas, ordens de serviço e custos" />
+      <PageHeader icon="manutencao" title={tab === 'geral' ? 'Manutenção' : TABS.find((t) => t.key === tab)?.label ?? 'Manutenção'} subtitle="Disponibilidade da frota, preventivas, ordens de serviço e custos" />
       <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
         <RetiredToggle />
-        <Tabs value={tab} onChange={setTab} tabs={TABS} />
+        {/* no desktop as abas estão na barra lateral, em cascata */}
+        <div className="md:hidden"><Tabs value={tab} onChange={setTab} tabs={TABS} /></div>
         <Button className="ml-auto max-md:hidden" onClick={() => setOs({ isNew: true })}><Icon name="mais" size={18} />Nova OS</Button>
         {(tab === 'dono' || tab === 'gestor') && <div className="w-44"><Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Frota inteira' }, ...s.groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></div>}
         {isBI && <PeriodCompare value={period} onChange={setPeriod} />}

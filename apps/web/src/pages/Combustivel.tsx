@@ -24,8 +24,8 @@ export default function Combustivel() {
   const carregando = useCarregando('combustível');
   return (
     <div>
-      <PageHeader icon="combustivel" title="Gestão de combustível" subtitle="Abastecimentos, notas fiscais, confiabilidade, metas e BI de consumo" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><RetiredToggle /><Tabs value={tab} onChange={setTab} tabs={[{ key: 'lanc', label: 'Abastecimentos' }, { key: 'notas', label: 'Notas fiscais' }, { key: 'bi', label: 'BI de abastecimento' }, { key: 'metas', label: 'Metas' }]} /></div>
+      <PageHeader icon="combustivel" title={({ lanc: "Abastecimentos", notas: "Notas fiscais", bi: "BI de abastecimento", metas: "Metas de combustível" } as Record<string, string>)[tab] ?? "Combustível"} subtitle="Abastecimentos, notas fiscais, confiabilidade, metas e BI de consumo" />
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><RetiredToggle />{/* no desktop as abas estão na barra lateral, em cascata */}<div className="md:hidden"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'lanc', label: 'Abastecimentos' }, { key: 'notas', label: 'Notas fiscais' }, { key: 'bi', label: 'BI de abastecimento' }, { key: 'metas', label: 'Metas' }]} /></div></div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'lanc' && <Lancamentos />}
         {tab === 'notas' && <Notas />}

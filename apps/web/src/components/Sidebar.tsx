@@ -1,7 +1,8 @@
-import { createContext, forwardRef, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { createContext, forwardRef, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { cx, useIsMobile, useScrollLock } from './ui';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
+import { animarGesto } from '../lib/gestos';
 
 // Porte do Sidebar oficial do shadcn/ui (https://ui.shadcn.com/docs/components/base/sidebar)
 // para Tailwind v3 e sem radix-ui/cva/lucide: mesma API e os mesmos data-attributes de estado
@@ -178,7 +179,7 @@ function SidebarDock({ open, onClose, pill, action, children }: { open: boolean;
 }
 
 // Item da pílula da barra inferior: ícone e rótulo curto (só ícone seria adivinhação, ver crítica de 03/11).
-export function DockItem({ to, icon, label, active, badge, onClick, expanded }: { to?: string; icon: string; label: string; active?: boolean; badge?: ReactNode; onClick?: () => void; expanded?: boolean }) {
+export function DockItem({ to, icon, label, active, badge, onClick, expanded }: { to?: string; icon: IconName; label: string; active?: boolean; badge?: ReactNode; onClick?: () => void; expanded?: boolean }) {
   const cls = cx('relative flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 h-[54px] rounded-pill transition-colors duration-150 [-webkit-tap-highlight-color:transparent]',
     active ? 'bg-brand-soft text-brand-link' : 'text-ink-2 active:bg-surface-hover');
   const inner = <><span className="relative"><Icon name={icon} size={22} />{badge}</span>{/* tela estreita demais para qualquer rótulo (zoom de 200%): só o ícone, o texto fica para o leitor de tela */}<span className="max-w-full truncate px-1 text-[11px] leading-none font-medium max-[300px]:sr-only">{label}</span></>;
@@ -270,31 +271,59 @@ export const SidebarMenu = forwardRef<HTMLDivElement, { children: ReactNode; pil
 
 // `end`: só a rota exata marca o item (o de um item com subitens, para a pílula ir para o subitem). `trilha`: está numa
 // tela da seção sem subitem próprio no menu (ex.: /monitoramento/alertas) — o item fica em destaque e recebe a pílula.
-export function SidebarMenuButton({ to, icon, label, badge, end, trilha }: { to: string; icon: string; label: string; badge?: ReactNode; end?: boolean; trilha?: boolean }) {
+// Cascata: com `onToggle`, o item ganha a seta que abre/fecha os subitens. `ativo` (controlado) substitui o casamento de
+// rota do NavLink — para quando os subitens são abas da mesma rota (?aba=) e só o subitem deve receber a pílula; `secao`
+// pinta o item enquanto se está em qualquer tela dele.
+export function SidebarMenuButton({ to, icon, label, badge, end, trilha, ativo, secao, aberto, onToggle }: { to: string; icon: IconName; label: string; badge?: ReactNode; end?: boolean; trilha?: boolean; ativo?: boolean; secao?: boolean; aberto?: boolean; onToggle?: () => void }) {
   const mini = useMini();
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
+  const cls = (on: boolean) => cx('relative z-[1] flex items-center gap-3 h-10 pl-[14px] rounded-ctl text-body overflow-hidden transition-colors duration-150', onToggle && !mini ? 'pr-10' : 'pr-3', on || trilha || secao ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover');
+  const gesto = (e: MouseEvent<HTMLElement>) => animarGesto(e.currentTarget, icon);
+  const inner = <><Icon name={icon} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{label}</span>{badge}</>;
+  const link = ativo === undefined
+    ? <NavLink to={to} end={end} onMouseEnter={gesto} data-slot="sidebar-menu-button" data-trilha={trilha || undefined} title={mini ? label : undefined} aria-label={mini ? label : undefined} className={({ isActive }) => cls(isActive)}>{inner}</NavLink>
+    : <Link to={to} onMouseEnter={gesto} data-slot="sidebar-menu-button" data-trilha={trilha || undefined} title={mini ? label : undefined} aria-label={mini ? label : undefined} aria-current={ativo ? 'page' : undefined} className={cls(ativo)}>{inner}</Link>;
+  if (!onToggle) return link;
   return (
-    <NavLink to={to} end={end} data-slot="sidebar-menu-button" data-trilha={trilha || undefined} title={mini ? label : undefined} aria-label={mini ? label : undefined}
-      className={({ isActive }) => cx('relative z-[1] flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body overflow-hidden transition-colors duration-150', isActive || trilha ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
-      <Icon name={icon} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{label}</span>{badge}
-    </NavLink>
+    <div className="relative">
+      {link}
+      {!mini && (
+        <button type="button" onClick={onToggle} aria-expanded={aberto} aria-label={`${aberto ? 'Fechar' : 'Abrir'} ${label}`}
+          className="absolute right-1 top-1/2 z-[2] -translate-y-1/2 size-8 grid place-items-center rounded-ctl text-ink-3 hover:text-ink hover:bg-surface-hover">
+          <Icon name="abaixo" size={16} className={cx('transition-transform duration-200 motion-reduce:transition-none', !aberto && '-rotate-90')} />
+        </button>
+      )}
+    </div>
   );
 }
 
-// Subitens de um módulo (árvore, sempre aberta): recuados sob o item principal, com uma linha-guia que nasce no ícone
-// dele. Recolhida, a barra só mostra ícones: o recuo e a linha somem e o subitem fica alinhado aos demais.
-export function SidebarSubMenu({ items }: { items: { key: string; to: string; icon: string; label: string }[] }) {
+// Subitem com ?aba= só fica ativo na aba dele (o NavLink ignora a query e todos ficariam ativos juntos); "?aba=" vazio é a
+// aba padrão da rota. Sem query, casa a rota e as filhas dela, como o NavLink.
+export function subItemAtivo(to: string, loc: { pathname: string; search: string }) {
+  const u = new URL(to, 'http://x');
+  if (to.includes('?')) return loc.pathname === u.pathname && (new URLSearchParams(loc.search).get('aba') || '') === (u.searchParams.get('aba') || '');
+  return loc.pathname === u.pathname || loc.pathname.startsWith(u.pathname + '/');
+}
+
+// Subitens de um módulo, em cascata sob o item principal, com uma linha-guia que nasce no ícone dele. Recolhida, a barra
+// só mostra ícones: o recuo e a linha somem e o subitem fica alinhado aos demais.
+export function SidebarSubMenu({ items, aberto = true }: { items: { key: string; to: string; icon: IconName; label: string }[]; aberto?: boolean }) {
   const mini = useMini();
+  const loc = useLocation();
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
+  if (!aberto) return null;
   return (
-    <div data-slot="sidebar-sub-menu" className="relative flex flex-col gap-hair">
+    <div data-slot="sidebar-sub-menu" className="relative flex flex-col gap-hair anim-fade">
       <span aria-hidden="true" className={cx('absolute left-[23px] top-0 bottom-3 w-px bg-line transition-opacity duration-150 motion-reduce:transition-none', mini && 'opacity-0')} />
-      {items.map((s) => (
-        <NavLink key={s.key} to={s.to} data-slot="sidebar-menu-button" title={mini ? s.label : undefined} aria-label={mini ? s.label : undefined}
-          className={({ isActive }) => cx('relative z-[1] flex items-center gap-3 h-9 [@media(pointer:coarse)]:h-11 pr-3 rounded-ctl text-small overflow-hidden transition-[color,background-color,padding] duration-150 motion-reduce:transition-none', mini ? 'pl-[15px]' : 'pl-[36px]', isActive ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
-          <Icon name={s.icon} size={18} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{s.label}</span>
-        </NavLink>
-      ))}
+      {items.map((s) => {
+        const on = subItemAtivo(s.to, loc);
+        return (
+          <Link key={s.key} to={s.to} onMouseEnter={(e) => animarGesto(e.currentTarget, s.icon)} data-slot="sidebar-menu-button" aria-current={on ? 'page' : undefined} title={mini ? s.label : undefined} aria-label={mini ? s.label : undefined}
+            className={cx('relative z-[1] flex items-center gap-3 h-9 [@media(pointer:coarse)]:h-11 pr-3 rounded-ctl text-small overflow-hidden transition-[color,background-color,padding] duration-150 motion-reduce:transition-none', mini ? 'pl-[15px]' : 'pl-[36px]', on ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
+            <Icon name={s.icon} size={18} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{s.label}</span>
+          </Link>
+        );
+      })}
     </div>
   );
 }

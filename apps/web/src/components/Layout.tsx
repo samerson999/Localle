@@ -2,8 +2,8 @@ import { Suspense, createContext, useContext, useEffect, useLayoutEffect, useRef
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { useNeedsYou } from '../lib/needs';
-import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx } from './ui';
-import { Icon } from './icons';
+import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx, Tooltip, Avatar } from './ui';
+import { Icon, type IconName } from './icons';
 import { OdometerAsk } from './RemoteBits';
 import { useRastreioSync } from '../lib/rastreioApi';
 import { logout, syncFrota, syncModulos, useLocalle, useLocalleSync } from '../lib/localleApi';
@@ -18,6 +18,8 @@ import wordmarkLocalle from '../images/localle-wordmark.webp';
 import { DockItem, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON, Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarSubMenu, SidebarProvider, useSidebar } from './Sidebar';
 
 const OPERACAO = [
+  // Início: estado geral da frota (11/11/2026); é a tela inicial de quem vê a frota (support.homeOf)
+  { key: 'inicio', label: 'Início', to: '/inicio', icon: 'inicio', mod: 'monitoramento' },
   // Monitoramento é o principal; Replay e Cercas são páginas próprias, na árvore do menu (04/11/2026, eram abas)
   { key: 'monitoramento', label: 'Monitoramento', curto: 'Mapa', to: '/monitoramento', icon: 'monitoramento', sub: [
     { key: 'replay', label: 'Replay', to: '/monitoramento/replay', icon: 'rota' },
@@ -27,8 +29,23 @@ const OPERACAO = [
 ];
 const GESTAO = [
   { key: 'ativos', label: 'Ativos', to: '/ativos', icon: 'ativos' },
-  { key: 'manutencao', label: 'Manutenção', to: '/manutencao', icon: 'manutencao' },
-  { key: 'combustivel', label: 'Combustível', to: '/combustivel', icon: 'combustivel' },
+  // abas da Manutenção em cascata, como no Combustível (11/11/2026)
+  { key: 'manutencao', label: 'Manutenção', to: '/manutencao', icon: 'manutencao', sub: [
+    { key: 'manutencao-geral', label: 'Visão geral', to: '/manutencao?aba=', icon: 'inicio' },
+    { key: 'manutencao-preventivas', label: 'Preventivas', to: '/manutencao?aba=preventivas', icon: 'calendario' },
+    { key: 'manutencao-os', label: 'Ordens de serviço', to: '/manutencao?aba=os', icon: 'documento' },
+    { key: 'manutencao-planos', label: 'Planos', to: '/manutencao?aba=planos', icon: 'checklist' },
+    { key: 'manutencao-emails', label: 'Alertas e e-mails', to: '/manutencao?aba=emails', icon: 'email' },
+    { key: 'manutencao-dono', label: 'BI do dono', to: '/manutencao?aba=dono', icon: 'grafico' },
+    { key: 'manutencao-gestor', label: 'BI do gestor', to: '/manutencao?aba=gestor', icon: 'tendencia' },
+  ] },
+  // abas do Combustível viram subitens em cascata (11/11/2026): a página fica só com o conteúdo da aba
+  { key: 'combustivel', label: 'Combustível', to: '/combustivel', icon: 'combustivel', sub: [
+    { key: 'combustivel-lanc', label: 'Abastecimentos', to: '/combustivel?aba=', icon: 'historico' },
+    { key: 'combustivel-notas', label: 'Notas fiscais', to: '/combustivel?aba=notas', icon: 'documento' },
+    { key: 'combustivel-bi', label: 'BI de abastecimento', to: '/combustivel?aba=bi', icon: 'grafico' },
+    { key: 'combustivel-metas', label: 'Metas', to: '/combustivel?aba=metas', icon: 'alvo' },
+  ] },
   { key: 'checklist', label: 'Checklist', to: '/checklist', icon: 'checklist' },
   { key: 'viagens', label: 'Viagens', to: '/viagens', icon: 'viagens' },
   { key: 'multas', label: 'Multas', to: '/multas', icon: 'multas' },
@@ -74,7 +91,7 @@ function AvisoBackend() {
 // chama useMobilePageAction — nas telas sem ação de criação clara, a barra fica só com o título. Registro por
 // contexto (não prop) porque a barra vive no Layout, acima do Outlet; useRef guarda o onClick sempre atualizado
 // sem reabrir o registro a cada render da página (só label/icon mudam o registro).
-type MobileAction = { label: string; icon?: string; onClick: () => void };
+type MobileAction = { label: string; icon?: IconName; onClick: () => void };
 const MobileActionCtx = createContext<{ action: MobileAction | null; set: (a: MobileAction | null) => void } | null>(null);
 export function useMobilePageAction(action: MobileAction | null) {
   const ctx = useContext(MobileActionCtx);
@@ -162,6 +179,8 @@ function LayoutBody() {
   const [help, setHelp] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
+  // cascatas abertas à mão; a da seção atual abre sozinha
+  const [abertos, setAbertos] = useState<Record<string, boolean>>({});
 
   useRastreioSync();
   useLocalleSync();
@@ -184,13 +203,12 @@ function LayoutBody() {
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
-  }, [loc.pathname, openMobile, session, rev.modules]);
+  }, [loc.pathname, loc.search, openMobile, session, rev.modules, abertos]);
 
   // revenda e Locale só veem a frota do cliente em acesso de suporte
   const fleet = canSeeFleet(session);
   const allowed = (l: typeof GESTAO) => (fleet ? l.filter((n) => rev.modules[(n as any).mod ?? n.key]) : []);
-  const admin = [
-    ...(session.role === 'locale' ? [
+  const admin: { key: string; label: string; to: string; icon: IconName }[] = session.role !== 'locale' ? [] : [
       { key: 'locale', label: 'Visão geral', to: '/locale', icon: 'locale' },
       { key: 'locale-contratos', label: 'Contratos', to: '/locale/contratos', icon: 'dinheiro' },
       { key: 'locale-clientes', label: 'Clientes', to: '/locale/clientes', icon: 'revenda' },
@@ -199,7 +217,6 @@ function LayoutBody() {
       { key: 'locale-juridico', label: 'Jurídico', to: '/locale/juridico', icon: 'documento' },
       { key: 'locale-saude', label: 'Saúde da plataforma', to: '/locale/saude', icon: 'monitoramento' },
       { key: 'locale-equipe', label: 'Equipe e auditoria', to: '/locale/equipe', icon: 'historico' },
-    ] : []),
   ];
   const canConfig = session.role === 'revenda' || session.role === 'locale';
   // Setup (parâmetros de operação, docs/PLANO-SETUP-ADMIN.md): quem vê a frota configura a própria empresa; a API decide quem pode alterar
@@ -213,20 +230,34 @@ function LayoutBody() {
   // mesma regra da tela de login: sem logo nem nome de revenda próprios, a marca é a da Localle
   const marcaLocalle = !rev.branding.logo && (!rev.branding.name || rev.branding.name === 'Localle');
 
-  // celular: barra inferior flutuante. Três atalhos do dia a dia + "Mais" (o menu inteiro). Quem vê a frota: Monitoramento,
-  // críticos (o contador do "Precisa de você") e o primeiro módulo de gestão; sem frota (revenda, Locale), as três primeiras telas.
+  // celular: barra inferior flutuante. Três atalhos do dia a dia + "Mais" (o menu inteiro). Quem vê a frota: Início, Mapa e
+  // críticos (o contador do "Precisa de você"); sem frota (revenda, Locale), as três primeiras telas.
   const naRota = (to: string) => loc.pathname === to || loc.pathname.startsWith(to + '/');
+  // item com subitens = cascata: abre sozinha na seção atual, e a seta abre/fecha à mão. Subitens com ?aba= são abas da
+  // própria rota do item: o item só pinta (secao) e a pílula vai para o subitem; senão o item é uma tela própria (end).
+  const itemMenu = (n: any) => {
+    if (!n.sub) return <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />;
+    const abas = n.sub.some((x: any) => x.to.includes('?'));
+    const aberto = abertos[n.key] ?? naRota(n.to);
+    const toggle = () => setAbertos((a) => ({ ...a, [n.key]: !aberto }));
+    return (
+      <div key={n.key} className="flex flex-col gap-hair">
+        {abas
+          ? <SidebarMenuButton to={n.to} icon={n.icon} label={n.label} ativo={false} secao={naRota(n.to)} aberto={aberto} onToggle={toggle} />
+          : <SidebarMenuButton to={n.to} icon={n.icon} label={n.label} end trilha={naRota(n.to) && loc.pathname !== n.to && !n.sub.some((x: any) => naRota(x.to))} aberto={aberto} onToggle={toggle} />}
+        <SidebarSubMenu items={n.sub} aberto={aberto} />
+      </div>
+    );
+  };
   const gestao = allowed(GESTAO);
-  const atalhos = fleet
-    ? [...allowed(OPERACAO).slice(0, 1), ...gestao.slice(0, 1)]
-    : mods.slice(0, 3);
+  const atalhos = fleet ? allowed(OPERACAO).slice(0, 2) : mods.slice(0, 3);
   const noAtalho = atalhos.some((m) => naRota(m.to)) || (fleet && naRota('/precisa-de-voce'));
   const dockPill = <>
     {/* dock: rótulo curto quando o nome não cabe nos ~60px do item ("Monitora…") */}
-    {atalhos.slice(0, 1).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
+    {atalhos.slice(0, 2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
     {fleet && <DockItem icon="atencao" label="Críticos" active={naRota('/precisa-de-voce')} onClick={() => setPanel(true)} expanded={panel}
       badge={needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute -top-1.5 left-3" />} />}
-    {atalhos.slice(1).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
+    {atalhos.slice(2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
     <DockItem icon="menu" label="Mais" active={!noAtalho} onClick={() => setOpenMobile(true)} expanded={openMobile} />
   </>;
   // botão redondo: Buscar com o menu fechado; Fechar com ele aberto (a pílula se recolhe e o "Mais" some)
@@ -237,11 +268,14 @@ function LayoutBody() {
     </button>
   );
 
-  const footBtn = ({ icon, label, onClick, children, expanded }: { icon: string; label: string; onClick: () => void; children?: ReactNode; expanded?: boolean }) => (
-    <button type="button" onClick={onClick} title={mini ? label : undefined} aria-label={mini ? label : undefined} aria-expanded={expanded}
+  // menu recolhido: o nome some e vira dica à direita
+  const footBtn = ({ icon, label, onClick, children, expanded }: { icon: IconName; label: string; onClick: () => void; children?: ReactNode; expanded?: boolean }) => (
+    <Tooltip content={mini ? label : null} side="right">
+    <button type="button" onClick={onClick} aria-label={mini ? label : undefined} aria-expanded={expanded}
       className="relative flex items-center gap-3 h-10 pl-[14px] pr-3 overflow-hidden rounded-ctl text-body font-medium text-ink-2 hover:text-ink hover:bg-surface-hover w-full">
       <Icon name={icon} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{label}</span>{children}
     </button>
+    </Tooltip>
   );
 
   return (
@@ -279,13 +313,8 @@ function LayoutBody() {
                 <SidebarMenuButton to="/precisa-de-voce" icon="atencao" label="Precisa de você" badge={needs.length > 0 && <Counter n={needs.length} pulse={pulse} className={cx('shrink-0', fade)} />} />
               </div>
             )}
-            <SidebarGroup title="Operação">{allowed(OPERACAO).map((n: any) => n.sub ? (
-              <div key={n.key} className="flex flex-col gap-hair">
-                <SidebarMenuButton to={n.to} icon={n.icon} label={n.label} end trilha={naRota(n.to) && loc.pathname !== n.to && !n.sub.some((x: any) => naRota(x.to))} />
-                <SidebarSubMenu items={n.sub} />
-              </div>
-            ) : <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />)}</SidebarGroup>
-            <SidebarGroup title="Gestão">{allowed(GESTAO).map((n) => <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />)}</SidebarGroup>
+            <SidebarGroup title="Operação">{allowed(OPERACAO).map(itemMenu)}</SidebarGroup>
+            <SidebarGroup title="Gestão">{allowed(GESTAO).map(itemMenu)}</SidebarGroup>
             <SidebarGroup title="Administração">{admin.map((n) => <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />)}</SidebarGroup>
           </SidebarMenu>
         </SidebarContent>
@@ -296,7 +325,7 @@ function LayoutBody() {
             <div className="relative">
               {footBtn({ icon: 'ajuda', label: 'Ajuda', onClick: () => setHelp(!help), expanded: help })}
               {help && (
-                <div role="dialog" aria-label="Ajuda" className="absolute bottom-12 left-0 z-[700] w-[260px] bg-card border border-line rounded-pop p-4 shadow-pop anim-page">
+                <div role="dialog" aria-label="Ajuda" className="absolute bottom-12 left-0 z-[700] w-[260px] bg-card rounded-pop p-4 shadow-pop anim-page">
                   <p className="text-small text-ink-2">Suporte {rev.branding.name}</p>
                   <p className="text-body font-medium num mt-hair">{rev.branding.supportPhone}</p>
                   {session.role === 'locale' && <NavLink to="/design" className="mt-3 inline-flex items-center gap-1 text-small text-brand-link hover:underline">Padrões visuais da plataforma<Icon name="chevron" size={14} /></NavLink>}
@@ -304,9 +333,9 @@ function LayoutBody() {
               )}
             </div>
             <div className="flex items-center gap-stack mt-2 pt-3 pl-2 overflow-hidden border-t border-line">
-              <div className="w-8 h-8 rounded-pill bg-avatar text-ink flex items-center justify-center font-semibold text-caption shrink-0" title={mini ? session.name : undefined}>{session.name.slice(0, 2).toUpperCase()}</div>
+              <Tooltip content={mini ? session.name : null} side="right"><span className="shrink-0 inline-flex"><Avatar name={session.name} size="sm" /></span></Tooltip>
               <NavLink to="/conta" title="Minha conta" tabIndex={mini ? -1 : undefined} className={cx('flex flex-col min-w-0 mr-auto rounded-btn hover:underline', fade)}><span className="font-medium text-body truncate">{session.name}</span><span className="text-caption text-ink-2 truncate">{session.support ? 'Acesso de suporte' : session.role === 'locale' ? 'Administração Locale' : session.role === 'revenda' ? 'Admin da revenda' : 'Gestor da frota'}</span></NavLink>
-              <IconButton aria-label="Sair" title="Sair" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.', confirmLabel: 'Sair', tone: 'primary' })) { await logout(); patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" size={18} /></IconButton>
+              <IconButton aria-label="Sair" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.', confirmLabel: 'Sair', tone: 'primary' })) { await logout(); patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" size={18} /></IconButton>
             </div>
           </div>
         </SidebarFooter>
@@ -342,7 +371,8 @@ function LayoutBody() {
           {/* desktop: "Precisa de você" fica no topo à direita, na mesma linha do cabeçalho da página (que reserva a largura dele
               por --top-reserve). Com a faixa de suporte aberta, volta a ocupar uma linha própria acima dela. Não acompanha o scroll. */}
           {fleet && (
-            <div className={cx('no-print hidden md:flex z-[40] justify-end items-start px-page-md pointer-events-none', session.support ? 'pt-page-top-md bg-canvas' : 'h-0')}>
+            // no Início não aparece (pedido do usuário em 11/11/2026): escondido, mede 0 e o cabeçalho deixa de reservar o espaço
+            <div className={cx('no-print hidden z-[40] justify-end items-start px-page-md pointer-events-none', loc.pathname !== '/inicio' && 'md:flex', session.support ? 'pt-page-top-md bg-canvas' : 'h-0')}>
               <button ref={needsBtn} type="button" onClick={() => setPanel((x) => !x)} aria-expanded={panel} aria-haspopup="dialog" title="Precisa de você"
                 className={cx('pointer-events-auto flex items-center gap-icon h-ctl px-3 rounded-ctl bg-card border border-line shadow-pop text-body font-medium text-ink-2 hover:text-ink hover:bg-surface-hover', !session.support && 'mt-page-top-md')}>
                 <Icon name="atencao" className="shrink-0" /><span>Precisa de você</span>
