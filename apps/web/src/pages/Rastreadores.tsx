@@ -3,7 +3,7 @@
 // último pacote, desinstalação e desativação. Em qual ativo o rastreador está é o próprio cliente que indica
 // (Gestão de ativos). Custo, avaria e recolhimento físico não existem no schema.
 import { useEffect, useState, type ReactNode } from 'react';
-import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select, SearchSelect, SearchInput, TextButton, Modal, Field, FormGroup, Input, Check, Callout, EmptyState, Tabs, TabPanel, toast, confirmAction, useUrlTab, CardActions, Menu, type MenuItem } from '../components/ui';
+import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select, SearchSelect, SearchInput, TextButton, Modal, Field, FormGroup, Input, Check, Callout, EmptyState, Tabs, TabPanel, toast, confirmAction, useUrlTab, CardActions, Menu, type MenuItem, FilterSheet } from '../components/ui';
 import { KpiTile } from '../components/story';
 import { Icon } from '../components/icons';
 import { useStore } from '../lib/store';
@@ -126,9 +126,9 @@ export default function Rastreadores() {
         </Section>
         <Section title={`${list.length} rastreadores`}>
           <Card>
-            <div className="mb-card-head">
-              <Select aria-label="Filtrar por situação" className="w-full sm:w-64" value={filtro} onChange={(e) => setFiltro(e.target.value)}
-                options={[{ value: '', label: 'Todas as situações' }, { value: 'instalado', label: 'Instalado' }, { value: 'vinculado', label: 'Com o cliente' }, { value: 'estoque', label: 'Em estoque' }, { value: 'desativado', label: 'Desativado' }]} />
+            <div className="mb-card-head empty:hidden">
+              <FilterSheet count={filtro ? 1 : 0}><Select aria-label="Filtrar por situação" className="w-full sm:w-64" value={filtro} onChange={(e) => setFiltro(e.target.value)}
+                options={[{ value: '', label: 'Todas as situações' }, { value: 'instalado', label: 'Instalado' }, { value: 'vinculado', label: 'Com o cliente' }, { value: 'estoque', label: 'Em estoque' }, { value: 'desativado', label: 'Desativado' }]} /></FilterSheet>
             </div>
             <Table minWidth={1100} loading={loading && !data} align={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
               head={['IMEI', 'Modelo / protocolo', 'Chip', 'Cliente e ativo', 'Situação', 'Último sinal', '']}
@@ -651,8 +651,8 @@ function TransmissaoAba({ onDiagnostico }: { onDiagnostico: (r: Acompanhado) => 
       <Section title={`${visiveis.length} rastreadores`}>
         <Card>
           <div className="flex flex-wrap gap-stack mb-card-head">
-            <Select aria-label="Filtrar por transmissão" className="w-full sm:w-64" value={filtro} onChange={(e) => setFiltro(e.target.value)}
-              options={[{ value: '', label: 'Todos' }, ...(Object.keys(SIT_TRANSMISSAO) as SituacaoTransmissao[]).map((k) => ({ value: k, label: SIT_TRANSMISSAO[k].label })), { value: 'sem_gps', label: 'Comunicando sem GPS' }]} />
+            <FilterSheet count={filtro ? 1 : 0}><Select aria-label="Filtrar por transmissão" className="w-full sm:w-64" value={filtro} onChange={(e) => setFiltro(e.target.value)}
+              options={[{ value: '', label: 'Todos' }, ...(Object.keys(SIT_TRANSMISSAO) as SituacaoTransmissao[]).map((k) => ({ value: k, label: SIT_TRANSMISSAO[k].label })), { value: 'sem_gps', label: 'Comunicando sem GPS' }]} /></FilterSheet>
             <SearchInput className="w-full sm:w-72" value={busca} onChange={setBusca} placeholder="IMEI, placa, cliente ou modelo" />
             <span className="sm:ml-auto self-center text-caption text-ink-2">Atualiza sozinho a cada {ATUALIZA_MS / 1000} s</span>
           </div>

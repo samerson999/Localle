@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { salvarOs, useCarregando } from '../lib/localleApi';
 import { assetKm } from '@localle/shared/km';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, FilePick, EmptyState, ErrorState, Skeleton, Check, Textarea, cx, TextButton, Callout, Panel, IconButton, FilterChip, DescList, DescRow, confirmAction, toast, Grid, Stack, LoadingBlock, useUrlTab, useIsMobile } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, FilePick, EmptyState, ErrorState, Skeleton, Check, Textarea, cx, TextButton, Callout, Panel, IconButton, FilterChip, DescList, DescRow, confirmAction, toast, Grid, Stack, LoadingBlock, useUrlTab, useIsMobile, FilterSheet } from '../components/ui';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { Icon } from '../components/icons';
@@ -413,7 +413,7 @@ function Respostas() {
   const openR = async (r: any) => { setV(r); setPhotos({}); const t = tpl(r.templateId); for (const q of (t?.questions || []).filter((q: any) => q.type === 'foto' || q.requirePhoto)) { const ph = await R.photoOf(r.id, q.id); if (ph) setPhotos((p) => ({ ...p, [q.id]: ph })); } };
   return (
     <>
-      <Card title="Respostas recebidas" actions={<Check label="Só com problema" checked={onlyFlag} onChange={setOnlyFlag} />}>
+      <Card title="Respostas recebidas" actions={<FilterSheet count={onlyFlag ? 1 : 0}><Check label="Só com problema" checked={onlyFlag} onChange={setOnlyFlag} /></FilterSheet>}>
         <Table head={['Enviado em', 'Checklist', 'Pessoa', 'Veículo', 'Tempo', 'Com problema', '']} rows={list.map((r: any) => { const n = flags(r); return [fmtDT(r.finishedAt), <span className="font-medium">{tpl(r.templateId)?.name}</span>, R.people.find((p: any) => p.id === r.personId)?.name || '—', s.assets.find((a: any) => a.id === r.assetId)?.name || '—', num((r.finishedAt - r.startedAt) / MIN, 1) + ' min', n ? <Badge tone="red">{n}</Badge> : <Badge tone="green">0</Badge>, <TextButton onClick={() => openR(r)}>Ver</TextButton>]; })} />
       </Card>
       <Modal open={!!v} onClose={() => setV(null)} title={tpl(v?.templateId)?.name || ''}>

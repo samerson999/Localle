@@ -1292,7 +1292,8 @@ export function PageHeader({ title, children, period, crumbs }: { icon?: Paramet
           no padrão do Visor); ter os dois ao mesmo tempo duplicaria o heading da página. */}
       <h1 className="md:sr-only max-md:hidden">{title}</h1>
       {crumbs && <Breadcrumbs items={crumbs} />}
-      <div className={cx('flex flex-wrap items-center gap-x-6 gap-y-tight min-h-ctl md:pr-[var(--top-reserve,0px)]', !acoes && 'max-md:hidden')}>
+      {/* celular: ações que só têm filtro (FilterSheet, que sobe para o cabeçalho) deixam a linha vazia — some também */}
+      <div className={cx('flex flex-wrap items-center gap-x-6 gap-y-tight min-h-ctl md:pr-[var(--top-reserve,0px)] max-md:has-[>div:empty]:hidden', !acoes && 'max-md:hidden')}>
         {acoes && <div className="flex flex-wrap items-center gap-tight min-w-0 max-w-full">{period}{children}</div>}
       </div>
     </header>

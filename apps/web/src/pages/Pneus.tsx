@@ -3,7 +3,7 @@ import { opAssets, isOut } from '../lib/assetLifecycle';
 import { useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { TireProvider, useTires } from '../lib/tireRepo';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, Panel, EmptyState, ErrorState, Progress, TabPanel, toast, confirmAction, DescList, DescRow, SearchInput, Grid, Stack, useUrlTab, useUrlItem, Missing, SetupLink, useIsMobile } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, Panel, EmptyState, ErrorState, Progress, TabPanel, toast, confirmAction, DescList, DescRow, SearchInput, Grid, Stack, useUrlTab, useUrlItem, Missing, SetupLink, useIsMobile, FilterSheet } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
@@ -362,7 +362,7 @@ function Lista({ onOpen }: any) {
   return (
     <>
       <Card title={`Pneus (${list.length})`} icon="pneus" actions={<div className="flex gap-2 flex-wrap items-center max-md:w-full"><SearchInput className="w-56 max-md:w-full" placeholder="Número, marca, medida" value={q} onChange={(v) => { setQ(v); setMore(25); }} aria-label="Buscar pneu" /><Button onClick={novoPneu} className="max-md:hidden"><Icon name="mais" size={16} />Cadastrar pneu</Button></div>}>
-        <div className="mb-4"><Pills value={st} onChange={(k) => { setSt(k); setMore(25); }} options={[{ key: '', label: 'Todos' }, ...Object.entries(TIRE_STATUS).map(([k, v]) => ({ key: k, label: v.label }))]} /></div>
+        <div className="mb-4 empty:hidden"><FilterSheet count={st ? 1 : 0}><Pills value={st} onChange={(k) => { setSt(k); setMore(25); }} options={[{ key: '', label: 'Todos' }, ...Object.entries(TIRE_STATUS).map(([k, v]) => ({ key: k, label: v.label }))]} /></FilterSheet></div>
         <Table minWidth={1080} align={['left', 'left', 'left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'right']}
           emptyState={<EmptyState illustration="ilu-busca-veiculo" layout="row" title="Nenhum pneu com esses filtros" detail="Troque a situação ou limpe a busca." />}
           head={['Pneu', 'Marca / modelo', 'Medida', 'Situação', 'Onde', 'Sulco', 'Vida', 'Km rodados', 'Gasto total', 'R$/1.000 km', '']} rows={list.slice(0, more).map(({ t, st: x }: any) => [<TireTag t={t} />, `${t.brand} ${t.model}`, t.size, <StatusDot kind={STATUS_DOT[t.status]} label={TIRE_STATUS[t.status].label} />, t.status === 'montado' ? <span className="text-small inline-flex items-center gap-tight whitespace-nowrap"><AssetName name={aName(s, t.assetId)} /> · {t.position}</span> : <span className="text-small text-ink-2">{t.location || '—'}</span>, <Level st={x} />, <span className="text-small">{lifeLabel(x.lifeNo)}<span className="text-ink-2 num"> · {x.lifeNo}/{t.maxLives}</span></span>, <Num value={x.kmAll} size="body" />, <Money v={x.cost} />, x.cpk ? <Money v={x.cpk * 1000} /> : '—', <TextButton onClick={() => onOpen(t.id)}>Abrir</TextButton>])} />

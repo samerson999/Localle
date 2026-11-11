@@ -2,7 +2,7 @@
 // registro do que já aconteceu: "Para resolver" (críticos, contados por tipo, numa lista só, do que espera há mais
 // tempo para o mais recente) e "Histórico" (todos os alertas, com busca, filtro e lido/não lido).
 import { marcarAlertasLidos, useCarregando } from '../lib/localleApi';
-import { toast, LoadingBlock } from '../components/ui';
+import { toast, LoadingBlock, FilterSheet } from '../components/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { auditEntry } from '@localle/shared/audit';
 import { useStore } from '../lib/store';
@@ -108,8 +108,8 @@ function AlertHistory() {
       actions={
         <Cluster gap="stack" className="max-md:w-full">
           <SearchInput value={q} onChange={setQ} placeholder="Buscar por ativo ou alerta" aria-label="Buscar alertas" className="w-52 max-md:w-full max-w-full" />
-          <Select className="w-40 max-md:w-full" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} />
-          <Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} />
+          <FilterSheet count={[pr, onlyUnread].filter(Boolean).length}><Select className="w-40 max-md:w-full" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} />
+          <Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} /></FilterSheet>
           {unread > 0 && <TextButton onClick={() => { patch((s: any) => ({ alerts: s.alerts.map((a: any) => ({ ...a, read: true })), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Alertas recentes', action: `marcou ${unread} alertas como lidos em lote`, count: unread }) })); marcarAlertasLidos().catch((e) => toast('Não foi possível marcar como lidos: ' + (e.message || e), { tone: 'crit' })); }}>Marcar todos como lidos</TextButton>}
         </Cluster>
       }>

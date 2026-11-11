@@ -22,7 +22,7 @@ import { useStore, vehicleStatus } from '../lib/store';
 import { useResumoUso } from '../lib/localleApi';
 import { Icon, type IconName } from '../components/icons';
 import { StatusGlyph, type StatusKind } from '../components/story';
-import { Button, Card, CardHeader, EmptyState, PageHeader, Progress, Select, Skeleton, Table, Tooltip, cx } from '../components/ui';
+import { Button, Card, CardHeader, EmptyState, PageHeader, Progress, Select, Skeleton, Table, Tooltip, cx, FilterSheet } from '../components/ui';
 import { fmtT, num } from '@localle/shared/utils';
 import { paraUi, rectUi, viewportUi } from '../lib/uiZoom';
 import { useCountUp } from '../lib/motion';
@@ -97,10 +97,10 @@ export default function Inicio() {
   const mostraGrupos = gruposComFrota.length > 0 && !grupo;
 
   return (
-    <div className="mx-auto w-full max-w-[1440px]">
+    <div className="w-full">
       <PageHeader title="Início">
-        {gruposComFrota.length > 0 && <Select aria-label="Grupo" className="w-[220px] max-md:w-full" value={grupo} onChange={(e) => setGrupo(e.target.value)}
-          options={[{ value: '', label: 'Toda a frota' }, ...gruposComFrota.map((g: any) => ({ value: g.id, label: g.name }))]} />}
+        <FilterSheet count={grupo ? 1 : 0}>{gruposComFrota.length > 0 && <Select aria-label="Grupo" className="w-[220px] max-md:w-full" value={grupo} onChange={(e) => setGrupo(e.target.value)}
+          options={[{ value: '', label: 'Toda a frota' }, ...gruposComFrota.map((g: any) => ({ value: g.id, label: g.name }))]} />}</FilterSheet>
       </PageHeader>
       {erro && <p role="status" className="mb-grid text-small text-ink-2">Não foi possível carregar a atividade e a utilização ({erro}). O estado da frota continua ao vivo.</p>}
 

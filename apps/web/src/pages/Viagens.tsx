@@ -5,7 +5,7 @@ import { MapContainer, TileLayer } from 'react-leaflet';
 import { useStore, assetKm } from '../lib/store';
 import { cancelarViagem, criarViagem, removerMatrizViagem, salvarMatrizViagem, useCarregando } from '../lib/localleApi';
 import { registerGate } from '../lib/gate';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, EmptyState, Progress, TabPanel, toast, Check, DescList, DescRow, confirmAction, Grid, Stack, useUrlTab, useIsMobile } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, cx, TextButton, Callout, EmptyState, Progress, TabPanel, toast, Check, DescList, DescRow, confirmAction, Grid, Stack, useUrlTab, useIsMobile, FilterSheet } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { Dropzone } from '../components/Dropzone';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
@@ -230,7 +230,7 @@ function Externas() {
     <>
       <Card title="Viagens externas" icon="viagens" actions={<Button onClick={() => setT({ stops: [], visited: [] })} className="max-md:hidden"><Icon name="mais" size={16} />Nova viagem</Button>}>
         <p className="text-small text-ink-2 mb-3 max-w-[90ch]">A viagem começa ao sair da cerca de origem e passa pela carga, pela descarga e pelo destino. O trecho entre carga e descarga conta como "com carga". Ao concluir, o veículo que continua rodando sem viagem é sinalizado ao monitoramento.</p>
-        <div className="mb-4"><Pills value={flt} onChange={(k) => { setFlt(k); setMore(25); }} options={[{ key: 'abertas', label: 'Abertas' }, { key: 'concluida', label: 'Concluídas' }, { key: 'cancelada', label: 'Canceladas' }]} /></div>
+        <div className="mb-4 empty:hidden"><FilterSheet count={flt !== 'abertas' ? 1 : 0}><Pills value={flt} onChange={(k) => { setFlt(k); setMore(25); }} options={[{ key: 'abertas', label: 'Abertas' }, { key: 'concluida', label: 'Concluídas' }, { key: 'cancelada', label: 'Canceladas' }]} /></FilterSheet></div>
         <Table minWidth={1180} emptyState={<EmptyState illustration="ilu-viagens" layout="row" title="Nenhuma viagem nesta lista" detail="Troque o filtro ou cadastre uma nova viagem." />} head={['Viagem', 'Veículo', 'Carga', 'Etapas', 'Situação', 'Duração', '']} rows={list.slice(0, more).map((x: any) => [
           <span className="font-medium">{x.name || '—'}</span>, <Plate name={N.a(x.assetId)} />, <span className="text-small">{x.cargo || '—'}{x.status === 'em_andamento' && <span className="block text-caption text-ink-2">{isLoaded(x) ? 'com carga' : x.unloadedAt ? 'descarregado' : 'sem carga'}</span>}</span>, <Stepper t={x} />,
           <StatusDot kind={TRIP_DOT[x.status].kind} label={TRIP_DOT[x.status].label} />, x.startedAt ? <span className="num">{hm((x.endedAt || Date.now()) - x.startedAt)}</span> : '—',

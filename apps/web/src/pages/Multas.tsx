@@ -3,7 +3,7 @@ import { opAssets } from '../lib/assetLifecycle';
 import { useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { indicarCondutor, salvarMulta, useCarregando } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, TabPanel, TextButton, Progress, DateInput, Callout, cx, toast, Panel, SearchInput, EmptyState, Stack, Grid, useUrlTab, useUrlItem, useIsMobile } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, Pills, Modal, PageHeader, TabPanel, TextButton, Progress, DateInput, Callout, cx, toast, Panel, SearchInput, EmptyState, Stack, Grid, useUrlTab, useUrlItem, useIsMobile, FilterSheet } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, KpiHero, ChartCard, StatusDot, NeedsList, Num, AssetName, IdChip, type StatusKind } from '../components/story';
@@ -167,7 +167,7 @@ function Lista({ onOpen }: { onOpen: (f: any) => void }) {
   return (
     <Card title="Multas" icon="multas" actions={<Button onClick={() => onOpen(blank())} className="max-md:hidden"><Icon name="mais" size={16} />Lançar multa</Button>}>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <Pills value={flt} onChange={(k) => { setFlt(k); setMore(25); }} options={[{ key: 'indicar', label: 'Indicar condutor' }, { key: 'perdido', label: 'Prazo perdido' }, { key: 'aberta', label: 'Em aberto' }, { key: 'recurso', label: 'Em recurso' }, { key: 'paga', label: 'Pagas' }, { key: 'todas', label: 'Todas' }]} />
+        <FilterSheet count={flt !== 'indicar' ? 1 : 0}><Pills value={flt} onChange={(k) => { setFlt(k); setMore(25); }} options={[{ key: 'indicar', label: 'Indicar condutor' }, { key: 'perdido', label: 'Prazo perdido' }, { key: 'aberta', label: 'Em aberto' }, { key: 'recurso', label: 'Em recurso' }, { key: 'paga', label: 'Pagas' }, { key: 'todas', label: 'Todas' }]} /></FilterSheet>
         <SearchInput className="ml-auto w-full sm:w-72" aria-label="Buscar multa" value={q} onChange={setQ} placeholder="Auto, placa, motorista ou infração" />
       </div>
       <Table minWidth={1120} align={['left', 'left', 'left', 'left', 'right', 'right', 'left', 'left', 'right']}

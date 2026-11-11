@@ -7,7 +7,7 @@ import { gerarPreventivas, removerPlano, salvarOs, salvarPlano, useCarregando } 
 
 // uma geração por vez, mesmo que a tela remonte enquanto as OS ainda estão sendo criadas
 let gerandoPreventivas = false;
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Badge, Tabs, Modal, PageHeader, Textarea, FilePick, EmptyState, ErrorState, Skeleton, Panel, InlineInput, cx, TextButton, toast, confirmAction, Grid, Stack, FormGroup, IconButton, useUrlTab, useUrlItem, LoadingBlock, Missing } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Badge, Tabs, Modal, PageHeader, Textarea, FilePick, EmptyState, ErrorState, Skeleton, Panel, InlineInput, cx, TextButton, toast, confirmAction, Grid, Stack, FormGroup, IconButton, useUrlTab, useUrlItem, LoadingBlock, Missing, FilterSheet } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { planStatus, generateDueOrders, SERVICES, OS_STATUS, CRIT_DEFAULT } from '@localle/shared/maint';
 import { brl, fmtD, fmtDT, num, HOUR, uid, isPlate, sum } from '@localle/shared/utils';
@@ -57,7 +57,7 @@ function ManutencaoLocal() {
         {/* no desktop as abas estão na barra lateral, em cascata */}
         <div className="md:hidden"><Tabs value={tab} onChange={setTab} tabs={TABS} /></div>
         <Button className="ml-auto max-md:hidden" onClick={() => setOs({ isNew: true })}><Icon name="mais" size={18} />Nova OS</Button>
-        {(tab === 'dono' || tab === 'gestor') && <div className="w-44"><Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Frota inteira' }, ...s.groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></div>}
+        {(tab === 'dono' || tab === 'gestor') && <FilterSheet count={grp ? 1 : 0}><div className="w-44"><Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Frota inteira' }, ...s.groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></div></FilterSheet>}
         {isBI && <PeriodCompare value={period} onChange={setPeriod} />}
       </div>
       {carregando ? <LoadingBlock /> : <>
@@ -187,7 +187,7 @@ function OsList({ openOs }: any) {
     <Card>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <Tabs value={st} onChange={setSt} tabs={[{ key: 'abertas', label: 'Em andamento' }, { key: 'concluida', label: 'Concluídas' }, { key: 'todas', label: 'Todas' }]} />
-        <Tabs value={type} onChange={setType} tabs={[{ key: '', label: 'Todos os tipos' }, { key: 'preventiva', label: 'Preventiva' }, { key: 'corretiva', label: 'Corretiva' }]} />
+        <FilterSheet count={type ? 1 : 0}><Tabs value={type} onChange={setType} tabs={[{ key: '', label: 'Todos os tipos' }, { key: 'preventiva', label: 'Preventiva' }, { key: 'corretiva', label: 'Corretiva' }]} /></FilterSheet>
         <span className="ml-auto text-small text-ink-2 num">{list.length} OS</span>
       </div>
       <Table minWidth={860} emptyState={<EmptyState illustration="ilu-manutencao" layout="row" title="Nenhuma OS com esses filtros" detail="Troque a situação ou o tipo, ou abra uma nova OS." />} align={['left', 'left', 'left', 'left', 'left', 'left', 'right']} onRow={(i) => openOs(list[i])} head={['OS', 'Ativo', 'Serviço', 'Tipo', 'Abertura', 'Status', 'Custo']} rows={list.map((w: any) => {
