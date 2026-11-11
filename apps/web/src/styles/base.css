@@ -22,6 +22,9 @@ html { caret-color: var(--ink); scrollbar-color: var(--scroll-thumb) transparent
 :focus-visible { outline: 2px solid var(--focus-outer); outline-offset: 2px; box-shadow: 0 0 0 2px var(--focus-inner); } /* anel duplo */
 a { text-underline-offset: 3px; }
 .link-brand { color: var(--brand-link); text-decoration-line: var(--brand-link-decoration); text-underline-offset: 3px; }
+/* viewport-fit=cover (index.html): em paisagem o notch fica na lateral; o conteúdo sai de baixo dele (a barra lateral fixa
+   desloca junto em Sidebar.tsx). Em pé os recuos laterais valem 0. */
+html { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 .link-brand:hover { text-decoration-line: underline; }
 /* contêineres com padding horizontal: tabelas e listas dentro deles encostam na borda e recuam a 1ª e a última célula
    por --bleed, para o texto alinhar com o título do card (Card, Panel, Modal, FloatingPanel aplicam a classe) */
@@ -164,6 +167,34 @@ html[data-teclado] .dock:not([data-state="open"]) { visibility: hidden; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(0.98); } }
 .toast-in { animation: toast-in var(--t-page) var(--ease-out) both; }
+/* barra inferior recolhida ao rolar para baixo (Revolut, docs/pesquisa-ux/01-home-revolut.md § 3.5 e § 6.1; diretrizes
+   § 9.7): perde os rótulos e encolhe a ~86% (ícone 22 → 19, alvo 54 → 46), com a base no mesmo lugar. A direção da rolagem
+   decide (SidebarDock); com movimento reduzido ela não recolhe. */
+.dock-pill { transform-origin: 50% 100%; }
+.dock-icone { transition: transform 250ms var(--ease-dock); }
+.dock-rotulo { transition: opacity 150ms ease; }
+.dock[data-recolhida]:not([data-state="open"]) .dock-pill { transform: scale(0.86); transition-duration: 250ms; }
+.dock[data-recolhida]:not([data-state="open"]) .dock-icone { transform: translateY(6px); }
+.dock[data-recolhida]:not([data-state="open"]) .dock-rotulo { opacity: 0; }
+/* cabeçalho do celular (Layout): controles de vidro (desfoque, fundo translúcido, borda fina clara) e, com a página rolada,
+   uma faixa de desfoque progressivo atrás deles — o conteúdo borra ao passar por baixo, sem linha de corte (referência do
+   usuário, 11/11/2026). Desfoque em 2 camadas por vez no máximo, fora o vidro dos botões (diretrizes § 7). */
+.vidro { background: color-mix(in srgb, var(--card) 62%, transparent); border: 1px solid color-mix(in srgb, var(--ink) 9%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35); -webkit-backdrop-filter: blur(16px) saturate(1.6); backdrop-filter: blur(16px) saturate(1.6); }
+:root[data-theme="dark"] .vidro { background: color-mix(in srgb, var(--card) 55%, transparent); border-color: rgb(255 255 255 / 0.14); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08); }
+.cabecalho-faixa { position: absolute; inset: 0 0 -28px; pointer-events: none; opacity: 0; transition: opacity 200ms ease;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--canvas) 80%, transparent) 50%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent); }
+[data-rolado] > .cabecalho-faixa { opacity: 1; }
+/* sem desfoque (navegador sem suporte, ou transparência reduzida no aparelho): botões opacos e faixa em degradê sólido */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .vidro { background: var(--card); }
+  .cabecalho-faixa { background: linear-gradient(to bottom, var(--canvas) 70%, transparent); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .vidro { background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .cabecalho-faixa { background: linear-gradient(to bottom, var(--canvas) 70%, transparent); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 .toast-out { animation: toast-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
 /* contador que aumentou por item crítico novo: um pulso só */
 @keyframes pulse-once { 30% { transform: scale(1.2); } 100% { transform: scale(1); box-shadow: 0 0 0 7px transparent; } }

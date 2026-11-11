@@ -64,7 +64,7 @@ export function SidebarProvider({ children, defaultOpen, style, className = '' }
   );
 }
 
-export function Sidebar({ collapsible = 'icon', dock, children }: { collapsible?: 'icon' | 'none'; dock?: { pill: ReactNode; action: ReactNode }; children: ReactNode }) {
+export function Sidebar({ collapsible = 'icon', dock, children }: { collapsible?: 'icon' | 'none'; dock?: { pill: ReactNode; action?: ReactNode }; children: ReactNode }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 
   if (collapsible === 'none') {
@@ -82,7 +82,7 @@ export function Sidebar({ collapsible = 'icon', dock, children }: { collapsible?
       <div data-slot="sidebar-gap" className="relative shrink-0 bg-transparent transition-[width] duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
         style={{ width: state === 'collapsed' ? SIDEBAR_WIDTH_ICON : SIDEBAR_WIDTH }} />
       <div data-slot="sidebar-container" className="fixed inset-y-0 left-0 z-20 hidden h-screen transition-[width] duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none md:flex"
-        style={{ width: state === 'collapsed' ? SIDEBAR_WIDTH_ICON : SIDEBAR_WIDTH }}
+        style={{ width: state === 'collapsed' ? SIDEBAR_WIDTH_ICON : SIDEBAR_WIDTH, left: 'env(safe-area-inset-left, 0px)' /* paisagem: fora do notch */ }}
         onTransitionEnd={(e) => { if (e.target !== e.currentTarget || e.propertyName !== 'width') return; window.dispatchEvent(new Event('resize')); /* Leaflet e gráficos remedem */ }}>
         <div data-slot="sidebar-inner" className="relative flex h-full w-full flex-col bg-card border-r border-line">
           {children}
@@ -140,8 +140,31 @@ function SidebarSheet({ open, onClose, children }: { open: boolean; onClose: () 
 // pílula se recolhe. Fundo transparente só para capturar o toque fora. É diálogo enquanto aberta: Esc, foco preso na
 // gaveta e no botão redondo (que vira Fechar), página de trás sem rolar. Larguras e alturas seguem o Visor: pílula de 62
 // com itens de 54, 20 nas laterais, 24 acima da área segura.
-function SidebarDock({ open, onClose, pill, action, children }: { open: boolean; onClose: () => void; pill: ReactNode; action: ReactNode; children: ReactNode }) {
+function SidebarDock({ open, onClose, pill, action, children }: { open: boolean; onClose: () => void; pill: ReactNode; action?: ReactNode; children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
+  // Recolhe pela direção da rolagem, não pela posição (Revolut, docs/pesquisa-ux/01-home-revolut.md § 6.1): ~60px seguidos
+  // para baixo recolhe; ~40px para cima, ou perto do topo, expande. Atributo escrito direto no DOM (sem render a cada
+  // rolagem). Aberta, com foco de teclado dentro ou com movimento reduzido, fica expandida.
+  useEffect(() => {
+    const el = box.current; if (!el) return;
+    el.removeAttribute('data-recolhida');
+    if (open || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let last = window.scrollY, acc = 0, raf = 0;
+    const apply = () => {
+      raf = 0;
+      const y = window.scrollY, dy = y - last; last = y;
+      if (y < 60) { acc = 0; el.removeAttribute('data-recolhida'); return; }
+      if (dy && Math.sign(dy) !== Math.sign(acc)) acc = 0;
+      acc += dy;
+      if (acc > 60) el.setAttribute('data-recolhida', '');
+      else if (acc < -40) el.removeAttribute('data-recolhida');
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    const onFocus = () => el.removeAttribute('data-recolhida');
+    window.addEventListener('scroll', onScroll, { passive: true });
+    el.addEventListener('focusin', onFocus);
+    return () => { window.removeEventListener('scroll', onScroll); el.removeEventListener('focusin', onFocus); if (raf) cancelAnimationFrame(raf); };
+  }, [open]);
   const drawer = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose); closeRef.current = onClose;
   useScrollLock(open);
@@ -172,7 +195,7 @@ function SidebarDock({ open, onClose, pill, action, children }: { open: boolean;
           </div>
           <div {...(open ? { inert: '' as any } : {})} className="dock-pill dock-glass relative z-10 flex h-[62px] items-center rounded-pill p-1">{pill}</div>
         </div>
-        <div data-dock-action="" className="shrink-0">{action}</div>
+        {action && <div data-dock-action="" className="shrink-0">{action}</div>}
       </div>
     </nav>
   );
@@ -182,7 +205,7 @@ function SidebarDock({ open, onClose, pill, action, children }: { open: boolean;
 export function DockItem({ to, icon, label, active, badge, onClick, expanded }: { to?: string; icon: IconName; label: string; active?: boolean; badge?: ReactNode; onClick?: () => void; expanded?: boolean }) {
   const cls = cx('relative flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 h-[54px] rounded-pill transition-colors duration-150 [-webkit-tap-highlight-color:transparent]',
     active ? 'bg-brand-soft text-brand-link' : 'text-ink-2 active:bg-surface-hover');
-  const inner = <><span className="relative"><Icon name={icon} size={22} />{badge}</span>{/* tela estreita demais para qualquer rótulo (zoom de 200%): só o ícone, o texto fica para o leitor de tela */}<span className="max-w-full truncate px-1 text-[11px] leading-none font-medium max-[300px]:sr-only">{label}</span></>;
+  const inner = <><span className="dock-icone relative"><Icon name={icon} size={22} />{badge}</span>{/* tela estreita demais para qualquer rótulo (zoom de 200%): só o ícone, o texto fica para o leitor de tela */}<span className="dock-rotulo max-w-full truncate px-1 text-[11px] leading-none font-medium max-[300px]:sr-only">{label}</span></>;
   return to
     ? <NavLink to={to} aria-current={active ? 'page' : undefined} className={cls}>{inner}</NavLink>
     : <button type="button" onClick={onClick} aria-expanded={expanded} aria-haspopup="dialog" className={cls}>{inner}</button>;

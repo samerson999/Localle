@@ -2,7 +2,8 @@ import { Suspense, createContext, useContext, useEffect, useLayoutEffect, useRef
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { useNeedsYou } from '../lib/needs';
-import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx, Tooltip, Avatar } from './ui';
+import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx, Tooltip, Avatar, Menu } from './ui';
+import ContaTela, { AvatarVidro } from './ContaTela';
 import { Icon, type IconName } from './icons';
 import { OdometerAsk } from './RemoteBits';
 import { useRastreioSync } from '../lib/rastreioApi';
@@ -10,8 +11,8 @@ import { lerAvatar, logout, syncFrota, syncModulos, useLocalle, useLocalleSync }
 import { useMaintJobs } from '../lib/maintJobs';
 import NeedsPanel from './NeedsPanel';
 import { canSeeFleet, endSupport, homeOf } from '../lib/support';
-import { fmtT } from '@localle/shared/utils';
 import { paginaLiberada } from '../lib/paginas';
+import { fmtT } from '@localle/shared/utils';
 import CommandPalette, { isMac } from './CommandPalette';
 import simboloLocalle from '../images/localle-simbolo.png';
 import simbolo3d from '../images/localle-simbolo-3d.webp';
@@ -150,28 +151,19 @@ function LayoutBody() {
   const [panel, setPanel] = useState(false);
   const [mobileAction, setMobileAction] = useState<MobileAction | null>(null);
   const [mobileFilter, setMobileFilter] = useState<{ count: number; onOpen: () => void } | null>(null);
-  // título grande → compacto ao rolar (item 5, docs/PLANO-MOBILE.md): só no mobile, escreve opacity/
-  // transform direto nos elementos via rAF — não é estado do React, rolar não pode disparar re-render
-  // a cada pixel. Reduced motion: pula direto para o estado final (sem a transição contínua).
-  const titleLgRef = useRef<HTMLHeadingElement>(null);
-  const titleSmRef = useRef<HTMLSpanElement>(null);
+  // cabeçalho do celular: com a página rolada, a faixa de desfoque aparece atrás dos controles (data-rolado, escrito direto no
+  // DOM via rAF — rolar não dispara render do React)
+  const cabRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!isMobile) return;
-    const COLLAPSE_PX = 36;
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let raf = 0;
-    const apply = () => {
-      raf = 0;
-      const t = reduce ? (window.scrollY > 0 ? 1 : 0) : Math.min(1, Math.max(0, window.scrollY / COLLAPSE_PX));
-      const lg = titleLgRef.current, sm = titleSmRef.current;
-      if (lg) { lg.style.opacity = String(1 - t); lg.style.transform = `translateY(${t * -6}px)`; }
-      if (sm) { sm.style.opacity = String(t); sm.style.transform = `translateY(${(1 - t) * 6}px)`; }
-    };
+    const apply = () => { raf = 0; cabRef.current?.toggleAttribute('data-rolado', window.scrollY > 4); };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
     apply();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
   }, [isMobile, loc.pathname]);
+  const [conta, setConta] = useState(false);
   // largura do botão flutuante "Precisa de você": o cabeçalho da página reserva esse espaço à direita (--top-reserve)
   // para ficar na mesma linha dele sem ser coberto
   const needsBtn = useRef<HTMLButtonElement>(null);
@@ -192,7 +184,7 @@ function LayoutBody() {
 
   useRastreioSync();
   useLocalleSync();
-  useEffect(() => { setOpenMobile(false); setHelp(false); window.scrollTo(0, 0); }, [loc.pathname]);
+  useEffect(() => { setOpenMobile(false); setHelp(false); setConta(false); window.scrollTo(0, 0); }, [loc.pathname]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmdk((x) => !x); } };
     document.addEventListener('keydown', k);
@@ -270,13 +262,14 @@ function LayoutBody() {
     {atalhos.slice(2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
     <DockItem icon="menu" label="Mais" active={!noAtalho} onClick={() => setOpenMobile(true)} expanded={openMobile} />
   </>;
-  // botão redondo: Buscar com o menu fechado; Fechar com ele aberto (a pílula se recolhe e o "Mais" some)
-  const dockAction = (
-    <button type="button" onClick={() => (openMobile ? setOpenMobile(false) : setCmdk(true))} aria-label={openMobile ? 'Fechar menu' : 'Buscar'}
+  // botão redondo: só Fechar, com o menu aberto (a pílula se recolhe e o "Mais" some). A busca mora no cabeçalho
+  // (11/11/2026); com o menu fechado a pílula ocupa a largura toda.
+  const dockAction = openMobile ? (
+    <button type="button" onClick={() => setOpenMobile(false)} aria-label="Fechar menu"
       className="dock-glass size-[62px] rounded-pill flex items-center justify-center text-ink transition-transform duration-150 active:scale-95 [-webkit-tap-highlight-color:transparent]">
-      <Icon name={openMobile ? 'fechar' : 'busca'} size={22} />
+      <Icon name="fechar" size={22} />
     </button>
-  );
+  ) : null;
 
   // menu recolhido: o nome some e vira dica à direita
   const footBtn = ({ icon, label, onClick, children, expanded }: { icon: IconName; label: string; onClick: () => void; children?: ReactNode; expanded?: boolean }) => (
@@ -353,31 +346,52 @@ function LayoutBody() {
       </Sidebar>
       <SidebarInset>
         <div style={{ ['--top-reserve' as any]: reserve && !session.support ? `calc(${reserve}px + var(--gap-grid))` : '0px' }} className="flex flex-col flex-1 min-w-0">
-          {/* celular: cabeçalho único, no padrão "clean e adaptável" do Visor — título grande à esquerda
-              (o nome da seção já identifica a tela, dispensa repetir a logo: ela segue acessível no
-              menu "Mais") e a ação de criar à direita, mesmo lugar em toda tela que tiver uma. Item 1+4
-              de docs/PLANO-MOBILE.md fundidos num só cabeçalho em vez de barra pequena + título abaixo.
-              O título grande esmaece/sobe e um título pequeno centralizado some/desce no lugar dele
-              conforme rola (item 5) — só opacity/transform, escritos direto no DOM via rAF (useEffect
-              abaixo), sem re-render do React a cada pixel de scroll. */}
-          <div className="md:hidden no-print sticky top-0 z-[800] flex items-center gap-3 px-page h-16 bg-canvas overflow-hidden">
-            <div className="relative flex-1 min-w-0 self-stretch">
-              <h1 ref={titleLgRef} className="absolute inset-y-0 left-0 right-0 flex items-center text-h2 font-semibold truncate">{atual?.label ?? rev.branding.name}</h1>
-              <span ref={titleSmRef} aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-body font-semibold truncate opacity-0 pointer-events-none">{atual?.label ?? rev.branding.name}</span>
+          {/* celular: cabeçalho fixo no molde da Revolut (docs/pesquisa-ux/01-home-revolut.md § 3.1 e § 6.1; decisões de
+              11/11/2026). Avatar (abre a conta) · busca em cápsula (abre a busca) · alerta com contador · ações da tela. Não
+              some nem muda de tamanho ao rolar: o conteúdo passa por trás, e a faixa de desfoque aparece (data-rolado).
+              Sem título visível — o item ativo da barra inferior diz onde se está; o h1 fica para o leitor de tela.
+              Ações da tela (useMobilePageAction e o filtro do FilterSheet): uma só é o próprio círculo; as duas, um
+              círculo de "mais opções" com Filtrar e Criar. */}
+          <div ref={cabRef} className="md:hidden no-print sticky top-0 z-[800] px-page pt-[calc(env(safe-area-inset-top,0px)+10px)] pb-2.5">
+            <div aria-hidden="true" className="cabecalho-faixa" />
+            <h1 className="sr-only">{atual?.label ?? rev.branding.name}</h1>
+            <div className="relative flex items-center gap-2">
+              <button type="button" aria-label="Conta" aria-haspopup="dialog" aria-expanded={conta} onClick={() => setConta(true)}
+                className="shrink-0 rounded-pill transition-transform duration-150 active:scale-[0.96] motion-reduce:active:scale-100">
+                <AvatarVidro nome={session.name} foto={session.avatar} />
+              </button>
+              <button type="button" onClick={() => setCmdk(true)}
+                className="vidro flex-1 min-w-0 h-11 rounded-pill flex items-center gap-2 pl-3.5 pr-4 text-body text-ink-2 transition-transform duration-150 active:scale-[0.98] motion-reduce:active:scale-100">
+                <Icon name="busca" size={20} className="shrink-0 text-ink" /><span className="truncate">Pesquisar</span>
+              </button>
+              {fleet && (
+                <button type="button" onClick={() => setPanel(true)} aria-haspopup="dialog" aria-expanded={panel} aria-label={`Precisa de você: ${needs.length} ${needs.length === 1 ? 'alerta crítico' : 'alertas críticos'}`}
+                  className="vidro relative size-11 shrink-0 rounded-pill grid place-items-center text-ink transition-transform duration-150 active:scale-[0.96] motion-reduce:active:scale-100">
+                  <Icon name="atencao" size={20} />
+                  {needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute -top-1 -right-1" />}
+                </button>
+              )}
+              {mobileFilter && mobileAction ? (
+                <Menu label="Ações da tela" items={[
+                  { label: mobileFilter.count ? `Filtrar (${mobileFilter.count})` : 'Filtrar', icon: 'filtro', onClick: mobileFilter.onOpen },
+                  { label: mobileAction.label, icon: mobileAction.icon ?? 'mais', onClick: mobileAction.onClick },
+                ]} trigger={({ ref, open, toggle }) => (
+                  <button ref={ref} type="button" aria-label="Ações da tela" aria-haspopup="menu" aria-expanded={open} onClick={(e) => { e.stopPropagation(); toggle(); }} className="vidro relative size-11 shrink-0 rounded-pill grid place-items-center text-ink transition-transform duration-150 active:scale-[0.96] motion-reduce:active:scale-100">
+                    <Icon name="mais-opcoes" size={20} />
+                    {mobileFilter.count > 0 && <span aria-hidden="true" className="absolute top-1.5 right-1.5 w-2 h-2 rounded-pill bg-brand-fill" />}
+                  </button>
+                )} />
+              ) : mobileFilter ? (
+                <button type="button" aria-label={`Filtros${mobileFilter.count ? `, ${mobileFilter.count} ativos` : ''}`} onClick={mobileFilter.onOpen} className="vidro relative size-11 shrink-0 rounded-pill grid place-items-center text-ink transition-transform duration-150 active:scale-[0.96] motion-reduce:active:scale-100">
+                  <Icon name="filtro" size={20} />
+                  {mobileFilter.count > 0 && <span aria-hidden="true" className="absolute top-1.5 right-1.5 w-2 h-2 rounded-pill bg-brand-fill" />}
+                </button>
+              ) : mobileAction ? (
+                <button type="button" aria-label={mobileAction.label} onClick={mobileAction.onClick} className="vidro relative size-11 shrink-0 rounded-pill grid place-items-center text-ink transition-transform duration-150 active:scale-[0.96] motion-reduce:active:scale-100">
+                  <Icon name={mobileAction.icon ?? 'mais'} size={20} />
+                </button>
+              ) : null}
             </div>
-            {mobileFilter && (
-              <button type="button" aria-label={`Filtros${mobileFilter.count ? `, ${mobileFilter.count} ativos` : ''}`} onClick={mobileFilter.onOpen}
-                className="relative w-11 h-11 shrink-0 rounded-btn text-ink-2 flex items-center justify-center transition-transform duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:text-ink hover:bg-card-2">
-                <Icon name="filtro" size={20} />
-                {mobileFilter.count > 0 && <span aria-hidden="true" className="absolute top-2 right-2 w-2 h-2 rounded-pill bg-brand-fill" />}
-              </button>
-            )}
-            {mobileAction && (
-              <button type="button" aria-label={mobileAction.label} onClick={mobileAction.onClick}
-                className="w-11 h-11 shrink-0 rounded-btn bg-brand-fill text-brand-fill-ink flex items-center justify-center transition-transform duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-brand-fill-hover">
-                <Icon name={mobileAction.icon ?? 'mais'} size={18} />
-              </button>
-            )}
           </div>
           {/* desktop: "Precisa de você" fica no topo à direita, na mesma linha do cabeçalho da página (que reserva a largura dele
               por --top-reserve). Com a faixa de suporte aberta, volta a ocupar uma linha própria acima dela. Não acompanha o scroll. */}
@@ -394,7 +408,7 @@ function LayoutBody() {
           )}
           {/* faixas fixas sob a barra: suporte e falha de backend empilham num contêiner só (cada uma sticky por conta
               própria parava no mesmo top e uma cobria a outra) */}
-          <div className="no-print sticky max-md:top-16 md:top-14 z-[30] flex flex-col">
+          <div className="no-print sticky max-md:top-[calc(env(safe-area-inset-top,0px)+64px)] md:top-14 z-[30] flex flex-col">
           {session.support && (
             <div role="status" className="flex flex-wrap items-center gap-x-stack gap-y-hair px-page md:px-page-md py-tight bg-ink text-on-dark text-small">
               <Icon name="cadeado" size={16} className="shrink-0" /><span className="mr-auto">Acesso de suporte a <b>{session.support.client}</b> desde {fmtT(session.support.at)} · {session.support.reason}</span>
@@ -409,6 +423,7 @@ function LayoutBody() {
       </SidebarInset>
       <NeedsPanel open={panel} onClose={() => setPanel(false)} anchor={needsBtn.current} />
       <CommandPalette open={cmdk} onClose={() => setCmdk(false)} modules={mods} />
+      <ContaTela open={conta} onClose={() => setConta(false)} />
     </div>
     </MobileFilterCtx.Provider>
     </MobileActionCtx.Provider>
