@@ -4,9 +4,9 @@ import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, EmptyState, Stack, Grid, Panel, PageHeader, toast } from '../components/ui';
-import { TILE, ATTR, Address } from '../components/MapBits';
+import { TILE, ATTR, Address, pinIcon } from '../components/MapBits';
 import { AssetName } from '../components/story';
-import { Icon } from '../components/icons';
+import { Icon, type IconName } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { speedLegs } from '@localle/shared/speedStats';
 import { csv, xlsx, pdf, pdfFileName, fmtCoord } from '../lib/reportExport';
@@ -146,7 +146,7 @@ export default function RelatorioVelocidade() {
               const pico = trechos.find((x: any) => x.a.id === a.id && x.leg.vmax === vmax);
               if (!pico) return null;
               return (
-                <Marker key={a.id} position={pico.leg.maxPos}>
+                <Marker key={a.id} position={pico.leg.maxPos} icon={pinIcon()}>
                   <Popup>
                     <strong>{a.name}</strong><br />{Math.round(vmax)} km/h<br />{n} {n === 1 ? 'trecho' : 'trechos'}
                   </Popup>
@@ -185,7 +185,7 @@ export default function RelatorioVelocidade() {
   );
 }
 
-function StatTile({ icon, value, label, sub }: { icon: string; value: React.ReactNode; label: string; sub: string }) {
+function StatTile({ icon, value, label, sub }: { icon: IconName; value: React.ReactNode; label: string; sub: string }) {
   return (
     <Card dense>
       <div className="flex items-center gap-stack">

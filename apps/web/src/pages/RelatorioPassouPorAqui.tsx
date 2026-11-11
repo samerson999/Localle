@@ -4,9 +4,9 @@ import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, EmptyState, Stack, Grid, Panel, PageHeader, toast } from '../components/ui';
-import { TILE, ATTR, Address } from '../components/MapBits';
+import { TILE, ATTR, Address, pinIcon } from '../components/MapBits';
 import { AssetName } from '../components/story';
-import { Icon } from '../components/icons';
+import { Icon, type IconName } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { nearbyPasses } from '@localle/shared/nearbyStats';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
@@ -149,7 +149,7 @@ export default function RelatorioPassouPorAqui() {
             <TileLayer url={TILE} attribution={ATTR} keepBuffer={6} updateWhenZooming={false} />
             <Clicks onClick={setCentro} />
             {centro && <>
-              <Marker position={centro} />
+              <Marker position={centro} icon={pinIcon()} />
               <Circle center={centro} radius={raio} pathOptions={{ color: 'var(--real)' }} />
             </>}
           </MapContainer>
@@ -184,7 +184,7 @@ export default function RelatorioPassouPorAqui() {
   );
 }
 
-function StatTile({ icon, value, label, sub }: { icon: string; value: React.ReactNode; label: string; sub: string }) {
+function StatTile({ icon, value, label, sub }: { icon: IconName; value: React.ReactNode; label: string; sub: string }) {
   return (
     <Card dense>
       <div className="flex items-center gap-stack">

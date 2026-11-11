@@ -3,14 +3,14 @@ import { opAssets } from '../lib/assetLifecycle';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { cx, usePresence, useScrollLock, EmptyState } from './ui';
 import { Plate } from './story';
 
 export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const norm = (x: string) => (x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-export default function CommandPalette({ open, onClose, modules }: { open: boolean; onClose: () => void; modules: { key: string; label: string; to: string; icon: string }[] }) {
+export default function CommandPalette({ open, onClose, modules }: { open: boolean; onClose: () => void; modules: { key: string; label: string; to: string; icon: IconName }[] }) {
   const nav = useNavigate();
   const assets = useStore((s) => opAssets(s));
   const drivers = useStore((s) => s.drivers);

@@ -4,9 +4,9 @@ import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { useStore, useStoreData } from '../lib/store';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, EmptyState, Stack, Grid, Panel, PageHeader, toast } from '../components/ui';
-import { FenceShapes, TILE, ATTR, Address } from '../components/MapBits';
+import { FenceShapes, TILE, ATTR, Address, pinIcon } from '../components/MapBits';
 import { AssetName, StatusDot } from '../components/story';
-import { Icon } from '../components/icons';
+import { Icon, type IconName } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { fencePassages, stayMs, GAP_MIN } from '@localle/shared/fenceStats';
 import { csv, xlsx, pdf, pdfFileName, fmtCoord } from '../lib/reportExport';
@@ -148,7 +148,7 @@ export default function RelatorioCercas() {
               const last = passagens.find((x: any) => x.a.id === a.id);
               if (!last) return null;
               return (
-                <Marker key={a.id} position={last.p.enterPos}>
+                <Marker key={a.id} position={last.p.enterPos} icon={pinIcon()}>
                   <Popup>
                     <strong>{last.fe.name}</strong><br />{n} {n === 1 ? 'passagem' : 'passagens'}<br />{hm(ms)}
                   </Popup>
@@ -187,7 +187,7 @@ export default function RelatorioCercas() {
   );
 }
 
-function StatTile({ icon, value, label, sub }: { icon: string; value: React.ReactNode; label: string; sub: string }) {
+function StatTile({ icon, value, label, sub }: { icon: IconName; value: React.ReactNode; label: string; sub: string }) {
   return (
     <Card dense>
       <div className="flex items-center gap-stack">

@@ -10,7 +10,7 @@ import { availability, availabilityWeeks, availabilitySentence, waterfallSentenc
 import { OS_STATUS } from '@localle/shared/maint';
 import { Button, Badge, Card, Tabs, Pills, PageHeader, Table, Skeleton, EmptyState, ErrorState, Input, Select, Stat, cx, Grid, PageBody } from '../components/ui';
 import { Icon, ICON_NAMES } from '../components/icons';
-import { Num, IdChip, Plate, DeltaChip, StatusDot, KpiHero, NeedsList, PatternCard, Timeline, ChartCard, PeriodButton, ActionButton, statusKind, type LoadState } from '../components/story';
+import { Num, IdChip, Plate, DeltaChip, StatusDot, KpiHero, NeedsList, PatternCard, Timeline, ChartCard, PeriodButton, ActionButton, statusKind, type LoadState, type NeedRow } from '../components/story';
 import { ColumnChart, Waterfall, HeatMatrix, DotMatrix, EstVsReal, ChartLegend } from '../components/charts';
 import { BrandMark } from '../components/Layout';
 import { SpacingRules } from './DesignSpacing';
@@ -88,7 +88,7 @@ export default function Design() {
   const nameOf = (id: string) => s.assets.find((a: any) => a.id === id)?.name || '';
 
   // mesma lista do painel "Precisa de você" (o número bate com o contador da sidebar)
-  const needItems = needs.map((n) => ({ id: n.id, icon: n.kind === 'pneu' ? 'pneus' : n.kind === 'veiculo' ? 'alerta' : 'manutencao', tone: 'crit' as const, title: n.title, context: n.detail, to: n.to }));
+  const needItems = needs.map((n): NeedRow => ({ id: n.id, icon: n.kind === 'pneu' ? 'pneus' : n.kind === 'veiculo' ? 'alerta' : 'manutencao', tone: 'crit' as const, title: n.title, context: n.detail, to: n.to }));
   const vehicles = s.assets.filter((a: any) => s.vehicles[a.id]).slice(0, 5);
 
   const tableBlock = st === 'loading' ? <div className="flex flex-col gap-3">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-9 w-full" />)}</div>

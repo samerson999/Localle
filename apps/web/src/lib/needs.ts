@@ -7,6 +7,7 @@ import { useStoreData } from './store';
 import { planStatus } from '@localle/shared/maint';
 import { tireStats } from '@localle/shared/pneus';
 import { useCriticalMap } from './critical';
+import type { IconName } from '../components/icons';
 import { maintNeeds } from '@localle/shared/insights';
 import { indicationState, indicationDue, notifiedEstimated } from '@localle/shared/fines';
 import { docState, docLabel, docWhen, DRIVER_DOC_PARAMS } from '@localle/shared/assetDocs';
@@ -38,7 +39,7 @@ export function useNeedsYou(): NeedItem[] {
 }
 
 // Tipos de "Precisa de você": rótulo e ícone (mesmos no painel do topo e na central)
-export const NEED_KINDS: { kind: NeedItem['kind']; label: string; icon: string }[] = [
+export const NEED_KINDS: { kind: NeedItem['kind']; label: string; icon: IconName }[] = [
   { kind: 'veiculo', label: 'Veículos', icon: 'alerta' },
   { kind: 'os', label: 'Manutenção', icon: 'manutencao' },
   { kind: 'pneu', label: 'Pneus', icon: 'pneus' },

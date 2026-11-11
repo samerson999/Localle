@@ -85,16 +85,16 @@ export default function Rastreadores() {
   // vista e o resto vai para o menu (até 6 links quebrando em 3 linhas abafavam o próprio rastreador)
   const acoesDe = (r: AdminRastreador): MenuItem[] => {
     const s = situacao(r);
-    if (s === 'desativado') return !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir', danger: true, onClick: () => excluir(r) }] : [];
+    if (s === 'desativado') return !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir' as const, danger: true, onClick: () => excluir(r) }] : [];
     return [
       { label: 'Diagnóstico', icon: 'sinal', onClick: () => setDiagnosticando({ r }) },
       r.sim_card_id
-        ? { label: 'Desvincular chip', icon: 'link', danger: true, onClick: async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); } }
+        ? { label: 'Desvincular chip', icon: 'link' as const, danger: true, onClick: async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); } }
         : { label: 'Vincular chip', icon: 'link', onClick: () => setVinculando(r) },
-      ...(s === 'instalado' ? [{ label: 'Desinstalar', icon: 'ativos', onClick: () => desinstalar(r) }] : []),
-      ...(s === 'vinculado' ? [{ label: 'Desvincular do cliente', icon: 'revenda', danger: true, onClick: () => desvincular(r) }] : []),
-      ...(s === 'estoque' ? [{ label: 'Vincular a cliente', icon: 'revenda', onClick: () => setAoCliente(r) }, { label: 'Desativar', icon: 'cadeado', danger: true, onClick: () => desativar(r) }] : []),
-      ...(s === 'estoque' && !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir', danger: true, onClick: () => excluir(r) }] : []),
+      ...(s === 'instalado' ? [{ label: 'Desinstalar', icon: 'ativos' as const, onClick: () => desinstalar(r) }] : []),
+      ...(s === 'vinculado' ? [{ label: 'Desvincular do cliente', icon: 'revenda' as const, danger: true, onClick: () => desvincular(r) }] : []),
+      ...(s === 'estoque' ? [{ label: 'Vincular a cliente', icon: 'revenda' as const, onClick: () => setAoCliente(r) }, { label: 'Desativar', icon: 'cadeado' as const, danger: true, onClick: () => desativar(r) }] : []),
+      ...(s === 'estoque' && !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir' as const, danger: true, onClick: () => excluir(r) }] : []),
     ];
   };
   const excluirModelo = async (m: AdminRastreadorModelo) => {
@@ -132,6 +132,7 @@ export default function Rastreadores() {
             </div>
             <Table minWidth={1100} loading={loading && !data} align={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
               head={['IMEI', 'Modelo / protocolo', 'Chip', 'Cliente e ativo', 'Situação', 'Último sinal', '']}
+              sort={{ 0: (i) => list[i].imei, 3: (i) => list[i].client_name, 4: (i) => SIT_BADGE[situacao(list[i])].label, 5: (i) => (list[i].ultimo_pacote_em ? Date.parse(list[i].ultimo_pacote_em!) : null) }}
               emptyState={<EmptyState illustration="ilu-rastreador" title="Nenhum rastreador cadastrado" action={<Button onClick={() => setModal('rastreador')}>Cadastrar rastreador</Button>} />}
               card={(i) => {
                 const r = list[i], s = situacao(r), acoes = acoesDe(r);
@@ -775,7 +776,7 @@ function VincularModal({ rastreador, chips, onClose, onDone }: { rastreador: Adm
   return (
     <Modal open onClose={onClose} title={`Vincular chip · ${rastreador.imei}`} width="max-w-md" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!chipId} onClick={submit}>Vincular</Button></>}>
       {chips.length
-        ? <Field label="Chip livre"><Select value={chipId} onChange={(e) => setChipId(e.target.value)} options={chips.map((c) => ({ value: c.id, label: `${c.operadora || 'Sem operadora'} · ${c.iccid}` }))} /></Field>
+        ? <Field label="Chip livre" hint="Digite qualquer parte do ICCID, como os últimos dígitos, ou a operadora."><SearchSelect aria-label="Chip livre" value={chipId} onChange={setChipId} placeholder="Buscar ICCID ou operadora" emptyLabel="Nenhum chip livre com esse número" options={chips.map((c) => ({ value: c.id, label: c.iccid, sub: c.operadora || 'Sem operadora' }))} /></Field>
         : <p className="text-small text-ink-2">Nenhum chip livre. Cadastre um chip primeiro.</p>}
     </Modal>
   );

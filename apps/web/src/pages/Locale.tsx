@@ -6,7 +6,7 @@ import { Donut, CompareBars, RankBars } from '../components/charts';
 import { ChartCard, KpiTile, Num } from '../components/story';
 import { Card, PageHeader, PageBody, Section, Grid, EmptyState, List, ListItem, Callout } from '../components/ui';
 import SupportAccess from '../components/SupportAccess';
-import { Icon } from '../components/icons';
+import { Icon, type IconName } from '../components/icons';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery } from '../lib/localleApi';
 import { CHIP_COST, INFRA_COST, custoDoMes } from '@localle/shared/platformOverview';
@@ -47,12 +47,12 @@ export default function Locale() {
   const fleetRank = data.frotaPorCliente.slice(0, 8).map((f) => ({ label: f.clientName, value: f.veiculos }));
   const atraso = data.inadimplentes.reduce((a, i) => a + i.emAberto, 0);
 
-  const needs = [
+  const needs = ([
     { icon: 'relogio', show: data.inadimplentes.length > 0, title: `${data.inadimplentes.length} faturas em atraso`, detail: `${money(atraso)} em aberto · ${data.inadimplentes.slice(0, 3).map((i) => `${i.clientName} (${i.diasAtraso} d)`).join(', ')}` },
     { icon: 'calendario', show: data.contratosVencendo.length > 0, title: `${data.contratosVencendo.length} contratos vencendo em 60 dias`, detail: data.contratosVencendo.slice(0, 3).map((c) => `${c.clientName} em ${fmtD(Date.parse(`${c.fimEm}T12:00:00`))}`).join(', ') },
     { icon: 'sinal', show: data.rastreadoresSemSinal24h > 0, title: `${data.rastreadoresSemSinal24h} rastreadores instalados sem sinal há mais de 24 h`, detail: 'Verificar equipamento e chip em Rastreadores e chips' },
     { icon: 'manutencao', show: data.aRecolher.length > 0, title: `${data.aRecolher.length} equipamentos a recolher`, detail: `Instalados em clientes com contrato cancelado: ${data.aRecolher.slice(0, 3).map((r) => `${r.placa} (${r.clientName})`).join(', ')}` },
-  ].filter((n) => n.show);
+  ] satisfies { icon: IconName; show: boolean; title: string; detail: string }[]).filter((n) => n.show);
 
   return (
     <div>

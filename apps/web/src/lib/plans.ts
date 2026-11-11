@@ -2,8 +2,9 @@
 // Versões: editar um plano grava uma versão nova; clientes já contratados continuam na versão em que entraram
 // até serem migrados de propósito (nenhuma tela de Clientes lê isso ainda — é só o catálogo por enquanto).
 import { uid } from '@localle/shared/utils';
+import type { IconName } from '../components/icons';
 
-export interface PlanModuleDef { key: string; name: string; icon: string }
+export interface PlanModuleDef { key: string; name: string; icon: IconName }
 export const MODULES: PlanModuleDef[] = [
   { key: 'monitoramento', name: 'Monitoramento', icon: 'monitoramento' },
   { key: 'ativos', name: 'Ativos', icon: 'ativos' },

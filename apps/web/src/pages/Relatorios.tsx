@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Table, EmptyState, ErrorState, Stack, Grid, PageHeader } from '../components/ui';
 import { listarRelatoriosGerados, useAdminQuery, type TipoRelatorio } from '../lib/localleApi';
 import { fmtDT, num } from '@localle/shared/utils';
-import { Icon } from '../components/icons';
+import { Icon, type IconName } from '../components/icons';
 import imgCerca from '../images/images-relatorios/cerca.png';
 import imgVelocidade from '../images/images-relatorios/velocidade.png';
 import imgPosicoes from '../images/images-relatorios/posições.png';
@@ -14,7 +14,7 @@ import imgPassouPorAquiWeb from '../images/images-relatorios/web/passou-por-aqui
 
 // Relatórios: hub com um atalho por tipo de relatório. Período, filtros e geração ficam
 // na tela específica de cada tipo.
-const TIPOS: { tipo: TipoRelatorio; icon: string; title: string; detail: string; img: string; webp: string; path: string }[] = [
+const TIPOS: { tipo: TipoRelatorio; icon: IconName; title: string; detail: string; img: string; webp: string; path: string }[] = [
   { tipo: 'cercas', icon: 'cerca', title: 'Cercas', detail: 'Veja as passagens da frota pelas cercas definidas e o tempo de permanência.', img: imgCerca, webp: imgCercaWeb, path: '/relatorios/cercas' },
   { tipo: 'velocidade', icon: 'velocimetro', title: 'Velocidade', detail: 'Identifique excessos de velocidade e analise os trechos mais críticos.', img: imgVelocidade, webp: imgVelocidadeWeb, path: '/relatorios/velocidade' },
   { tipo: 'posicoes', icon: 'rota', title: 'Posições', detail: 'Consulte o histórico de posições detalhado da sua frota.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/posicoes' },

@@ -7,7 +7,7 @@ import { useStore, useStoreData } from '../lib/store';
 import { isRealAsset, useRelatorioApi, registrarRelatorio } from '../lib/localleApi';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, EmptyState, Stack, Grid, Panel, PageHeader, toast } from '../components/ui';
 import { AssetName } from '../components/story';
-import { Icon } from '../components/icons';
+import { Icon, type IconName } from '../components/icons';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
 
@@ -133,7 +133,7 @@ export default function RelatorioUso() {
   );
 }
 
-function StatTile({ icon, value, label, sub }: { icon: string; value: React.ReactNode; label: string; sub: string }) {
+function StatTile({ icon, value, label, sub }: { icon: IconName; value: React.ReactNode; label: string; sub: string }) {
   return (
     <Card dense>
       <div className="flex items-center gap-stack">

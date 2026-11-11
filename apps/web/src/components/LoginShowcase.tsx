@@ -1,11 +1,5 @@
 import { useId, useState, type CSSProperties, type ReactNode } from 'react';
-import IconVelocidade from '~icons/solar/speedometer-middle-bold-duotone';
-import IconCerca from '~icons/solar/map-point-remove-bold-duotone';
-import IconParada from '~icons/solar/stop-circle-bold-duotone';
-import IconPosto from '~icons/solar/gas-station-bold-duotone';
-import IconOficina from '~icons/solar/toolbox-bold-duotone';
-import IconMulta from '~icons/solar/ticket-bold-duotone';
-import IconPneu from '~icons/solar/wheel-bold-duotone';
+import { Icon } from './icons';
 import iluTelemetria from '../images/ilustracoes/web/ilu-telemetria-hero.webp';
 import iluRastreador from '../images/ilustracoes/web/ilu-rastreador-hero.webp';
 import iluErro from '../images/ilustracoes/web/ilu-erro-hero.webp';
@@ -137,9 +131,9 @@ function ArteMapa() {
 // "Tratar" do mais novo é pressionado em 1600 e vira "Tratado" em 1700 · contador 1→2→3→2 · escudo 1850
 function ArteAlertas() {
   const cards = [
-    { cls: 'a', Icone: IconParada, titulo: 'Parada fora da rota' },
-    { cls: 'b', Icone: IconCerca, titulo: 'Saída de cerca' },
-    { cls: 'c', Icone: IconVelocidade, titulo: 'Excesso de velocidade' },
+    { cls: 'a', icone: 'parada' as const, titulo: 'Parada fora da rota' },
+    { cls: 'b', icone: 'saida-cerca' as const, titulo: 'Saída de cerca' },
+    { cls: 'c', icone: 'velocimetro' as const, titulo: 'Excesso de velocidade' },
   ];
   return <>
     <div className="login-painel">
@@ -148,9 +142,9 @@ function ArteAlertas() {
         <span className="login-contador"><span className="login-contador-fita"><b>1</b><b>2</b><b>3</b></span></span>
       </div>
       <div className="login-lista">
-        {cards.map(({ cls, Icone, titulo }) => (
+        {cards.map(({ cls, icone, titulo }) => (
           <div key={cls} className={`login-alerta ${cls}`}>
-            <span className="login-alerta-icone"><Icone /></span>
+            <span className="login-alerta-icone"><Icon name={icone} /></span>
             <span className="login-alerta-texto"><b>{titulo}</b><span>Veículo da frota · agora</span></span>
             {cls === 'c'
               ? <span className="login-alerta-acao login-tratar"><span className="login-tratar-a">Tratar</span><span className="login-tratar-b">Tratado</span></span>
@@ -170,10 +164,10 @@ function ArteAlertas() {
 // Tempos (ms): linhas 150 + 60/linha · barras crescem 300 + 45/linha · voos 850 + 90/linha, 520 cada · check 1700
 const CUSTO = { W: 36, linha: 9.5, barraTopo: 1.7, totalTopo: 41.5, voo: 850, passo: 90, duracaoVoo: 520 };
 const CATEGORIAS = [
-  { Icone: IconPosto, nome: 'Combustível', p: 0.86, fill: 'fill-cat-1' },
-  { Icone: IconOficina, nome: 'Manutenção', p: 0.58, fill: 'fill-cat-2' },
-  { Icone: IconMulta, nome: 'Multas', p: 0.34, fill: 'fill-cat-3' },
-  { Icone: IconPneu, nome: 'Pneus', p: 0.44, fill: 'fill-cat-4' },
+  { icone: 'combustivel' as const, nome: 'Combustível', p: 0.86, fill: 'fill-cat-1' },
+  { icone: 'manutencao' as const, nome: 'Manutenção', p: 0.58, fill: 'fill-cat-2' },
+  { icone: 'multas' as const, nome: 'Multas', p: 0.34, fill: 'fill-cat-3' },
+  { icone: 'pneus' as const, nome: 'Pneus', p: 0.44, fill: 'fill-cat-4' },
 ];
 
 function ArteCustos() {
@@ -189,9 +183,9 @@ function ArteCustos() {
     <div className="login-custos" style={v({ '--W': CUSTO.W + 'cqw', '--s': String(1 / S), '--voo-dur': CUSTO.duracaoVoo + 'ms' })}>
       <div className="login-painel-topo"><span>Custo do mês</span></div>
       <div className="login-custos-linhas">
-        {linhas.map(({ Icone, nome, p, fill, k, dx, dy, voo }) => (
+        {linhas.map(({ icone, nome, p, fill, k, dx, dy, voo }) => (
           <div key={nome} className="login-custo" style={v({ top: k * CUSTO.linha + 'cqw', '--k': String(k), '--p': String(p), '--dx': dx + 'cqw', '--dy': dy + 'cqw', '--voo': voo + 'ms' })}>
-            <span className="login-custo-icone"><Icone /></span>
+            <span className="login-custo-icone"><Icon name={icone} /></span>
             <span className="login-custo-nome">{nome}</span>
             <span className={`login-custo-barra ${fill}`} />
             <span className={`login-custo-voo ${fill}`} />

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import IconCadeado from '~icons/solar/lock-keyhole-bold-duotone';
-import IconCarta from '~icons/solar/letter-bold-duotone';
+import { Icon, type IconName } from '../components/icons';
 import { useStore } from '../lib/store';
 import { BrandMark } from '../components/Layout';
 import { homeOf } from '../lib/support';
@@ -44,7 +43,7 @@ export default function Login() {
   };
   const pos = b.photoPos;
   const voltar = (rotulo: string) => <button type="button" onClick={() => { setErr(''); setModo('entrar'); }} className="self-start text-small text-ink-2 hover:text-ink mb-3">← {rotulo}</button>;
-  const selo = (Icone: typeof IconCadeado) => <span aria-hidden="true" className="mx-auto grid place-items-center size-12 rounded-ctl border border-brand-soft-line bg-brand-soft text-brand-link"><Icone className="size-6" /></span>;
+  const selo = (icone: IconName) => <span aria-hidden="true" className="mx-auto grid place-items-center size-12 rounded-ctl border border-brand-soft-line bg-brand-soft text-brand-link"><Icon name={icone} size={24} /></span>;
   const erro = err && <p role="alert" className="text-small font-medium text-crit-ink text-left">{err}</p>;
 
   // celular: o painel visual some (max-md:hidden) e nem é montado — senão as ilustrações do carrossel baixavam escondidas
@@ -81,7 +80,7 @@ export default function Login() {
           <TextButton type="button" className="self-center mt-4" onClick={() => { setErr(''); setModo('esqueci'); }}>Esqueci minha senha</TextButton>
         </> : modo === 'esqueci' ? <>
           {voltar('Voltar para entrar')}
-          {selo(IconCadeado)}
+          {selo('cadeado')}
           <h1 className="mt-3 text-h2 font-semibold">Recupere seu acesso</h1>
           <p className="text-body text-ink-2 mt-2 mb-6">Digite seu e-mail e enviaremos um link para criar uma nova senha.</p>
           <div className="flex flex-col gap-4 text-left">
@@ -90,7 +89,7 @@ export default function Login() {
             <Button type="submit" size="lg" loading={busy} className="w-full mt-1">Enviar link</Button>
           </div>
         </> : <>
-          {selo(IconCarta)}
+          {selo('email')}
           <h1 className="mt-3 text-h2 font-semibold">Confira seu e-mail</h1>
           <p className="text-body text-ink-2 mt-2 mb-6">Se <span className="font-medium text-ink">{email.trim()}</span> estiver cadastrado, enviamos um link para criar uma nova senha. Ele vale 30 minutos e só pode ser usado uma vez.</p>
           <Button type="button" variant="secondary" size="lg" className="w-full" onClick={() => setModo('entrar')}>Voltar para o login</Button>

@@ -11,7 +11,7 @@ import { useStore, useStoreData } from '../lib/store';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, EmptyState, Stack, Grid, Panel, PageHeader, toast } from '../components/ui';
 import { TILE, ATTR, Address } from '../components/MapBits';
 import { AssetName } from '../components/story';
-import { Icon } from '../components/icons';
+import { Icon, type IconName } from '../components/icons';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { routeStats } from '@localle/shared/routeStats';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
@@ -214,7 +214,7 @@ function BlocoPosicoes({ b }: { b: BlocoVeiculo }) {
   );
 }
 
-function StatTile({ icon, value, label, sub }: { icon: string; value: React.ReactNode; label: string; sub: string }) {
+function StatTile({ icon, value, label, sub }: { icon: IconName; value: React.ReactNode; label: string; sub: string }) {
   return (
     <Card dense>
       <div className="flex items-center gap-stack">

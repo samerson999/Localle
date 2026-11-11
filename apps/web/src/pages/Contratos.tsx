@@ -7,7 +7,7 @@ import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, 
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery, type AdminClient, type AdminContrato, type ContratoBody } from '../lib/localleApi';
 import { brl, fmtD } from '@localle/shared/utils';
-import { Icon } from '../components/icons';
+import { Icon, type IconName } from '../components/icons';
 import { MODULES, moduleName, changedCommercial, validateTerms, type ContractTerms, type ContractStatus, type BillingType } from '@localle/shared/contratos';
 
 export const CONTRACT_BADGE: Record<ContractStatus, { tone: string; label: string }> = {
@@ -164,7 +164,7 @@ function ContractModal({ editing, allContracts, onClose, onDone }: { editing: Ed
         <div className="flex flex-col gap-1">
           {MODULES.map((m) => (
             <div key={m.key} className="grid grid-cols-[1fr_auto] items-center gap-3 h-10">
-              <span className="flex items-center gap-2 text-small"><Icon name={m.key} size={18} />{m.name}</span>
+              <span className="flex items-center gap-2 text-small"><Icon name={m.icon as IconName} size={18} />{m.name}</span>
               <Switch checked={v.modules.includes(m.key)} onChange={() => toggleModule(m.key)} aria-label={`Incluir ${moduleName(m.key)} no contrato`} />
             </div>
           ))}
