@@ -1,7 +1,7 @@
 // Seletor de período com comparação ("1 jan–17 out" vs "1 jan–17 out 2025"), no lugar dos <select> de período.
 import { DAY } from '@localle/shared/utils';
 import { PeriodButton } from './story';
-import { Input, Pills } from './ui';
+import { Pills, DateRangeInput } from './ui';
 
 export type CompareMode = 'anterior' | 'ano_anterior' | 'nenhum' | 'custom';
 export interface PeriodValue { preset: string; from: string; to: string; mode: CompareMode; bFrom?: string; bTo?: string }
@@ -53,20 +53,14 @@ export function PeriodCompare({ value, onChange, presets = BI_PRESETS, modes = [
             <Pills value={value.preset} options={[...presets.map((p) => ({ key: p.key, label: p.label })), { key: 'custom', label: 'Personalizado' }]}
               onChange={(k) => { const p = presets.find((x) => x.key === k); onChange(p ? { ...presetValue(p, value.mode), bFrom: value.bFrom, bTo: value.bTo } : { ...value, preset: 'custom' }); }} />
             {value.preset === 'custom' && (
-              <div className="grid grid-cols-2 gap-2 mt-stack">
-                <Input type="date" aria-label="De" value={value.from} max={value.to} onChange={(e) => onChange({ ...value, from: e.target.value })} />
-                <Input type="date" aria-label="Até" value={value.to} min={value.from} onChange={(e) => onChange({ ...value, to: e.target.value })} />
-              </div>
+              <DateRangeInput className="mt-stack w-full" aria-label="Período" from={value.from} to={value.to} onChange={(r) => onChange({ ...value, ...r })} />
             )}
           </div>
           <div>
             <p className="text-caption text-ink-2 mb-2">Comparar com</p>
             <Pills value={value.mode} options={modes.map((m) => ({ key: m, label: MODE_LABEL[m] }))} onChange={(k) => onChange({ ...value, mode: k as CompareMode })} />
             {value.mode === 'custom' && (
-              <div className="grid grid-cols-2 gap-2 mt-stack">
-                <Input type="date" aria-label="Comparar de" value={value.bFrom || ''} onChange={(e) => onChange({ ...value, bFrom: e.target.value })} />
-                <Input type="date" aria-label="Comparar até" value={value.bTo || ''} onChange={(e) => onChange({ ...value, bTo: e.target.value })} />
-              </div>
+              <DateRangeInput className="mt-stack w-full" aria-label="Comparar com" from={value.bFrom || ''} to={value.bTo || ''} onChange={(r) => onChange({ ...value, bFrom: r.from, bTo: r.to })} />
             )}
             {b && value.mode !== 'custom' && a[1] >= Date.now() - DAY && <p className="text-caption text-ink-2 mt-2">Período em andamento: a comparação vai até o mesmo ponto.</p>}
           </div>

@@ -2,10 +2,10 @@ import React, { createContext, useContext, useEffect, useId, useLayoutEffect, us
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { fileToDataURL } from '../lib/fileData';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { AssetSilhouette, silhouetteOf } from './assetArt';
 import { pngIconUrl } from '../lib/pngIcons';
-import { useCountUp } from '../lib/motion';
+import { NumeroRolante } from './NumeroRolante';
 import { Heading, HeadingLevel, useHeadingLevel } from './primitives';
 import { rectUi, viewportUi } from '../lib/uiZoom';
 import { aplicarMascara, ATRIBUTOS_MASCARA, type Mascara, mascaraValida, MENSAGEM_INVALIDA } from '../lib/mascaras';
@@ -73,20 +73,126 @@ export function TextButton({ tone = 'brand', className = '', ...p }: React.Butto
 
 // Botão só com ícone: aria-label obrigatório. sidebar = hover sobre o canvas; on-dark = sobre superfície escura.
 // outline = botão de mapa e barra de ferramentas (fundo de card com borda).
-type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string; size?: 'sm' | 'md' | 'touch'; tone?: 'default' | 'sidebar' | 'on-dark' | 'outline' | 'danger' | 'danger-outline' };
-export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(({ size = 'md', tone = 'default', className = '', ...p }, r) => {
+type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string; size?: 'sm' | 'md' | 'touch'; tone?: 'default' | 'sidebar' | 'on-dark' | 'outline' | 'danger' | 'danger-outline'; tip?: React.ReactNode | false; tipSide?: 'top' | 'bottom' | 'left' | 'right' };
+export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(({ size = 'md', tone = 'default', className = '', tip, tipSide, ...p }, r) => {
   const t = { default: 'text-ink-2 hover:text-ink hover:bg-card-2', sidebar: 'text-ink-2 hover:text-ink hover:bg-surface-hover', 'on-dark': 'text-on-dark hover:bg-on-dark-hover', outline: 'bg-card border border-line-strong text-ink hover:bg-card-2',
     // ação destrutiva (remover, excluir) é sempre vermelha — PRODUCT.md › cores; acoesDestrutivas.test.ts cobra o padrão
     danger: 'text-crit-ink hover:bg-crit-soft', 'danger-outline': 'bg-card border border-line-strong text-crit-ink hover:bg-crit-soft' }[tone];
   // touch = 44×44 (alvo de toque recomendado), só para a barra fixa do mobile; sm/md seguem os tokens de controle
   // (32/40 no desktop; com dedo, 40/44 — tokens.css › toque).
   const sizeCls = size === 'sm' ? 'w-ctl-sm h-ctl-sm rounded-btn' : size === 'touch' ? 'w-11 h-11 rounded-ctl' : 'w-ctl h-ctl rounded-ctl';
-  return <button ref={r} type="button" {...p} className={cx('inline-flex items-center justify-center shrink-0 transition-[color,background-color,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 disabled:opacity-30 disabled:cursor-not-allowed', sizeCls, t, className)} />;
+  const b = <button ref={r} type="button" {...p} className={cx('inline-flex items-center justify-center shrink-0 transition-[color,background-color,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 disabled:opacity-30 disabled:cursor-not-allowed', sizeCls, t, className)} />;
+  // botão só com ícone: o nome acessível vira a dica do mouse/teclado (tip={false} desliga; tip="…" troca o texto)
+  const label = tip === undefined ? p['aria-label'] : tip;
+  return label ? <Tooltip content={label} side={tipSide}>{b}</Tooltip> : b;
 });
+
+// Dica curta ao passar o mouse ou focar pelo teclado (substitui o `title=` do navegador, que demora, não segue o tema e
+// some no toque). Só texto: conteúdo interativo vai em Popover. Posição pela tela via rectUi (o <html> tem `zoom`, por
+// isso não usamos Floating UI/Radix). Acima por padrão (vira para baixo sem espaço); left/right para menu recolhido e
+// controles empilhados. Sempre dentro da janela.
+export function Tooltip({ content, side = 'top', delay = 400, children }: { content: React.ReactNode; side?: 'top' | 'bottom' | 'left' | 'right'; delay?: number; children: React.ReactElement }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const anchor = useRef<HTMLElement | null>(null);
+  const tip = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const id = useId();
+  const show = (now = false) => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(true), now ? 0 : delay); };
+  const hide = () => { clearTimeout(timer.current); setOpen(false); };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useLayoutEffect(() => {
+    if (!open || !anchor.current || !tip.current) return;
+    const r = rectUi(anchor.current), { w: vw, h: vh } = viewportUi(), tw = tip.current.offsetWidth, th = tip.current.offsetHeight;
+    const clampX = (x: number) => Math.min(Math.max(8, x), vw - tw - 8), clampY = (y: number) => Math.min(Math.max(8, y), vh - th - 8);
+    if (side === 'left' || side === 'right') {
+      const right = side === 'right' ? r.right + tw + 14 <= vw : r.left - tw - 14 < 0;
+      setPos({ left: right ? r.right + 8 : r.left - tw - 8, top: clampY(r.top + r.height / 2 - th / 2) });
+      return;
+    }
+    const below = side === 'bottom' || r.top - th - 8 < 0;
+    setPos({ left: clampX(r.left + r.width / 2 - tw / 2), top: below ? r.bottom + 6 : r.top - th - 6 });
+  }, [open, side, content]);
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') hide(); };
+    document.addEventListener('keydown', esc); window.addEventListener('scroll', hide, true);
+    return () => { document.removeEventListener('keydown', esc); window.removeEventListener('scroll', hide, true); };
+  }, [open]);
+  if (!content) return children;
+  const c = children.props as Record<string, any>;
+  const child = React.cloneElement(children, {
+    ref: (el: HTMLElement | null) => { anchor.current = el; const r = (children as any).ref; if (typeof r === 'function') r(el); else if (r) r.current = el; },
+    'aria-describedby': open ? id : c['aria-describedby'],
+    // toque não tem hover: a dica não abre (o alvo precisa de aria-label/rótulo de qualquer jeito)
+    onPointerEnter: (e: React.PointerEvent) => { c.onPointerEnter?.(e); if (e.pointerType === 'mouse') show(); },
+    onPointerLeave: (e: React.PointerEvent) => { c.onPointerLeave?.(e); hide(); },
+    onPointerDown: (e: React.PointerEvent) => { c.onPointerDown?.(e); hide(); },
+    onFocus: (e: React.FocusEvent) => { c.onFocus?.(e); if ((e.target as HTMLElement).matches?.(':focus-visible')) show(true); },
+    onBlur: (e: React.FocusEvent) => { c.onBlur?.(e); hide(); },
+  });
+  return (
+    <>
+      {child}
+      {open && createPortal(
+        <div ref={tip} id={id} role="tooltip" style={{ left: pos.left, top: pos.top }}
+          className="fixed z-[1500] pointer-events-none max-w-[260px] px-tight py-hair rounded-btn bg-ink text-card text-small font-medium shadow-pop anim-page">
+          {content}
+        </div>, document.body)}
+    </>
+  );
+}
+
+// Avatar do HeroUI (variante soft): foto quando houver; senão as iniciais (primeiro e último nome) num tom suave estável
+// por pessoa — o mesmo nome sempre na mesma cor, para reconhecer de relance em listas.
+const AVATAR_TONS = ['bg-brand-soft text-brand-ink', 'bg-pos-soft text-ink', 'bg-warn-soft text-warn-ink', 'bg-surface-hover text-ink'];
+export function Avatar({ name, src, size = 'md', className = '' }: { name: string; src?: string | null; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+  const parts = (name || '?').trim().split(/\s+/);
+  const ini = ((parts[0]?.[0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
+  let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const dim = { sm: 'w-8 h-8 text-caption', md: 'w-10 h-10 text-small', lg: 'w-12 h-12 text-body' }[size];
+  return (
+    <span aria-hidden="true" className={cx('relative inline-flex items-center justify-center shrink-0 rounded-pill overflow-hidden font-medium select-none', dim, AVATAR_TONS[h % AVATAR_TONS.length], className)}>
+      {ini}{src && <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+    </span>
+  );
+}
+
+// Color Swatch Picker do HeroUI: amostras redondas; a escolhida ganha o anel na própria cor (a amostra encolhe para 77%)
+// e o ✓. A última amostra abre o seletor do sistema para uma cor livre; o hex pode ser digitado ao lado.
+export function ColorSwatchPicker({ value, onChange, colors, label }: { value: string; onChange: (hex: string) => void; colors: string[]; label: string }) {
+  const [hex, setHex] = useState(value);
+  useEffect(() => { setHex(value); }, [value]);
+  const custom = !colors.some((c) => c.toLowerCase() === value.toLowerCase());
+  const light = (c: string) => { const n = parseInt(c.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 170; };
+  const item = (sel: boolean, color: string) => cx('relative w-10 h-10 rounded-pill border-[3px] flex items-center justify-center transition-[border-color,box-shadow] duration-150', sel ? 'shadow-float' : 'border-transparent');
+  const swatch = (sel: boolean) => cx('block w-full h-full rounded-pill transition-transform duration-100 ease-out', sel ? 'scale-[0.77]' : 'hover:scale-110');
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap items-center gap-2">
+      {colors.map((c) => {
+        const sel = c.toLowerCase() === value.toLowerCase();
+        return (
+          <button key={c} type="button" role="radio" aria-checked={sel} aria-label={`Cor ${c}`} onClick={() => onChange(c)} className={item(sel, c)} style={sel ? { borderColor: c } : undefined}>
+            <span className={swatch(sel)} style={{ background: c }} />
+            {sel && <Icon name="ok" size={14} className={cx('absolute', light(c) ? 'text-ink' : 'text-on-dark')} />}
+          </button>
+        );
+      })}
+      <label className={cx(item(custom, value), 'cursor-pointer')} style={custom ? { borderColor: value } : undefined} title="Outra cor">
+        <span className={swatch(custom)} style={{ background: custom ? value : 'conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)' }} />
+        {custom && <Icon name="ok" size={14} className={cx('absolute', light(value) ? 'text-ink' : 'text-on-dark')} />}
+        <input type="color" aria-label="Outra cor" value={value} onChange={(e) => onChange(e.target.value)} className="sr-only" />
+      </label>
+      <input aria-label="Código da cor (hex)" value={hex} maxLength={7} spellCheck={false}
+        onChange={(e) => { const v = '#' + e.target.value.replace(/[^0-9a-f]/gi, '').slice(0, 6); setHex(v); if (v.length === 7) onChange(v.toUpperCase()); }}
+        className={cx(inputCls, 'w-28 font-mono uppercase')} />
+    </div>
+  );
+}
 
 // Faixa de aviso dentro da página: warn = estado temporário/pendente, crit = erro.
 export function Callout({ tone = 'warn', className = '', children }: { tone?: 'warn' | 'crit'; className?: string; children: React.ReactNode }) {
-  return <p role={tone === 'crit' ? 'alert' : 'status'} className={cx('text-small font-medium rounded-ctl px-stack py-stack flex items-start gap-icon', tone === 'crit' ? 'bg-crit-soft text-crit-ink' : 'bg-warn-soft text-warn-ink', className)}><span className="ico-line"><Icon name={tone === 'crit' ? 'erro' : 'alerta'} size={16} /></span><span>{children}</span></p>;
+  return <p role={tone === 'crit' ? 'alert' : 'status'} className={cx('text-small font-medium rounded-card px-4 py-3 flex items-start gap-3', tone === 'crit' ? 'bg-crit-soft text-crit-ink' : 'bg-warn-soft text-warn-ink', className)}><span className="ico-line"><Icon name={tone === 'crit' ? 'erro' : 'alerta'} size={16} /></span><span>{children}</span></p>;
 }
 
 // Bloco com borda dentro de um Card (subseção, item de lista editável). dense = 12 de padding; normal = card compacto (16).
@@ -275,7 +381,7 @@ export function Sheet({ modal = true, bare = false, tall = false, label, title, 
 }
 
 // Menu de contexto num ponto (clique direito no mapa): cabeçalho opcional (ex.: coordenadas) e itens como no Menu.
-export function ContextMenu({ x, y, header, items, onClose }: { x: number; y: number; header?: React.ReactNode; items: { label: string; icon?: string; onClick?: () => void; to?: string; danger?: boolean }[]; onClose: () => void }) {
+export function ContextMenu({ x, y, header, items, onClose }: { x: number; y: number; header?: React.ReactNode; items: { label: string; icon?: IconName; onClick?: () => void; to?: string; danger?: boolean }[]; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     (box.current?.querySelector('a,button') as HTMLElement | null)?.focus();
@@ -287,7 +393,7 @@ export function ContextMenu({ x, y, header, items, onClose }: { x: number; y: nu
   // danger: ação destrutiva em vermelho, como no Menu
   const cls = (danger?: boolean) => cx(base, danger ? 'text-crit-ink hover:bg-crit-soft focus:bg-crit-soft' : 'text-ink hover:bg-surface-muted focus:bg-surface-muted');
   return (
-    <div ref={box} role="menu" className="absolute z-[600] w-64 bg-card border border-line rounded-pop shadow-pop p-1 anim-page" style={{ left: x, top: y }}>
+    <div ref={box} role="menu" className="absolute z-[600] w-64 bg-card rounded-pop shadow-pop p-1.5 anim-pop" style={{ left: x, top: y, transformOrigin: 'top left' }}>
       {header && <div className="px-stack py-tight text-caption text-ink-3">{header}</div>}
       {items.map((it) => {
         const inner = <>{it.icon && <Icon name={it.icon} size={18} className={it.danger ? '' : 'text-ink-2'} />}{it.label}</>;
@@ -345,7 +451,7 @@ export function DescRow({ label, children, stacked, extra, className = '' }: { l
 // cor da revenda (4px, referência Visor) com uma caixa branca por dentro para o conteúdo e a faixa encostada
 // na mesma moldura, sem caixa branca separando — por isso não combina com `footer` (que fica dentro da caixa
 // branca normalmente, mas não faz sentido junto da faixa).
-export function Card({ className = '', title, icon, actions, to, onOpen, footer, band, children, dense, head = 'default', subtitle, variant = 'default' }: { className?: string; title?: React.ReactNode; icon?: string; actions?: React.ReactNode; to?: string; onOpen?: () => void; footer?: React.ReactNode; band?: React.ReactNode; children?: React.ReactNode; dense?: boolean; head?: 'default' | 'kpi'; subtitle?: React.ReactNode; variant?: 'default' | 'inset' | 'tip-frame' }) {
+export function Card({ className = '', title, icon, actions, to, onOpen, footer, band, children, dense, head = 'default', subtitle, variant = 'default' }: { className?: string; title?: React.ReactNode; icon?: IconName; actions?: React.ReactNode; to?: string; onOpen?: () => void; footer?: React.ReactNode; band?: React.ReactNode; children?: React.ReactNode; dense?: boolean; head?: 'default' | 'kpi'; subtitle?: React.ReactNode; variant?: 'default' | 'inset' | 'tip-frame' }) {
   const level = useHeadingLevel();
   const padCls = dense ? 'p-card-sm bleed-card-sm' : 'p-card bleed-card';
   const inner = (
@@ -373,7 +479,7 @@ export function Card({ className = '', title, icon, actions, to, onOpen, footer,
 // Cabeçalho de card: ícone de linha (12 até o título), título text-h3 em cinza médio (--ink-2, 6,9:1 sobre
 // --canvas e --card — AA folgado), apoio opcional (text-small, 4 abaixo), ações e ↗.
 // Cinza só aqui: título de PÁGINA (PageHeader) continua com a cor que já tinha, nunca este tom.
-export function CardHeader({ title, subtitle, icon, actions, to, onOpen, className = '' }: { title?: React.ReactNode; subtitle?: React.ReactNode; icon?: string; actions?: React.ReactNode; to?: string; onOpen?: () => void; className?: string }) {
+export function CardHeader({ title, subtitle, icon, actions, to, onOpen, className = '' }: { title?: React.ReactNode; subtitle?: React.ReactNode; icon?: IconName; actions?: React.ReactNode; to?: string; onOpen?: () => void; className?: string }) {
   const open = to || onOpen;
   const label = typeof title === 'string' ? `Abrir ${title.toLowerCase()}` : 'Abrir detalhe';
   return (
@@ -551,11 +657,11 @@ export function Select({ className = '', options, value, onChange, disabled, id,
       </button>
       {pres.mounted && createPortal(
         <ul ref={list} id={lid} role="listbox" aria-label={p['aria-label']} onMouseDown={(e) => e.preventDefault()}
-          style={{ left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.width }}
-          className={cx('fixed z-[1400] max-h-72 max-w-[min(420px,calc(100vw-16px))] overflow-y-auto bg-card border border-line rounded-pop shadow-pop p-1', pres.closing ? 'anim-out' : 'anim-page')}>
+          style={{ left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.width, transformOrigin: pos.bottom != null ? 'bottom left' : 'top left' }}
+          className={cx('fixed z-[1400] max-h-72 max-w-[min(420px,calc(100vw-16px))] overflow-y-auto bg-card rounded-pop shadow-pop p-1.5', pres.closing ? 'anim-pop-out' : 'anim-pop')}>
           {opts.map((o, i) => (
             <li key={o.value} id={`${lid}-${i}`} role="option" aria-selected={i === sel} onMouseEnter={() => setAct(i)} onClick={() => pick(i)}
-              className={cx('flex items-center gap-icon px-stack py-tight [@media(pointer:coarse)]:py-stack rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted', i === sel && 'font-medium')}>
+              className={cx('flex items-center gap-icon px-2.5 min-h-9 py-1.5 [@media(pointer:coarse)]:py-stack rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted')}>
               <span className="flex-1">{o.label}</span>{i === sel && <Icon name="ok" size={16} className="shrink-0" />}
             </li>
           ))}
@@ -629,13 +735,13 @@ export function SearchSelect({ options, value, onChange, onQuery, placeholder = 
       {(query || value) && <button type="button" aria-label="Limpar" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="absolute right-1 [@media(pointer:coarse)]:right-0 top-1/2 -translate-y-1/2 w-7 h-7 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 rounded-btn flex items-center justify-center text-ink-3 hover:text-ink hover:bg-card-2"><Icon name="fechar" size={16} /></button>}
       {pres.mounted && createPortal(
         <ul ref={list} id={lid} role="listbox" aria-label={p['aria-label']} onMouseDown={(e) => e.preventDefault()}
-          style={{ left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.width }}
-          className={cx('fixed z-[1400] max-h-72 max-w-[min(420px,calc(100vw-16px))] overflow-y-auto bg-card border border-line rounded-pop shadow-pop p-1', pres.closing ? 'anim-out' : 'anim-page')}>
+          style={{ left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.width, transformOrigin: pos.bottom != null ? 'bottom left' : 'top left' }}
+          className={cx('fixed z-[1400] max-h-72 max-w-[min(420px,calc(100vw-16px))] overflow-y-auto bg-card rounded-pop shadow-pop p-1.5', pres.closing ? 'anim-pop-out' : 'anim-pop')}>
           {loading ? <li className="flex items-center gap-icon px-stack py-tight text-small text-ink-2"><Spinner size={14} />Carregando registros…</li>
             : results.length === 0 ? <li className="px-stack py-tight text-small text-ink-2">{emptyLabel}</li>
             : results.map((o, i) => (
               <li key={o.value} id={`${lid}-${i}`} role="option" aria-selected={o.value === value} onMouseEnter={() => setAct(i)} onClick={() => pick(o)}
-                className={cx('flex flex-col px-stack py-tight [@media(pointer:coarse)]:py-stack rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted', o.value === value && 'font-medium')}>
+                className={cx('flex flex-col px-2.5 min-h-9 py-1.5 [@media(pointer:coarse)]:py-stack rounded-btn text-body cursor-pointer', i === act && 'bg-surface-muted')}>
                 <span className="flex items-center gap-icon"><span className="flex-1 truncate">{o.label}</span>{o.value === value && <Icon name="ok" size={16} className="shrink-0" />}</span>
                 {o.sub && <span className="text-caption text-ink-2 truncate">{o.sub}</span>}
               </li>
@@ -660,8 +766,7 @@ export function Check({ label, description, checked, onChange, indeterminate, di
         <input ref={ref} type="checkbox" className="peer sr-only" checked={!!checked} disabled={disabled} aria-label={p['aria-label']} onChange={(e) => onChange(e.target.checked)} />
         <span aria-hidden="true" className={cx('w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-colors duration-150', peerFocus,
           on ? 'bg-brand-fill border-brand-fill text-brand-fill-ink' : 'bg-card border-line-hover', !disabled && !on && 'hover:border-ink-3', disabled && 'opacity-45')}>
-          {indeterminate ? <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-            : checked ? <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.3 2.3 4.7-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
+          {indeterminate ? <Icon name="traco" size={14} /> : checked ? <Icon name="check" size={14} /> : null}
         </span>
       </span>
       {(label != null || description) && <span className="flex flex-col min-w-0">{label}{description && <span className="text-small text-ink-2">{description}</span>}</span>}
@@ -865,7 +970,7 @@ export function Pagination({ page, pages, onChange, total, pageSize, compact = f
   );
 }
 // Filtros: botão de filtro (com contagem neutra) e chip do filtro aplicado (removível). Neutros: não são a marca.
-export function FilterButton({ label, count, active, onClick, icon }: { label: string; count?: number; active?: boolean; onClick?: () => void; icon?: string }) {
+export function FilterButton({ label, count, active, onClick, icon }: { label: string; count?: number; active?: boolean; onClick?: () => void; icon?: IconName }) {
   return (
     <button type="button" aria-pressed={active} onClick={onClick} className={cx('h-ctl-sm px-3 rounded-btn border text-small font-medium inline-flex items-center gap-icon transition-colors', active ? 'bg-surface-selected border-line-hover text-ink' : 'bg-card border-line-strong text-ink hover:bg-card-2')}>
       {icon && <Icon name={icon} size={16} className="text-ink-2" />}{label}{count ? <CountBadge n={count} /> : null}
@@ -941,18 +1046,20 @@ export function LoadingBlock() {
   );
 }
 
-export function Modal({ open, onClose, title, children, width = 'max-w-2xl', footer }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; width?: string; footer?: React.ReactNode }) {
+export function Modal({ open, onClose, title, children, width = 'max-w-2xl', footer, icon, guardDiscard = true }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; width?: string; footer?: React.ReactNode; icon?: React.ReactNode; guardDiscard?: boolean }) {
   const { mounted, closing } = usePresence(open);
   useScrollLock(open);
   // na saída, mostra o último conteúdo aberto (quem chamou costuma zerar os dados ao fechar)
-  const last = useRef({ title, children, footer });
-  if (open) last.current = { title, children, footer };
+  const last = useRef({ title, children, footer, icon });
+  if (open) last.current = { title, children, footer, icon };
   // Esc fecha só o diálogo do topo; popovers internos (lista, calendário) tratam o Esc antes e marcam defaultPrevented
   const box = useRef<HTMLDivElement>(null);
   // Formulário com algo preenchido não fecha por acidente: toque fora e arrasto para baixo não fecham, e X/Esc perguntam
   // antes de descartar. "Preenchido" = qualquer digitação ou escolha dentro do modal (evento input dos campos nativos e
   // EDIT_EVENT dos campos próprios: Select, SearchSelect, DateInput). Os botões do rodapé (Cancelar, Salvar) chamam o
   // onClose de quem abriu direto, sem pergunta: ali a intenção é explícita.
+  // guardDiscard={false}: modal que não é formulário de salvar (ex.: Enviar comando — escolher o veículo e digitar a senha
+  // não é rascunho), fecha sem perguntar.
   const closeRef = useRef(onClose); closeRef.current = onClose;
   // quem abriu: lido no render da abertura, antes do commit — depois dele o autoFocus de um campo já tirou o foco do botão
   const opener = useRef<HTMLElement | null>(null), wasOpen = useRef(false), restore = useRef<ReturnType<typeof setTimeout>>();
@@ -968,7 +1075,7 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
     return () => { el?.removeEventListener('input', mark); el?.removeEventListener(EDIT_EVENT, mark); };
   }, [open, mounted]);
   const requestClose = async () => {
-    if (touched.current && !(await confirmAction({ title: 'Descartar o que foi preenchido?', detail: 'As informações deste formulário ainda não foram salvas e serão perdidas.', confirmLabel: 'Descartar', cancelLabel: 'Continuar editando' }))) return;
+    if (guardDiscard && touched.current && !(await confirmAction({ title: 'Descartar o que foi preenchido?', detail: 'As informações deste formulário ainda não foram salvas e serão perdidas.', confirmLabel: 'Descartar', cancelLabel: 'Continuar editando' }))) return;
     closeRef.current();
   };
   // Foco (mesma regra do Sheet): ao abrir entra no diálogo — campo com autoFocus já está dentro e fica —, o Tab circula
@@ -1013,11 +1120,11 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   // max-md:justify-start: em coluna, o justify-center do desktop centralizava na vertical, e o form mais alto que a tela
   // estourava metade para cima, fora da rolagem — o modal abria no meio do formulário, sem como subir até o título.
   return createPortal(
-    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !touched.current && onClose()}>
-      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] transition-[translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]', closing ? 'anim-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-page max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
+    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !(guardDiscard && touched.current) && onClose()}>
+      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] transition-[translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]', closing ? 'anim-pop-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-pop max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
         <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
           <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />
-          <div className="flex items-center gap-stack mb-card-head"><h2 className="text-h2 font-semibold mr-auto">{c.title}</h2><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={() => void requestClose()}><Icon name="fechar" /></IconButton></div>
+          <div className="flex items-start gap-stack mb-card-head"><div className="mr-auto flex flex-col gap-3">{c.icon}<h2 className="text-h2 font-semibold">{c.title}</h2></div><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={() => void requestClose()}><Icon name="fechar" /></IconButton></div>
         </div>
         <HeadingLevel level={3}><div className="flex flex-col gap-field min-w-0">{c.children}</div></HeadingLevel>
         {/* celular: formulário longo não esconde as ações lá embaixo; o rodapé gruda no fim da tela enquanto o modal rola */}
@@ -1081,18 +1188,15 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
   );
 }
 
-// Conta até o número na primeira carga (useCountUp), mantendo o formato pt-BR do texto: "R$ 1.234,56", "85%", "12,5 km/L".
+// O número do texto rola como odômetro (NumeroRolante) quando aparece e quando muda, mantendo o formato pt-BR do texto:
+// "R$ 1.234,56", "85%", "12,5 km/L". Só a parte numérica rola; prefixo e unidade ficam parados.
 const NUM_RE = /-?\d{1,3}(?:\.\d{3})+(?:,\d+)?|-?\d+(?:,\d+)?/;
 function CountText({ value }: { value: number | string }) {
-  const s = String(value);
-  // horários, datas e frações ("14:30", "17/10", "3/5") não contam
-  const m = typeof value === 'number' || /\d[:/]\d/.test(s) ? null : NUM_RE.exec(s);
-  const n = typeof value === 'number' ? value : m ? parseFloat(m[0].replace(/\./g, '').replace(',', '.')) : null;
-  const dec = typeof value === 'number' ? (String(value).split('.')[1]?.length ?? 0) : m?.[0].split(',')[1]?.length ?? 0;
-  const v = useCountUp(n);
-  if (n == null || v == null) return <>{s}</>;
-  const txt = v.toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: typeof value === 'number' || m![0].includes('.') });
-  return <>{m ? s.slice(0, m.index) + txt + s.slice(m.index + m[0].length) : txt}</>;
+  const s = typeof value === 'number' ? value.toLocaleString('pt-BR', { maximumFractionDigits: 20 }) : String(value);
+  // horários, datas e frações ("14:30", "17/10", "3/5") não rolam
+  const m = /\d[:/]\d/.test(s) ? null : NUM_RE.exec(s);
+  if (!m) return <>{s}</>;
+  return <>{s.slice(0, m.index)}<NumeroRolante text={m[0]} />{s.slice(m.index + m[0].length)}</>;
 }
 
 // Barra de progresso (0 a 1). A mudança de valor anima o recorte em --t-progress; a ponta fica arredondada.
@@ -1100,7 +1204,7 @@ export function Progress({ value, color = 'var(--real)', className = 'h-2', labe
   const v = Math.max(0, Math.min(1, value || 0));
   return (
     <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)} className={cx('relative w-full rounded-pill bg-track overflow-hidden', className)}>
-      <div className="progress-fill absolute inset-0 rounded-pill" style={{ background: color, clipPath: `inset(0 ${(1 - v) * 100}% 0 0 round 999px)` }} />
+      <div className="progress-fill grow-x absolute inset-0 rounded-pill" style={{ background: color, clipPath: `inset(0 ${(1 - v) * 100}% 0 0 round 999px)` }} />
     </div>
   );
 }
@@ -1113,45 +1217,79 @@ const CELL_X = 'px-cell first:pl-[max(var(--bleed),var(--cell-x))] last:pr-[max(
 // Acima de `pageSize` linhas, pagina e mostra o total. Coluna de cabeçalho vazia ('') = ações, alinhada à direita.
 // align: alinhamento por coluna (números à direita). selected: linhas marcadas (fundo neutro; o checkbox fica com quem usa).
 // loading: linhas de esqueleto. emptyState: estado vazio rico (ilustração), no lugar do texto `empty`.
-export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, minWidth = 640, onRow, pageSize = 50, card: cardProp, align, selected, loading, dense }: {
+// sort: colunas ordenáveis → valor da linha i nessa coluna (clique no cabeçalho alterna crescente/decrescente; vazio vai
+// para o fim). Os índices de onRow/selected/card continuam sendo os de `rows`.
+// Desenho do Table do HeroUI v3 (variante primary): moldura cinza com o cabeçalho, corpo em branco com cantos
+// arredondados, divisórias curtas entre os títulos de coluna.
+export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, minWidth = 640, onRow, pageSize = 50, card: cardProp, align, selected, loading, dense, sort }: {
   head: React.ReactNode[]; rows: React.ReactNode[][]; empty?: string; emptyState?: React.ReactNode; minWidth?: number; onRow?: (i: number) => void; pageSize?: number;
   card?: ((i: number) => React.ReactNode) | false; align?: ('left' | 'right' | 'center')[]; selected?: (i: number) => boolean; loading?: boolean; dense?: boolean;
+  sort?: Record<number, (i: number) => string | number | null | undefined>;
 }) {
   const card = cardProp === false ? undefined : cardProp ?? (minWidth > 480 ? (i: number) => <AutoCard head={head} row={rows[i]} /> : undefined);
   const [page, setPage] = useState(0);
+  const [by, setBy] = useState<{ col: number; desc: boolean } | null>(null);
+  const order = rows.map((_, i) => i);
+  const key = by && sort?.[by.col];
+  if (key) {
+    const coll = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+    order.sort((x, y) => {
+      const a = key(x), b = key(y);
+      if (a == null || a === '') return b == null || b === '' ? 0 : 1;
+      if (b == null || b === '') return -1;
+      const c = typeof a === 'number' && typeof b === 'number' ? a - b : coll.compare(String(a), String(b));
+      return by!.desc ? -c : c;
+    });
+  }
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const pg = Math.min(page, pages - 1);
   const from = pg * pageSize;
-  const shown = rows.length > pageSize ? rows.slice(from, from + pageSize) : rows;
+  const shown = rows.length > pageSize ? order.slice(from, from + pageSize) : order;
   const act = (j: number) => j === head.length - 1 && head[j] === '';
   const al = (j: number) => (act(j) || align?.[j] === 'right' ? 'text-right' : align?.[j] === 'center' ? 'text-center' : 'text-left');
   const emptyNode = emptyState || <p className="py-10 text-center text-body text-ink-2">{empty}</p>;
+  const toggle = (j: number) => { setBy(by?.col === j ? (by.desc ? null : { col: j, desc: true }) : { col: j, desc: false }); setPage(0); };
+  const th = (h: React.ReactNode, j: number) => {
+    const ord = by?.col === j ? (by.desc ? 'descending' : 'ascending') : sort?.[j] ? 'none' : undefined;
+    return (
+      <th key={j} aria-sort={ord} className={cx(CELL_X, 'group/th relative h-10 font-medium text-caption text-ink-2', al(j),
+        "after:content-[''] after:absolute after:right-0 after:top-1/2 after:-translate-y-1/2 after:h-4 after:w-px after:bg-line last:after:hidden")}>
+        {act(j) ? <span className="sr-only">Ações</span> : sort?.[j] ? (
+          <button type="button" onClick={() => toggle(j)} className={cx('inline-flex items-center gap-hair hover:text-ink', ord !== 'none' && 'text-ink', al(j) === 'text-right' && 'flex-row-reverse')}>
+            {h}<Icon name="abaixo" size={14} className={cx('transition-transform duration-100', ord === 'none' ? 'opacity-0 group-hover/th:opacity-40' : '', ord === 'ascending' && 'rotate-180')} />
+          </button>
+        ) : h}
+      </th>
+    );
+  };
   return (
     <div aria-busy={loading || undefined}>
       {card && (
         <ul className="md:hidden flex flex-col -mx-bleed">
           {loading && Array.from({ length: 4 }, (_, i) => <li key={'sk' + i} className="border-t border-line py-stack px-[max(var(--bleed),var(--cell-x))] first:border-t-0 flex flex-col gap-tight"><Skeleton className="h-4 w-32" /><Skeleton className="h-4 w-full max-w-[220px]" /></li>)}
           {!loading && rows.length === 0 && <li>{emptyNode}</li>}
-          {!loading && shown.map((_, i) => <li key={from + i} onClick={onRow && (() => onRow(from + i))} className={cx('border-t border-line py-stack px-[max(var(--bleed),var(--cell-x))] first:border-t-0', onRow && 'cursor-pointer active:bg-card-2', selected?.(from + i) && 'bg-surface-selected')}>{card(from + i)}</li>)}
+          {!loading && shown.map((i) => <li key={i} onClick={onRow && (() => onRow(i))} className={cx('border-t border-line py-stack px-[max(var(--bleed),var(--cell-x))] first:border-t-0', onRow && 'cursor-pointer active:bg-card-2', selected?.(i) && 'bg-surface-selected')}>{card(i)}</li>)}
         </ul>
       )}
-      <div className={cx('overflow-x-auto -mx-bleed', card && 'hidden md:block')}>
-        <table className="w-full border-collapse text-body" style={{ minWidth }}>
-          <thead><tr className="text-ink-2 text-caption">{head.map((h, i) => <th key={i} className={cx(CELL_X, 'h-10 font-medium border-b border-line', al(i))}>{act(i) ? <span className="sr-only">Ações</span> : h}</th>)}</tr></thead>
-          <tbody>
-            {loading ? Array.from({ length: 5 }, (_, i) => <tr key={i} className="border-t border-line first:border-t-0">{head.map((_, j) => <td key={j} className={cx(CELL_X, 'h-row')}><Skeleton className={cx('h-4', j === 0 ? 'w-24' : 'w-full max-w-[120px]', act(j) && 'ml-auto w-6')} /></td>)}</tr>)
-              : rows.length === 0 ? <tr><td colSpan={head.length}>{emptyNode}</td></tr>
-              : shown.map((r, i) => {
-                const on = selected?.(from + i);
-                return <tr key={from + i} onClick={onRow && (() => onRow(from + i))} aria-selected={selected ? !!on : undefined}
-                  className={cx('border-t border-line first:border-t-0 row-hover', on ? 'bg-surface-selected' : 'hover:bg-card-2', onRow && 'cursor-pointer')}>
-                  {r.map((c, j) => <td key={j} className={cx(CELL_X, 'align-middle num', dense ? 'h-row-sm py-hair' : 'h-row py-tight', al(j), act(j) && '[&>div]:justify-end whitespace-nowrap')}>{c}</td>)}
-                </tr>;
-              })}
-          </tbody>
-        </table>
+      {/* moldura: --bleed local de 16px dá o recuo da 1ª e da última coluna dentro dela */}
+      <div style={{ ['--bleed' as any]: '16px' }} className={cx('bg-surface-muted rounded-panel px-1 pb-1', card && 'hidden md:block')}>
+        <div className="overflow-x-auto">
+          <table className="w-full border-separate border-spacing-0 text-body [&_tbody_tr:first-child>td:first-child]:rounded-tl-card [&_tbody_tr:first-child>td:last-child]:rounded-tr-card [&_tbody_tr:last-child>td:first-child]:rounded-bl-card [&_tbody_tr:last-child>td:last-child]:rounded-br-card [&_tbody_tr:last-child>td]:border-b-0" style={{ minWidth }}>
+            <thead><tr>{head.map(th)}</tr></thead>
+            <tbody>
+              {loading ? Array.from({ length: 5 }, (_, i) => <tr key={i}>{head.map((_, j) => <td key={j} className={cx(CELL_X, 'h-row bg-card border-b border-line')}><Skeleton className={cx('h-4', j === 0 ? 'w-24' : 'w-full max-w-[120px]', act(j) && 'ml-auto w-6')} /></td>)}</tr>)
+                : rows.length === 0 ? <tr><td colSpan={head.length} className="bg-card">{emptyNode}</td></tr>
+                : shown.map((i) => {
+                  const on = selected?.(i);
+                  return <tr key={i} onClick={onRow && (() => onRow(i))} aria-selected={selected ? !!on : undefined} className={cx('group', onRow && 'cursor-pointer')}>
+                    {rows[i].map((c, j) => <td key={j} className={cx(CELL_X, 'row-hover align-middle num border-b border-line', on ? 'bg-surface-selected' : 'bg-card group-hover:bg-card-2', dense ? 'h-row-sm py-hair' : 'h-row py-tight', al(j), act(j) && '[&>div]:justify-end whitespace-nowrap')}>{c}</td>)}
+                  </tr>;
+                })}
+            </tbody>
+          </table>
+        </div>
       </div>
-      {rows.length > pageSize && <Pagination className="-mx-bleed border-t border-line pt-stack px-[max(var(--bleed),var(--cell-x))]" page={pg} pages={pages} onChange={setPage} total={rows.length} pageSize={pageSize} />}
+      {rows.length > pageSize && <Pagination className="pt-stack px-1" page={pg} pages={pages} onChange={setPage} total={rows.length} pageSize={pageSize} />}
     </div>
   );
 }
@@ -1209,7 +1347,7 @@ export function CardActions({ children }: { children: React.ReactNode }) {
 
 // Menu de ações (o "…" da linha): abre em portal; itens com ícone; danger = ação destrutiva em vermelho, separada.
 // danger: ação destrutiva — fica vermelha e vai para o grupo do fim do menu
-export type MenuItem = { label: string; icon?: string; onClick: () => void; danger?: boolean; disabled?: boolean };
+export type MenuItem = { label: string; icon?: IconName; onClick: () => void; danger?: boolean; disabled?: boolean };
 export function Menu({ items, label = 'Mais opções', trigger }: { items: MenuItem[]; label?: string; trigger?: (p: { ref: React.Ref<HTMLButtonElement>; open: boolean; toggle: () => void }) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ right: number; top?: number; bottom?: number }>({ right: 0, top: 0 });
@@ -1242,7 +1380,7 @@ export function Menu({ items, label = 'Mais opções', trigger }: { items: MenuI
   const regular = items.filter((x) => !x.danger), danger = items.filter((x) => x.danger);
   const row = (x: MenuItem) => (
     <button key={x.label} type="button" role="menuitem" disabled={x.disabled} onClick={(e) => { e.stopPropagation(); setOpen(false); x.onClick(); }}
-      className={cx('w-full flex items-center gap-icon px-stack h-9 [@media(pointer:coarse)]:h-11 rounded-btn text-body text-left disabled:opacity-40', x.danger ? 'text-crit-ink hover:bg-crit-soft focus:bg-crit-soft' : 'text-ink hover:bg-surface-muted focus:bg-surface-muted')}>
+      className={cx('w-full flex items-center gap-3 px-2.5 h-9 [@media(pointer:coarse)]:h-11 rounded-btn text-body text-left transition-transform duration-150 active:scale-[0.98] disabled:opacity-40', x.danger ? 'text-crit-ink hover:bg-crit-soft focus:bg-crit-soft' : 'text-ink hover:bg-surface-muted focus:bg-surface-muted')}>
       {x.icon && <Icon name={x.icon} size={18} className={x.danger ? '' : 'text-ink-2'} />}{x.label}
     </button>
   );
@@ -1250,8 +1388,8 @@ export function Menu({ items, label = 'Mais opções', trigger }: { items: MenuI
     <>
       {trigger ? trigger({ ref: btn, open, toggle }) : <IconButton ref={btn} aria-label={label} aria-haspopup="menu" aria-expanded={open} size="sm" onClick={(e) => { e.stopPropagation(); toggle(); }}><Icon name="mais-opcoes" size={20} /></IconButton>}
       {pres.mounted && createPortal(
-        <div ref={list} role="menu" aria-label={label} onKeyDown={key} style={{ right: pos.right, top: pos.top, bottom: pos.bottom }}
-          className={cx('fixed z-[1400] min-w-[200px] bg-card border border-line rounded-pop shadow-pop p-1', pres.closing ? 'anim-out' : 'anim-page')}>
+        <div ref={list} role="menu" aria-label={label} onKeyDown={key} style={{ right: pos.right, top: pos.top, bottom: pos.bottom, transformOrigin: pos.bottom != null ? 'bottom right' : 'top right' }}
+          className={cx('fixed z-[1400] min-w-[200px] bg-card rounded-pop shadow-pop p-1.5', pres.closing ? 'anim-pop-out' : 'anim-pop')}>
           {regular.map(row)}
           {danger.length > 0 && regular.length > 0 && <div className="h-px bg-line my-1 mx-1" />}
           {danger.map(row)}
@@ -1307,7 +1445,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
 }
 // Vazio. Com `illustration`, é vazio de página ou painel (3D); sem, é vazio pequeno com ícone de linha.
 // layout row = ilustração à esquerda e texto à direita (painel largo e baixo, como nas referências).
-export function EmptyState({ icon = 'ok', title, detail, action, illustration, size = 'panel', layout = 'stack' }: { icon?: string; title: string; detail?: React.ReactNode; action?: React.ReactNode; illustration?: string; size?: 'page' | 'panel'; layout?: 'stack' | 'row' }) {
+export function EmptyState({ icon = 'ok', title, detail, action, illustration, size = 'panel', layout = 'stack' }: { icon?: IconName; title: string; detail?: React.ReactNode; action?: React.ReactNode; illustration?: string; size?: 'page' | 'panel'; layout?: 'stack' | 'row' }) {
   const text = <>
     <p className={cx('font-semibold', size === 'page' ? 'text-h3' : 'text-body')}>{title}</p>
     {detail && <p className="text-small text-ink-2 max-w-[42ch]">{detail}</p>}
@@ -1433,8 +1571,8 @@ export function DateInput({ type, value, defaultValue, onChange, min, max, disab
       </button>
       {pres.mounted && createPortal(
         <div ref={pop} role="dialog" aria-label={type === 'month' ? 'Escolher mês' : 'Escolher data'} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }}
-          style={{ left: Math.max(8, pos.left), top: pos.top, bottom: pos.bottom }}
-          className={cx('fixed z-[1400] w-[292px] bg-card border border-line rounded-pop shadow-pop p-3', pres.closing ? 'anim-out' : 'anim-page')}>
+          style={{ left: Math.max(8, pos.left), top: pos.top, bottom: pos.bottom, transformOrigin: pos.bottom != null ? 'bottom left' : 'top left' }}
+          className={cx('fixed z-[1400] w-[292px] bg-card rounded-pop shadow-pop p-3', pres.closing ? 'anim-pop-out' : 'anim-pop')}>
           <div className="flex items-center gap-1 mb-2">
             <button type="button" aria-label={type === 'month' ? 'Ano anterior' : 'Mês anterior'} className={navBtn} onClick={() => setFocus(addM(focus, type === 'month' ? -12 : -1))}><Icon name="voltar" size={16} /></button>
             <span aria-live="polite" className="flex-1 text-center text-body font-semibold">{type === 'month' ? focus.getFullYear() : `${MES_L[focus.getMonth()]} ${focus.getFullYear()}`}</span>
@@ -1468,6 +1606,92 @@ export function DateInput({ type, value, defaultValue, onChange, min, max, disab
             {!required && v && <TextButton tone="danger" onClick={() => { emit(''); close(); }}>Limpar</TextButton>}
             {type === 'datetime-local' && <Button size="sm" className="ml-auto" onClick={close}>Concluir</Button>}
           </div>
+        </div>, document.body)}
+    </>
+  );
+}
+
+// Intervalo de datas num calendário só (no lugar do par De/Até): 1º clique = início, 2º = fim (antes do início, troca);
+// passando o mouse, o trecho já aparece. Só emite com as duas pontas escolhidas. Valores em ISO ('2026-10-18').
+export function DateRangeInput({ from, to, onChange, min, max, className = '', ...p }: { from: string; to: string; onChange: (r: { from: string; to: string }) => void; min?: string; max?: string; className?: string; 'aria-label'?: string }) {
+  const [open, setOpen] = useState(false);
+  const [start, setStart] = useState<string | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
+  const [focus, setFocus] = useState(() => parseD(to) || new Date());
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0, top: 0 });
+  const pres = usePresence(open);
+  const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  const ok = (s: string) => (!min || s >= min.slice(0, 10)) && (!max || s <= max.slice(0, 10));
+  const show = () => {
+    const r = rectUi(btn.current!), { w: vw, h: vh } = viewportUi();
+    const up = r.bottom + 400 > vh && r.top > vh - r.bottom;
+    const left = Math.min(r.left, vw - 300);
+    setPos(up ? { left, bottom: vh - r.top + 4 } : { left, top: r.bottom + 4 });
+    setStart(null); setHover(null); setFocus(parseD(to) || new Date()); setOpen(true);
+  };
+  const close = () => { setOpen(false); btn.current?.focus(); };
+  useEffect(() => {
+    if (!open) return;
+    const out = (e: Event) => { if (!pop.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false); };
+    const scroll = (e: Event) => { if (!pop.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', out); window.addEventListener('scroll', scroll, true); window.addEventListener('resize', scroll);
+    return () => { document.removeEventListener('mousedown', out); window.removeEventListener('scroll', scroll, true); window.removeEventListener('resize', scroll); };
+  }, [open]);
+  const fkey = ymd(focus);
+  useEffect(() => { if (open) (pop.current?.querySelector(`[data-d="${fkey}"]`) as HTMLElement | null)?.focus(); }, [open, fkey]);
+  const pick = (d: Date) => {
+    const s = ymd(d); if (!ok(s)) return;
+    if (!start) { setStart(s); return; }
+    const [a, b] = s < start ? [s, start] : [start, s];
+    signalEdit(btn.current); onChange({ from: a, to: b }); close();
+  };
+  const gridKey = (e: React.KeyboardEvent) => {
+    const step: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    if (e.key in step) { const n = addD(focus, step[e.key]); setFocus(n); if (start) setHover(ymd(n)); }
+    else if (e.key === 'PageUp' || e.key === 'PageDown') setFocus(addM(focus, e.key === 'PageUp' ? -1 : 1));
+    else return;
+    e.preventDefault();
+  };
+  // seleção visível: escolhendo = início até o dia sob o mouse/foco; senão, o valor atual
+  const [lo, hi] = start ? [start, hover || start].sort() : [from.slice(0, 10), to.slice(0, 10)];
+  const fmt = (s: string, y: boolean) => { const d = parseD(s); return d ? `${d.getDate()} ${MES_C[d.getMonth()]}${y ? ` ${d.getFullYear()}` : ''}` : ''; };
+  const label = from && to ? `${fmt(from, from.slice(0, 4) !== to.slice(0, 4))} – ${fmt(to, true)}` : '';
+  const first = new Date(focus.getFullYear(), focus.getMonth(), 1);
+  const days = Array.from({ length: 42 }, (_, i) => addD(first, i - first.getDay()));
+  const today = ymd(new Date());
+  const navBtn = 'w-ctl-sm h-ctl-sm rounded-btn flex items-center justify-center text-ink-2 hover:bg-card-2 hover:text-ink';
+  return (
+    <>
+      <button ref={btn} type="button" aria-haspopup="dialog" aria-expanded={open} aria-label={p['aria-label'] ? `${p['aria-label']}${label ? `: ${label}` : ''}` : undefined}
+        onClick={() => (open ? setOpen(false) : show())} onKeyDown={(e) => { if (e.key === 'ArrowDown' && !open) { e.preventDefault(); show(); } }}
+        className={cx(inputCls, 'pl-3 pr-3 flex items-center gap-2 text-left', open && 'border-line-hover', className)}>
+        <span className={cx('flex-1 truncate num', !label && 'text-ink-3')}>{label || 'Escolher período'}</span>
+        <Icon name="calendario" size={16} className="shrink-0 text-ink-3" />
+      </button>
+      {pres.mounted && createPortal(
+        <div ref={pop} role="dialog" aria-label="Escolher período" onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }}
+          style={{ left: Math.max(8, pos.left), top: pos.top, bottom: pos.bottom, transformOrigin: pos.bottom != null ? 'bottom left' : 'top left' }}
+          className={cx('fixed z-[1400] w-[292px] bg-card rounded-pop shadow-pop p-3', pres.closing ? 'anim-pop-out' : 'anim-pop')}>
+          <div className="flex items-center gap-1 mb-2">
+            <button type="button" aria-label="Mês anterior" className={navBtn} onClick={() => setFocus(addM(focus, -1))}><Icon name="voltar" size={16} /></button>
+            <span aria-live="polite" className="flex-1 text-center text-body font-semibold">{`${MES_L[focus.getMonth()]} ${focus.getFullYear()}`}</span>
+            <button type="button" aria-label="Próximo mês" className={navBtn} onClick={() => setFocus(addM(focus, 1))}><Icon name="chevron" size={16} /></button>
+          </div>
+          <div role="grid" onKeyDown={gridKey} onMouseLeave={() => setHover(null)}>
+            <div role="row" className="grid grid-cols-7 mb-1">{SEMANA.map((d, i) => <span key={i} role="columnheader" className="h-7 flex items-center justify-center text-caption text-ink-3">{d}</span>)}</div>
+            <div className="grid grid-cols-7 gap-y-hair">
+              {days.map((d) => {
+                const s = ymd(d), edge = s === lo || s === hi, inside = !!lo && s > lo && s < hi, out = d.getMonth() !== focus.getMonth();
+                return <button key={s} type="button" role="gridcell" data-d={s} tabIndex={s === fkey ? 0 : -1} disabled={!ok(s)} aria-selected={edge || inside}
+                  aria-label={`${d.getDate()} de ${MES_L[d.getMonth()]} de ${d.getFullYear()}`} onClick={() => pick(d)} onMouseEnter={() => start && setHover(s)}
+                  className={cx('h-9 text-body num disabled:opacity-30 disabled:cursor-not-allowed',
+                    edge ? 'rounded-btn bg-brand-fill text-brand-fill-ink' : inside ? 'bg-brand-soft text-ink' : 'rounded-btn hover:bg-surface-muted',
+                    out && !edge && 'text-ink-3', s === today && !edge && 'font-semibold underline underline-offset-4')}>{d.getDate()}</button>;
+              })}
+            </div>
+          </div>
+          <p aria-live="polite" className="mt-3 text-caption text-ink-2">{start ? `Início em ${fmt(start, true)} — escolha o fim.` : 'Escolha o dia de início.'}</p>
         </div>, document.body)}
     </>
   );
@@ -1537,22 +1761,22 @@ function ToastView({ t }: { t: ToastItem }) {
   const icon = busy ? 'reiniciar' : t.tone === 'crit' ? 'erro' : t.tone === 'info' ? 'info' : 'sucesso';
   return (
     <div role={t.tone === 'crit' ? 'alert' : 'status'} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}
-      className={cx('pointer-events-auto w-full sm:w-[380px] bg-graphite text-on-dark rounded-pop shadow-pop pl-4 pr-2 py-3 flex items-start gap-stack', t.leaving ? 'toast-out' : 'toast-in')}>
-      <span className="ico-line text-body"><Icon name={icon} size={18} className={cx('transition-colors duration-[250ms]', busy ? 'text-on-dark-3 animate-spin' : t.tone === 'crit' ? 'text-[color-mix(in_srgb,var(--crit)_70%,white)]' : 'text-on-dark')} /></span>
+      className={cx('pointer-events-auto w-full sm:w-[380px] bg-card text-ink rounded-pop shadow-pop pl-4 pr-2 py-3 flex items-start gap-stack', t.leaving ? 'toast-out' : 'toast-in')}>
+      <span className="ico-line text-body"><Icon name={icon} size={18} className={cx('transition-colors duration-[250ms]', busy ? 'text-ink-3 animate-spin' : t.tone === 'crit' ? 'text-crit' : t.tone === 'info' ? 'text-ink-2' : 'text-pos')} /></span>
       <div className="flex-1 min-w-0 flex flex-col gap-hair">
         <p className="text-body font-medium leading-snug">{t.text}</p>
-        {t.detail && <p key={String(t.cmd)} className="text-caption text-on-dark-3 leading-snug anim-swap">{t.detail}</p>}
+        {t.detail && <p key={String(t.cmd)} className="text-small text-ink-2 leading-snug anim-swap">{t.detail}</p>}
         {t.cmd && (
           <ol aria-hidden="true" className="flex gap-1 mt-hair">
             {(['sent', 'waiting', 'ok'] as const).map((s, i) => {
               const at = { sent: 0, waiting: 1, ok: 2, fail: 2 }[t.cmd!];
-              return <li key={s} className={cx('h-1 flex-1 rounded-pill transition-colors duration-[250ms]', i <= at ? (t.cmd === 'fail' && i === 2 ? 'bg-crit' : 'bg-on-dark') : 'bg-on-dark-hover')} />;
+              return <li key={s} className={cx('h-1 flex-1 rounded-pill transition-colors duration-[250ms]', i <= at ? (t.cmd === 'fail' && i === 2 ? 'bg-crit' : 'bg-ink') : 'bg-surface-hover')} />;
             })}
           </ol>
         )}
       </div>
-      {t.action && <button type="button" onClick={() => { t.action!.onClick(); dismissToast(t.id); }} className="shrink-0 h-8 -my-1 px-3 rounded-btn text-small font-medium text-on-dark hover:bg-on-dark-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-dark">{t.action.label}</button>}
-      <IconButton aria-label="Fechar aviso" size="sm" tone="on-dark" className="-my-1" onClick={() => dismissToast(t.id)}><Icon name="fechar" size={16} /></IconButton>
+      {t.action && <button type="button" onClick={() => { t.action!.onClick(); dismissToast(t.id); }} className="shrink-0 h-8 -my-1 px-3 rounded-btn text-small font-medium text-ink bg-surface-muted hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring">{t.action.label}</button>}
+      <IconButton aria-label="Fechar aviso" tip={false} size="sm" className="-my-1" onClick={() => dismissToast(t.id)}><Icon name="fechar" size={16} /></IconButton>
     </div>
   );
 }
@@ -1571,6 +1795,7 @@ function ConfirmHost() {
   const done = (v: boolean) => { if (!confirmReq) return; confirmReq.resolve(v); confirmReq = null; force((n) => n + 1); };
   return (
     <Modal open={!!r} onClose={() => done(false)} title={r?.title || ''} width="max-w-md"
+      icon={<span aria-hidden="true" className={cx('w-10 h-10 rounded-ctl flex items-center justify-center', r?.tone === 'primary' ? 'bg-surface-muted text-ink' : 'bg-crit-soft text-crit-ink')}><Icon name={r?.tone === 'primary' ? 'info' : 'alerta'} size={20} /></span>}
       // foco inicial no lado seguro: em ação destrutiva (Descartar, Excluir) um Enter apressado só cancela; em ação comum
       // (tone primary, ex.: Sair) o Enter confirma
       footer={<><Button variant="ghost" autoFocus={r?.tone !== 'primary'} onClick={() => done(false)}>{r?.cancelLabel || 'Cancelar'}</Button><Button autoFocus={r?.tone === 'primary'} variant={r?.tone === 'primary' ? 'primary' : 'danger'} onClick={() => done(true)}>{r?.confirmLabel || 'Excluir'}</Button></>}>

@@ -158,7 +158,7 @@ function Veiculos({ onOpen }: any) {
     <Stack gap="grid">
       <Card>
         <div className="flex flex-wrap gap-x-5 gap-y-3 items-end max-md:[&>*]:w-full">
-          <Field label="Veículo"><Select className="w-64 max-md:w-full" value={aid} onChange={(e) => { setAid(e.target.value); setSlot(null); }} options={vehs.map((a: any) => ({ value: a.id, label: `${a.name} · ${a.model}` }))} /></Field>
+          <Field label="Veículo"><SearchSelect aria-label="Veículo" className="w-64 max-md:w-full" value={aid} onChange={(v) => { setAid(v); setSlot(null); }} placeholder="Buscar placa ou nome" options={vehs.map((a: any) => ({ value: a.id, label: a.name, sub: a.model }))} /></Field>
           <Field label="Tipo de eixo"><Pills value={layoutKey(asset)} onChange={async (k) => { if (await R.setLayout(aid, k)) { setSlot(null); toast(`Tipo de eixo: ${LAYOUTS[k].label}.`); } }} options={Object.entries(LAYOUTS).map(([k, v]) => ({ key: k, label: v.label }))} /></Field>
           <span className="text-small text-ink-2 pb-2 ml-auto">{asset?.kind === 'implemento' && <>{currentCoupling(s, aid) ? <>{compositionName(s, currentCoupling(s, aid)!.items)} com <AssetName name={aName(s, currentCoupling(s, aid)!.tractorId)} /> · </> : 'Desengatada · '}</>}Km atual <Num value={R.kmOf(aid)} unit="km" size="small" className="font-semibold text-ink" />{asset?.kind === 'implemento' && ' (pelos engates)'}</span>
         </div>
@@ -244,7 +244,7 @@ function SlotPanel({ aid, pos, onOpen, onClose }: any) {
       <Field label={asset?.kind === 'implemento' ? 'Km da carreta agora' : 'Km do veículo agora'} hint={asset?.kind === 'implemento' ? 'Calculado pelos engates' : 'Lido do rastreador; corrija se o painel mostrar outro valor'}><Input type="number" value={kmV} onChange={(e) => setKmV(e.target.value)} /></Field>
       {!t ? (
         stock.length ? <div className="flex flex-col gap-3 mt-3">
-          <Field label="Pneu do estoque"><Select value={pick} onChange={(e) => setPick(e.target.value)} options={stock.map((x: any) => ({ value: x.id, label: `${x.fireNumber} · ${x.brand} ${x.size} · ${lifeLabel(x.lives.length)}` }))} /></Field>
+          <Field label="Pneu do estoque" hint="Digite qualquer parte do número de fogo, a marca ou a medida."><SearchSelect aria-label="Pneu do estoque" value={pick} onChange={setPick} placeholder="Buscar número de fogo" emptyLabel="Nenhum pneu em estoque com esse número" options={stock.map((x: any) => ({ value: x.id, label: x.fireNumber, sub: `${x.brand} ${x.size} · ${lifeLabel(x.lives.length)}` }))} /></Field>
           {sizeHere && stock.find((x: any) => x.id === pick)?.size !== sizeHere && <Callout>Medida diferente da usada neste veículo ({sizeHere}).</Callout>}
           <Button disabled={!pick || !km} onClick={async () => { const p = stock.find((x: any) => x.id === pick); await R.mount(pick, aid, pos, km); toast(`${p?.fireNumber} montado em ${posLabel(pos).toLowerCase()}.`); }}>Montar nesta posição</Button>
         </div> : <p className="text-small text-ink-2 mt-3">Não há pneus em estoque. Cadastre um pneu em "Todos os pneus".</p>

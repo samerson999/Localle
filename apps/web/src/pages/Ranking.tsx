@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
 import { lancarEventoRanking, removerEventoRanking, salvarMatrizRanking, useCarregando } from '../lib/localleApi';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack, SetupLink, useUrlTab, useIsMobile } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Badge, Tabs, Modal, PageHeader, Check, cx, TextButton, EmptyState, ErrorState, Skeleton, IconButton, Progress, TabPanel, toast, Pills, DescList, DescRow, confirmAction, Grid, Stack, SetupLink, useUrlTab, useIsMobile, DateRangeInput } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { KpiTile, KpiHero, ChartCard, DeltaChip, StatusDot, Num } from '../components/story';
@@ -263,7 +263,7 @@ function Campanhas() {
       <Modal open={!!c} onClose={() => setC(null)} title={c?.id ? 'Editar campanha' : 'Nova campanha'} width="max-w-2xl" footer={<><Button variant="quiet" onClick={() => setC(null)}>Cancelar</Button><Button disabled={!c?.name || !c?.eventTypes.length} onClick={() => { s.upsert('campaigns', { ...c, maxPerVehicle: +c.maxPerVehicle }); setC(null); toast('Campanha salva.'); }}>Salvar campanha</Button></>}>
         {c && <>
           <Field label="Nome"><Input value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} placeholder="Ex.: Almoço no horário em novembro" /></Field>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-field"><Field label="Início"><Input type="date" value={c.from} onChange={(e) => setC({ ...c, from: e.target.value })} /></Field><Field label="Fim"><Input type="date" value={c.to} onChange={(e) => setC({ ...c, to: e.target.value })} /></Field></div>
+          <Field label="Duração da campanha"><DateRangeInput from={c.from} to={c.to} onChange={(r) => setC({ ...c, ...r })} /></Field>
           <Field label="Meta"><Pills value={+c.maxPerVehicle === 0 ? 'zero' : 'meta'} onChange={(k) => setC({ ...c, maxPerVehicle: k === 'zero' ? 0 : Math.max(1, +c.maxPerVehicle || 3) })} options={[{ key: 'zero', label: 'Tolerância zero' }, { key: 'meta', label: 'Até N eventos' }]} /></Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-field">
             {+c.maxPerVehicle > 0 && <Field label="Máximo de eventos por motorista"><Input type="number" min={1} value={c.maxPerVehicle} onChange={(e) => setC({ ...c, maxPerVehicle: e.target.value })} /></Field>}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { Button, Card, Field, Input, Table, Badge, Tabs, PageHeader, Pills, cx, TextButton, Switch, TabPanel, EmptyState, toast, confirmAction, Grid, Stack, useUrlTab } from '../components/ui';
+import { Button, Card, Field, Input, Table, Badge, Tabs, PageHeader, Pills, cx, TextButton, Switch, TabPanel, EmptyState, toast, confirmAction, Grid, Stack, useUrlTab, ColorSwatchPicker } from '../components/ui';
 import { Icon } from '../components/icons';
 import { Dropzone } from '../components/Dropzone';
 import SupportAccess from '../components/SupportAccess';
@@ -45,10 +45,7 @@ function Marca() {
           <div role="group" aria-label="Cor principal" className="flex flex-col gap-tight">
             <span className="text-small font-medium text-ink-2">Cor principal</span>
             {/* amostras: são o próprio conteúdo escolhido (a cor da revenda), não decoração da interface */}
-            <div className="flex gap-2 items-center flex-wrap">
-              {['#2251E6', '#0E7C66', '#C2410C', '#7C3AED', '#0F766E', '#B91C1C'].map((c) => <button key={c} type="button" aria-label={`Cor ${c}`} aria-pressed={b.color === c} onClick={() => set('color', c)} className={cx('w-10 h-10 rounded-pill border-4', b.color === c ? 'border-ink' : 'border-card ring-1 ring-line')} style={{ background: c }} />)}
-              <input aria-label="Cor personalizada" type="color" value={b.color} onChange={(e) => set('color', e.target.value)} className="w-10 h-10 rounded-ctl cursor-pointer" />
-            </div>
+            <ColorSwatchPicker label="Cor principal" value={b.color} onChange={(c) => set('color', c)} colors={['#2251E6', '#0E7C66', '#C2410C', '#7C3AED', '#0F766E', '#B91C1C']} />
             <span className="text-caption text-ink-2">Sem contraste suficiente, ou em vermelho ou laranja, botões e controles passam a usar grafite.</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-field">

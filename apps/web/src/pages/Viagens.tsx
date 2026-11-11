@@ -243,7 +243,7 @@ function Externas() {
 }
 function TripForm({ t, setT }: any) {
   const s = useStore();
-  const fences = [{ value: '', label: 'Escolha a cerca' }, ...s.fences.map((f: any) => ({ value: f.id, label: `${f.name} (${f.type})` }))];
+  const fences = s.fences.map((f: any) => ({ value: f.id, label: f.name, sub: f.type }));
   const ok = t.assetId && t.originFenceId && t.loadFenceId && t.unloadFenceId && t.destFenceId;
   const save = async () => { try { await criarViagem({ ...t, type: 'externo', driverId: t.driverId || s.assets.find((a: any) => a.id === t.assetId)?.driverId }); toast('Viagem criada. Ela começa quando o veículo sair da origem.'); setT(null); } catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); } };
   return (
@@ -253,7 +253,7 @@ function TripForm({ t, setT }: any) {
         <Field label="Veículo"><SearchSelect value={t.assetId || ''} onChange={(v) => setT({ ...t, assetId: v, driverId: s.assets.find((a: any) => a.id === v)?.driverId || '' })} placeholder="Escolha" options={s.assets.filter((a: any) => a.tracker && a.kind === 'veiculo').map((a: any) => ({ value: a.id, label: a.name }))} /></Field>
         <Field label="Carga"><Input value={t.cargo || ''} onChange={(e) => setT({ ...t, cargo: e.target.value })} placeholder="Ex.: Cimento ensacado" /></Field>
         <Field label="Motorista"><SearchSelect value={t.driverId || ''} onChange={(v) => setT({ ...t, driverId: v })} placeholder="—" options={s.drivers.map((d: any) => ({ value: d.id, label: d.name }))} /></Field>
-        {STAGES.map((st) => <Field key={st.key} label={st.label}><Select value={t[st.key] || ''} onChange={(e) => setT({ ...t, [st.key]: e.target.value })} options={fences} /></Field>)}
+        {STAGES.map((st) => <Field key={st.key} label={st.label}><SearchSelect aria-label={st.label} value={t[st.key] || ''} onChange={(v) => setT({ ...t, [st.key]: v })} placeholder="Buscar cerca" options={fences} /></Field>)}
       </div>
     </Modal>
   );
@@ -310,7 +310,7 @@ function Cumprimento({ m, a, b }: { m: any; a: [number, number]; b: [number, num
 }
 function MatrixForm({ m, setM }: any) {
   const s = useStore();
-  const fences = [{ value: '', label: 'Escolha a cerca' }, ...s.fences.map((f: any) => ({ value: f.id, label: f.name }))];
+  const fences = s.fences.map((f: any) => ({ value: f.id, label: f.name }));
   const ok = m.name && m.assetId && m.days.length && m.stops.length && m.stops.every((x: any) => x.fenceId && x.time);
   return (
     <Modal open onClose={() => setM(null)} title={m.id ? 'Editar viagem recorrente' : 'Nova viagem recorrente'} width="max-w-3xl" footer={<><Button variant="ghost" onClick={() => setM(null)}>Cancelar</Button><Button disabled={!ok} onClick={async () => { try { await salvarMatrizViagem(m); toast('Viagem recorrente salva.'); setM(null); } catch (e: any) { toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' }); } }}>Salvar</Button></>}>
@@ -325,7 +325,7 @@ function MatrixForm({ m, setM }: any) {
         {m.stops.map((st: any, i: number) => (
           <div key={i} className="flex gap-2 items-end">
             <span className="num text-ink-2 w-5 pb-stack">{i + 1}</span>
-            <div className="flex-1"><Select aria-label={`Parada ${i + 1}`} value={st.fenceId} onChange={(e) => setM({ ...m, stops: m.stops.map((x: any, j: number) => (j === i ? { ...x, fenceId: e.target.value } : x)) })} options={fences} /></div>
+            <div className="flex-1"><SearchSelect aria-label={`Parada ${i + 1}`} value={st.fenceId} onChange={(v) => setM({ ...m, stops: m.stops.map((x: any, j: number) => (j === i ? { ...x, fenceId: v } : x)) })} placeholder="Buscar cerca" options={fences} /></div>
             <Input type="time" aria-label={`Horário da parada ${i + 1}`} className="w-32" value={st.time} onChange={(e) => setM({ ...m, stops: m.stops.map((x: any, j: number) => (j === i ? { ...x, time: e.target.value } : x)) })} />
             <TextButton tone="danger" className="pb-stack" onClick={() => setM({ ...m, stops: m.stops.filter((_: any, j: number) => j !== i) })}>Remover</TextButton>
           </div>
@@ -334,7 +334,7 @@ function MatrixForm({ m, setM }: any) {
       </div>
       <div className="flex flex-col gap-2">
         <span className="text-small font-medium text-ink-2">Onde o veículo dorme</span>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{m.days.map((d: number) => <Field key={d} label={WEEKDAYS[d]}><Select value={m.sleep?.[d] || ''} onChange={(e) => setM({ ...m, sleep: { ...(m.sleep || {}), [d]: e.target.value } })} options={[{ value: '', label: '—' }, ...s.fences.map((f: any) => ({ value: f.id, label: f.name }))]} /></Field>)}</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{m.days.map((d: number) => <Field key={d} label={WEEKDAYS[d]}><SearchSelect aria-label={`Pernoite ${WEEKDAYS[d]}`} value={m.sleep?.[d] || ''} onChange={(v) => setM({ ...m, sleep: { ...(m.sleep || {}), [d]: v } })} placeholder="—" options={fences} /></Field>)}</div>
       </div>
     </Modal>
   );

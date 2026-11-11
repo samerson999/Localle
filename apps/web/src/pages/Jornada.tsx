@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore, useStoreData } from '../lib/store';
 import { registrarMarcacao, removerMarcacao, salvarEmpresa, useCarregando } from '../lib/localleApi';
 import { mascaraValida } from '../lib/mascaras';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid, SetupLink, DescList, DescRow, useUrlTab, useIsMobile } from '../components/ui';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Tabs, PageHeader, Pills, TextButton, Callout, EmptyState, Progress, TabPanel, DateInput, cx, toast, confirmAction, Panel, Stack, Grid, SetupLink, DescList, DescRow, useUrlTab, useIsMobile, DateRangeInput } from '../components/ui';
 import { PeriodCompare, presetValue, periodRanges, rangeText, BI_PRESETS, type PeriodValue } from '../components/PeriodCompare';
 import { ColumnChart, CompareBars } from '../components/charts';
 import { computeDays, HARDEN, clampLegal, jornadaLimits } from '@localle/shared/jornada';
@@ -168,7 +168,7 @@ function Folha() {
         <div className="flex flex-wrap gap-3 items-end max-md:[&>*]:w-full">
           <Field label="Motorista"><SearchSelect className="w-56 max-md:w-full" value={d} onChange={setD} options={[...s.drivers.map((x: any) => ({ value: x.id, label: x.name })), { value: 'todos', label: 'Todos os motoristas (um por página)' }]} /></Field>
           <Field label="Período"><Pills value={mode} onChange={setMode} options={[{ key: 'mes', label: 'Competência' }, { key: 'custom', label: 'Personalizado' }]} /></Field>
-          {mode === 'mes' ? <Field label="Competência"><DateInput type="month" value={ym} onChange={(e) => setYm(e.target.value)} /></Field> : <><Field label="De"><DateInput type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></Field><Field label="Até"><DateInput type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></Field></>}
+          {mode === 'mes' ? <Field label="Competência"><DateInput type="month" value={ym} onChange={(e) => setYm(e.target.value)} /></Field> : <Field label="De – até"><DateRangeInput className="w-60 max-md:w-full" from={from} to={to} onChange={(r) => { setFrom(r.from); setTo(r.to); }} /></Field>}
           <Button variant="dark" onClick={() => print(<>{selected.map(sheet)}</>)}><Icon name="imprimir" size={18} />Imprimir / salvar PDF{selected.length > 1 ? ` (${selected.length} folhas)` : ''}</Button>
         </div>
         <p className="text-caption text-ink-2 mt-3">A impressão sai em A4 paisagem, só com o documento. Os dados da empresa (CNPJ e endereço) ficam em Jornada › Regras; CPF e matrícula, no cadastro do motorista.</p>
@@ -193,7 +193,7 @@ function Termo() {
   if (!s.drivers.length) return <Card><EmptyState illustration="ilu-jornada" title="Nenhum motorista cadastrado" detail="Cadastre um motorista em Ativos para emitir o termo de orientação." /></Card>;
   return (
     <Stack gap="grid">
-      <Card className="no-print"><div className="flex flex-wrap gap-3 items-end max-md:[&>*]:w-full"><Field label="Motorista"><Select className="w-52 max-md:w-full" value={d} onChange={(e) => setD(e.target.value)} options={s.drivers.map((x: any) => ({ value: x.id, label: x.name }))} /></Field><Button variant="dark" onClick={() => print(<div className="doc-sheet" style={{ fontSize: 14, maxWidth: 760, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: document.getElementById('termo-doc')?.innerHTML || '' }} />)}><Icon name="imprimir" size={18} />Imprimir para assinatura</Button></div><div className="mt-3"><LegalNote /></div></Card>
+      <Card className="no-print"><div className="flex flex-wrap gap-3 items-end max-md:[&>*]:w-full"><Field label="Motorista"><SearchSelect aria-label="Motorista" className="w-52 max-md:w-full" value={d} onChange={setD} placeholder="Buscar motorista" options={s.drivers.map((x: any) => ({ value: x.id, label: x.name }))} /></Field><Button variant="dark" onClick={() => print(<div className="doc-sheet" style={{ fontSize: 14, maxWidth: 760, margin: '0 auto' }} dangerouslySetInnerHTML={{ __html: document.getElementById('termo-doc')?.innerHTML || '' }} />)}><Icon name="imprimir" size={18} />Imprimir para assinatura</Button></div><div className="mt-3"><LegalNote /></div></Card>
       <article id="termo-doc" className="bg-card border border-line rounded-card p-8 md:p-12 max-w-3xl print-area text-body leading-relaxed">
         <h2 className="text-h2 font-semibold text-center mb-6">Termo de ciência sobre controle de jornada e tempo de direção</h2>
         <p className="mb-3">Eu, <b>{drv?.name}</b>, portador(a) da CNH nº <b>{drv?.cnh}</b>, categoria <b>{drv?.cnhCat}</b>, motorista profissional empregado(a) de <b>{company}</b>, declaro que fui orientado(a) e estou ciente das regras de jornada de trabalho e tempo de direção previstas na Lei nº 13.103/2015, na CLT (arts. 235-A a 235-H) e no Código de Trânsito Brasileiro (art. 67-C), em especial:</p>

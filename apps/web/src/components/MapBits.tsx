@@ -10,7 +10,7 @@ import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { leituraAntiga } from '../lib/diagnosticoRastreador';
 import type { ComunicacaoStatus } from '@localle/shared/realtime';
 import { StatusDot, Plate, Num } from './story';
-import { IconButton, cx, Menu, type MenuItem } from './ui';
+import { IconButton, cx, Menu, type MenuItem, Tooltip as Dica } from './ui';
 import { Icon, type IconName } from './icons';
 type Glyph = Category | 'reboque';
 import { fmtCoord, useAddress } from '../lib/geocode';
@@ -26,7 +26,7 @@ export const ATTR = '&copy; OpenStreetMap';
 
 // Estilos de mapa (igual a sistemas de rastreamento estabelecidos: ruas e satélite).
 export type MapStyleKey = 'ruas' | 'satelite';
-export const MAP_STYLES: Record<MapStyleKey, { label: string; icon: string; url: string; attribution: string }> = {
+export const MAP_STYLES: Record<MapStyleKey, { label: string; icon: IconName; url: string; attribution: string }> = {
   ruas: { label: 'Ruas', icon: 'locale', url: TILE, attribution: ATTR },
   satelite: { label: 'Satélite', icon: 'camera', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri' },
 };
@@ -60,6 +60,13 @@ export function vehIcon({ plate, kind, heading = 0, selected = false, note }: { 
     html: `<div class="veh-marker${selected ? ' sel' : ''}" data-k="${kind}"><span class="disc">${dir}</span><span class="tag">${esc(plate)}${note ? `<span class="note">${esc(note)}</span>` : ''}</span></div>`,
   });
 }
+
+// Alfinete para pontos de relatório (pico de velocidade, entrada em cerca, centro da busca). Desenhado em SVG:
+// o ícone padrão do Leaflet depende de marker-icon.png, que o Vite não resolve, e aparecia como imagem quebrada.
+export const pinIcon = (color = 'var(--brand)') => L.divIcon({
+  className: '', iconSize: [26, 34], iconAnchor: [13, 33], popupAnchor: [0, -30],
+  html: `<svg width="26" height="34" viewBox="0 0 26 34" aria-hidden="true" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))"><path d="M13 1C6.4 1 1 6.3 1 12.8 1 21.6 13 33 13 33s12-11.4 12-20.2C25 6.3 19.6 1 13 1z" fill="${color}" stroke="#fff" stroke-width="2"/><circle cx="13" cy="12.8" r="4.4" fill="#fff"/></svg>`,
+});
 
 // Marcador de veículo que desliza até a nova posição em duração fixa (--t-glide), sem esticar pelo intervalo
 // do rastreador: a posição mostrada chega logo, não fica atrasada. Gira pelo caminho mais curto (359° → 1° = 2°).
@@ -175,7 +182,7 @@ export function Address({ pos, className = '' }: { pos?: [number, number] | null
 // modelo, onde está, métricas e ações. É aqui, e não no marcador, que aparece a aparência do veículo.
 export function VehicleCard({ plate, silhouette, icon, photo, model, place, kind, statusLabel, statusSub, metrics = [], actions = [], onClose, className = '' }: {
   plate: string; silhouette: SilhouetteKey; icon?: string; photo?: string; model?: string; place?: React.ReactNode; kind: StatusKind; statusLabel?: string; statusSub?: string;
-  metrics?: { icon: string; value: React.ReactNode; label: string }[]; actions?: { icon: string; label: string; onClick?: () => void }[]; onClose?: () => void; className?: string;
+  metrics?: { icon: IconName; value: React.ReactNode; label: string }[]; actions?: { icon: IconName; label: string; onClick?: () => void }[]; onClose?: () => void; className?: string;
 }) {
   const iconUrl = icon && pngIconUrl(icon);
   return (
@@ -210,21 +217,23 @@ export function VehicleCard({ plate, silhouette, icon, photo, model, place, kind
 }
 
 // Botão flutuante sobre o mapa (camada liga/desliga ou ação). pressed = camada visível (ponto cheio).
-export function MapButton({ icon, label, onClick, pressed, title }: { icon: string; label: string; onClick: () => void; pressed?: boolean; title?: string }) {
+export function MapButton({ icon, label, onClick, pressed, title }: { icon: IconName; label: string; onClick: () => void; pressed?: boolean; title?: string }) {
   return (
     // celular: só o ícone (o nome fica para o leitor de tela); com os quatro nomes a barra quebrava linha sobre o mapa
-    <button type="button" onClick={onClick} aria-pressed={pressed} title={title}
+    <Dica content={title}>
+    <button type="button" onClick={onClick} aria-pressed={pressed}
       className={cx('h-9 [@media(pointer:coarse)]:h-ctl-sm pl-stack pr-3 max-md:px-stack rounded-btn bg-card border border-line shadow-float flex items-center gap-tight text-small font-medium transition-colors hover:bg-card-2', pressed === false ? 'text-ink-2' : 'text-ink')}>
       <Icon name={icon} size={18} className={pressed === false ? 'text-ink-3' : 'text-ink-2'} /><span className="max-md:sr-only">{label}</span>
       {pressed !== undefined && <span aria-hidden="true" className={cx('ml-1 w-2 h-2 rounded-pill', pressed ? 'bg-graphite' : 'border border-ink-3')} />}
     </button>
+    </Dica>
   );
 }
 // Grupo vertical de controles do mapa (aproximar, afastar, ver tudo, centralizar)
-export function MapControls({ items }: { items: { icon: string; label: string; onClick: () => void }[] }) {
+export function MapControls({ items }: { items: { icon: IconName; label: string; onClick: () => void }[] }) {
   return (
     <div className="flex flex-col bg-card border border-line rounded-btn shadow-float overflow-hidden divide-y divide-line">
-      {items.map((it) => <button key={it.label} type="button" aria-label={it.label} title={it.label} onClick={it.onClick} className="w-9 h-9 [@media(pointer:coarse)]:w-ctl-sm [@media(pointer:coarse)]:h-ctl-sm flex items-center justify-center text-ink hover:bg-card-2"><Icon name={it.icon} size={18} /></button>)}
+      {items.map((it) => <Dica key={it.label} content={it.label} side="left"><button type="button" aria-label={it.label} onClick={it.onClick} className="w-9 h-9 [@media(pointer:coarse)]:w-ctl-sm [@media(pointer:coarse)]:h-ctl-sm flex items-center justify-center text-ink hover:bg-card-2"><Icon name={it.icon} size={18} /></button></Dica>)}
     </div>
   );
 }
