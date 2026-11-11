@@ -101,9 +101,24 @@ a { text-underline-offset: 3px; }
 .anim-page { animation: page-in var(--t-page) var(--ease-out) backwards; }
 .anim-fade { animation: fade-in var(--t-page) ease both; }
 .panel-in { animation: panel-in 240ms var(--ease-out) both; }
+/* menus, listas de opções, calendários e modal: crescem a partir de onde foram abertos (transform-origin no próprio
+   elemento, do lado do botão), em vez de subir como uma tela nova (referência: popovers do Visor, 11/11/2026) */
+@keyframes pop-in { from { opacity: 0; transform: scale(0.95); } }
+@keyframes pop-out { to { opacity: 0; transform: scale(0.97); } }
+.anim-pop { animation: pop-in var(--t-page) var(--ease-out) backwards; }
+.anim-pop-out { animation: pop-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
 .grow-y { transform-box: fill-box; transform-origin: bottom; animation: grow-y var(--t-bar) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 30ms); }
 .grow-x { transform-origin: left; animation: grow-x var(--t-bar) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 30ms); }
-.skeleton { background: linear-gradient(90deg, var(--skeleton-a) 0%, var(--skeleton-b) 40%, var(--skeleton-a) 80%) 0 0 / 300% 100%; animation: shimmer 1.4s linear infinite; border-radius: var(--r-tight); }
+/* gráfico de linha/área que se revela da esquerda para a direita (recorte, não traço: funciona com vector-effect); pontos e
+   rótulos entram logo depois, em cascata */
+@keyframes reveal-x { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.reveal-x { animation: reveal-x 900ms var(--ease-out) both; }
+/* número rolante (NumeroRolante.tsx): a janela corta em cima e embaixo, com folga para a vírgula com line-height 1; o lado
+   fica livre para a inclinação */
+.num-rolante { display: inline-block; position: relative; clip-path: inset(-0.1em -0.3em); }
+.num-rolante-sai { position: absolute; inset: 0; pointer-events: none; }
+.fade-after { animation: fade-in var(--t-bar) ease both; animation-delay: calc(300ms + var(--i, 0) * 40ms); }
+.skeleton { background: linear-gradient(90deg, var(--skeleton-a) 0%, var(--skeleton-b) 40%, var(--skeleton-a) 80%) 0 0 / 300% 100%; animation: shimmer 2s linear infinite; border-radius: var(--r-tight); } /* ritmo do skeleton do HeroUI */
 .row-hover { transition: background-color var(--t-row) ease; }
 /* saídas: mais curtas e com aceleração (ease-in); o elemento some sem disputar atenção */
 @keyframes page-out { to { opacity: 0; transform: translateY(4px); } }
@@ -317,9 +332,10 @@ a { text-underline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
   /* login: a cena aparece pronta e o carrossel não troca sozinho (a troca é pelo clique) */
   .login-stage *, .login-copy *, .login-seg-fill { animation: none !important; }
-  .anim-page, .grow-y, .grow-x, .panel-in, .toast-in { animation: fade-in 150ms ease both !important; transform: none !important; }
+  .anim-page, .anim-pop, .grow-y, .grow-x, .panel-in, .toast-in { animation: fade-in 150ms ease both !important; transform: none !important; }
+  .reveal-x, .fade-after { animation: fade-in 150ms ease both !important; } /* sem zerar transform: a etiqueta do gráfico se posiciona por ele */
   .anim-page { animation-fill-mode: backwards !important; } /* mesmo motivo do .anim-page acima: sem contexto de empilhamento depois de entrar */
-  .anim-out, .panel-out, .toast-out, .sheet-out { animation: fade-out var(--t-exit) ease both !important; }
+  .anim-out, .anim-pop-out, .panel-out, .toast-out, .sheet-out { animation: fade-out var(--t-exit) ease both !important; }
   .sheet-in { animation: fade-in 150ms ease both !important; }
   .dock-drawer, .dock-pill { transition: none !important; }
   .pulse-once { animation: none; }
