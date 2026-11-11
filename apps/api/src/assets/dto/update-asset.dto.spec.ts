@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
-import { DADOS_MAX_BYTES, parseUpdateAsset } from './update-asset.dto';
+import { DADOS_MAX_BYTES, parseCreateAsset, parseUpdateAsset } from './update-asset.dto';
 
 describe('parseUpdateAsset (icone)', () => {
   it('aceita nome do catálogo; null ou vazio limpam; ausente não mexe', () => {
@@ -29,5 +29,25 @@ describe('parseUpdateAsset (dados e operacaoId)', () => {
     for (const dados of ['x', [1], null, 3]) expect(() => parseUpdateAsset({ dados })).toThrow(BadRequestException);
     expect(() => parseUpdateAsset({ dados: { photo: 'a'.repeat(DADOS_MAX_BYTES) } })).toThrow(BadRequestException);
     expect(() => parseUpdateAsset({ operacaoId: 'abc' })).toThrow(BadRequestException);
+  });
+});
+
+describe('placa e identificador', () => {
+  it('cadastro aceita só placa, só identificador ou os dois; sem nenhum, recusa', () => {
+    expect(parseCreateAsset({ plate: 'abc1d23' })).toEqual({ plate: 'ABC1D23', identificador: null });
+    expect(parseCreateAsset({ identificador: '  RETRO-01 ' })).toEqual({ plate: null, identificador: 'RETRO-01' });
+    expect(parseCreateAsset({ plate: '', identificador: 'ESC-02' })).toEqual({ plate: null, identificador: 'ESC-02' });
+    for (const body of [{}, { plate: '' }, { plate: null, identificador: '  ' }, undefined]) expect(() => parseCreateAsset(body)).toThrow(BadRequestException);
+  });
+
+  it('atualização: ausente não mexe; null ou vazio limpa; formato errado recusa', () => {
+    expect(parseUpdateAsset({ status: 'ativo' }).plate).toBeUndefined();
+    expect(parseUpdateAsset({ plate: null }).plate).toBeNull();
+    expect(parseUpdateAsset({ plate: '' }).plate).toBeNull();
+    expect(parseUpdateAsset({ identificador: 'FROTA-15' }).identificador).toBe('FROTA-15');
+    expect(parseUpdateAsset({ identificador: '' }).identificador).toBeNull();
+    expect(() => parseUpdateAsset({ identificador: 'x'.repeat(61) })).toThrow(BadRequestException);
+    expect(() => parseUpdateAsset({ identificador: 3 })).toThrow(BadRequestException);
+    expect(() => parseUpdateAsset({ plate: 'x'.repeat(21) })).toThrow(BadRequestException);
   });
 });

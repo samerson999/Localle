@@ -1,4 +1,5 @@
 import { assetIdFor, backendIdOf } from './localleMap';
+import { CATALOGO_VAZIO, marcaModeloDoAtivo, type CatalogoAtivos } from './catalogoAtivos';
 
 // Mapeadores puros API ↔ formato do store para os módulos que saíram do navegador (motoristas, grupos,
 // jornada, multas, combustível, manutenção, checklist, ranking, viagens). Sem rede, sem store — testados em
@@ -180,7 +181,7 @@ export function tripToViagemBody(t: any) {
 // O que do cadastro do ativo vai para a API. Fica de fora: id/placa/ícone/motorista (colunas próprias), grupos
 // (vínculo no grupo), operação (`operacao_id`), rastreador (instalação), foto e arquivo dos documentos (sem
 // armazenamento de arquivo na API ainda: continuam no navegador).
-export const FICHA_CAMPOS = ['kind', 'category', 'name', 'brand', 'model', 'year', 'serial', 'specs', 'customFields', 'meter', 'kmSource', 'kmOffset', 'initialKm',
+export const FICHA_CAMPOS = ['kind', 'category', 'tipo', 'name', 'brand', 'model', 'year', 'serial', 'chassi', 'renavam', 'specs', 'customFields', 'meter', 'kmSource', 'kmOffset', 'initialKm',
   'fuelGoal', 'fuelBudget', 'journeySource', 'trailerType', 'tireLayout', 'can', 'active', 'lifecycle', 'documents', 'odometerCheckDone', 'installation', 'kmCalculated'] as const;
 
 export function fichaDoAtivo(a: any): Record<string, unknown> {
@@ -201,9 +202,11 @@ const SITUACAO_DA_API: Record<string, string> = { vendido: 'vendido', baixado: '
  * com ela), fica o que o navegador tinha. O arquivo dos documentos só existe no navegador e é mantido pelo id.
  * A situação vendido/baixado é a da API (status); o histórico e a anotação vêm da ficha.
  */
-export function ativoDaApi(row: any, prev: any) {
+const pick = (o: Record<string, unknown> | null, ks: string[]) => (o ? Object.fromEntries(ks.map((k) => [k, o[k]])) : {});
+
+export function ativoDaApi(row: any, prev: any, catalogo: CatalogoAtivos = CATALOGO_VAZIO) {
   const dados = row.dados && Object.keys(row.dados).length ? row.dados : null;
-  const base = { ...ATIVO_PADRAO, name: row.plate, ...prev, ...(dados || {}) };
+  const base = { ...ATIVO_PADRAO, name: row.rotulo ?? row.plate, ...prev, ...(dados || {}) };
   if (dados && Array.isArray(dados.documents)) {
     const arquivo = new Map<string, any>((prev?.documents || []).filter((d: any) => d.file).map((d: any) => [d.id, d]));
     base.documents = dados.documents.map((d: any) => (arquivo.has(d.id) ? { ...d, file: arquivo.get(d.id).file } : d));
@@ -214,7 +217,9 @@ export function ativoDaApi(row: any, prev: any) {
     ? (atual === fora ? base.lifecycle : { status: fora, at: Date.parse(row.status_desde), note: '', history: base.lifecycle?.history || [] })
     : (atual === 'vendido' || atual === 'baixa' ? { status: 'ativo', at: Date.parse(row.status_desde), note: '', history: base.lifecycle?.history || [] } : base.lifecycle);
   return {
-    ...base, id: assetIdFor(row.id), plate: row.plate, icon: row.icone ?? base.icon ?? '',
+    ...base, id: assetIdFor(row.id), plate: row.plate || '', serial: row.identificador || '', icon: row.icone ?? base.icon ?? '',
+    // modelo da lista: marca e modelo vêm dela (renomear corrige em todos os ativos); sem modelo, fica o texto da ficha
+    modeloId: row.modelo_id || '', ...pick(marcaModeloDoAtivo(row.modelo_id, catalogo), ['brand', 'model']),
     operationId: row.operacao_id || (dados ? '' : prev?.operationId || ''),
     ...(lifecycle ? { lifecycle } : {}),
   };

@@ -94,6 +94,17 @@ describe('ficha do ativo (assets.dados)', () => {
     expect(ativoDaApi(row(), undefined)).toMatchObject({ id: 'lc_' + U, name: 'ABC1D23', kind: 'veiculo', groupIds: [], operationId: '' });
   });
 
+  it('ativo sem placa: nome vem do identificador; placa vazia e identificador vira o código interno', () => {
+    expect(ativoDaApi(row({ plate: null, identificador: 'RETRO-01', rotulo: 'RETRO-01' }), undefined)).toMatchObject({ name: 'RETRO-01', plate: '', serial: 'RETRO-01' });
+  });
+
+  it('modelo da lista: marca e modelo vêm do catálogo (renomeado vale), não do texto da ficha', () => {
+    const catalogo = { marcas: [{ id: 'm1', nome: 'Volkswagen' }], modelos: [{ id: 'o1', marcaId: 'm1', nome: '13.190' }], tipos: [] };
+    const a = ativoDaApi(row({ modelo_id: 'o1', dados: { brand: 'VW', model: '13190' } }), undefined, catalogo);
+    expect(a).toMatchObject({ modeloId: 'o1', brand: 'Volkswagen', model: '13.190' });
+    expect(ativoDaApi(row({ dados: { brand: 'VW', model: '13190' } }), undefined, catalogo)).toMatchObject({ modeloId: '', brand: 'VW', model: '13190' });
+  });
+
   it('situação vendido/baixado vem do status da API; voltar a ativo na API desfaz a saída local', () => {
     expect(ativoDaApi(row({ status: 'baixado' }), undefined).lifecycle).toMatchObject({ status: 'baixa', at: Date.parse('2026-11-01T12:00:00Z') });
     const vendidoLocal = { lifecycle: { status: 'vendido', at: 1, note: 'comprador X', history: [{ to: 'vendido' }] } };

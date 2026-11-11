@@ -568,7 +568,7 @@ export function Select({ className = '', options, value, onChange, disabled, id,
 // (ex.: buscar no servidor) em vez de filtrar a lista inteira já carregada; sem ele, filtra `options` local.
 export type SearchSelectOption = { value: string; label: string; sub?: string };
 export function SearchSelect({ options, value, onChange, onQuery, placeholder = 'Buscar…', className = '', emptyLabel = 'Nenhum resultado', ...p }: {
-  options: SearchSelectOption[]; value?: string; onChange: (value: string) => void; onQuery?: (q: string) => Promise<SearchSelectOption[]>;
+  options: SearchSelectOption[]; value?: string; onChange: (value: string) => void; onQuery?: (q: string, digitado: string) => Promise<SearchSelectOption[]>;
   placeholder?: string; className?: string; emptyLabel?: string; 'aria-label'?: string;
 }) {
   const selected = options.find((o) => o.value === (value ?? ''));
@@ -593,7 +593,7 @@ export function SearchSelect({ options, value, onChange, onQuery, placeholder = 
     const id = ++seq.current;
     if (onQuery) {
       setLoading(true);
-      const t = setTimeout(() => onQuery(q).then((r) => { if (id === seq.current) { setResults(r); setLoading(false); setAct(0); } }), 180);
+      const t = setTimeout(() => onQuery(q, query.trim()).then((r) => { if (id === seq.current) { setResults(r); setLoading(false); setAct(0); } }), 180);
       return () => clearTimeout(t);
     }
     setLoading(true);

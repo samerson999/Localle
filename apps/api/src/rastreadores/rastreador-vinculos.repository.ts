@@ -59,7 +59,7 @@ export class RastreadorVinculosRepository extends BaseRepository<RastreadorVincu
   async doCliente(clientId: string): Promise<RastreadorDoCliente[]> {
     const { rows } = await this.pool.query<RastreadorDoCliente>(
       `select r.id, r.imei, r.modelo, r.protocolo, v.vinculado_em,
-              i.id as instalacao_id, i.asset_id, a.plate as asset_plate, i.instalado_em,
+              i.id as instalacao_id, i.asset_id, a.rotulo as asset_plate, i.instalado_em,
               rc.ultimo_pacote_em
          from rastreador_vinculos v
          join rastreadores r on r.id = v.rastreador_id

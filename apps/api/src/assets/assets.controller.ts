@@ -4,7 +4,7 @@ import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { AssetsRepository } from './assets.repository';
 import type { CreateAssetDto } from './dto/create-asset.dto';
-import { parsePlate, parseUpdateAsset, type UpdateAssetDto } from './dto/update-asset.dto';
+import { parseCreateAsset, parseUpdateAsset, type UpdateAssetDto } from './dto/update-asset.dto';
 
 @Controller('assets')
 @UseGuards(PermissionsGuard)
@@ -29,7 +29,7 @@ export class AssetsController {
   @Post()
   @RequirePermission('ativos.editar')
   create(@ClientId() clientId: string, @Body() dto: CreateAssetDto) {
-    return this.repo.insert(clientId, { plate: parsePlate(dto?.plate) });
+    return this.repo.insert(clientId, { ...parseCreateAsset(dto) });
   }
 
   @Patch(':id')
@@ -38,6 +38,8 @@ export class AssetsController {
     const asset = await this.repo.atualizar(clientId, id, parseUpdateAsset(dto));
     if (asset === 'motorista_invalido') throw new BadRequestException('Motorista não encontrado ou desativado');
     if (asset === 'operacao_invalida') throw new BadRequestException('Operação não encontrada');
+    if (asset === 'modelo_invalido') throw new BadRequestException('Modelo não encontrado');
+    if (asset === 'sem_identificacao') throw new BadRequestException('O ativo precisa de placa ou identificador (código interno ou nº de série)');
     if (!asset) throw new NotFoundException('Ativo não encontrado');
     return asset;
   }

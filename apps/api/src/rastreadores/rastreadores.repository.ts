@@ -29,7 +29,7 @@ export class RastreadoresRepository {
     const { rows } = await this.pool.query<RastreadorPainel>(
       `select r.*,
               v.id as vinculo_id, v.client_id, c.name as client_name, v.vinculado_em,
-              i.id as instalacao_id, i.asset_id, a.plate as asset_plate, i.instalado_em,
+              i.id as instalacao_id, i.asset_id, a.rotulo as asset_plate, i.instalado_em,
               s.id as sim_card_id, s.iccid, s.operadora,
               rc.ultimo_pacote_em,
               m.fabricante as modelo_fabricante, m.nome as modelo_nome, m.protocolo as modelo_protocolo, m.porta as modelo_porta,

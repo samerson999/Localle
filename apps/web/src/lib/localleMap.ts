@@ -7,7 +7,8 @@ export const backendIdOf = (assetId: string) => assetId.replace(/^lc_/, '');
 
 // ---------- mapeamento API → store (puro, testado em localleMap.test.ts) ----------
 export interface CurrentRow {
-  assetId: string; plate: string; icone?: string | null; fixTime: string | null; longitude: number | null; latitude: number | null;
+  /** `plate` é a placa de verdade (vazia em ativo sem placa); `rotulo` é a placa ou o identificador. */
+  assetId: string; plate: string | null; rotulo?: string; icone?: string | null; fixTime: string | null; longitude: number | null; latitude: number | null;
   speedKmh: number | string | null; ignition: boolean | null; rastreadorId: string | null; ultimoPacoteEm: string | null;
   instalacaoId?: string | null; imei?: string | null; modelo?: string | null; instaladoEm?: string | null;
   comunicacao: ComunicacaoStatus;
@@ -20,9 +21,9 @@ export function toAsset(row: CurrentRow, prev: any, liveGroupId: string) {
     kind: 'veiculo', meter: 'km', kmSource: 'rastreador', kmOffset: 0, customFields: [], active: true, photo: '', journeySource: 'teclado', fuelBudget: 0, fuelGoal: 0, specs: {},
     ...prev,
     id: assetIdFor(row.assetId),
-    // apelido do cadastro fica; nome que era só a placa acompanha a placa
-    name: prev?.name && prev.name !== prev.plate ? prev.name : row.plate,
-    plate: row.plate,
+    // apelido do cadastro fica; nome que era só a placa (ou o identificador) acompanha o rótulo
+    name: prev?.name && prev.name !== prev.plate && prev.name !== prev.serial ? prev.name : row.rotulo ?? row.plate ?? '',
+    plate: row.plate ?? '',
     // ícone ilustrado é do cadastro na API; resposta sem o campo (API antiga) mantém o do navegador
     icon: row.icone === undefined ? prev?.icon : row.icone || '',
     groupIds: prev?.groupIds?.length ? prev.groupIds : [liveGroupId],

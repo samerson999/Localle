@@ -5,6 +5,7 @@ import { PG_POOL } from '../db/pg-pool.provider';
 
 export interface AtivoDoRelatorio {
   id: string;
+  /** `assets.rotulo`: a placa, ou o identificador quando o ativo não tem placa. */
   plate: string;
 }
 
@@ -29,7 +30,7 @@ export class FrotaReportsRepository {
    */
   async ativos(clientId: string, ids: string[] | null): Promise<AtivoDoRelatorio[]> {
     const { rows } = await this.pool.query<AtivoDoRelatorio>(
-      `select id, plate from assets where client_id = $1 and ($2::uuid[] is null or id = any($2::uuid[])) order by plate`,
+      `select id, rotulo as plate from assets where client_id = $1 and ($2::uuid[] is null or id = any($2::uuid[])) order by rotulo`,
       [clientId, ids],
     );
     return rows;

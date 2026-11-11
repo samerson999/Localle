@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { atualizarIconeAtivo, atualizarPlacaAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, reativarMotorista, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
+import { atualizarIconeAtivo, atualizarIdentificacaoAtivo, criarMarca, criarModelo, renomearNoCatalogo, salvarTipoAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, reativarMotorista, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
 import { backendIdOf } from '../lib/localleMap';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem, FilterSheet } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
@@ -10,12 +10,13 @@ import { couplingsOf, currentCoupling, compositionOf, compositionName, compositi
 import { Num, StatusDot, AssetName, IdChip, KpiTile, type StatusKind } from '../components/story';
 import { Icon } from '../components/icons';
 import { Dropzone } from '../components/Dropzone';
-import { CATEGORIES, categoryOf, categoryLabel } from '../components/assetArt';
+import { CATEGORIES, categoryOf } from '../components/assetArt';
+import { CATALOGO_VAZIO, aplicarTipo, chaveCatalogo, marcaModeloDoAtivo, mesmoNome, nomeDoTipo, parecidos, tipoDoAtivo, tiposDoCliente, type CatalogoAtivos, type OpcaoTipo } from '../lib/catalogoAtivos';
 import { PNG_ICON_IDS, PNG_ICON_SUGGESTION, pngIconUrl, pngIconLabel } from '../lib/pngIcons';
 import { SPECS_DB, MODEL_BRAND } from '@localle/shared/catalog';
 import { num, fmtD, fmtDT, isPlate } from '@localle/shared/utils';
 import { linkTrackerWithInstall } from '../lib/odometer';
-import { downloadAssets, readSheet, planImport, applyImport, type ImportPlan } from '../lib/assetSheet';
+import { downloadAssets, downloadErros, readSheet, planImport, applyImport, escolherNaLinha, type ImportLine, type ImportPlan } from '../lib/assetSheet';
 import { AUDIT_LABEL, fieldLabel, auditEntry } from '@localle/shared/audit';
 import { setDriver, linksOf, LINK_SOURCE, DRIVER_PARAMS, effectiveLink, driverConflicts, ackConflict } from '../lib/driverLinks';
 import { LIFECYCLE, lifeOf, setLifecycle, unlinkTracker, opAssets } from '../lib/assetLifecycle';
@@ -23,7 +24,7 @@ import { RetiredToggle } from '../components/RetiredToggle';
 import { mascaraValida, MENSAGEM_INVALIDA } from '../lib/mascaras';
 import { DOC_TYPES, docTypesFor, docLabel, docState, docWhen, worstDoc, DOC_PARAMS, DRIVER_DOC_PARAMS, type DocState } from '@localle/shared/assetDocs';
 
-const blank = (kind = 'veiculo') => ({ id: '', kind, name: '', plate: '', brand: '', model: '', year: '', specs: {} as any, photo: '', icon: '', groupIds: [] as string[], operationId: '', driverId: '', kmSource: kind === 'veiculo' ? 'mescla' : kind === 'implemento' ? 'engate' : 'rastreador', kmOffset: 0, initialKm: '', fuelGoal: '', fuelBudget: '', meter: kind === 'veiculo' || kind === 'implemento' ? 'km' : kind === 'linha_amarela' || kind === 'maquina' ? 'horimetro' : 'nenhum', customFields: [] as any[], journeySource: 'teclado', serial: '', tracker: null as any, active: true, documents: [] as any[] });
+const blank = (kind = 'veiculo') => ({ id: '', kind, category: '', name: '', plate: '', chassi: '', renavam: '', brand: '', model: '', year: '', specs: {} as any, photo: '', icon: '', groupIds: [] as string[], operationId: '', driverId: '', kmSource: kind === 'veiculo' ? 'mescla' : kind === 'implemento' ? 'engate' : 'rastreador', kmOffset: 0, initialKm: '', fuelGoal: '', fuelBudget: '', meter: kind === 'veiculo' || kind === 'implemento' ? 'km' : kind === 'linha_amarela' || kind === 'maquina' ? 'horimetro' : 'nenhum', customFields: [] as any[], journeySource: 'teclado', serial: '', tracker: null as any, active: true, documents: [] as any[] });
 
 export default function Ativos() {
   const [tab, setTab] = useUrlTab('ativos');
@@ -32,7 +33,7 @@ export default function Ativos() {
   // ?ativo=<id> (vindo do "Precisa de você") abre a ficha direto, também quando a frota chega depois da tela
   const assets = useStore((s) => s.assets);
   useUrlItem('ativo', (id) => assets.find((x: any) => x.id === id), (a: any) => { setTab('ativos'); setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) }))); }, [assets]);
-  const tabs = <Tabs value={tab} onChange={setTab} tabs={[{ key: 'ativos', label: 'Ativos' }, { key: 'grupos', label: 'Grupos' }, { key: 'motoristas', label: 'Motoristas' }, { key: 'operacoes', label: 'Operações' }, { key: 'alteracoes', label: 'Alterações' }]} />;
+  const tabs = <Tabs value={tab} onChange={setTab} tabs={[{ key: 'ativos', label: 'Ativos' }, { key: 'grupos', label: 'Grupos' }, { key: 'motoristas', label: 'Motoristas' }, { key: 'operacoes', label: 'Operações' }, { key: 'tipos', label: 'Tipos e modelos' }, { key: 'alteracoes', label: 'Alterações' }]} />;
   useMobilePageAction(tab === 'ativos' ? { label: 'Novo ativo', icon: 'mais', onClick: () => setEdit(blank()) } : null);
   return (
     <div>
@@ -45,6 +46,7 @@ export default function Ativos() {
         {tab === 'ativos' && <AssetList onOpen={(a: any) => setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) })))} />}
         {tab === 'grupos' && <Grupos />}
         {tab === 'operacoes' && <Operacoes />}
+        {tab === 'tipos' && <TiposEModelos />}
         {tab === 'motoristas' && <Drivers />}
         {tab === 'alteracoes' && <AuditLog />}
       </TabPanel>
@@ -61,7 +63,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
   const [noTracker, setNoTracker] = useState(false);
   const [docDue, setDocDue] = useState(false); // só ativos com documento vencido ou a vencer no mês
   const [q, setQ] = useState('');
-  const [plan, setPlan] = useState<ImportPlan | null>(null);
+  const [importar, setImportar] = useState(false);
   // vendidos e baixados saem da lista e dos totais; ficam acessíveis pelo filtro
   const all = opAssets(s);
   const linked = all.filter((a: any) => a.tracker).length;
@@ -69,6 +71,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
   const docN = all.filter(docAlert).length;
   const t = q.trim().toLowerCase();
   const driver = (id: string) => s.drivers.find((d: any) => d.id === id)?.name || '';
+  const tipos = tiposDoCliente((s.catalogoAtivos || CATALOGO_VAZIO).tipos);
   const list = all.filter((a: any) => (!cat || categoryOf(a) === cat) && (!noTracker || !a.tracker) && (!docDue || docAlert(a)) && (!t || [a.name, a.plate, a.brand, a.model, driver(a.driverId), a.tracker?.imei].some((x) => (x || '').toLowerCase().includes(t))));
   const group = (a: any) => (a.groupIds || []).map((g: string) => s.groups.find((x: any) => x.id === g)?.name).filter(Boolean).join(' · ');
   return (
@@ -95,7 +98,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
           <RetiredToggle />
           {(cat || noTracker || docDue || q) && <Button variant="link" size="sm" onClick={() => { setCat(''); setNoTracker(false); setDocDue(false); setQ(''); }}>Limpar filtros</Button>}
           <span className="flex-1" />
-          <FilePick accept=".csv,.xlsx,.xls" maxMB={20} raw onFile={async (_, f) => { try { setPlan(planImport(await readSheet(f), useStore.getState())); } catch { toast('Não foi possível ler a planilha. Envie CSV ou XLSX.'); } }} className={buttonClass('secondary', 'sm')}><Icon name="importar" size={16} />Importar planilha</FilePick>
+          <Button variant="secondary" size="sm" onClick={() => setImportar(true)}><Icon name="importar" size={16} />Importar planilha</Button>
           <Button variant="ghost" size="sm" onClick={() => downloadAssets(s)}><Icon name="exportar" size={16} />Exportar</Button>
         </div>
         <Table minWidth={1160} onRow={(i) => onOpen(list[i])}
@@ -104,7 +107,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
           card={(i) => { const a = list[i]; const d = worstDoc(a); return (
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0 flex flex-col gap-1">
-                <span className="flex items-center justify-between gap-3"><AssetName name={a.name} className="truncate" /><span className="text-caption text-ink-2 whitespace-nowrap">{categoryLabel(categoryOf(a))}</span></span>
+                <span className="flex items-center justify-between gap-3"><AssetName name={a.name} className="truncate" /><span className="text-caption text-ink-2 whitespace-nowrap">{nomeDoTipo(a, tipos)}</span></span>
                 <span className="text-small text-ink-2 truncate">{[`${a.brand || ''} ${a.model || ''}`.trim(), group(a)].filter(Boolean).join(' · ') || '—'}</span>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-ink-2">{d && <DocStatus d={d} />}{a.tracker ? <IdChip size="sm">{a.tracker.imei}</IdChip> : <span>Sem rastreador</span>}</span>
               </div>
@@ -118,7 +121,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
             return [
               <AssetThumb asset={a} className="w-12 h-8" />,
               <span className="flex flex-col items-start gap-hair"><button type="button" onClick={(e) => { e.stopPropagation(); onOpen(a); }} className="text-left rounded-chip hover:ring-1 hover:ring-line-hover"><AssetName name={a.name} /></button>{lifeOf(a) !== 'ativo' && <span className="block text-caption text-ink-2">{LIFECYCLE[lifeOf(a)].label}</span>}</span>,
-              <span className="text-ink-2 whitespace-nowrap">{categoryLabel(categoryOf(a))}</span>,
+              <span className="text-ink-2 whitespace-nowrap">{nomeDoTipo(a, tipos)}</span>,
               <span>{a.brand} {a.model}{a.year && <span className="text-ink-2 num"> · {a.year}</span>}</span>,
               <span className="text-ink-2">{group(a) || '—'}</span>,
               a.meter === 'horimetro' ? <Num value={s.vehicles[a.id]?.hourmeter} digits={1} unit="h" size="body" /> : km != null ? <span><Num value={km} unit="km" size="body" />{a.kmCalculated && <span className="block text-caption text-ink-2">calculado</span>}</span> : <span className="text-ink-3">—</span>,
@@ -130,24 +133,34 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
             ];
           })} />
       </Card>
-      <ImportPreview plan={plan} onClose={() => setPlan(null)} />
+      {importar && <ImportPreview onClose={() => setImportar(false)} />}
     </>
   );
 }
 
 // prévia da importação: mostra o que será criado, atualizado ou recusado; só grava ao confirmar
-function ImportPreview({ plan, onClose }: { plan: ImportPlan | null; onClose: () => void }) {
+// Importação em duas etapas (backlog FD Locação, Sprint 3): primeiro o modelo e as regras, antes de escolher arquivo (I1);
+// depois a prévia linha a linha — o que entra, o que tem erro e por quê, e a escolha de marca/modelo parecido (I3, I4).
+function ImportPreview({ onClose }: { onClose: () => void }) {
+  const s = useStoreData();
+  const [plan, setPlan] = useState<ImportPlan | null>(null);
+  const [arquivo, setArquivo] = useState('');
   const [only, setOnly] = useState<'todas' | 'erro'>('todas');
+  const [busy, setBusy] = useState(false);
   const lines = plan?.lines || [];
   const n = (k: string) => lines.filter((l) => l.action === k).length;
   const ok = n('criar') + n('atualizar');
   const shown = only === 'erro' ? lines.filter((l) => l.action === 'erro' || l.warnings.length) : lines;
-  const [busy, setBusy] = useState(false);
+  const ler = async (f: File) => {
+    try { setPlan(planImport(await readSheet(f), useStore.getState())); setArquivo(f.name); setOnly('todas'); }
+    catch { toast('Não foi possível ler a planilha. Envie CSV ou XLSX.', { tone: 'crit' }); }
+  };
   const confirm = async () => {
     setBusy(true);
     try {
       const [c, u] = await applyImport(plan!, blank);
-      toast(`${c} ${c === 1 ? 'ativo criado' : 'ativos criados'} e ${u} ${u === 1 ? 'atualizado' : 'atualizados'}.`);
+      const e = n('erro');
+      toast(`${c} ${c === 1 ? 'ativo criado' : 'ativos criados'} e ${u} ${u === 1 ? 'atualizado' : 'atualizados'}.${e ? ` ${e} ${e === 1 ? 'linha com erro ficou' : 'linhas com erro ficaram'} de fora.` : ''}`);
       onClose();
     } catch (e: any) {
       toast('Importação incompleta: ' + (e.message || e), { tone: 'crit' });
@@ -155,22 +168,43 @@ function ImportPreview({ plan, onClose }: { plan: ImportPlan | null; onClose: ()
       setBusy(false);
     }
   };
+  const escolher = <FilePick accept=".csv,.xlsx,.xls" maxMB={20} raw onFile={(_, f) => ler(f)} className={buttonClass(plan ? 'ghost' : 'primary', 'md')}><Icon name="importar" size={16} />{plan ? 'Escolher outro arquivo' : 'Escolher arquivo'}</FilePick>;
+  if (!plan) return (
+    <Modal open onClose={onClose} title="Importar ativos" width="max-w-2xl"
+      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button>{escolher}</>}>
+      <div className="flex flex-col gap-group">
+        <div className="flex flex-col gap-stack">
+          <p className="text-body">Comece pelo modelo: ele tem todas as colunas do cadastro, linhas de exemplo, as instruções e as listas de tipos, marcas e modelos que a sua empresa já usa.</p>
+          <Button variant="secondary" className="self-start" onClick={() => downloadAssets(s, true)}><Icon name="exportar" size={16} />Baixar modelo da planilha</Button>
+        </div>
+        <ul className="flex flex-col gap-tight text-small text-ink-2 list-disc pl-5">
+          <li>Tipo, marca e modelo são obrigatórios. Use os nomes das listas do modelo; nome novo é cadastrado.</li>
+          <li>Veículo e carreta precisam de placa. Máquina e equipamento sem placa entram pelo código interno ou nº de série.</li>
+          <li>Ativo já cadastrado (mesma placa ou mesmo código) é atualizado; campo em branco não apaga o que existe.</li>
+          <li>Antes de gravar, a prévia mostra cada linha. Linha com erro não entra e não impede as outras.</li>
+        </ul>
+        <p className="text-caption text-ink-2">CSV ou XLSX, até 20 MB. O rastreador é vinculado na ficha do ativo, com os dados da instalação.</p>
+      </div>
+    </Modal>
+  );
   return (
-    <Modal open={!!plan} onClose={onClose} title="Importar ativos" width="max-w-4xl"
-      footer={<><Button variant="link" onClick={() => downloadAssets(null, true)}>Baixar modelo</Button><span className="flex-1" /><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!ok} onClick={confirm}>Importar {ok} {ok === 1 ? 'linha' : 'linhas'}</Button></>}>
+    <Modal open onClose={onClose} title={`Importar ativos · ${arquivo}`} width="max-w-5xl"
+      footer={<>{escolher}{n('erro') > 0 && <Button variant="link" onClick={() => downloadErros(plan)}>Baixar linhas com erro</Button>}<span className="flex-1" /><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!ok} onClick={confirm}>Importar {ok} {ok === 1 ? 'linha' : 'linhas'}</Button></>}>
       <div className="flex flex-wrap gap-x-section gap-y-stack">
         <div><p className="text-small text-ink-2">Novos</p><Num value={n('criar')} size="lg" className="block" /></div>
-        <div><p className="text-small text-ink-2">Atualizados (mesma placa)</p><Num value={n('atualizar')} size="lg" className="block" /></div>
+        <div><p className="text-small text-ink-2">Atualizados</p><Num value={n('atualizar')} size="lg" className="block" /></div>
         <div><p className="text-small text-ink-2 flex items-center gap-tight">{n('erro') > 0 && <StatusDot kind="crit" label="" />}Com erro (não entram)</p><Num value={n('erro')} size="lg" className="block" /></div>
       </div>
-      {(plan?.newGroups.length || plan?.newOperations.length) ? <p className="text-small text-ink-2">Serão criados {[plan!.newGroups.length && `os grupos ${plan!.newGroups.join(', ')}`, plan!.newOperations.length && `as operações ${plan!.newOperations.join(', ')}`].filter(Boolean).join(' e ')}.</p> : null}
-      <Tabs value={only} onChange={(v: any) => setOnly(v)} tabs={[{ key: 'todas', label: 'Todas as linhas' }, { key: 'erro', label: 'Erros e avisos' }]} />
+      {(plan.newGroups.length || plan.newOperations.length) ? <p className="text-small text-ink-2">Serão criados {[plan.newGroups.length && `os grupos ${plan.newGroups.join(', ')}`, plan.newOperations.length && `as operações ${plan.newOperations.join(', ')}`].filter(Boolean).join(' e ')}.</p> : null}
+      {n('erro') > 0 && <p className="text-small text-ink-2">As linhas com erro ficam de fora. Baixe só elas, corrija na planilha e importe de novo: as que entraram agora não são duplicadas.</p>}
+      <Tabs value={only} onChange={(v: any) => setOnly(v)} tabs={[{ key: 'todas', label: 'Todas as linhas' }, { key: 'erro', label: 'Erros e avisos', count: lines.filter((l) => l.action === 'erro' || l.warnings.length).length || undefined }]} />
       <div className="max-h-[50vh] overflow-y-auto">
-        <Table minWidth={640} empty="Nenhuma linha." head={['Linha', 'Placa / nome', 'Ação', 'Observações']}
+        <Table minWidth={760} empty="Nenhuma linha." head={['Linha', 'Placa / código', 'Ação', 'Marca e modelo', 'Observações']}
           rows={shown.map((l) => [
             <span className="num text-ink-2">{l.row}</span>,
             <AssetName name={l.label} />,
             <StatusDot kind={l.action === 'erro' ? 'crit' : l.action === 'criar' ? 'mov' : 'parado'} label={l.action === 'erro' ? 'Erro' : l.action === 'criar' ? 'Criar' : 'Atualizar'} />,
+            <MarcaModeloDaLinha l={l} onEscolha={(campo, id) => setPlan(escolherNaLinha(plan, l.row, campo, id))} />,
             <span className="text-small">{[...l.errors, ...l.warnings].map((m, i) => <span key={i} className={cx('block', i >= l.errors.length && 'text-ink-2')}>{m}</span>)}{!l.errors.length && !l.warnings.length && <span className="text-ink-3">—</span>}</span>,
           ])} />
       </div>
@@ -178,6 +212,21 @@ function ImportPreview({ plan, onClose }: { plan: ImportPlan | null; onClose: ()
     </Modal>
   );
 }
+
+// marca/modelo da linha: o que vai ser usado ou cadastrado; parecido com um existente pede a decisão ("Você quis dizer…")
+function MarcaModeloDaLinha({ l, onEscolha }: { l: ImportLine; onEscolha: (campo: '_marca' | '_modelo', id: string | null) => void }) {
+  const itens = (['_marca', '_modelo'] as const).map((campo) => ({ campo, it: l.data?.[campo] })).filter((x) => x.it);
+  if (!itens.length || l.action === 'erro') return <span className="text-ink-3">—</span>;
+  return (
+    <span className="flex flex-col gap-tight min-w-[200px]">
+      {itens.map(({ campo, it }) => it.sugestoes?.length
+        ? <Select key={campo} aria-label={`${campo === '_marca' ? 'Marca' : 'Modelo'} da linha ${l.row}`} value={it.id || ''} onChange={(e) => onEscolha(campo, e.target.value || null)}
+            options={[{ value: '', label: `Cadastrar “${it.nome}”` }, ...it.sugestoes.map((x: any) => ({ value: x.id, label: `Usar “${x.nome}”` }))]} />
+        : <span key={campo} className="text-small">{it.nome}{!it.id && <span className="text-ink-2"> · novo</span>}</span>)}
+    </span>
+  );
+}
+
 function AssetForm({ a, setA }: any) {
   const s = useStoreData();
   const [msg, setMsg] = useState('');
@@ -194,6 +243,7 @@ function AssetForm({ a, setA }: any) {
   const instErr = !newLink ? '' : !inst.tech.trim() ? 'Informe o técnico responsável pela instalação.' : inst.calc ? '' : !inst.km ? 'Informe o odômetro inicial do painel.' : !inst.photo ? 'Envie a foto do painel com o odômetro.' : '';
   const isV = a.kind === 'veiculo';
   const set = (k: string, v: any) => setA({ ...a, [k]: v });
+  const tipos = tiposDoCliente((useStore((st) => st.catalogoAtivos) || CATALOGO_VAZIO).tipos);
   const lookup = () => {
     const p = a.plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
     // sem consulta de placa ligada a uma base real: a ficha técnica vem do modelo escolhido na lista
@@ -204,13 +254,14 @@ function AssetForm({ a, setA }: any) {
     setBusy(true);
     try {
       const orig = s.assets.find((x: any) => x.id === a.id);
-      const plate = a.plate.toUpperCase();
+      const plate = (a.plate || '').trim().toUpperCase();
+      const serial = (a.serial || '').trim();
       // o ativo existe na API (é nele que o rastreador é instalado); o que só existia no navegador migra agora
       let id = a.id;
-      if (!isRealAsset(a)) { id = await criarAtivo(plate); if (a.id) s.remove('assets', a.id); }
-      else if (orig && orig.plate !== plate) await atualizarPlacaAtivo(id, plate);
+      if (!isRealAsset(a)) { id = await criarAtivo(plate, serial); if (a.id) s.remove('assets', a.id); }
+      else if (orig && ((orig.plate || '') !== plate || (orig.serial || '') !== serial)) await atualizarIdentificacaoAtivo(id, plate, serial);
       if ((a.icon || '') !== (orig?.icon || '') || (a.icon && id !== a.id)) await atualizarIconeAtivo(id, a.icon || '');
-      const saved = s.upsert('assets', { ...a, driverId: orig ? orig.driverId : '', id, plate, name: a.name || a.plate.toUpperCase(), fuelGoal: +a.fuelGoal || 0, fuelBudget: +a.fuelBudget || 0, kmOffset: +a.kmOffset || 0 });
+      const saved = s.upsert('assets', { ...a, driverId: orig ? orig.driverId : '', id, plate, serial, name: a.name.trim() || plate || serial, fuelGoal: +a.fuelGoal || 0, fuelBudget: +a.fuelBudget || 0, kmOffset: +a.kmOffset || 0 });
       if (isRealAsset(saved)) await definirGruposDoAtivo(saved.id, a.groupIds || []);
       if ((a.driverId || '') !== (orig?.driverId || '')) { if (isRealAsset(saved)) definirMotoristaDoAtivo(saved.id, a.driverId).catch((e: any) => toast('Motorista não gravado: ' + (e.message || e), { tone: 'crit' })); else setDriver(saved.id, a.driverId, 'escala'); }
       if (newLink) {
@@ -241,18 +292,29 @@ function AssetForm({ a, setA }: any) {
     ...(a.id ? [{ key: 'historico', label: 'Histórico' }] : []),
   ];
   // o que impede salvar fica visível no rodapé, com atalho para a aba onde se resolve
-  const pend = !a.plate && (isV || a.kind === 'implemento') ? { aba: 'dados', txt: 'Informe a placa na aba Dados' }
+  // placa só é exigida de quem roda em via pública; o resto se identifica pelo código interno ou nº de série
+  const comPlaca = isV || a.kind === 'implemento';
+  const pend = !a.category ? { aba: 'dados', txt: 'Escolha o tipo do ativo' }
+    : comPlaca && !a.plate?.trim() ? { aba: 'dados', txt: 'Informe a placa na aba Dados' }
+    : !comPlaca && !a.plate?.trim() && !a.serial?.trim() ? { aba: 'dados', txt: 'Informe o código interno ou nº de série na aba Dados' }
+    // marca e modelo só pela lista: é o que mantém "13190" e "13.190" como um modelo só
+    : a.category !== 'pessoal' && !a.modeloId ? { aba: 'dados', txt: `Escolha ${isV ? 'marca' : 'fabricante'} e modelo da lista na aba Dados` }
+    : a.kind === 'linha_amarela' && a.meter !== 'horimetro' ? { aba: 'dados', txt: 'Linha amarela usa horímetro: ajuste o medidor de uso na aba Dados' }
     : !a.photo && !a.icon ? { aba: 'dados', txt: 'Escolha uma foto ou um ícone na aba Dados' }
     : instErr ? { aba: 'rastreador', txt: `Rastreador: ${instErr}` } : null;
   return (
-    <Modal open onClose={() => setA(null)} title={a.id ? a.name : 'Novo ativo'} width="max-w-5xl" footer={<>{pend && <TextButton className="mr-auto text-left" onClick={() => setAba(pend.aba)}>{pend.txt}</TextButton>}<Button variant="ghost" onClick={() => setA(null)}>Cancelar</Button><Button loading={busy} disabled={!a.plate || (!a.photo && !a.icon) || !!instErr} onClick={save}>Salvar ativo</Button></>}>
+    <Modal open onClose={() => setA(null)} title={a.id ? a.name : 'Novo ativo'} width="max-w-5xl" footer={<>{pend && <TextButton className="mr-auto text-left" onClick={() => setAba(pend.aba)}>{pend.txt}</TextButton>}<Button variant="ghost" onClick={() => setA(null)}>Cancelar</Button><Button loading={busy} disabled={!!pend} onClick={save}>Salvar ativo</Button></>}>
       <Field label="Tipo do ativo" className="max-w-xs">
-        <Select aria-label="Tipo do ativo" value={a.category || categoryOf(a)} onChange={(e) => {
-          const key = e.target.value as (typeof CATEGORIES)[number]['key'];
-          const k = CATEGORIES.find((c) => c.key === key)!.kind;
-          setA({ ...blank(k), ...a, category: key, kind: k, meter: k === a.kind ? a.meter : k === 'veiculo' || k === 'implemento' ? 'km' : k === 'linha_amarela' ? 'horimetro' : 'nenhum', kmSource: k === a.kind ? a.kmSource : blank(k).kmSource });
-        }} options={CATEGORIES.map((ct) => ({ value: ct.key, label: ct.label }))} />
+        <Select aria-label="Tipo do ativo" value={a.category ? tipoDoAtivo(a) : ''} onChange={(e) => {
+          const op = tipos.find((o) => o.value === e.target.value)!;
+          const k = op.kind;
+          const iconeAntes = a.category ? tipos.find((o) => o.value === tipoDoAtivo(a))?.icone : undefined;
+          setA({ ...blank(k), ...a, ...aplicarTipo(op), meter: k === a.kind ? a.meter : k === 'veiculo' || k === 'implemento' ? 'km' : k === 'linha_amarela' ? 'horimetro' : 'nenhum', kmSource: k === a.kind ? a.kmSource : blank(k).kmSource,
+            icon: !a.icon || a.icon === iconeAntes ? op.icone || '' : a.icon });
+        }} options={tipos.map((o) => ({ value: o.value, label: o.label }))} />
       </Field>
+      {/* tipo primeiro: ele decide os campos (placa, medidor, ícones) */}
+      {!a.category ? <p className="mt-group text-small text-ink-2">Escolha o tipo do ativo para preencher o cadastro.</p> : <>
       <Tabs className="mt-group" value={aba} onChange={setAba} tabs={abas} />
       {/* altura mínima: trocar de aba não faz o modal pular de tamanho */}
       <div className="pt-group min-h-[460px]">
@@ -263,10 +325,14 @@ function AssetForm({ a, setA }: any) {
                 <>
                   <div className="flex flex-wrap gap-field items-end">
                     <Field label="Placa" className="w-36"><Input mask="placa" className="font-mono font-semibold uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>
-                    <Field label="Marca" className="w-40"><Input value={a.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
-                    <Field label="Modelo" className="flex-1 min-w-[180px]"><Input list="models" value={a.model} onChange={(e) => set('model', e.target.value)} /><datalist id="models">{Object.keys(SPECS_DB).map((m) => <option key={m} value={m} />)}</datalist></Field>
+                    <MarcaModelo a={a} setA={setA} rotulo="Marca" classes={['w-48', 'flex-1 min-w-[180px]']} />
                     <Field label="Ano" className="w-28"><Input mask="ano" value={a.year} onChange={(e) => set('year', e.target.value)} /></Field>
                     <div className="flex flex-col gap-field-label"><span className="invisible text-small" aria-hidden="true">·</span><Button variant="ghost" onClick={lookup}>Consultar dados do veículo</Button></div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
+                    <Field label="Chassi"><Input className="font-mono uppercase" maxLength={17} value={a.chassi || ''} onChange={(e) => set('chassi', e.target.value.toUpperCase())} /></Field>
+                    <Field label="Renavam"><Input className="font-mono" inputMode="numeric" maxLength={11} value={a.renavam || ''} onChange={(e) => set('renavam', e.target.value.replace(/\D/g, ''))} /></Field>
+                    <Field label="Código interno / frota"><Input maxLength={60} value={a.serial || ''} onChange={(e) => set('serial', e.target.value)} /></Field>
                   </div>
                   {msg && <p role="status" className="text-small text-ink-2 bg-card-2 border border-line rounded-ctl p-stack">{msg}</p>}
                 </>
@@ -274,11 +340,12 @@ function AssetForm({ a, setA }: any) {
                 <>
                   <p className="text-small text-ink-2">{a.kind === 'implemento' ? 'Carreta ou implemento: engata em cavalos diferentes, tem pneus próprios e pode ter rastreador próprio.' : 'Ativos que não são veículos são cadastrados manualmente.'}</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
-                    {a.kind === 'implemento' && <Field label="Placa"><Input mask="placa" className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>}
-                    <Field label="Fabricante"><Input value={a.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
-                    <Field label="Modelo"><Input value={a.model} onChange={(e) => set('model', e.target.value)} /></Field>
+                    <Field label={a.kind === 'implemento' ? 'Placa' : 'Placa (se tiver)'}><Input mask="placa" className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>
+                    {a.kind === 'implemento' && <><Field label="Chassi"><Input className="font-mono uppercase" maxLength={17} value={a.chassi || ''} onChange={(e) => set('chassi', e.target.value.toUpperCase())} /></Field>
+                      <Field label="Renavam"><Input className="font-mono" inputMode="numeric" maxLength={11} value={a.renavam || ''} onChange={(e) => set('renavam', e.target.value.replace(/\D/g, ''))} /></Field></>}
+                    <MarcaModelo a={a} setA={setA} rotulo="Fabricante" />
                     <Field label="Ano"><Input mask="ano" value={a.year} onChange={(e) => set('year', e.target.value)} /></Field>
-                    <Field label="Nº de série / patrimônio"><Input value={a.serial} onChange={(e) => set('serial', e.target.value)} /></Field>
+                    <Field label={a.kind === 'implemento' ? 'Código interno / frota' : 'Código interno ou nº de série'}><Input maxLength={60} value={a.serial || ''} onChange={(e) => set('serial', e.target.value)} /></Field>
                     {a.kind !== 'implemento' && <Field label="Medidor de uso"><Select value={a.meter} onChange={(e) => set('meter', e.target.value)} options={[{ value: 'horimetro', label: 'Horímetro' }, { value: 'km', label: 'Quilometragem' }, { value: 'nenhum', label: 'Sem medidor' }]} /></Field>}
                   </div>
                 </>
@@ -378,6 +445,7 @@ function AssetForm({ a, setA }: any) {
             {a.id && <AuditLog refId={a.id} />}
         </div>}
       </div>
+      </>}
     </Modal>
   );
 }
@@ -720,6 +788,151 @@ function GrupoForm({ g, onClose }: { g: { id?: string; name: string; assetIds: s
 }
 
 // operações moram na API (operacoes); renomear grava ao sair do campo
+// Marca e modelo escolhidos na lista do cliente (apps/api/src/catalogo-ativos); "cadastrar novo" só quando não acha,
+// e antes de criar mostra o que já existe parecido ("13190" × "13.190"). O ativo grava o modelo (a marca vem dele).
+const NOVO = '__novo__:';
+function MarcaModelo({ a, setA, rotulo, classes = ['', ''] }: { a: any; setA: (a: any) => void; rotulo: string; classes?: string[] }) {
+  const c: CatalogoAtivos = useStore((s) => s.catalogoAtivos) || CATALOGO_VAZIO;
+  const marcaId = a.marcaId || marcaModeloDoAtivo(a.modeloId, c)?.marcaId || '';
+  const modelos = c.modelos.filter((m) => m.marcaId === marcaId);
+  const [novo, setNovo] = useState<{ lista: 'marca' | 'modelo'; nome: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const rot = rotulo.toLowerCase();
+  const buscar = (lista: 'marca' | 'modelo', itens: { id: string; nome: string }[]) => async (q: string, digitado: string) => [
+    ...itens.filter((x) => !q || x.nome.toLowerCase().includes(q)).map((x) => ({ value: x.id, label: x.nome })),
+    ...(digitado && !mesmoNome(digitado, itens) ? [{ value: NOVO + digitado, label: `Cadastrar ${lista === 'marca' ? `${rot === 'marca' ? 'nova marca' : 'novo fabricante'}` : 'novo modelo'} “${digitado}”` }] : []),
+  ];
+  const usarMarca = (m: { id: string; nome: string } | null) => {
+    setNovo(null);
+    if (!m) return setA({ ...a, marcaId: '', brand: '', modeloId: '', model: '' });
+    setA({ ...a, marcaId: m.id, brand: m.nome, ...(m.id !== marcaId && { modeloId: '', model: '' }) });
+  };
+  const usarModelo = (m: { id: string; nome: string } | null) => {
+    setNovo(null);
+    setA({ ...a, marcaId, brand: c.marcas.find((x) => x.id === marcaId)?.nome || a.brand, modeloId: m?.id || '', model: m?.nome || '' });
+  };
+  const escolher = (lista: 'marca' | 'modelo') => (v: string) => {
+    if (v.startsWith(NOVO)) return setNovo({ lista, nome: v.slice(NOVO.length) });
+    if (lista === 'marca') usarMarca(c.marcas.find((m) => m.id === v) || null);
+    else usarModelo(modelos.find((m) => m.id === v) || null);
+  };
+  const cadastrar = async () => {
+    if (!novo) return;
+    setBusy(true);
+    try {
+      if (novo.lista === 'marca') usarMarca(await criarMarca(novo.nome.trim()));
+      else usarModelo(await criarModelo(marcaId, novo.nome.trim()));
+    } catch (e: any) {
+      toast('Não foi possível cadastrar: ' + (e.message || e), { tone: 'crit' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const sim = novo ? parecidos(novo.nome, novo.lista === 'marca' ? c.marcas : modelos) : [];
+  const antigo = !a.modeloId && (a.brand || a.model) ? `${a.brand || ''} ${a.model || ''}`.trim() : '';
+  return (
+    <>
+      <Field label={rotulo} className={classes[0]}>
+        <SearchSelect aria-label={rotulo} value={marcaId} onChange={escolher('marca')} onQuery={buscar('marca', c.marcas)} options={c.marcas.map((m) => ({ value: m.id, label: m.nome }))} placeholder={`Buscar ${rot}`} emptyLabel={`Digite para cadastrar ${rot === 'marca' ? 'uma marca' : 'um fabricante'}`} />
+      </Field>
+      <Field label="Modelo" className={classes[1]}>
+        {marcaId
+          ? <SearchSelect aria-label="Modelo" value={a.modeloId || ''} onChange={escolher('modelo')} onQuery={buscar('modelo', modelos)} options={modelos.map((m) => ({ value: m.id, label: m.nome }))} placeholder="Buscar modelo" emptyLabel="Digite para cadastrar um modelo" />
+          : <Input disabled placeholder={`Escolha ${rot === 'marca' ? 'a marca' : 'o fabricante'} primeiro`} />}
+      </Field>
+      {antigo && !novo && <p className="basis-full col-span-full text-caption text-ink-2">Na ficha estava “{antigo}”, digitado à mão. Escolha na lista ou cadastre.</p>}
+      {novo && (
+        <div className="basis-full col-span-full flex flex-col gap-stack border border-line rounded-ctl p-card-sm">
+          {sim.length > 0 && <div className="flex flex-col gap-tight">
+            <p className="text-small font-medium">Você quis dizer:</p>
+            <div className="flex flex-wrap gap-tight">{sim.map((x) => <Button key={x.id} size="sm" variant="soft" onClick={() => (novo.lista === 'marca' ? usarMarca(x) : usarModelo(x))}>{x.nome}</Button>)}</div>
+          </div>}
+          <Field label={novo.lista === 'marca' ? `Nome ${rot === 'marca' ? 'da nova marca' : 'do novo fabricante'}` : 'Nome do novo modelo'}><Input value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} /></Field>
+          <div className="flex flex-wrap gap-tight">
+            <Button size="sm" loading={busy} disabled={!chaveCatalogo(novo.nome)} onClick={cadastrar}>{sim.length ? 'Cadastrar mesmo assim' : 'Cadastrar'}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setNovo(null)}>Cancelar</Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Tipos (prontos e da empresa) e a lista de marcas/modelos: renomear corrige a grafia em todos os ativos que apontam para ela.
+const BASES = [{ value: 'veiculo', label: 'Veículo' }, { value: 'implemento', label: 'Carreta / implemento' }, { value: 'linha_amarela', label: 'Linha amarela' }, { value: 'equipamento', label: 'Equipamento' }];
+function TiposEModelos() {
+  const c: CatalogoAtivos = useStore((s) => s.catalogoAtivos) || CATALOGO_VAZIO;
+  const assets = useStore((s) => opAssets(s));
+  const tipos = tiposDoCliente(c.tipos);
+  const [novo, setNovo] = useState({ nome: '', base: 'linha_amarela' });
+  const [nomes, setNomes] = useState<Record<string, string>>({});
+  const [icone, setIcone] = useState<OpcaoTipo | null>(null);
+  const erro = (pre: string) => (e: any) => toast(pre + (e.message || e), { tone: 'crit' });
+  const usoTipo = (o: OpcaoTipo) => assets.filter((a: any) => a.category && tipoDoAtivo(a) === o.value).length;
+  // tipo pronto vira linha "renomeia este pronto" na API; o da empresa é atualizado pelo id
+  const gravarTipo = (o: OpcaoTipo, mudanca: { nome?: string; icone?: string }) => salvarTipoAtivo({
+    id: o.tipoId, nome: mudanca.nome ?? o.label, base: o.kind, padrao: o.value.startsWith('t:') ? null : o.value, icone: mudanca.icone ?? o.icone ?? null,
+  });
+  const renomearTipo = (o: OpcaoTipo) => {
+    const nome = (nomes['t' + o.value] ?? o.label).trim();
+    if (!nome || nome === o.label) return;
+    gravarTipo(o, { nome }).then(() => setNomes(({ ['t' + o.value]: _, ...r }) => r)).catch(erro('Nome não gravado: '));
+  };
+  const criarTipo = async () => {
+    const parecido = mesmoNome(novo.nome, tipos.map((t) => ({ nome: t.label })));
+    if (parecido) return toast(`Já existe o tipo ${parecido.nome}.`, { tone: 'crit' });
+    try { await salvarTipoAtivo({ nome: novo.nome.trim(), base: novo.base }); toast(`${novo.nome.trim()} adicionado.`); setNovo({ ...novo, nome: '' }); } catch (e: any) { erro('Não foi possível salvar: ')(e); }
+  };
+  const renomear = (lista: 'marcas' | 'modelos', item: { id: string; nome: string }) => {
+    const nome = (nomes[item.id] ?? item.nome).trim();
+    if (!nome || nome === item.nome) return;
+    renomearNoCatalogo(lista, item.id, nome).then(() => setNomes(({ [item.id]: _, ...r }) => r)).catch((e: any) => { setNomes(({ [item.id]: _, ...r }) => r); erro('Nome não gravado: ')(e); });
+  };
+  const usoModelo = (id: string) => assets.filter((a: any) => a.modeloId === id).length;
+  return (
+    <div className="flex flex-col gap-grid">
+      <Card title="Tipos de ativo" icon="ativos">
+        <p className="text-small text-ink-2 mb-card-head">Os tipos prontos podem ser renomeados para o nome que a sua operação usa. O ícone do tipo é o que o cadastro sugere.</p>
+        <div className="flex flex-wrap gap-tight mb-card-head max-w-2xl">
+          <Input className="flex-1 min-w-[200px]" value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} placeholder="Ex.: Guindaste" aria-label="Nome do novo tipo" />
+          <Select className="w-48" aria-label="Base do novo tipo" value={novo.base} onChange={(e) => setNovo({ ...novo, base: e.target.value })} options={BASES} />
+          <Button disabled={!chaveCatalogo(novo.nome)} onClick={criarTipo}>Adicionar tipo</Button>
+        </div>
+        <Table minWidth={560} head={['', 'Nome', 'Base', 'Ativos', '']} rows={tipos.map((o) => [
+          o.icone ? <img src={pngIconUrl(o.icone)} alt="" className="w-12 h-8 object-contain" /> : <span className="text-caption text-ink-3">—</span>,
+          <InlineInput aria-label={`Nome do tipo ${o.label}`} className="font-medium w-full" value={nomes['t' + o.value] ?? o.label} onChange={(e) => setNomes({ ...nomes, ['t' + o.value]: e.target.value })} onBlur={() => renomearTipo(o)} />,
+          <span className="text-ink-2 whitespace-nowrap">{BASES.find((b) => b.value === o.kind)?.label}{o.value.startsWith('t:') ? ' · da empresa' : ''}</span>,
+          usoTipo(o) || '—',
+          <TextButton onClick={() => setIcone(o)}>Trocar ícone</TextButton>])} />
+      </Card>
+      <Card title="Marcas e modelos" icon="ativos">
+        <p className="text-small text-ink-2 mb-card-head">A lista cresce pelo cadastro do ativo. Corrigir o nome aqui corrige em todos os ativos que usam a marca ou o modelo.</p>
+        {!c.marcas.length && <EmptyState title="Nenhuma marca ainda" detail="Cadastre a primeira escolhendo a marca no cadastro do ativo." />}
+        <div className="flex flex-col gap-group">
+          {c.marcas.map((m) => (
+            <div key={m.id} className="flex flex-col gap-tight">
+              <InlineInput aria-label={`Nome da marca ${m.nome}`} className="font-semibold text-body max-w-sm" value={nomes[m.id] ?? m.nome} onChange={(e) => setNomes({ ...nomes, [m.id]: e.target.value })} onBlur={() => renomear('marcas', m)} />
+              <div className="flex flex-wrap gap-tight pl-stack">
+                {c.modelos.filter((x) => x.marcaId === m.id).map((x) => (
+                  <span key={x.id} className="inline-flex items-center gap-hair border border-line rounded-chip px-tight">
+                    <InlineInput aria-label={`Nome do modelo ${x.nome}`} className="w-36" value={nomes[x.id] ?? x.nome} onChange={(e) => setNomes({ ...nomes, [x.id]: e.target.value })} onBlur={() => renomear('modelos', x)} />
+                    <span className="text-caption text-ink-2 num">{usoModelo(x.id)}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      {icone && (
+        <Modal open onClose={() => setIcone(null)} title={`Ícone de ${icone.label}`}>
+          <IconPicker category={icone.category} value={icone.icone || ''} onChange={(v) => { gravarTipo(icone, { icone: v }).then(() => { toast(`Ícone de ${icone.label} trocado.`); setIcone(null); }).catch(erro('Ícone não gravado: ')); }} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function Operacoes() {
   const items = useStore((s) => s.operations);
   const assets = useStore((s) => opAssets(s)); // contagem só da frota atual

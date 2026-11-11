@@ -174,7 +174,7 @@ export class RastreadorModelosRepository {
               rc.ultimo_pacote_em, rc.ultima_posicao_valida_em, rc.ultimos_atributos, rc.atributos_em, rc.atributos_vistos_em,
               m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
               m.fabricante as modelo_fabricante, m.nome as modelo_nome, m.protocolo as modelo_protocolo, m.porta as modelo_porta,
-              c.name as client_name, a.plate as asset_plate,
+              c.name as client_name, a.rotulo as asset_plate,
               ${COLUNAS_ULTIMA_POSICAO},
               coalesce((select count(*)::int from posicoes p
                          where p.rastreador_id = r.id and p.fix_time > now() - interval '2 days'

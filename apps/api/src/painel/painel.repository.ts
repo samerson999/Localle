@@ -40,14 +40,14 @@ export class PainelRepository {
    */
   async aRecolher(): Promise<{ instalacaoId: string; imei: string; modelo: string | null; clientName: string; placa: string }[]> {
     const { rows } = await this.pool.query(
-      `select i.id, r.imei, r.modelo, cl.name, a.plate
+      `select i.id, r.imei, r.modelo, cl.name, a.rotulo as plate
          from instalacoes i
          join contratos c on c.client_id = i.client_id and c.status = 'cancelado'
          join rastreadores r on r.id = i.rastreador_id
          join clients cl on cl.id = i.client_id
          join assets a on a.id = i.asset_id
         where i.desinstalado_em is null
-        order by cl.name, a.plate`,
+        order by cl.name, a.rotulo`,
     );
     return rows.map((r) => ({ instalacaoId: r.id, imei: r.imei, modelo: r.modelo, clientName: r.name, placa: r.plate }));
   }

@@ -28,6 +28,7 @@ export interface LinkPublico {
   linkId: string;
   clientId: string;
   assetId: string;
+  /** `assets.rotulo`: a placa, ou o identificador quando o ativo não tem placa. */
   plate: string;
   expiraEm: Date;
   revogadoEm: Date | null;
@@ -93,7 +94,7 @@ export class LinksRepository extends BaseRepository<LinkRow> {
 
   async buscarPorHash(tokenHash: string): Promise<LinkPublico | null> {
     const { rows } = await this.pool.query<LinkPublico>(
-      `select l.id as "linkId", l.client_id as "clientId", l.asset_id as "assetId", a.plate, l.expira_em as "expiraEm", l.revogado_em as "revogadoEm"
+      `select l.id as "linkId", l.client_id as "clientId", l.asset_id as "assetId", a.rotulo as plate, l.expira_em as "expiraEm", l.revogado_em as "revogadoEm"
        from links_localizacao l join assets a on a.id = l.asset_id and a.client_id = l.client_id
        where l.token_hash = $1`,
       [tokenHash],

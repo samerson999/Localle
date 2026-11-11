@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { CatalogoAtivos } from './catalogoAtivos';
 import { create } from 'zustand';
 import type { Alerta, RealtimeMessage, RealtimePosicao } from '@localle/shared/realtime';
 import type { BillingType, ContractStatus, ContractTerms, ContractVersion } from '@localle/shared/contratos';
@@ -164,7 +165,8 @@ async function apiSend<T>(method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', path: str
   if (r.status === 403) throw new Error('Seu acesso não permite esta alteração');
   if (r.status === 204) return null as T;
   const data = await r.json().catch(() => null);
-  if (!r.ok) throw erroHttp(r.status, data);
+  // status e corpo vão junto: o 409 do catálogo traz o item que já existe
+  if (!r.ok) throw Object.assign(erroHttp(r.status, data), { status: r.status, dados: data });
   return data as T;
 }
 
@@ -422,8 +424,9 @@ export async function atualizarSituacaoAtivo(assetId: string, situacao: string) 
   const status = situacao === 'vendido' ? 'vendido' : situacao === 'baixa' ? 'baixado' : 'ativo';
   await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { status });
 }
-export async function atualizarPlacaAtivo(assetId: string, plate: string) {
-  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { plate });
+/** Placa e código interno/nº de série (vazio limpa); a API exige que o ativo fique com pelo menos um dos dois. */
+export async function atualizarIdentificacaoAtivo(assetId: string, plate: string, identificador: string) {
+  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { plate: plate || null, identificador: identificador || null });
 }
 /** Ícone ilustrado do cadastro (png-tight); vazio volta para a silhueta da categoria. */
 export async function atualizarIconeAtivo(assetId: string, icon: string) {
@@ -476,8 +479,9 @@ export const equipeApi = {
 export interface PermissaoPapel { key: string; label: string; role: 'admin' | 'gestor' | 'operador'; allowed: boolean; origin: 'cliente' | 'padrao'; editableByClient: boolean }
 
 /** Ativo novo nasce na API (é nele que o rastreador é instalado); devolve o id do store (lc_…). */
-export async function criarAtivo(plate: string): Promise<string> {
-  const a = await apiSend<{ id: string }>('POST', '/assets', { plate });
+/** Ativo sem placa (linha amarela, equipamento) entra pelo identificador (código interno ou nº de série). */
+export async function criarAtivo(plate: string, identificador = ''): Promise<string> {
+  const a = await apiSend<{ id: string }>('POST', '/assets', { plate: plate || null, identificador: identificador || null });
   return assetIdFor(a.id);
 }
 
@@ -822,7 +826,7 @@ const fold = (x: string) => x.trim().toLowerCase().normalize('NFD').replace(/[̀
 export async function salvarFichaAtivo(assetId: string) {
   const a = useStore.getState().assets.find((x: any) => x.id === assetId);
   if (!a || !isRealAsset(a)) return;
-  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { dados: M.fichaDoAtivo(a), operacaoId: UUID.test(a.operationId || '') ? a.operationId : null });
+  await apiSend('PATCH', `/assets/${backendIdOf(assetId)}`, { dados: M.fichaDoAtivo(a), operacaoId: UUID.test(a.operationId || '') ? a.operationId : null, modeloId: UUID.test(a.modeloId || '') ? a.modeloId : null });
 }
 
 /**
@@ -838,7 +842,7 @@ export async function syncCadastroAtivos() {
     for (const r of rows) {
       const id = assetIdFor(r.id);
       const i = assets.findIndex((x: any) => x.id === id);
-      const a = M.ativoDaApi(r, i >= 0 ? assets[i] : undefined);
+      const a = M.ativoDaApi(r, i >= 0 ? assets[i] : undefined, s.catalogoAtivos);
       if (i >= 0) assets[i] = a; else assets.push(a);
     }
     return { assets };
@@ -876,6 +880,36 @@ export async function salvarOperacao(o: { id?: string; name: string; metaKml?: n
   await syncOperacoes();
 }
 export async function removerOperacao(id: string) { await apiSend('DELETE', `/operacoes/${id}`); await syncOperacoes(); }
+
+// ---------- marcas, modelos e tipos do cadastro de ativos (apps/api/src/catalogo-ativos) ----------
+export async function syncCatalogoAtivos() {
+  const c = await apiGet<CatalogoAtivos>('/catalogo-ativos');
+  patch(() => ({ catalogoAtivos: c }));
+}
+/** Cria na lista; nome que já existe com outra grafia (409) devolve o existente em vez de erro. */
+async function criarNoCatalogo<T>(path: string, body: unknown): Promise<T> {
+  try {
+    const r = await apiSend<T>('POST', path, body);
+    await syncCatalogoAtivos();
+    return r;
+  } catch (e: any) {
+    // criado por outra pessoa com outra grafia: a lista daqui pode não ter ainda
+    if (e?.status === 409 && e.dados?.repetido) { await syncCatalogoAtivos(); return e.dados.repetido as T; }
+    throw e;
+  }
+}
+export const criarMarca = (nome: string) => criarNoCatalogo<{ id: string; nome: string }>('/catalogo-ativos/marcas', { nome });
+export const criarModelo = (marcaId: string, nome: string) => criarNoCatalogo<{ id: string; nome: string }>('/catalogo-ativos/modelos', { marcaId, nome });
+/** Renomear corrige a grafia em todos os ativos que apontam para a marca/modelo (a ficha mostra o nome da lista). */
+export async function renomearNoCatalogo(lista: 'marcas' | 'modelos', id: string, nome: string) {
+  await apiSend('PUT', `/catalogo-ativos/${lista}/${id}`, { nome });
+  await syncCatalogoAtivos();
+  await syncCadastroAtivos();
+}
+export async function salvarTipoAtivo(t: { id?: string; nome: string; base: string; padrao?: string | null; icone?: string | null }) {
+  await apiSend(t.id ? 'PUT' : 'POST', t.id ? `/catalogo-ativos/tipos/${t.id}` : '/catalogo-ativos/tipos', { nome: t.nome, base: t.base, padrao: t.padrao || null, icone: t.icone || null });
+  await syncCatalogoAtivos();
+}
 
 /** Empregador do espelho de ponto (jornada). O que estava só no navegador vai para a API na primeira carga. */
 export async function syncEmpresa() {
@@ -996,8 +1030,8 @@ export async function cancelarViagem(id: string) { await apiSend('POST', `/viage
 const MODULOS_SYNC = ['motoristas', 'grupos', 'cadastro', 'empresa', 'jornada', 'multas', 'combustível', 'manutenção', 'checklist', 'ranking', 'viagens'];
 export async function syncModulos() {
   const partes: [string, () => Promise<unknown>][] = [
-    // operações antes da ficha: o ativo aponta para a operação já com o id da API
-    ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['cadastro', () => syncOperacoes().then(syncCadastroAtivos)], ['empresa', syncEmpresa], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],
+    // operações e listas de marca/modelo antes da ficha: o ativo aponta para elas já com o id da API
+    ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['cadastro', () => syncOperacoes().then(syncCatalogoAtivos).then(syncCadastroAtivos)], ['empresa', syncEmpresa], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],
     ['manutenção', syncManutencao], ['checklist', syncChecklist], ['ranking', syncRanking], ['viagens', syncViagens],
   ];
   const r = await Promise.allSettled(partes.map(([nome, f]) => f().finally(() => marcarPronto(nome))));

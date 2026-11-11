@@ -4,7 +4,8 @@ import { PG_POOL } from '../db/pg-pool.provider';
 
 export interface CurrentPositionRow {
   asset_id: string;
-  plate: string;
+  plate: string | null;
+  rotulo: string;
   icone: string | null;
   fix_time: Date | null;
   longitude: number | null;
@@ -30,6 +31,7 @@ export interface EventoRow {
   id: string;
   asset_id: string | null;
   plate: string | null;
+  rotulo: string | null;
   tipo: string;
   origem: string;
   ts: Date;
@@ -65,7 +67,7 @@ export class MonitoringRepository {
   async frotaAtual(clientId: string): Promise<CurrentPositionRow[]> {
     const { rows } = await this.pool.query<CurrentPositionRow>(
       `select
-         a.id as asset_id, a.plate, a.icone,
+         a.id as asset_id, a.plate, a.rotulo, a.icone,
          v.fix_time,
          st_x(v.geom) as longitude, st_y(v.geom) as latitude,
          v.speed_kmh, v.ignition,
@@ -83,7 +85,7 @@ export class MonitoringRepository {
        left join rastreador_modelos m on m.id = r.modelo_id
        left join rastreador_comunicacao rc on rc.rastreador_id = i.rastreador_id
        where a.client_id = $1 and a.status = 'ativo'
-       order by a.plate`,
+       order by a.rotulo`,
       [clientId],
     );
     return rows;
@@ -92,7 +94,7 @@ export class MonitoringRepository {
   /** Eventos do cliente no período, mais recentes primeiro; `assetId` opcional restringe a um ativo. */
   async eventos(clientId: string, from: Date, to: Date, assetId: string | null): Promise<EventoRow[]> {
     const { rows } = await this.pool.query<EventoRow>(
-      `select e.id, e.asset_id, a.plate, e.tipo, e.origem, e.ts,
+      `select e.id, e.asset_id, a.plate, a.rotulo, e.tipo, e.origem, e.ts,
          st_x(p.geom) as longitude, st_y(p.geom) as latitude, p.speed_kmh, e.attributes
        from eventos e
        left join assets a on a.id = e.asset_id and a.client_id = e.client_id

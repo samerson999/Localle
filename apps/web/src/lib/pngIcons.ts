@@ -9,7 +9,9 @@ export const PNG_ICON_IDS = Object.keys(FILES)
 
 export const pngIconUrl = (id: string) => Object.entries(FILES).find(([p]) => p.endsWith(`/${id}.png`))?.[1];
 
-export const pngIconLabel = (id: string) => id.replace(/^\d+-/, '').replace(/-/g, ' ');
+// nome de mercado quando o do arquivo não é o que o cliente usa (o id fica: é o que está gravado nos ativos)
+const LABEL: Record<string, string> = { '18-coletor': 'compactador' };
+export const pngIconLabel = (id: string) => LABEL[id] || id.replace(/^\d+-/, '').replace(/-/g, ' ');
 
 // id do png-tight mais próximo de cada categoria/silhueta, para sugerir ao abrir o seletor
 export const PNG_ICON_SUGGESTION: Record<string, string> = {

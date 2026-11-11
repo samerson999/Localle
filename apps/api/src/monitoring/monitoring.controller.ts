@@ -32,6 +32,7 @@ export class MonitoringController {
     return rows.map((r) => ({
       assetId: r.asset_id,
       plate: r.plate,
+      rotulo: r.rotulo,
       icone: r.icone,
       // null = aguardando primeira posição (docs/ARQUITETURA-INTEGRACAO-TRACCAR.md § 4.4), não erro.
       fixTime: r.fix_time,
@@ -62,6 +63,7 @@ export class MonitoringController {
       id: r.id,
       assetId: r.asset_id,
       plate: r.plate,
+      rotulo: r.rotulo,
       tipo: r.tipo,
       origem: r.origem,
       ts: r.ts,

@@ -27,6 +27,13 @@ describe('toAsset / toVehicle', () => {
     expect(toAsset(row(), { groupIds: ['x'] }, 'g').groupIds).toEqual(['x']);
   });
 
+  it('ativo sem placa: nome vem do rótulo (identificador) e a placa fica vazia; apelido do cadastro fica', () => {
+    const semPlaca = row({ plate: null, rotulo: 'RETRO-01' });
+    expect(toAsset(semPlaca, undefined, 'g')).toMatchObject({ name: 'RETRO-01', plate: '' });
+    expect(toAsset(semPlaca, { name: 'RETRO-01', serial: 'RETRO-01' }, 'g').name).toBe('RETRO-01');
+    expect(toAsset(semPlaca, { name: 'Retro do pátio' }, 'g').name).toBe('Retro do pátio');
+  });
+
   it('ícone ilustrado vem da API; null limpa; resposta sem o campo mantém o do navegador', () => {
     expect(toAsset(row({ icone: '02-sedan' }), { icon: '08-motocicleta' }, 'g').icon).toBe('02-sedan');
     expect(toAsset(row({ icone: null }), { icon: '08-motocicleta' }, 'g').icon).toBe('');
