@@ -5,6 +5,7 @@ import { Toaster, EmptyState, Skeleton } from './components/ui';
 import { useStore } from './lib/store';
 import Login from './pages/Login';
 import { brandVars } from './lib/brand';
+import { useTema } from './lib/tema';
 
 // telas carregadas sob demanda: o primeiro acesso baixa só o login e o layout (antes, um arquivo único de 1,5 MB)
 const Inicio = lazy(() => import('./pages/Inicio'));
@@ -78,10 +79,11 @@ function Home() {
 export default function App() {
   const color = useStore((s) => s.revenda.branding.color);
   const name = useStore((s) => s.revenda.branding.name);
+  const { tema } = useTema(); // a cor da revenda é medida contra o card do tema ativo
   useEffect(() => {
     for (const [k, v] of Object.entries(brandVars(color))) document.documentElement.style.setProperty(k, v);
     document.title = name;
-  }, [color, name]);
+  }, [color, name, tema]);
   return (
     <HashRouter>
       <Suspense fallback={<RouteLoading />}>

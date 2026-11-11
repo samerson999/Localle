@@ -62,6 +62,14 @@
   --on-dark-3: #AEB6C3;
   --on-dark-hover: rgba(255, 255, 255, 0.1);
   --on-dark-btn-hover: #E8EBF0;
+  /* texto sobre cor que não inverte com o tema (azul de dado, foto, amostra de cor): fixo nos dois modos.
+     on-dark é o texto da superfície invertida (bg-ink, bg-graphite), que fica clara no escuro; estes não mudam. */
+  --on-color: #FFFFFF;
+  --on-color-2: #E6E9EF;
+  --on-color-3: #AEB6C3;
+  --on-color-hover: rgba(255, 255, 255, 0.1);
+  --on-color-btn-hover: #E8EBF0;
+  --on-color-ink: #111827; /* texto escuro sobre cor clara fixa */
 
   /* grafite: fallback de tudo que a cor da revenda pinta (botão, seleção, halo, card de dica) */
   --graphite: #1E2433;
@@ -72,9 +80,9 @@
      a barra em destaque é sempre --real, boa ou ruim, e o chip de variação diz se é bom ou ruim. ---------- */
   --real: #1D5BEA;
   --real-soft: #E3EBFD;
-  --real-muted: color-mix(in srgb, var(--real) 24%, white); /* barras fora de destaque (meses anteriores) */
-  --real-mid: color-mix(in srgb, var(--real) 55%, white); /* segunda série, ranking fora do topo */
-  --loss-muted: color-mix(in srgb, var(--loss) 30%, white); /* perda fora de destaque */
+  --real-muted: color-mix(in srgb, var(--real) 24%, var(--card)); /* barras fora de destaque (meses anteriores) */
+  --real-mid: color-mix(in srgb, var(--real) 55%, var(--card)); /* segunda série, ranking fora do topo */
+  --loss-muted: color-mix(in srgb, var(--loss) 30%, var(--card)); /* perda fora de destaque */
   --loss: #E8337A; /* barras, pontos e hachuras */
   --loss-ink: #C2185B; /* texto e variação ruim */
   --loss-soft: #FCE6EF;
@@ -130,12 +138,12 @@
   --brand-default: #1D5BEA;
   --brand: var(--brand-default); /* cor crua da revenda: só na marca em si (logo, tela de login) */
   --brand-fill: var(--brand-default); /* botão principal e controle selecionado (ou grafite) */
-  --brand-fill-hover: color-mix(in srgb, var(--brand-fill) 88%, white);
+  --brand-fill-hover: color-mix(in srgb, var(--brand-fill) 88%, var(--card));
   --brand-fill-press: color-mix(in srgb, var(--brand-fill) 85%, black);
   --brand-fill-ink: #FFFFFF; /* texto e ícone sobre --brand-fill */
   --brand-halo: color-mix(in srgb, var(--brand-fill) 22%, transparent); /* halo do veículo selecionado */
-  --brand-tip: color-mix(in srgb, var(--brand-fill) 7%, white); /* superfície do card de dica */
-  --brand-tip-line: color-mix(in srgb, var(--brand-fill) 22%, white);
+  --brand-tip: color-mix(in srgb, var(--brand-fill) 7%, var(--card)); /* superfície do card de dica */
+  --brand-tip-line: color-mix(in srgb, var(--brand-fill) 22%, var(--card));
   --brand-link: var(--brand-default); /* link: cor da revenda quando ela pinta; grafite sublinhado no fallback */
   --brand-link-decoration: none;
   --brand-ink: #FFFFFF; /* texto sobre a cor crua da marca (logo com iniciais) */
@@ -150,12 +158,12 @@
   --counter-ink: var(--ink);
   --counter-crit-bg: var(--crit);
   --counter-crit-ink: #FFFFFF;
-  --brand-soft: color-mix(in srgb, var(--brand-fill) 5%, white); /* área de upload, item selecionado */
-  --brand-soft-line: color-mix(in srgb, var(--brand-fill) 25%, white);
+  --brand-soft: color-mix(in srgb, var(--brand-fill) 5%, var(--card)); /* área de upload, item selecionado */
+  --brand-soft-line: color-mix(in srgb, var(--brand-fill) 25%, var(--card));
   /* rodapé de leitura de um ChartCard (TipBand, referência Visor): mesma regra do TipCard, no máximo
      um por tela — é outro lugar de conteúdo na cor da revenda, não os dois ao mesmo tempo. */
   --brand-tip-band: linear-gradient(180deg, var(--brand-fill) 0%, var(--brand-fill) 65%, color-mix(in srgb, var(--brand-fill) 70%, black) 100%);
-  --brand-tip-band-text: color-mix(in srgb, var(--brand-fill) 25%, white); /* corpo do texto sobre a faixa; o trecho em destaque usa --on-dark */
+  --brand-tip-band-text: color-mix(in srgb, var(--brand-fill) 25%, var(--brand-fill-ink)); /* corpo do texto sobre a faixa; o trecho em destaque usa --on-dark */
 
   /* ---------- espaçamento (base 4px; os nomes dizem onde usar) ---------- */
   /* Escala: só estes passos. Fora dela (2, 6, 10, 14, 28 px…) não se usa. Os nomes abaixo dizem ONDE usar;
@@ -249,7 +257,7 @@
   --skeleton-b: #F4F6F9;
   --scroll-thumb: #C9D0DA;
   --scroll-thumb-hover: #A9B2BF;
-  --selection: color-mix(in srgb, var(--real) 22%, white);
+  --selection: color-mix(in srgb, var(--real) 22%, var(--card));
 
   /* ---------- movimento ---------- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -263,6 +271,92 @@
   --t-glide: 800ms; /* marcador do mapa indo para a nova posição */
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-dock: cubic-bezier(0.33, 1, 0.68, 1); /* barra inferior do celular: gaveta crescendo da pílula */
+}
+
+/* ---------- tema escuro (lib/tema.ts põe data-theme="dark" no <html>) ----------
+   Mesmo desenho, só os valores mudam (docs/pesquisa-ux/02-diretrizes-pwa-localle.md § 12.4). Dois degraus de superfície:
+   o card é mais claro que a página e não tem sombra. Status e dado ganham versões mais claras com o mesmo significado.
+   "on-dark" é o texto sobre a superfície invertida (bg-ink, bg-graphite, bg-crit): aqui ela é clara, então o texto escurece.
+   Documentos impressos (--doc-*) não mudam. A cor da revenda é recalculada contra o card escuro em lib/brand.ts. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: #0E1117;
+  --card: #171B23;
+  --card-2: #1D222B;
+  --surface-hover: #252B35;
+  --surface-selected: #1B2638;
+  --surface-muted: #1A1F27;
+  --track: #262C36;
+  --switch-off: #3A424F;
+  --avatar: #2A313C;
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  --line: #262C36;
+  --line-strong: #3A424F;
+  --line-hover: #556070;
+  --card-edge: #232933;
+
+  --ink: #F3F5F8;
+  --ink-hover: #DCE1E8;
+  --ink-2: #AEB6C3;
+  --ink-3: #8A93A3; /* 5,9:1 sobre o canvas */
+  --on-dark: #111827;
+  --on-dark-2: #252D3D;
+  --on-dark-3: #4B5466;
+  --on-dark-hover: rgba(17, 24, 39, 0.1);
+  --on-dark-btn-hover: #252D3D;
+
+  /* o fallback grafite vira claro: oposto ao fundo */
+  --graphite: #E6E9EF;
+  --graphite-soft: #222833;
+
+  --real: #356BE8; /* branco por cima com 4,7:1; 3,6:1 sobre o card */
+  --real-soft: #1A2745;
+  --loss: #F0518F;
+  --loss-ink: #FF7AAE;
+  --loss-soft: #3A1626;
+  --pos: #3FBF73;
+  --prev: #3A424F;
+  --target: #6B7585;
+  --route: #6B7585;
+
+  --mov: #34C77B;
+  --warn: #FF9F2E;
+  --crit: #FF5A4F;
+  --crit-ink: #FF7B72;
+  --crit-soft: #3A1715;
+  --warn-ink: #FFB766;
+  --warn-soft: #3A2410;
+  --pos-soft: #12301F;
+  --counter-crit-ink: #111827;
+
+  /* mapa: blocos claros do OSM invertidos para o escuro (o satélite fica de fora, ver base.css) */
+  --map-bg: #1A1F27;
+  --map-tiles: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6);
+  --zone-1: #9B82F0;
+  --zone-2: #C770C1;
+  --zone-3: #2FA5B8;
+  --zone-4: #8593AB;
+
+  --plate-bg: #252B35;
+
+  --shadow-card: 0 0 0 1px var(--card-edge);
+  --shadow-seg: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-dock: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.35), 0 14px 28px rgba(0, 0, 0, 0.4);
+  --shadow-panel: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+  --shadow-modal: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 24px 48px -24px rgba(0, 0, 0, 0.8);
+  --shadow-sheet: 0 -8px 28px -12px rgba(0, 0, 0, 0.7);
+  --shadow-dock-float: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 40px rgba(0, 0, 0, 0.5);
+  --shadow-marker: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-marker-sel: 0 0 0 6px var(--brand-halo), 0 2px 6px rgba(0, 0, 0, 0.5);
+
+  --skeleton-a: #1D222B;
+  --skeleton-b: #252B35;
+  --scroll-thumb: #3A424F;
+  --scroll-thumb-hover: #556070;
 }
 
 /* ---------- toque (celular e tablet) ---------- */

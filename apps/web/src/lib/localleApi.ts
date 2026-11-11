@@ -457,6 +457,17 @@ export async function atualizarIconeAtivo(assetId: string, icon: string) {
 export async function trocarSenha(role: 'locale' | 'gestor', senhaAtual: string, novaSenha: string) {
   await apiSend('POST', role === 'locale' ? '/superadmin/senha' : '/auth/senha', { senhaAtual, novaSenha });
 }
+/** Foto do avatar do próprio usuário (data URL já reduzido por fotoAvatar; null = sem foto). */
+const rotaAvatar = (role: 'locale' | 'gestor') => (role === 'locale' ? '/superadmin/avatar' : '/auth/avatar');
+export async function lerAvatar(role: 'locale' | 'gestor'): Promise<string | null> {
+  return (await apiGet<{ imagem: string | null }>(rotaAvatar(role))).imagem;
+}
+export async function salvarAvatar(role: 'locale' | 'gestor', imagem: string) {
+  await apiSend('PUT', rotaAvatar(role), { imagem });
+}
+export async function removerAvatar(role: 'locale' | 'gestor') {
+  await apiSend('DELETE', rotaAvatar(role));
+}
 /** Sempre "ok" na tela (a API responde 202 exista o e-mail ou não — não revela quem é cliente). */
 export async function esqueciSenha(email: string) {
   const r = await fetchOuErro(`${BASE}/auth/esqueci-senha`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });

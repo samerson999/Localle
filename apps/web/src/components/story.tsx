@@ -201,7 +201,7 @@ export const priorityKind = (p: string): StatusKind => (p === 'alta' ? 'crit' : 
 // Botão de ação concreta ao fim de uma leitura ("Revisar 6 OS")
 export type Action = { label: string; to?: string; onClick?: () => void };
 export function ActionButton({ action, dark = false }: { action: Action; dark?: boolean }) {
-  const cls = cx('inline-flex items-center gap-1 h-9 pl-3 pr-2 rounded-btn text-small font-medium transition-colors whitespace-nowrap', dark ? 'bg-on-dark text-ink hover:bg-on-dark-btn-hover' : 'bg-card border border-line-strong text-ink hover:bg-card-2');
+  const cls = cx('inline-flex items-center gap-1 h-9 pl-3 pr-2 rounded-btn text-small font-medium transition-colors whitespace-nowrap', dark ? 'bg-on-dark text-[var(--on-color-ink)] hover:bg-on-dark-btn-hover' : 'bg-card border border-line-strong text-ink hover:bg-card-2');
   const inner = <>{action.label}<Icon name="chevron" size={16} /></>;
   return action.to ? <Link to={action.to} className={cls}>{inner}</Link> : <button type="button" onClick={action.onClick} className={cls}>{inner}</button>;
 }
@@ -231,7 +231,7 @@ export function TipBand({ items }: { items: React.ReactNode[] }) {
   if (!items.length) return null;
   const idx = Math.min(i, items.length - 1);
   return (
-    <div className="p-stack flex flex-col gap-tight">
+    <div className="sobre-marca p-stack flex flex-col gap-tight">
       <div className="flex items-center gap-icon">
         <Icon name="info" size={16} className="text-on-dark" />
         <span className="text-small font-medium text-on-dark">Dica da Localle</span>
@@ -385,7 +385,7 @@ export function PatternCard({ items }: { items: { label: string; value: string; 
   const idx = Math.min(i, items.length - 1);
   const p = items[idx];
   return (
-    <section className="relative bg-real text-on-dark rounded-card p-card flex flex-col min-w-0" aria-roledescription="carrossel" aria-label="Padrões encontrados">
+    <section className="sobre-cor relative bg-real text-on-dark rounded-card p-card flex flex-col min-w-0" aria-roledescription="carrossel" aria-label="Padrões encontrados">
       <header className="flex items-center gap-tight">
         <Icon name="rota" size={16} className="text-on-dark" />
         <h2 className="text-small text-on-dark">{p.label}</h2>

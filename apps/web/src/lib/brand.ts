@@ -15,12 +15,14 @@ export const contrast = (a: string, b: string) => { const [x, y] = [lum(a), lum(
 // escuro e claro de referência vêm dos tokens (--ink sobre --card)
 const INK = () => tv('--ink');
 const PAPER = () => tv('--card');
-// escurece a cor em passos até atingir o contraste pedido sobre o card
-function darken(c: string, min: number) {
-  let [r, g, b] = hex(c);
-  for (let i = 0; i < 20 && contrast(`#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`, PAPER()) < min; i++) [r, g, b] = [r, g, b].map((v) => Math.round(v * 0.9));
-  const out = `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-  return contrast(out, PAPER()) >= min ? out : INK();
+const toHex = (rgb: number[]) => `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+// afasta a cor do card em passos até atingir o contraste pedido: escurece no tema claro, clareia no escuro
+function adjust(c: string, min: number) {
+  const paper = PAPER(), dark = lum(paper) < 0.2;
+  let rgb = hex(c);
+  for (let i = 0; i < 20 && contrast(toHex(rgb), paper) < min; i++) rgb = rgb.map((v) => Math.round(dark ? v + (255 - v) * 0.1 : v * 0.9));
+  const out = toHex(rgb);
+  return contrast(out, paper) >= min ? out : INK();
 }
 
 // matiz saturado (graus); null se a cor for quase cinza
@@ -37,8 +39,12 @@ const isRedLike = (c: string) => { const h = hue(c); return h != null && (h < 20
 const isWarnLike = (c: string) => { const h = hue(c); return h != null && h >= 20 && h <= 65; };
 
 // por que a marca caiu no grafite (null = a marca pinta): usado na prévia do /design e no Painel da revenda
+// no tema escuro a cor é clareada até 3:1 sobre o card antes das regras (o azul padrão sozinho fica abaixo disso)
+const raw = (color: string) => /^#[0-9a-f]{3,8}$/i.test(color || '') ? color : tv('--brand-default');
+const forTheme = (c: string) => lum(PAPER()) < 0.2 && contrast(c, PAPER()) < 3 ? adjust(c, 3) : c;
+
 export function brandFallback(color: string): string | null {
-  const c = /^#[0-9a-f]{3,8}$/i.test(color || '') ? color : tv('--brand-default');
+  const c = forTheme(raw(color));
   const ink = INK(), paper = PAPER();
   if (isRedLike(c)) return 'vermelha: pareceria alerta crítico';
   if (isWarnLike(c)) return 'laranja ou amarela: pareceria atenção';
@@ -49,7 +55,7 @@ export function brandFallback(color: string): string | null {
 }
 
 export function brandVars(color: string): Record<string, string> {
-  const c = /^#[0-9a-f]{3,8}$/i.test(color || '') ? color : tv('--brand-default');
+  const original = raw(color), c = forTheme(original);
   const ink = INK(), paper = PAPER();
   const red = isRedLike(c);
   // botão principal e controles de seleção: a marca só pinta se passar em 3:1 sobre o card e tiver
@@ -60,18 +66,18 @@ export function brandVars(color: string): Record<string, string> {
   return {
     '--brand-fill': fill,
     '--brand-fill-ink': graphite ? paper : fillInk,
-    '--brand-tip': graphite ? 'var(--graphite-soft)' : 'color-mix(in srgb, var(--brand-fill) 7%, white)', // card de dica
-    '--brand-tip-line': graphite ? 'var(--line-strong)' : 'color-mix(in srgb, var(--brand-fill) 22%, white)',
+    '--brand-tip': graphite ? 'var(--graphite-soft)' : 'color-mix(in srgb, var(--brand-fill) 7%, var(--card))', // card de dica
+    '--brand-tip-line': graphite ? 'var(--line-strong)' : 'color-mix(in srgb, var(--brand-fill) 22%, var(--card))',
     // derivadas repetidas aqui para recalcular onde quer que as variáveis sejam aplicadas (raiz ou prévia no /design)
-    '--brand-fill-hover': 'color-mix(in srgb, var(--brand-fill) 88%, white)',
+    '--brand-fill-hover': 'color-mix(in srgb, var(--brand-fill) 88%, var(--card))',
     '--brand-fill-press': 'color-mix(in srgb, var(--brand-fill) 85%, black)',
     '--brand-halo': 'color-mix(in srgb, var(--brand-fill) 22%, transparent)',
-    '--brand-soft': 'color-mix(in srgb, var(--brand-fill) 5%, white)',
-    '--brand-soft-line': 'color-mix(in srgb, var(--brand-fill) 25%, white)',
-    '--brand': c,
+    '--brand-soft': 'color-mix(in srgb, var(--brand-fill) 5%, var(--card))',
+    '--brand-soft-line': 'color-mix(in srgb, var(--brand-fill) 25%, var(--card))',
+    '--brand': original, // cor crua (logo, login): a da revenda, sem ajuste de tema
     // link: na cor da revenda quando ela pinta (escurecida até 4,5:1 se preciso); grafite sublinhado no fallback
-    '--brand-link': graphite ? fill : contrast(c, paper) >= 4.5 ? c : darken(c, 4.5),
+    '--brand-link': graphite ? fill : contrast(c, paper) >= 4.5 ? c : adjust(c, 4.5),
     '--brand-link-decoration': graphite ? 'underline' : 'none',
-    '--brand-ink': contrast(c, paper) >= contrast(c, ink) ? paper : ink, // texto sobre a cor da marca
+    '--brand-ink': contrast(original, paper) >= contrast(original, ink) ? paper : ink, // texto sobre a cor crua da marca (--brand)
   };
 }

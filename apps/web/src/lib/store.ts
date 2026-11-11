@@ -10,7 +10,7 @@ type Coll = 'groups' | 'operations' | 'drivers' | 'assets' | 'fences' | 'rules' 
 
 export interface Store {
   [k: string]: any;
-  session: null | { email: string; role: 'gestor' | 'revenda' | 'locale' | 'portaria'; name: string; support?: { id: string; at: number; reason: string; client: string } };
+  session: null | { email: string; role: 'gestor' | 'revenda' | 'locale' | 'portaria'; name: string; avatar?: string | null; support?: { id: string; at: number; reason: string; client: string } };
   upsert: (c: Coll, item: any) => any;
   remove: (c: Coll, id: string) => void;
   patch: (fn: (s: any) => any) => void;

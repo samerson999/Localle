@@ -1,9 +1,11 @@
 // Minha conta: dados de acesso e troca da própria senha (exige a atual). Usuário de cliente usa
-// POST /auth/senha; equipe da Localle, POST /superadmin/senha.
-import { useEffect, useState } from 'react';
-import { Card, PageHeader, PageBody, Section, Field, Input, Button, FormGroup, toast } from '../components/ui';
+// POST /auth/senha; equipe da Localle, POST /superadmin/senha. Foto do avatar: /auth/avatar ou /superadmin/avatar. Aparência (tema claro/escuro) vale para este aparelho.
+import { useEffect, useRef, useState } from 'react';
+import { Card, PageHeader, PageBody, Section, Field, Input, Button, FormGroup, Tabs, Avatar, TextButton, toast } from '../components/ui';
 import { useStore } from '../lib/store';
-import { ativarPush, estadoPush, trocarSenha, type EstadoPush } from '../lib/localleApi';
+import { useTema, type Modo } from '../lib/tema';
+import { ativarPush, estadoPush, removerAvatar, salvarAvatar, trocarSenha, type EstadoPush } from '../lib/localleApi';
+import { fotoAvatar } from '../lib/fileData';
 
 function NotificacoesPush() {
   const [estado, setEstado] = useState<EstadoPush | 'carregando'>('carregando');
@@ -36,6 +38,69 @@ function NotificacoesPush() {
   );
 }
 
+// Foto do avatar: a imagem é recortada em quadrado e reduzida no navegador (fotoAvatar) antes de ir para a conta.
+function FotoAvatar({ role }: { role: 'locale' | 'gestor' }) {
+  const session = useStore((s) => s.session)!;
+  const patch = useStore((s) => s.patch);
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<'' | 'salvar' | 'remover'>(''); // um de cada vez: os dois botões travam juntos
+  const atualizar = (avatar: string | null) => patch((s: any) => (s.session ? { session: { ...s.session, avatar } } : {}));
+
+  const escolher = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Escolha um arquivo de imagem (JPG, PNG ou WebP).'); return; }
+    setBusy('salvar');
+    try {
+      const imagem = await fotoAvatar(file);
+      await salvarAvatar(role, imagem);
+      atualizar(imagem);
+      toast('Foto atualizada.');
+    } catch (e: any) {
+      toast.error(e.message || 'Não foi possível salvar a foto.');
+    } finally { setBusy(''); if (input.current) input.current.value = ''; }
+  };
+  const remover = async () => {
+    setBusy('remover');
+    try { await removerAvatar(role); atualizar(null); toast('Foto removida.'); }
+    catch (e: any) { toast.error(e.message || 'Não foi possível remover a foto.'); }
+    finally { setBusy(''); }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-field">
+      <Avatar name={session.name} src={session.avatar} size="lg" />
+      <div className="flex flex-col gap-hair min-w-0 mr-auto">
+        <span className="text-body font-semibold truncate">{session.email}</span>
+        <span className="text-small text-ink-2">{role === 'locale' ? 'Equipe da Localle (Painel da Localle)' : 'Usuário da plataforma'}</span>
+      </div>
+      <div className="flex flex-wrap gap-tight">
+        <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Escolher foto" onChange={(e) => void escolher(e.target.files?.[0])} />
+        <Button variant="secondary" loading={busy === 'salvar'} disabled={!!busy} onClick={() => input.current?.click()}>{session.avatar ? 'Trocar foto' : 'Adicionar foto'}</Button>
+        {session.avatar && <TextButton tone="danger" disabled={!!busy} onClick={remover}>Remover foto</TextButton>}
+      </div>
+    </div>
+  );
+}
+
+// Tema: trilho em surface-muted porque o padrão do Tabs (bg-card) sumiria dentro do card. A troca aplica na hora (a própria tela é a prévia) e fica guardada neste aparelho (lib/tema.ts).
+const MODOS: { key: Modo; label: string }[] = [{ key: 'claro', label: 'Claro' }, { key: 'escuro', label: 'Escuro' }, { key: 'auto', label: 'Automático' }];
+function Aparencia() {
+  const { modo, setModo } = useTema();
+  return (
+    <Section title="Aparência">
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-field">
+          <div className="flex flex-col gap-hair">
+            <span className="text-body font-medium">Tema</span>
+            <span className="text-small text-ink-2">{modo === 'auto' ? 'Segue o modo claro ou escuro do aparelho.' : 'Vale para este aparelho.'}</span>
+          </div>
+          <Tabs tabs={MODOS} value={modo} onChange={(k) => setModo(k as Modo)} className="!bg-surface-muted" />
+        </div>
+      </Card>
+    </Section>
+  );
+}
+
 export default function MinhaConta() {
   const session = useStore((s) => s.session);
   const [atual, setAtual] = useState('');
@@ -61,16 +126,14 @@ export default function MinhaConta() {
 
   return (
     <div>
-      <PageHeader icon="usuario" title="Minha conta" subtitle="Seus dados de acesso e senha" />
+      <PageHeader icon="usuario" title="Minha conta" subtitle="Sua foto, dados de acesso, senha e aparência" />
       <PageBody>
         <Section title="Acesso">
           <Card>
-            <div className="flex flex-col gap-hair">
-              <span className="text-body font-semibold">{session.email}</span>
-              <span className="text-small text-ink-2">{locale ? 'Equipe da Localle (Painel da Localle)' : 'Usuário da plataforma'}</span>
-            </div>
+            <FotoAvatar role={locale ? 'locale' : 'gestor'} />
           </Card>
         </Section>
+        <Aparencia />
         {!locale && <NotificacoesPush />}
         <Section title="Trocar senha">
           <Card>

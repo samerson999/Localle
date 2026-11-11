@@ -63,11 +63,20 @@ a { text-underline-offset: 3px; }
 
 /* ---------- mapa ---------- */
 .leaflet-container { font-family: inherit; background: var(--map-bg); }
-.leaflet-tile-pane { filter: var(--map-tiles); }
+/* filtro só na base de ruas: o satélite (className tiles-satelite) não pode ser invertido no tema escuro */
+.leaflet-tile-pane .leaflet-layer:not(.tiles-satelite) { filter: var(--map-tiles); }
 .leaflet-control-attribution { font-size: 10.5px; background: color-mix(in srgb, var(--card) 80%, transparent) !important; border-radius: var(--r-chip) 0 0 0; }
 .leaflet-bar { border: 0 !important; border-radius: var(--r-ctl) !important; overflow: hidden; box-shadow: var(--shadow-float) !important; }
 .leaflet-bar a { width: 36px !important; height: 36px !important; line-height: 36px !important; color: var(--ink) !important; border-color: var(--line) !important; font-weight: 400; }
+.leaflet-bar a { background: var(--card) !important; } /* o leaflet.css pinta de branco fixo */
 .leaflet-bar a:hover { background: var(--card-2) !important; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--card); color: var(--ink); box-shadow: var(--shadow-pop); }
+.leaflet-container a.leaflet-popup-close-button { color: var(--ink-3); }
+.leaflet-control-attribution, .leaflet-control-attribution a { color: var(--ink-3) !important; }
+/* tema escuro: dentro de superfícies que continuam coloridas, on-dark volta a ser o texto claro (tokens.css › on-color).
+   sobre-cor = cor fixa (azul de dado, foto); sobre-marca = cor da revenda, com o texto que brand.ts escolheu para ela. */
+:root[data-theme="dark"] .sobre-cor { --on-dark: var(--on-color); --on-dark-2: var(--on-color-2); --on-dark-3: var(--on-color-3); --on-dark-hover: var(--on-color-hover); --on-dark-btn-hover: var(--on-color-btn-hover); }
+:root[data-theme="dark"] .sobre-marca { --on-dark: var(--brand-fill-ink); --on-dark-2: var(--brand-tip-band-text); --on-dark-3: color-mix(in srgb, var(--brand-fill-ink) 55%, var(--brand-fill)); --on-dark-hover: color-mix(in srgb, var(--brand-fill-ink) 12%, transparent); }
 @media (pointer: coarse) { .leaflet-bar a { width: 44px !important; height: 44px !important; line-height: 44px !important; } }
 .veh-marker { display: flex; align-items: center; gap: 5px; }
 .veh-marker .disc { width: 30px; height: 30px; border-radius: var(--r-pill); background: var(--card); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-marker); flex-shrink: 0; }

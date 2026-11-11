@@ -1,10 +1,9 @@
 // Aparência no molde da Revolut (docs/pesquisa-ux/01 e 03): paletas clara e escura da interface e do mapa, usadas pelo
-// Monitoramento do celular (globo) e pela Home. O modo (Claro/Escuro/Automático) é provisório: mora no navegador até o tema do
-// app existir; aí `useTema` passa a ler a preferência do usuário.
-import { useEffect, useState } from 'react';
+// Monitoramento do celular (globo) e pela Home. O modo (Claro/Escuro/Automático) é o tema do app (lib/tema.ts).
+import type { Tema } from './tema';
+export { useTema, type Modo, type Tema } from './tema';
 
 export type Kind = 'mov' | 'parado' | 'off' | 'nosignal' | 'crit';
-export type Tema = 'claro' | 'escuro';
 export type Paleta = {
   // colorido: usa as cores do próprio estilo (relevo do Natural Earth no globo, ruas coloridas) em vez de terra/água lisas
   estilo: string; colorido: boolean; rua: { terra: string; agua: string };
@@ -35,15 +34,3 @@ export const PALETA: Record<Tema, Paleta> = {
     status: { mov: '#178F4B', parado: '#D26A06', off: '#4B5466', nosignal: '#8A909C', crit: '#D42A1E' }, grupo: '#191C1F', grupoTexto: '#FFFFFF',
   },
 };
-
-export type Modo = 'claro' | 'escuro' | 'auto';
-const CHAVE_MODO = 'localle.globo.modo';
-export function useTema() {
-  const [modo, setModoRaw] = useState<Modo>(() => { try { const v = localStorage.getItem(CHAVE_MODO); return v === 'claro' || v === 'escuro' ? v : 'auto'; } catch { return 'auto'; } });
-  const mq = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-  const [sistemaEscuro, setSistemaEscuro] = useState(!!mq?.matches);
-  useEffect(() => { if (!mq) return; const f = () => setSistemaEscuro(mq.matches); mq.addEventListener('change', f); return () => mq.removeEventListener('change', f); }, []);
-  const setModo = (m: Modo) => { setModoRaw(m); try { localStorage.setItem(CHAVE_MODO, m); } catch { /* sem armazenamento: vale só nesta visita */ } };
-  const tema: Tema = modo === 'auto' ? (sistemaEscuro ? 'escuro' : 'claro') : modo;
-  return { modo, setModo, tema };
-}

@@ -58,7 +58,7 @@ function Marca() {
       <Card title="Prévia do login" className="flex-[999_1_480px] min-w-0">
         {/* a prévia usa os mesmos tokens da tela real: logo pelo BrandMark e botão em --brand-fill (com o fallback grafite) */}
         <div className={cx('relative h-[420px] rounded-ctl overflow-hidden border border-line flex bg-canvas', b.photoPos === 'direita' && 'flex-row-reverse')}>
-          {b.photoPos !== 'centro' && <div className={cx('bg-ink relative overflow-hidden', b.photoPos === 'fundo' ? 'absolute inset-0' : 'w-[58%]')}>{b.photo && <img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />}{b.photoPos !== 'fundo' && <p className="absolute bottom-6 left-6 right-6 text-on-dark font-semibold text-h3">{b.tagline}</p>}</div>}
+          {b.photoPos !== 'centro' && <div className={cx('bg-ink relative overflow-hidden', b.photoPos === 'fundo' ? 'absolute inset-0' : 'w-[58%]')}>{b.photo && <img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />}{b.photoPos !== 'fundo' && <p className="absolute bottom-6 left-6 right-6 text-[var(--on-color)] font-semibold text-h3">{b.tagline}</p>}</div>}
           <div className={cx('relative flex items-center p-6', b.photoPos === 'fundo' ? 'w-full justify-end' : b.photoPos === 'centro' ? 'w-full justify-center' : 'flex-1 justify-center')}>
             <div aria-hidden="true" className="bg-card rounded-card p-5 w-56 flex flex-col gap-3 border border-line">
               <div className="flex items-center gap-2 min-w-0"><BrandMark size={32} /><span className="text-small font-semibold truncate">{b.name}</span></div>

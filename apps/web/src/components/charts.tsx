@@ -475,7 +475,7 @@ export function Bar100({ parts, format = (v: number) => `${Math.round(v)}%` }: {
       <div className="flex h-12 rounded-ctl overflow-hidden gap-[2px] grow-x" role="img" aria-label={parts.map((p) => `${p.label}: ${format((p.value / t) * 100)}`).join('; ')}>
         {parts.map((p) => {
           const pct = (p.value / t) * 100, dark = p.tone === 'real' || p.tone === 'loss';
-          return p.value > 0 ? <span key={p.label} className={cx('h-full flex items-center justify-center text-body font-semibold num cursor-default transition-opacity duration-100', tip.active != null && tip.active !== p.label && 'opacity-60')} style={{ width: `${pct}%`, background: PART_BG[p.tone], color: dark ? 'var(--on-dark)' : 'var(--ink)' }}
+          return p.value > 0 ? <span key={p.label} className={cx('h-full flex items-center justify-center text-body font-semibold num cursor-default transition-opacity duration-100', tip.active != null && tip.active !== p.label && 'opacity-60')} style={{ width: `${pct}%`, background: PART_BG[p.tone], color: p.tone === 'real' ? 'var(--on-color)' : dark ? 'var(--on-dark)' : 'var(--ink)' }}
             {...tip.target(p.label, anchorTop, () => <TipBody title={p.label} rows={[{ swatch: <Swatch color={PART_BG[p.tone]} />, label: p.detail || 'Parte', value: format(pct), strong: true }]} />)}>{pct >= 12 ? format(pct) : ''}</span> : null;
         })}
       </div>
@@ -613,7 +613,7 @@ export function ProjectionChart({ labels, actual, projected, budget, format = (v
           <circle cx={x(last)} cy={y(actual[last])} r={4.5} fill="var(--real)" stroke="var(--card)" strokeWidth={2} />
           {budget && idx == null && <g transform={`translate(${Math.max(left, Math.min(W - right - tagW, x(last) - tagW / 2))},${Math.max(0, y(actual[last]) - 32)})`}>
             <rect width={tagW} height={22} rx={6} fill={under ? 'var(--real)' : 'var(--loss-ink)'} />
-            <text x={tagW / 2} y={15} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--on-dark)" fontFamily="var(--font-sans)">{tag}</text>
+            <text x={tagW / 2} y={15} textAnchor="middle" fontSize={12} fontWeight={600} fill={under ? 'var(--on-color)' : 'var(--on-dark)'} fontFamily="var(--font-sans)">{tag}</text>
           </g>}
           {idx != null && <g pointerEvents="none">
             <line x1={x(idx)} x2={x(idx)} y1={top} y2={H - bottom} stroke="var(--ink-3)" strokeDasharray="3 3" />

@@ -6,7 +6,7 @@ import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx, Tooltip, Avat
 import { Icon, type IconName } from './icons';
 import { OdometerAsk } from './RemoteBits';
 import { useRastreioSync } from '../lib/rastreioApi';
-import { logout, syncFrota, syncModulos, useLocalle, useLocalleSync } from '../lib/localleApi';
+import { lerAvatar, logout, syncFrota, syncModulos, useLocalle, useLocalleSync } from '../lib/localleApi';
 import { useMaintJobs } from '../lib/maintJobs';
 import NeedsPanel from './NeedsPanel';
 import { canSeeFleet, endSupport, homeOf } from '../lib/support';
@@ -128,6 +128,13 @@ function LayoutBody() {
   const rev = useStore((s) => s.revenda);
   const patch = useStore((s) => s.patch);
   const needs = useNeedsYou();
+  // foto do avatar: buscada uma vez por sessão (undefined = ainda não buscou); a troca em Minha conta atualiza a sessão
+  useEffect(() => {
+    if (session.avatar !== undefined) return;
+    lerAvatar(session.role === 'locale' ? 'locale' : 'gestor')
+      .then((avatar) => patch((s: any) => (s.session ? { session: { ...s.session, avatar } } : {})))
+      .catch((e) => console.warn('[avatar] não foi possível carregar a foto', e));
+  }, [session.email]);
   const { state, isMobile, openMobile, setOpenMobile } = useSidebar();
   useMaintJobs(); // leitura diária do rastreador e escalonamento por e-mail (fila local)
   // pulso no contador só quando entra um item crítico novo (não quando sai um, nem a cada atualização)
@@ -333,8 +340,9 @@ function LayoutBody() {
               )}
             </div>
             <div className="flex items-center gap-stack mt-2 pt-3 pl-2 overflow-hidden border-t border-line">
-              <Tooltip content={mini ? session.name : null} side="right"><span className="shrink-0 inline-flex"><Avatar name={session.name} size="sm" /></span></Tooltip>
+              <Tooltip content={mini ? session.name : null} side="right"><span className="shrink-0 inline-flex"><Avatar name={session.name} src={session.avatar} size="sm" /></span></Tooltip>
               <NavLink to="/conta" title="Minha conta" tabIndex={mini ? -1 : undefined} className={cx('flex flex-col min-w-0 mr-auto rounded-btn hover:underline', fade)}><span className="font-medium text-body truncate">{session.name}</span><span className="text-caption text-ink-2 truncate">{session.support ? 'Acesso de suporte' : session.role === 'locale' ? 'Administração Locale' : session.role === 'revenda' ? 'Admin da revenda' : 'Gestor da frota'}</span></NavLink>
+              <IconButton aria-label="Configurações da conta" tip="Configurações da conta" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={() => nav('/conta')}><Icon name="config" size={18} /></IconButton>
               <IconButton aria-label="Sair" size="sm" tone="sidebar" tabIndex={mini ? -1 : undefined} className={cx('shrink-0', fade)} onClick={async () => { if (await confirmAction({ title: 'Sair do sistema?', detail: 'Você precisará entrar novamente para acessar a plataforma.', confirmLabel: 'Sair', tone: 'primary' })) { await logout(); patch(() => ({ session: null })); nav('/login'); } }}><Icon name="sair" size={18} /></IconButton>
             </div>
           </div>

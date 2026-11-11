@@ -53,7 +53,7 @@ export default function Login() {
       {b.photo ? <>
         <img src={b.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-scrim" />
-        {b.tagline && <h2 className="absolute left-12 right-12 bottom-12 text-on-dark text-[clamp(28px,3.4vw,40px)] font-semibold leading-[1.1] tracking-[-0.025em]">{b.tagline}</h2>}
+        {b.tagline && <h2 className="absolute left-12 right-12 bottom-12 text-[var(--on-color)] text-[clamp(28px,3.4vw,40px)] font-semibold leading-[1.1] tracking-[-0.025em]">{b.tagline}</h2>}
       </> : <LoginShowcase tagline={b.tagline} />}
     </div>
   );
