@@ -208,7 +208,7 @@ Todos recalculam. A chave de modelo é o texto de `tracker_installations.tracker
 
 | Chave | Camadas | Padrão | Mín | Máx | Aplicação |
 |---|---|---|---|---|---|
-| `monitor.sem_sinal_h` | P R C G | 6 h | 0,5 | 72 | recalcula |
+| `monitor.sem_sinal_h` | P R C G | 48 h | 0,5 | 72 | recalcula |
 | `monitor.bateria_baixa_v` | P R C G | 11,5 V | 9 | 26 | recalcula |
 | `monitor.bloqueio_pendente_critico` | P R C | ligado | — | — | agora (liga/desliga; decidido em 18/10/2026) |
 | `alertas.reaviso_regra_min` | P R C | 15 min | 1 | 240 | agora |

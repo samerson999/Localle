@@ -88,7 +88,7 @@ describe('SettingsService — herança grupo → cliente → padrão, validaçã
     await expect(service.set(clientB, VEL, 70, { groupId: g.id })).rejects.toMatchObject({ status: 404 }); // grupo de outro cliente
     const todos = await service.resolveAll(clientA, g.id);
     expect(todos.find((s) => s.key === VEL)).toMatchObject({ value: 90, origin: 'grupo' });
-    expect(todos.find((s) => s.key === 'monitoramento.sem_sinal_h')).toMatchObject({ value: 6, origin: 'padrao' });
+    expect(todos.find((s) => s.key === 'monitoramento.sem_sinal_h')).toMatchObject({ value: 48, origin: 'padrao' });
     expect(await service.restoreDefault(clientA, VEL, { groupId: g.id })).toMatchObject({ value: 100, origin: 'cliente' });
   });
 

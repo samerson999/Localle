@@ -27,8 +27,8 @@ describe('ComunicacaoTicker (tempo real da comunicação)', () => {
   let clientB: string;
   let assetId: string;
   let rastreadorId: string;
-  // último pacote há 7 h: dentro do limite padrão (6 h) uma hora depois dele, fora agora
-  const ultimoPacote = new Date(Date.now() - 7 * 3600_000);
+  // último pacote há 49 h: dentro do limite padrão (48 h) uma hora depois dele, fora agora
+  const ultimoPacote = new Date(Date.now() - 49 * 3600_000);
 
   beforeAll(async () => {
     const a = await pool.query<{ id: string }>('insert into clients (name) values ($1) returning id', [`teste-tick-a-${randomUUID()}`]);
@@ -100,7 +100,7 @@ describe('ComunicacaoTicker (tempo real da comunicação)', () => {
 
   it('usa o limite configurado pelo cliente, não um valor fixo', async () => {
     await pool.query(
-      `insert into client_settings (client_id, key, value) values ($1, 'monitoramento.sem_sinal_h', '12'::jsonb)`,
+      `insert into client_settings (client_id, key, value) values ($1, 'monitoramento.sem_sinal_h', '60'::jsonb)`,
       [clientA],
     );
     try {
@@ -125,9 +125,9 @@ describe('ComunicacaoTicker (tempo real da comunicação)', () => {
     };
     const grupos: string[] = [];
     try {
-      // pacote há 7 h; cliente no padrão (6 h) → sem sinal sem grupo nenhum
-      grupos.push(await grupo(clientA, 'patio', 12), await grupo(clientA, 'maquinas', 8));
-      expect((await ticker.calcular(clientA, new Date())).ativos[0].comunicacao).toBe('online'); // menor = 8 h
+      // pacote há 49 h; cliente no padrão (48 h) → sem sinal sem grupo nenhum
+      grupos.push(await grupo(clientA, 'patio', 60), await grupo(clientA, 'maquinas', 50));
+      expect((await ticker.calcular(clientA, new Date())).ativos[0].comunicacao).toBe('online'); // menor = 50 h
 
       grupos.push(await grupo(clientA, 'leves', 5));
       expect((await ticker.calcular(clientA, new Date())).ativos[0].comunicacao).toBe('sem_sinal'); // menor = 5 h

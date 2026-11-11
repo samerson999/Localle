@@ -44,7 +44,7 @@ const LISTA: SettingDefinition[] = [
   def('monitoramento.velocidade_limite_kmh', { modulo: 'monitoramento', label: 'Limite de velocidade (km/h)', default: 80, min: 20, max: 150, porGrupo: true }),
   def('monitoramento.excesso_episodio_min_s', { modulo: 'monitoramento', label: 'Duração mínima acima do limite para contar como excesso (s)', default: 10, min: 1, max: 120 }),
   def('monitoramento.parada_min_duracao_min', { modulo: 'monitoramento', label: 'Duração mínima parado para contar como parada (min)', default: 5, min: 1, max: 60 }),
-  def('monitoramento.sem_sinal_h', { modulo: 'monitoramento', label: 'Tempo sem comunicação para alertar "sem sinal" (h)', default: 6, min: 0.5, max: 72, porGrupo: true }),
+  def('monitoramento.sem_sinal_h', { modulo: 'monitoramento', label: 'Tempo sem comunicação para alertar "sem sinal" (h)', default: 48, min: 0.5, max: 72, porGrupo: true }),
   def('monitoramento.bateria_baixa_v', { modulo: 'monitoramento', label: 'Tensão de bateria considerada baixa (V)', default: 11.5, min: 9, max: 26, porGrupo: true }),
   bool('monitoramento.bloqueio_pendente_critico', 'monitoramento', 'Bloqueio pendente entra como crítico no "Precisa de você"', true),
   // cliente que contrata só monitoramento: a tela abre direto na visão em tela cheia (sprint 28/10/2026, melhoria 1)
