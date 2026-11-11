@@ -2,7 +2,7 @@ import { Suspense, createContext, useContext, useEffect, useLayoutEffect, useRef
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { useNeedsYou } from '../lib/needs';
-import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx, Tooltip, Avatar, Menu } from './ui';
+import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx, Tooltip, Avatar } from './ui';
 import ContaTela, { AvatarVidro } from './ContaTela';
 import { Icon, type IconName } from './icons';
 import { OdometerAsk } from './RemoteBits';
@@ -350,8 +350,8 @@ function LayoutBody() {
               11/11/2026). Avatar (abre a conta) · busca em cápsula (abre a busca) · alerta com contador · ações da tela. Não
               some nem muda de tamanho ao rolar: o conteúdo passa por trás, e a faixa de desfoque aparece (data-rolado).
               Sem título visível — o item ativo da barra inferior diz onde se está; o h1 fica para o leitor de tela.
-              Ações da tela (useMobilePageAction e o filtro do FilterSheet): uma só é o próprio círculo; as duas, um
-              círculo de "mais opções" com Filtrar e Criar. */}
+              Ações da tela (o filtro do FilterSheet e o criar do useMobilePageAction): cada uma é um círculo, sempre à
+              vista — o criar escondido num menu sumia da tela (11/11/2026). */}
           <div ref={cabRef} className="md:hidden no-print sticky top-0 z-[800] px-page pt-[calc(env(safe-area-inset-top,0px)+10px)] pb-2.5">
             <div aria-hidden="true" className="cabecalho-faixa" />
             <h1 className="sr-only">{atual?.label ?? rev.branding.name}</h1>
@@ -371,26 +371,17 @@ function LayoutBody() {
                   {needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute -top-1 -right-1" />}
                 </button>
               )}
-              {mobileFilter && mobileAction ? (
-                <Menu label="Ações da tela" items={[
-                  { label: mobileFilter.count ? `Filtrar (${mobileFilter.count})` : 'Filtrar', icon: 'filtro', onClick: mobileFilter.onOpen },
-                  { label: mobileAction.label, icon: mobileAction.icon ?? 'mais', onClick: mobileAction.onClick },
-                ]} trigger={({ ref, open, toggle }) => (
-                  <button ref={ref} type="button" aria-label="Ações da tela" aria-haspopup="menu" aria-expanded={open} onClick={(e) => { e.stopPropagation(); toggle(); }} className="vidro relative size-11 shrink-0 rounded-pill grid place-items-center text-ink transition-transform duration-150 active:scale-[0.96] motion-reduce:active:scale-100">
-                    <Icon name="mais-opcoes" size={20} />
-                    {mobileFilter.count > 0 && <span aria-hidden="true" className="absolute top-1.5 right-1.5 w-2 h-2 rounded-pill bg-brand-fill" />}
-                  </button>
-                )} />
-              ) : mobileFilter ? (
+              {mobileFilter && (
                 <button type="button" aria-label={`Filtros${mobileFilter.count ? `, ${mobileFilter.count} ativos` : ''}`} onClick={mobileFilter.onOpen} className="vidro relative size-11 shrink-0 rounded-pill grid place-items-center text-ink transition-transform duration-150 active:scale-[0.96] motion-reduce:active:scale-100">
                   <Icon name="filtro" size={20} />
                   {mobileFilter.count > 0 && <span aria-hidden="true" className="absolute top-1.5 right-1.5 w-2 h-2 rounded-pill bg-brand-fill" />}
                 </button>
-              ) : mobileAction ? (
+              )}
+              {mobileAction && (
                 <button type="button" aria-label={mobileAction.label} onClick={mobileAction.onClick} className="vidro relative size-11 shrink-0 rounded-pill grid place-items-center text-ink transition-transform duration-150 active:scale-[0.96] motion-reduce:active:scale-100">
                   <Icon name={mobileAction.icon ?? 'mais'} size={20} />
                 </button>
-              ) : null}
+              )}
             </div>
           </div>
           {/* desktop: "Precisa de você" fica no topo à direita, na mesma linha do cabeçalho da página (que reserva a largura dele
