@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import { brandVars } from './lib/brand';
 
 // telas carregadas sob demanda: o primeiro acesso baixa só o login e o layout (antes, um arquivo único de 1,5 MB)
+const Inicio = lazy(() => import('./pages/Inicio'));
 const Monitoramento = lazy(() => import('./pages/Monitoramento'));
 const Replay = lazy(() => import('./pages/Replay'));
 const Cercas = lazy(() => import('./pages/Cercas'));
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="/portaria" element={<Guard m="viagens" portaria><PortariaApp /></Guard>} />
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
+          <Route path="/inicio" element={<Guard m="monitoramento"><Inicio /></Guard>} />
           <Route path="/precisa-de-voce" element={<PrecisaDeVoce />} />
           <Route path="/monitoramento" element={<Guard m="monitoramento"><Monitoramento /></Guard>} />
           <Route path="/monitoramento/replay" element={<Guard m="monitoramento"><Replay /></Guard>} />

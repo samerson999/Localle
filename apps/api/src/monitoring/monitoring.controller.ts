@@ -12,6 +12,9 @@ import { MonitoringRepository } from './monitoring.repository';
 
 // Limita o custo da consulta (o `limit` só corta a resposta, não o scan em `eventos`/`posicoes`).
 const PERIODO_MAX_DIAS = 93;
+// Resumo de uso da Home: hoje + 7 dias anteriores, no fuso da operação (mesmo do faturamento, contratos.repository).
+const RESUMO_DIAS = 7;
+const FUSO_OPERACAO = 'America/Recife';
 
 @Controller('monitoring')
 @UseGuards(PermissionsGuard)
@@ -74,6 +77,21 @@ export class MonitoringController {
     }));
   }
 
+  /**
+   * Uso da frota por ativo e por dia (km e minutos em movimento) de hoje e dos 7 dias anteriores — base da Home do gestor
+   * (atividade de hoje, utilização por dia, uso por grupo). `dias` lista os 8 dias em ordem, inclusive os sem uso.
+   */
+  @Get('resumo-uso')
+  async resumoUso(@ClientId() clientId: string) {
+    const agora = new Date();
+    const rows = await this.repo.usoDiario(clientId, agora, RESUMO_DIAS, FUSO_OPERACAO);
+    return {
+      fuso: FUSO_OPERACAO,
+      dias: diasAte(agora, RESUMO_DIAS, FUSO_OPERACAO),
+      uso: rows.map((r) => ({ assetId: r.asset_id, dia: r.dia, km: Math.round(r.dist_m / 100) / 10, minutosMovimento: r.minutos_mov })),
+    };
+  }
+
   @Get('assets/:assetId/history')
   async history(@ClientId() clientId: string, @Param('assetId', ParseUUIDPipe) assetId: string, @Query() query: HistoryQueryDto) {
     const { from, to } = this.periodo(query);
@@ -98,4 +116,12 @@ export class MonitoringController {
     }
     return { from, to };
   }
+}
+
+/** Os `dias` dias anteriores a `agora` e o próprio dia, `YYYY-MM-DD` no fuso, do mais antigo ao mais recente. */
+export function diasAte(agora: Date, dias: number, fuso: string): string[] {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: fuso, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const hoje = fmt.format(agora);
+  const base = Date.parse(`${hoje}T12:00:00Z`); // meio-dia: somar dias inteiros não cruza a data por fuso
+  return Array.from({ length: dias + 1 }, (_, i) => new Date(base - (dias - i) * 86_400_000).toISOString().slice(0, 10));
 }

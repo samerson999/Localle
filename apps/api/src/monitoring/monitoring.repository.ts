@@ -27,6 +27,14 @@ export interface CurrentPositionRow {
   atributo_bloqueio: string | null;
 }
 
+export interface UsoDiarioRow {
+  asset_id: string;
+  /** Dia no fuso pedido, `YYYY-MM-DD`. */
+  dia: string;
+  dist_m: number;
+  minutos_mov: number;
+}
+
 export interface EventoRow {
   id: string;
   asset_id: string | null;
@@ -104,6 +112,35 @@ export class MonitoringRepository {
        order by e.ts desc
        limit 5000`,
       [clientId, from, to, assetId],
+    );
+    return rows;
+  }
+
+  /**
+   * Uso por ativo e por dia (fuso `fuso`), de `dias` dias atrás até `agora`, a partir do agregado `uso_5min`
+   * (migration 1794270000000). Distância = trajetória em movimento dentro de cada bloco de 5 min + o trecho entre um bloco
+   * e o seguinte quando o seguinte tem movimento. Minutos em movimento = blocos com velocidade > 5 km/h × 5 (resolução de
+   * 5 minutos). `client_id` é o primeiro filtro; o agregado vem de `posicoes`, já carimbadas com o cliente na ingestão.
+   */
+  async usoDiario(clientId: string, agora: Date, dias: number, fuso: string): Promise<UsoDiarioRow[]> {
+    const { rows } = await this.pool.query<UsoDiarioRow>(
+      `with janela as (
+         select (date_trunc('day', $2::timestamptz at time zone $4) - make_interval(days => $3)) at time zone $4 as desde
+       ),
+       blocos as (
+         select u.asset_id, u.bucket, u.dist_m, u.vel_max, u.p_ini,
+           lag(u.p_fim) over (partition by u.asset_id order by u.bucket) as p_ant
+         from uso_5min u, janela j
+         where u.client_id = $1 and u.bucket >= j.desde and u.bucket <= $2
+       )
+       select asset_id, to_char(bucket at time zone $4, 'YYYY-MM-DD') as dia,
+         sum(coalesce(dist_m, 0)
+           + case when vel_max > 2 and p_ant is not null then st_distance(p_ant::geography, p_ini::geography) else 0 end)::float8 as dist_m,
+         (count(*) filter (where vel_max > 5) * 5)::int as minutos_mov
+       from blocos
+       group by asset_id, dia
+       order by dia, asset_id`,
+      [clientId, agora, dias, fuso],
     );
     return rows;
   }

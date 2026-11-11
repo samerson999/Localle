@@ -20,7 +20,7 @@ export const STATUS_COMANDO: Record<string, string> = {
   expirado: 'sem confirmação no prazo', cancelado: 'substituído por outro comando', nao_suportado: 'não disponível para este rastreador',
   respondido: 'respondeu; aguardando o estado do bloqueio', recusado: 'recusado pelo rastreador',
 };
-export const homeOf = (session: any) => (session?.role === 'portaria' ? '/portaria' : canSeeFleet(session) ? '/monitoramento' : session?.role === 'locale' ? '/locale' : '/revenda');
+export const homeOf = (session: any) => (session?.role === 'portaria' ? '/portaria' : canSeeFleet(session) ? '/inicio' : session?.role === 'locale' ? '/locale' : '/revenda');
 
 export function supportBlock(s: any): string {
   if (SUPPORT_PARAMS.requireConsent && !s.revenda.supportConsent) return 'O cliente ainda não liberou o acesso de suporte. Peça a liberação ao gestor da frota.';

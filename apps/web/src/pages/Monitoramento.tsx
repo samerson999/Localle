@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-leaflet';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, vehicleStatus, contarStatusFrota, assetKm } from '../lib/store';
-import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, confirmAction, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb, IconButton } from '../components/ui';
+import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, confirmAction, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb, IconButton, Tooltip } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { glyphOf, silhouetteOf } from '../components/assetArt';
 import { GlideMarker, ClusteredVehicles, Address, FenceShapes, MapButton, MapControls, VehicleListItem, MAP_STYLES, type MapStyleKey } from '../components/MapBits';
@@ -52,7 +52,17 @@ function Ctx({ onCtx }: { onCtx: (p: any) => void }) { useMapEvents({ contextmen
 
 const TILE_ERRORS = 6; // a partir de quantos blocos do mapa falhando o erro aparece
 
+// Celular: o globo em tela cheia com a lista numa folha (MonitoramentoGlobo, molde da Revolut, 11/11/2026). Carregado à
+// parte: o MapLibre só baixa no celular, e o desktop segue no mapa Leaflet abaixo.
+const MonitoramentoGlobo = lazy(() => import('./MonitoramentoGlobo'));
+
 export default function Monitoramento() {
+  const mobile = useIsMobile();
+  if (mobile) return <Suspense fallback={<div aria-busy="true" className="fixed inset-0 z-[1055] bg-canvas" />}><MonitoramentoGlobo /></Suspense>;
+  return <MonitoramentoMapa />;
+}
+
+function MonitoramentoMapa() {
   const nav = useNavigate();
   const assets = useStore(useShallow((s) => s.assets.filter((a: any) => a.tracker)));
   const vehicles = useStore((s) => s.vehicles);
@@ -86,11 +96,9 @@ export default function Monitoramento() {
   const [tileErr, setTileErr] = useState(0);
   const [tileKey, setTileKey] = useState(0);
   const [mapStyle, setMapStyle] = useState<MapStyleKey>('ruas');
-  const [grouped, setGrouped] = useState(true);
+  const [grouped, setGrouped] = useState(false); // abre mostrando todos os veículos; agrupar é escolha de quem olha
   const [styleMenu, setStyleMenu] = useState<{ x: number; y: number } | null>(null);
   const mobile = useIsMobile();
-  // celular: mapa e lista não cabem lado a lado nem empilhados (a lista empurrava o mapa para fora da tela); um de cada vez
-  const [view, setView] = useState<'mapa' | 'lista'>('mapa');
   const mapSectionRef = useRef<HTMLElement>(null);
   const styleBtnRef = useRef<HTMLSpanElement>(null);
   // Tela cheia (sprint 28/10/2026, melhoria 1): área de trabalho com mapa, cards (visão vertical) e tabela, juntos ou
@@ -144,8 +152,7 @@ export default function Monitoramento() {
     return km / 1000;
   }, [assets, history]);
   const velMedia = moving.length ? moving.reduce((s: number, x: any) => s + x.v.speed, 0) / moving.length : 0;
-  useEffect(() => { if (view === 'mapa') map?.invalidateSize(); }, [view, map]); // o mapa volta de display:none
-  useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
+  useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, mobile, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
   // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
   useEffect(() => {
     if (!full && !mapaCheio) return;
@@ -153,10 +160,32 @@ export default function Monitoramento() {
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
   }, [full, mapaCheio, cmd, sel]);
-  const pick = (id: string) => { setSel(id); setView('mapa'); };
-  const fitAll = () => { const pts = list.filter((x: any) => x.v).map((x: any) => x.v.pos); if (map && pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 15 }); };
+  const pick = (id: string) => setSel(id);
+  const fitAll = (animate = true) => { const pts = list.filter((x: any) => x.v).map((x: any) => x.v.pos); if (map && pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 15, animate }); };
+  // Ao abrir a tela (inclusive voltando de outra): enquadra a frota toda uma vez, assim que houver posição. Sem isso o
+  // mapa ficava no centro fixo do MapContainer até alguém clicar em "Ver a frota toda". Sem animação: já abre enquadrado.
+  const enquadrou = useRef(false);
+  const comPosicao = list.filter((x: any) => x.v).length;
+  useEffect(() => { if (enquadrou.current || !map || !comPosicao) return; enquadrou.current = true; fitAll(false); }, [map, comPosicao]);
   const clearFilters = () => { setQ(''); setSt('todos'); setGrp(''); };
   const passAt = (lat: number, lng: number, radius: number) => setPass({ lat, lng, radius, from: toInputDT(Date.now() - DAY), to: toInputDT(Date.now()) });
+
+  const listaVeiculos = (
+    <ul className="flex-1 min-h-0 overflow-y-auto -mx-2 pb-16" aria-label={`${shown.length} veículos`}>
+      {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, k, d }: any) => (
+        <li key={a.id}>
+          <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
+            model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
+            tracker={v ? { ignition: v.ignition, gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
+            speed={v && !v.noSignal ? Math.round(v.speed) : null} time={v ? fmtT(v.lastUpdate) : ''}
+            menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
+              { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
+        </li>
+      ))}
+      {shown.length > limit && <MoreOnScroll onMore={() => setLimit((l) => l + BATCH)} />}
+      {shown.length === 0 && <li><EmptyState illustration="ilu-busca-veiculo" title="Nenhum veículo com esses filtros" detail="Tente ajustar os filtros ou limpar a pesquisa." action={<Button variant="dark" size="sm" onClick={clearFilters}>Limpar filtros</Button>} /></li>}
+    </ul>
+  );
 
   const header = (
     <MonitorHeader title="Monitoramento" subtitle={<>Ao vivo · {list.length} veículos rastreados{lastUpd ? <> · atualizado às <time className="num">{fmtT(lastUpd)}</time></> : null}</>}>
@@ -177,7 +206,6 @@ export default function Monitoramento() {
       {header}
       <PageBody>
       <Stack gap="grid">
-      <Tabs className="md:hidden" value={view} onChange={(k) => setView(k as 'mapa' | 'lista')} tabs={[{ key: 'mapa', label: 'Mapa' }, { key: 'lista', label: 'Lista', count: shown.length }]} />
       <div role={full ? 'dialog' : undefined} aria-label={full ? 'Monitoramento em tela cheia' : undefined}
         className={cx('flex flex-col', full ? 'fixed inset-0 z-[1100] bg-canvas gap-stack p-3' : 'gap-grid')}>
       {full && (
@@ -197,28 +225,15 @@ export default function Monitoramento() {
           <Button variant="secondary" size="sm" className="max-md:order-1 max-md:w-ctl max-md:h-ctl max-md:!px-0" onClick={sairTelaCheia} title="Sair da tela cheia (Esc)" aria-label="Sair da tela cheia"><Icon name="tela-cheia" size={16} className="max-md:hidden" /><Icon name="fechar" size={20} className="md:hidden" /><span className="max-md:hidden">Sair da tela cheia</span></Button>
         </div>
       )}
-      {!full && <FaixaFrota total={list.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
+      {!full && !mobile && <FaixaFrota total={list.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
       <div className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
         <Card dense className={full
           ? cx('w-[360px] shrink-0 h-full max-md:hidden', !visao.cards && 'hidden')
-          : cx('flex-[1_1_340px] md:max-w-[420px] h-[70vh] max-md:supports-[height:100dvh]:h-[70dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', view === 'mapa' && 'max-md:hidden')}>
+          : 'flex-[1_1_340px] md:max-w-[420px] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px] max-md:hidden'}>
           <section aria-label="Veículos" className="flex flex-col gap-stack h-full min-h-0">
             {!full && <SearchInput value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />}
             {!full && <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />}
-            <ul className="flex-1 min-h-0 overflow-y-auto -mx-2 pb-16" aria-label={`${shown.length} veículos`}>
-              {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, k, d }: any) => (
-                <li key={a.id}>
-                  <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
-                    model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
-                    tracker={v ? { ignition: v.ignition, gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
-                    speed={v && !v.noSignal ? Math.round(v.speed) : null} time={v ? fmtT(v.lastUpdate) : ''}
-                    menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
-                      { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
-                </li>
-              ))}
-              {shown.length > limit && <MoreOnScroll onMore={() => setLimit((l) => l + BATCH)} />}
-              {shown.length === 0 && <li><EmptyState illustration="ilu-busca-veiculo" title="Nenhum veículo com esses filtros" detail="Tente ajustar os filtros ou limpar a pesquisa." action={<Button variant="dark" size="sm" onClick={clearFilters}>Limpar filtros</Button>} /></li>}
-            </ul>
+            {listaVeiculos}
           </section>
         </Card>
 
@@ -227,8 +242,8 @@ export default function Monitoramento() {
           ? 'fixed inset-0 z-[1100] overflow-hidden bg-canvas'
           : full
           ? 'flex-1 min-h-[240px] relative rounded-card overflow-hidden border border-line'
-          : cx('flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line h-[62vh] max-md:supports-[height:100dvh]:h-[62dvh] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]', view === 'lista' && 'max-md:hidden')}>
-          <MapContainer ref={setMap} center={[-8.1, -34.92]} zoom={12} className="w-full h-full" zoomControl={false}>
+          : 'flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]'}>
+          <MapContainer ref={setMap} center={[-14.2, -51.9]} zoom={4} className="w-full h-full" zoomControl={false}>
             <TileLayer key={`${tileKey}-${mapStyle}`} url={MAP_STYLES[mapStyle].url} attribution={MAP_STYLES[mapStyle].attribution} keepBuffer={6} updateWhenZooming={false} eventHandlers={{ tileerror: () => setTileErr((n) => n + 1) }} />
             {showF && <FenceShapes fences={fences} />}
             <ClusteredVehicles selected={sel} grouped={grouped} items={list.filter((x: any) => x.v).map(({ a, v, k }: any) => ({ id: a.id, pos: v.pos, kind: k, node: () => <GlideMarker category={glyphOf(a)} position={v.pos} title={`${a.name} · ${STATUS_LABEL[k as StatusKind]}`} plate={a.name} kind={k} heading={v.heading} selected={sel === a.id} onClick={() => setSel(a.id)} onContextMenu={(pt) => { setCtx(null); setVctx({ ...pt, id: a.id }); }} /> }))} />
@@ -256,7 +271,7 @@ export default function Monitoramento() {
               // também no toque: a pinça é gesto de dois dedos, e quem não consegue fazê-la precisa dos botões (WCAG 2.5.1)
               { icon: 'zoom-mais', label: 'Aproximar', onClick: () => map?.zoomIn() },
               { icon: 'zoom-menos', label: 'Afastar', onClick: () => map?.zoomOut() },
-              { icon: 'centralizar', label: 'Ver a frota toda', onClick: fitAll },
+              { icon: 'centralizar', label: 'Ver a frota toda', onClick: () => fitAll() },
               { icon: 'tela-cheia', label: mapaCheio ? 'Sair da tela cheia' : 'Mapa em tela cheia', onClick: mapaCheio ? sairMapaCheio : entrarMapaCheio },
             ]} />
           </div>
@@ -265,8 +280,8 @@ export default function Monitoramento() {
             <ContextMenu x={Math.max(8, Math.min(styleMenu.x, (mapSectionRef.current?.clientWidth ?? 600) - 264))} y={styleMenu.y} onClose={() => setStyleMenu(null)} header={mobile ? 'Camadas' : 'Estilo do mapa'}
               items={[
                 ...(mobile ? [
-                  { label: showF ? 'Ocultar cercas' : 'Mostrar cercas', icon: 'cerca', onClick: () => setShowF(!showF) },
-                  { label: grouped ? 'Mostrar todos os veículos' : 'Agrupar veículos próximos', icon: 'equipe', onClick: () => setGrouped(!grouped) },
+                  { label: showF ? 'Ocultar cercas' : 'Mostrar cercas', icon: 'cerca' as const, onClick: () => setShowF(!showF) },
+                  { label: grouped ? 'Mostrar todos os veículos' : 'Agrupar veículos próximos', icon: 'equipe' as const, onClick: () => setGrouped(!grouped) },
                 ] : []),
                 ...(Object.keys(MAP_STYLES) as MapStyleKey[]).map((k) => ({ label: `${mobile ? 'Mapa: ' : ''}${MAP_STYLES[k].label}${k === mapStyle ? ' · em uso' : ''}`, icon: MAP_STYLES[k].icon, onClick: () => setMapStyle(k) })),
               ]} />
@@ -342,7 +357,8 @@ const STATUS_FROTA: { k: 'mov' | 'par' | 'des' | 'sem'; kind: StatusKind; label:
 
 function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[number]; count: number; pct: number; active: boolean; onClick: () => void }) {
   return (
-    <button type="button" aria-pressed={active} onClick={onClick} title={active ? 'Mostrar todos na lista' : `Filtrar a lista: ${s.label.toLowerCase()}`}
+    <Tooltip content={active ? 'Mostrar todos na lista' : `Filtrar a lista: ${s.label.toLowerCase()}`}>
+    <button type="button" aria-pressed={active} onClick={onClick}
       className={cx('text-left bg-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size] border transition-colors',
         active ? 'border-brand-fill ring-1 ring-inset ring-brand-fill' : 'border-transparent shadow-card hover:bg-card-2')}>
       <StatusDot kind={s.kind} label={s.label} />
@@ -351,6 +367,7 @@ function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[
         <span className="num text-small text-ink-3">{pct}%</span>
       </div>
     </button>
+    </Tooltip>
   );
 }
 
@@ -414,10 +431,15 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
           {bloqueio}
         </div>
       </>}>
-      <div className="flex items-center gap-grid">
-        <AssetThumb asset={a} className="w-28 h-16" />
-        <div className="min-w-0 flex flex-col gap-hair">
-          <Plate name={a.name} size="lg" className="mb-hair" />
+      {/* foto na altura do bloco de texto (placa + modelo + motorista), cortada no centro dentro da moldura:
+          com altura fixa ela ficava menor que o texto e desalinhada */}
+      <div className="flex items-stretch gap-grid">
+        <div className="relative w-28 min-h-[72px] shrink-0 rounded-ctl overflow-hidden bg-surface-muted grid place-items-center">
+          {a.photo ? <AssetThumb asset={a} className="absolute inset-0 w-full h-full object-center" /> : <AssetThumb asset={a} className="w-20 h-12" />}
+        </div>
+        <div className="min-w-0 flex flex-col justify-center gap-hair">
+          <Plate name={a.name} size="lg" className="mb-hair self-start" />
+          {a.plate && a.apelido && <p className="text-small font-medium truncate">{a.apelido}</p>}
           <p className="text-small text-ink-2 truncate">{a.brand} {a.model} <span className="text-ink-2 num">{String(a.year || '').slice(0, 4)}</span></p>
           <p className="text-small text-ink-2 truncate">{d?.name || 'Sem motorista'}</p>
           {mobile && <FilePick accept="image/*" onFile={(data) => setPhoto(data)} className="self-start text-small font-medium link-brand"><span className="inline-flex items-center gap-icon"><Icon name="camera" size={16} />{a.photo ? 'Trocar foto' : 'Enviar foto'}</span></FilePick>}
@@ -449,12 +471,35 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
         <DescRow label="Endereço"><Address pos={v?.pos} className="text-small" /></DescRow>
         <DescRow label="Posição"><span className="num text-caption text-ink-2">{v?.pos?.[0].toFixed(5)}, {v?.pos?.[1].toFixed(5)}</span></DescRow>
       </DescList>
+      {v?.pos && <AbrirNoGoogle pos={v.pos} />}
     </FloatingPanel>
   );
 }
 
+// posição atual no Google Maps (pino) e no Street View (panorama mais próximo do ponto), em outra aba;
+// o cartão do Monitoramento no celular (MonitoramentoGlobo) usa os mesmos endereços
+export const linksGoogle = (pos: [number, number]) => {
+  const ll = `${pos[0]},${pos[1]}`;
+  return [
+    { href: `https://www.google.com/maps/search/?api=1&query=${ll}`, icon: 'local' as const, label: 'Abrir no Google Maps', curto: 'Google Maps' },
+    { href: `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}`, icon: 'street-view' as const, label: 'Abrir no Street View', curto: 'Street View' },
+  ];
+};
+function AbrirNoGoogle({ pos }: { pos: [number, number] }) {
+  const links = linksGoogle(pos);
+  return (
+    <div className="grid grid-cols-2 gap-tight mt-card-head">
+      {links.map((l) => (
+        <a key={l.icon} href={l.href} target="_blank" rel="noreferrer" className={cx(buttonClass('secondary', 'sm'), 'min-w-0')}>
+          <Icon name={l.icon} size={16} className="shrink-0" /><span className="truncate">{l.label}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 // link temporário só com a posição atual (lib/shares); lista os links do veículo para revogar
-function ShareModal({ asset, onClose }: { asset: any; onClose: () => void }) {
+export function ShareModal({ asset, onClose }: { asset: any; onClose: () => void }) {
   // veículo real: links no backend (token validado lá, abre em qualquer navegador, aberturas registradas)
   const real = isRealAsset(asset);
   const sharesLocal = useStore((s) => (s.shares || []).filter((x: any) => x.assetId === asset?.id).sort((a: any, b: any) => b.createdAt - a.createdAt));
@@ -607,7 +652,7 @@ export function CommandModal({ state, onClose }: { state: null | { target: 'veic
     setPwd(''); setErr('');
   };
   return (
-    <Modal open={!!state} onClose={onClose} title="Enviar comando" width="max-w-3xl">
+    <Modal open={!!state} onClose={onClose} title="Enviar comando" width="max-w-3xl" guardDiscard={false}>
       <div className="flex flex-wrap gap-stack items-center">
         <Tabs value={target} onChange={(k) => setTarget(k as any)} tabs={[{ key: 'veiculo', label: 'Veículo' }, { key: 'grupo', label: 'Grupo de veículos' }]} />
         {target === 'veiculo' ? <SearchSelect aria-label="Veículo" className="w-56 max-md:w-full" value={assetId} onChange={setAssetId} options={assets.map((a: any) => ({ value: a.id, label: a.name }))} />

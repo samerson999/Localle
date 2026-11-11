@@ -30,6 +30,9 @@ export default defineConfig(({ mode }) => {
       // motores/regras de negócio compartilháveis com o futuro backend (ver packages/shared/).
       alias: { '@localle/shared': fileURLToPath(new URL('../../packages/shared/src', import.meta.url)) },
     },
+    // maplibre-gl só é importado na rota lazy do protótipo do globo: sem pré-empacotar, o Vite o descobre na primeira
+    // visita, reotimiza e a importação da rota falha ("Failed to fetch dynamically imported module") até recarregar
+    optimizeDeps: { include: ['maplibre-gl'] },
     server: { port: 5173, open: true, proxy },
     preview: { proxy },
   };
