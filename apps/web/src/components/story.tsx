@@ -238,7 +238,7 @@ export function TipBand({ items }: { items: React.ReactNode[] }) {
       </div>
       <div className="grid">
         {items.map((item, j) => (
-          <p key={j} aria-hidden={j !== idx} className={cx('col-start-1 row-start-1 text-small text-on-dark-2 leading-snug transition-all duration-300 ease-out',
+          <p key={j} aria-hidden={j !== idx} className={cx('col-start-1 row-start-1 text-small text-on-dark-2 leading-snug transition-[opacity,transform] duration-200 ease-out',
             j === idx ? 'opacity-100 translate-x-0' : 'opacity-0 pointer-events-none', j < idx ? '-translate-x-1' : j > idx ? 'translate-x-1' : '')}>{item}</p>
         ))}
       </div>
@@ -247,7 +247,7 @@ export function TipBand({ items }: { items: React.ReactNode[] }) {
           <IconButton aria-label="Dica anterior" tone="on-dark" size="sm" onClick={() => setI((idx - 1 + items.length) % items.length)}><Icon name="voltar" size={16} /></IconButton>
           <div className="flex items-center gap-tight mx-auto" role="tablist" aria-label="Dicas">
             {items.map((_, j) => <button key={j} type="button" role="tab" aria-selected={j === idx} aria-label={`Dica ${j + 1} de ${items.length}`} onClick={() => setI(j)}
-              className={cx('h-1.5 rounded-pill transition-all', j === idx ? 'w-6 bg-on-dark' : 'w-1.5 bg-on-dark-3 hover:bg-on-dark-2')} />)}
+              className={cx('h-1.5 rounded-pill transition-[width,background-color] duration-200 ease-out', j === idx ? 'w-6 bg-on-dark' : 'w-1.5 bg-on-dark-3 hover:bg-on-dark-2')} />)}
           </div>
           <IconButton aria-label="Próxima dica" tone="on-dark" size="sm" onClick={() => setI((idx + 1) % items.length)}><Icon name="chevron" size={16} /></IconButton>
         </div>
@@ -419,7 +419,7 @@ export function PatternCard({ items }: { items: { label: string; value: string; 
                 aria-selected={j === idx}
                 aria-label={`Padrão ${j + 1} de ${items.length}`}
                 onClick={() => setI(j)}
-                className={cx('rounded-pill transition-all overflow-hidden', j === idx ? 'w-5 h-1.5 bg-on-dark-3' : 'w-1.5 h-1.5 bg-on-dark-3 hover:bg-on-dark-2')}
+                className={cx('rounded-pill transition-[width,background-color] duration-200 ease-out overflow-hidden', j === idx ? 'w-5 h-1.5 bg-on-dark-3' : 'w-1.5 h-1.5 bg-on-dark-3 hover:bg-on-dark-2')}
               >
                 {j === idx && <span key={idx} className="block h-full rounded-pill bg-on-dark origin-left" style={{ animation: 'grow-x 5000ms linear both' }} />}
               </button>

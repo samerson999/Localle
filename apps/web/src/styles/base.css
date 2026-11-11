@@ -15,16 +15,22 @@
 
 /* ---------- superfícies do navegador ---------- */
 ::selection { background: var(--selection); color: var(--ink); }
+/* toque (revisão mobile 11/11, skills emil-design-eng e mobile-native): sem o clarão do navegador ao tocar (cada controle
+   tem o próprio :active), sem a espera do duplo toque para zoom, sem a seleção do rótulo ao segurar um botão. Texto de
+   conteúdo continua selecionável. */
+html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+button, a, [role="button"], [role="tab"], [role="menuitem"], [role="radio"], label { touch-action: manipulation; }
+button, [role="button"], [role="tab"], [role="menuitem"] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 html { caret-color: var(--ink); scrollbar-color: var(--scroll-thumb) transparent; scrollbar-width: thin; }
+/* viewport-fit=cover (index.html): em paisagem o notch fica na lateral; o conteúdo sai de baixo dele (a barra lateral fixa
+   desloca junto em Sidebar.tsx). Em pé os recuos laterais valem 0. */
+html { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: var(--r-pill); border: 3px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
 :focus-visible { outline: 2px solid var(--focus-outer); outline-offset: 2px; box-shadow: 0 0 0 2px var(--focus-inner); } /* anel duplo */
 a { text-underline-offset: 3px; }
 .link-brand { color: var(--brand-link); text-decoration-line: var(--brand-link-decoration); text-underline-offset: 3px; }
-/* viewport-fit=cover (index.html): em paisagem o notch fica na lateral; o conteúdo sai de baixo dele (a barra lateral fixa
-   desloca junto em Sidebar.tsx). Em pé os recuos laterais valem 0. */
-html { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 .link-brand:hover { text-decoration-line: underline; }
 /* contêineres com padding horizontal: tabelas e listas dentro deles encostam na borda e recuam a 1ª e a última célula
    por --bleed, para o texto alinhar com o título do card (Card, Panel, Modal, FloatingPanel aplicam a classe) */
@@ -118,7 +124,7 @@ html { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-are
 @keyframes pop-in { from { opacity: 0; transform: scale(0.95); } }
 @keyframes pop-out { to { opacity: 0; transform: scale(0.97); } }
 .anim-pop { animation: pop-in var(--t-page) var(--ease-out) backwards; }
-.anim-pop-out { animation: pop-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
+.anim-pop-out { animation: pop-out var(--t-exit) var(--ease-out) both; pointer-events: none; }
 .grow-y { transform-box: fill-box; transform-origin: bottom; animation: grow-y var(--t-bar) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 30ms); }
 .grow-x { transform-origin: left; animation: grow-x var(--t-bar) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 30ms); }
 /* gráfico de linha/área que se revela da esquerda para a direita (recorte, não traço: funciona com vector-effect); pontos e
@@ -136,16 +142,16 @@ html { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-are
 @keyframes page-out { to { opacity: 0; transform: translateY(4px); } }
 @keyframes panel-out { to { opacity: 0; transform: translateX(16px); } }
 @keyframes fade-out { to { opacity: 0; } }
-.anim-out { animation: page-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
-.anim-fade-out { animation: fade-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
-.panel-out { animation: panel-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
+.anim-out { animation: page-out var(--t-exit) var(--ease-out) both; pointer-events: none; }
+.anim-fade-out { animation: fade-out var(--t-exit) var(--ease-out) both; pointer-events: none; }
+.panel-out { animation: panel-out var(--t-exit) var(--ease-out) both; pointer-events: none; }
 .anim-swap { animation: fade-in var(--t-swap) ease both; }
 /* folha inferior do celular (ui.tsx › Sheet): entra e sai pela borda de baixo. Anima `translate`, não `transform`, que
    fica livre para a altura recolhida; `backwards` não segura o valor depois, e o arrasto escreve `translate` inline. */
 @keyframes sheet-in { from { translate: 0 100%; } }
 @keyframes sheet-out { to { translate: 0 100%; } }
 .sheet-in { animation: sheet-in 280ms var(--ease-out) backwards; }
-.sheet-out { animation: sheet-out 180ms var(--ease-in) forwards; pointer-events: none; }
+.sheet-out { animation: sheet-out 180ms var(--ease-out) forwards; pointer-events: none; }
 /* abas que rolam de lado (ui.tsx › useSlider): esmaece a borda do lado onde há mais opções */
 [data-fade="r"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
 [data-fade="l"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
@@ -161,12 +167,6 @@ html { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-are
 .dock[data-state="open"] .dock-backdrop { pointer-events: auto; }
 .dock[data-state="open"] .dock-drawer { pointer-events: auto; visibility: visible; transform: none; transition: transform 500ms var(--ease-dock), visibility 0s; }
 .dock[data-state="open"] .dock-pill { pointer-events: none; transform: scaleX(0.0001); }
-/* teclado aberto (lib/teclado.ts): a barra inferior sai — no iPhone ela ficaria por cima do campo ou boiando ao rolar */
-html[data-teclado] .dock:not([data-state="open"]) { visibility: hidden; }
-/* toast */
-@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
-@keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(0.98); } }
-.toast-in { animation: toast-in var(--t-page) var(--ease-out) both; }
 /* barra inferior recolhida ao rolar para baixo (Revolut, docs/pesquisa-ux/01-home-revolut.md § 3.5 e § 6.1; diretrizes
    § 9.7): perde os rótulos e encolhe a ~86% (ícone 22 → 19, alvo 54 → 46), com a base no mesmo lugar. A direção da rolagem
    decide (SidebarDock); com movimento reduzido ela não recolhe. */
@@ -195,7 +195,13 @@ html[data-teclado] .dock:not([data-state="open"]) { visibility: hidden; }
   .vidro { background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .cabecalho-faixa { background: linear-gradient(to bottom, var(--canvas) 70%, transparent); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
-.toast-out { animation: toast-out var(--t-exit) var(--ease-in) both; pointer-events: none; }
+/* teclado aberto (lib/teclado.ts): a barra inferior sai — no iPhone ela ficaria por cima do campo ou boiando ao rolar */
+html[data-teclado] .dock:not([data-state="open"]) { visibility: hidden; }
+/* toast */
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(0.98); } }
+.toast-in { animation: toast-in var(--t-page) var(--ease-out) both; }
+.toast-out { animation: toast-out var(--t-exit) var(--ease-out) both; pointer-events: none; }
 /* contador que aumentou por item crítico novo: um pulso só */
 @keyframes pulse-once { 30% { transform: scale(1.2); } 100% { transform: scale(1); box-shadow: 0 0 0 7px transparent; } }
 .pulse-once { animation: pulse-once 600ms var(--ease-out); box-shadow: 0 0 0 0 color-mix(in srgb, var(--counter-crit-bg) 50%, transparent); }

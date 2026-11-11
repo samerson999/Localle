@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 // Tudo aponta para as variáveis de src/styles/tokens.css: cores, fontes, raios e sombras.
 export default {
+  // hover: só com mouse (media hover: hover). No toque, o :hover ficava preso no botão depois do toque (revisão mobile 11/11)
+  future: { hoverOnlyWhenSupported: true },
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {

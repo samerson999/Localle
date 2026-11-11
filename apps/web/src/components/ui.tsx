@@ -901,7 +901,7 @@ export function Radio({ label, description, checked, onChange, name, disabled, c
         <input type="radio" name={name} className="peer sr-only" checked={!!checked} disabled={disabled} onChange={onChange} />
         <span aria-hidden="true" className={cx('w-[18px] h-[18px] rounded-pill border-[1.5px] flex items-center justify-center transition-colors duration-150', peerFocus,
           checked ? 'border-brand-fill' : 'border-line-hover bg-card', disabled && 'opacity-45')}>
-          <span className={cx('w-2 h-2 rounded-pill bg-brand-fill transition-transform duration-[120ms]', checked ? 'scale-100' : 'scale-0')} />
+          <span className={cx('w-2 h-2 rounded-pill bg-brand-fill transition-[transform,opacity] duration-[120ms] ease-out', checked ? 'scale-100 opacity-100' : 'scale-50 opacity-0')} />
         </span>
       </span>
       <span className="flex flex-col min-w-0">{label}{description && <span className="text-small text-ink-2">{description}</span>}</span>
