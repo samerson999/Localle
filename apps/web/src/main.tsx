@@ -6,6 +6,7 @@ import App from './App';
 import { toast } from './components/ui';
 import { mensagemDeErro } from './lib/apiErro';
 import { iniciarRenovacaoSessao } from './lib/localleApi';
+import { iniciarTeclado } from './lib/teclado';
 
 // Última linha de defesa: promessa rejeitada sem `catch` (salvar sem tratamento, etc.) vira aviso na tela
 // em vez de sumir no console. Cada chamada deveria tratar o próprio erro; isto cobre o que escapou.
@@ -18,6 +19,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
 
 iniciarRenovacaoSessao();
+iniciarTeclado();
 
 // PWA: o service worker (public/sw.js) só no build de produção — no `pnpm dev` ele guardaria o shell e atrapalharia o
 // recarregamento do Vite. Falha no registro não impede o app de funcionar, só a instalação.

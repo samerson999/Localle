@@ -8,6 +8,7 @@ import { pngIconUrl } from '../lib/pngIcons';
 import { NumeroRolante } from './NumeroRolante';
 import { Heading, HeadingLevel, useHeadingLevel } from './primitives';
 import { rectUi, viewportUi } from '../lib/uiZoom';
+import { travarTeclado } from '../lib/teclado';
 import { aplicarMascara, ATRIBUTOS_MASCARA, type Mascara, mascaraValida, MENSAGEM_INVALIDA } from '../lib/mascaras';
 export * from './primitives';
 
@@ -27,12 +28,14 @@ export function usePresence(open: boolean, ms = EXIT_MS) {
 
 // Trava a rolagem da página enquanto um modal, gaveta ou painel sobreposto está aberto (no celular o fundo rolava junto).
 // Contador: vários sobrepostos abertos ao mesmo tempo só destravam quando o último fecha.
+// No iPhone também impede o teclado de empurrar a página presa (lib/teclado.ts).
 let scrollLocks = 0;
 export function useScrollLock(active: boolean) {
   useEffect(() => {
     if (!active) return;
     if (scrollLocks++ === 0) document.documentElement.style.overflow = 'hidden';
-    return () => { if (--scrollLocks === 0) document.documentElement.style.overflow = ''; };
+    travarTeclado(true);
+    return () => { travarTeclado(false); if (--scrollLocks === 0) document.documentElement.style.overflow = ''; };
   }, [active]);
 }
 
@@ -273,7 +276,8 @@ export function useIsMobile() {
 // (projeção de momentum, como no iOS); um peteleco curto ainda anda uma parada; com onDismiss, passar da última fecha.
 // Pegar a folha no meio da animação parte de onde ela está (transform calculado), sem salto. Além das pontas, resistência
 // em vez de parede.
-// Topo (alça e cabeçalho, data-sheet-top): ponteiro com captura; toque em botão, link ou campo não arrasta; um dedo só.
+// Topo (alça e cabeçalho, data-sheet-top): ponteiro; arrasta de qualquer ponto, inclusive de cima de botão (ver abaixo); um
+// dedo só.
 // Corpo: toque nativo (passive: false, decide no primeiro movimento, antes de o navegador rolar) — puxar para cima fora da
 // parada mais alta expande antes de rolar; puxar para baixo com a rolagem no começo recolhe ou fecha (Apple Maps).
 // detents = y (px) de cada parada, de cima para baixo. onDismiss que devolve false (ex.: "descartar o preenchido?" negado)
@@ -281,7 +285,7 @@ export function useIsMobile() {
 const SHEET_RESIST = 0.2;
 const SHEET_PROJ_MS = 220; // quanto da velocidade de soltura vira deslocamento projetado
 const SHEET_FLICK = 0.4; // px/ms: acima disso, anda ao menos uma parada no sentido do gesto
-type SheetDrag = { id: number; y0: number; base: number; at: number; moved: boolean; samples: { y: number; t: number }[] };
+type SheetDrag = { id: number; y0: number; base: number; at: number; samples: { y: number; t: number }[] };
 const scrollParent = (el: HTMLElement | null) => {
   for (; el && el !== document.body; el = el.parentElement) {
     if (/(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight) return el;
@@ -301,28 +305,30 @@ export function useSheetGesture({ box, detents, index, onIndex, onDismiss, activ
     const base = tr && tr !== 'none' ? new DOMMatrixReadOnly(tr).m42 : 0;
     el.style.transition = 'none';
     el.style.transform = `translateY(${base}px)`;
-    g.current = { id, y0: y, base, at: base, moved: false, samples: [{ y, t }] };
+    g.current = { id, y0: y, base, at: base, samples: [{ y, t }] };
   };
   const move = (y: number, t: number) => {
     const s = g.current, el = box.current; if (!s || !el) return;
     const { detents: ds, onDismiss: dismiss } = cfg.current;
     const min = ds[0], max = ds[ds.length - 1], v = s.base + y - s.y0;
     s.at = v < min ? min + (v - min) * SHEET_RESIST : v > max && !dismiss ? max + (v - max) * SHEET_RESIST : v;
-    s.moved ||= Math.abs(y - s.y0) >= 6;
     el.style.transform = `translateY(${s.at}px)`;
     s.samples.push({ y, t });
     while (s.samples.length > 2 && t - s.samples[0].t > 100) s.samples.shift(); // velocidade dos últimos ~100ms
   };
-  const release = (tap: boolean) => {
+  const release = () => {
     const s = g.current, el = box.current; g.current = null;
     if (!s || !el) return;
+    // depois de um arrasto, o clique sintético que o iPhone ainda manda para o botão onde o dedo pousou não vale
+    const engole = (e: Event) => { e.stopPropagation(); e.preventDefault(); };
+    window.addEventListener('click', engole, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', engole, { capture: true }), 120);
     const { detents: ds, index: cur, onIndex: setIndex, onDismiss: dismiss } = cfg.current;
     const goTo = (i: number) => {
       el.style.transition = '';
       el.style.transform = `translateY(${ds[i]}px)`; // quem renderiza só reescreve se a parada mudar
       if (i !== cur) setIndex(i);
     };
-    if (tap) { goTo(ds.length > 1 ? (cur === 0 ? 1 : 0) : cur); return; }
     const a = s.samples[0], b = s.samples[s.samples.length - 1];
     const v = b.t > a.t ? (b.y - a.y) / (b.t - a.t) : 0;
     const proj = s.at + v * SHEET_PROJ_MS;
@@ -355,7 +361,7 @@ export function useSheetGesture({ box, detents, index, onIndex, onDismiss, activ
       }
       if (mode === 'sheet') { e.preventDefault(); move(t.clientY, e.timeStamp); }
     };
-    const onEnd = (e: TouchEvent) => { if (!ini || !touch(e)) return; if (mode === 'sheet') release(false); ini = null; mode = ''; };
+    const onEnd = (e: TouchEvent) => { if (!ini || !touch(e)) return; if (mode === 'sheet') release(); ini = null; mode = ''; };
     el.addEventListener('touchstart', onStart, { passive: true });
     el.addEventListener('touchmove', onMove, { passive: false });
     el.addEventListener('touchend', onEnd);
@@ -363,16 +369,37 @@ export function useSheetGesture({ box, detents, index, onIndex, onDismiss, activ
     return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); el.removeEventListener('touchend', onEnd); el.removeEventListener('touchcancel', onEnd); };
   }, [active]);
 
+  // Topo: o arrasto começa em qualquer ponto, inclusive em cima de botão (os contadores do globo ocupam quase todo o topo;
+  // antes só a alça, de 16px, arrastava). Só vira arrasto depois de 6px: até lá é toque — no botão, o clique dele; no
+  // vazio ou na alça, troca de parada. Campo de texto e [data-sheet-no-drag] não arrastam.
+  const down = useRef<{ id: number; y: number; t: number; toggle: boolean } | null>(null);
+  const toggle = () => { const { detents: ds, index: cur, onIndex: setIndex } = cfg.current; if (ds.length > 1) setIndex(cur === 0 ? 1 : 0); };
   return {
     'data-sheet-top': '',
     onPointerDown: (e: React.PointerEvent) => {
-      if (g.current || e.button !== 0 || (e.target as HTMLElement).closest('a,input,select,textarea,button:not([data-sheet-handle])')) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
-      start(e.pointerId, e.clientY, e.timeStamp);
+      const t = e.target as HTMLElement;
+      if (g.current || down.current || e.button !== 0 || t.closest('input,select,textarea,[data-sheet-no-drag]')) return;
+      down.current = { id: e.pointerId, y: e.clientY, t: e.timeStamp, toggle: !t.closest('a,button:not([data-sheet-handle])') };
     },
-    onPointerMove: (e: React.PointerEvent) => { if (g.current?.id === e.pointerId) move(e.clientY, e.timeStamp); },
-    onPointerUp: (e: React.PointerEvent) => { const s = g.current; if (s?.id === e.pointerId) release(!s.moved); },
-    onPointerCancel: (e: React.PointerEvent) => { if (g.current?.id === e.pointerId) release(false); },
+    onPointerMove: (e: React.PointerEvent) => {
+      if (g.current?.id === e.pointerId) { move(e.clientY, e.timeStamp); return; }
+      const d = down.current;
+      if (!d || d.id !== e.pointerId || Math.abs(e.clientY - d.y) < 6) return;
+      // virou arrasto: a captura no topo faz o clique do botão de onde começou não disparar ao soltar
+      e.currentTarget.setPointerCapture(e.pointerId);
+      down.current = null;
+      start(d.id, d.y, d.t);
+      move(e.clientY, e.timeStamp);
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      const d = down.current;
+      if (d?.id === e.pointerId) { down.current = null; if (d.toggle) toggle(); return; }
+      if (g.current?.id === e.pointerId) release();
+    },
+    onPointerCancel: (e: React.PointerEvent) => {
+      if (down.current?.id === e.pointerId) down.current = null;
+      if (g.current?.id === e.pointerId) release();
+    },
   };
 }
 
@@ -441,15 +468,16 @@ export function Sheet({ modal = true, bare = false, tall = false, label, title, 
   const handle = 'block w-10 h-1 rounded-pill bg-[color:var(--sheet-alca,var(--line-strong))]';
   const sheet = (
     <div ref={box} data-sheet="" role={modal ? 'dialog' : 'region'} aria-modal={modal || undefined} aria-label={label}
-      style={{ ...style, transform: `translateY(${y}px)`, ['--sheet-y' as string]: `${y}px` }}
+      style={{ bottom: 'var(--teclado, 0px)', ...style, transform: `translateY(${y}px)`, ['--sheet-y' as string]: `${y}px` }}
       className={cx('fixed inset-x-0 bottom-0 flex flex-col bg-card rounded-t-panel shadow-[var(--shadow-sheet)] bleed-card-sm no-print',
         'transition-[transform,background-color] duration-[450ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-        modal ? cx('z-[1310]', tall ? 'h-[92vh] supports-[height:100dvh]:h-[92dvh]' : 'max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh]') : 'z-[1060] h-[88vh] supports-[height:100dvh]:h-[88dvh]', // acima da barra inferior (z-1050): o painel do veículo a cobre enquanto aberto
+        // acima do teclado (--teclado, lib/teclado.ts): a folha sobe e encolhe junto, sem a página ser empurrada
+        modal ? cx('z-[1310]', tall ? 'h-[calc(92vh-var(--teclado,0px))] supports-[height:100dvh]:h-[calc(92dvh-var(--teclado,0px))]' : 'max-h-[calc(92vh-var(--teclado,0px))] supports-[height:100dvh]:max-h-[calc(92dvh-var(--teclado,0px))]') : 'z-[1060] h-[calc(88vh-var(--teclado,0px))] supports-[height:100dvh]:h-[calc(88dvh-var(--teclado,0px))]', // acima da barra inferior (z-1050): o painel do veículo a cobre enquanto aberto
         closing ? 'sheet-out' : 'sheet-in')}>
       <div ref={top} {...drag} className="shrink-0 touch-none select-none">
         {detents.length > 1
           ? <button type="button" data-sheet-handle="" aria-label={index === 0 ? 'Recolher painel' : 'Expandir painel'} aria-expanded={index === 0} onClick={(e) => { if (e.detail === 0) setIndex(index === 0 ? 1 : 0); /* teclado; o toque já alternou ao soltar */ }}
-              className="flex w-full justify-center pt-2 pb-1"><span aria-hidden="true" className={handle} /></button>
+              className="flex w-full h-7 items-center justify-center"><span aria-hidden="true" className={handle} /></button>
           : <span aria-hidden="true" className={cx(handle, 'mx-auto mt-2 mb-1')} />}
         {!bare && (title || header || onClose) && (
           <header className="flex items-start gap-stack px-card-sm pt-tight">
@@ -1215,7 +1243,7 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   // max-md:justify-start: em coluna, o justify-center do desktop centralizava na vertical, e o form mais alto que a tela
   // estourava metade para cima, fora da rolagem — o modal abria no meio do formulário, sem como subir até o título.
   return createPortal(
-    <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !(guardDiscard && touched.current) && onClose()}>
+    <div className={cx('fixed inset-0 max-md:bottom-[var(--teclado,0px)] z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !(guardDiscard && touched.current) && onClose()}>
       <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] max-md:transition-[transform] max-md:duration-[450ms] max-md:ease-[cubic-bezier(0.32,0.72,0,1)]', closing ? 'anim-pop-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-pop max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
         <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
           <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />

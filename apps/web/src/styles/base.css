@@ -158,6 +158,8 @@ a { text-underline-offset: 3px; }
 .dock[data-state="open"] .dock-backdrop { pointer-events: auto; }
 .dock[data-state="open"] .dock-drawer { pointer-events: auto; visibility: visible; transform: none; transition: transform 500ms var(--ease-dock), visibility 0s; }
 .dock[data-state="open"] .dock-pill { pointer-events: none; transform: scaleX(0.0001); }
+/* teclado aberto (lib/teclado.ts): a barra inferior sai — no iPhone ela ficaria por cima do campo ou boiando ao rolar */
+html[data-teclado] .dock:not([data-state="open"]) { visibility: hidden; }
 /* toast */
 @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(0.98); } }
@@ -365,10 +367,10 @@ a { text-underline-offset: 3px; }
 .ico-line { display: inline-flex; align-items: center; height: 1lh; flex-shrink: 0; }
 
 /* ---------- toque ---------- */
-/* campo com fonte < 16px dispara o zoom automático do iOS no foco; o tamanho vem de tokens.css (--fs-field-touch).
+/* campo (e select) com fonte < 16px dispara o zoom automático do iOS no foco; o tamanho vem de tokens.css (--fs-field-touch).
    !important porque a classe de tamanho do Tailwind (text-body, text-small) vem depois deste arquivo. */
 @media (pointer: coarse) {
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea { font-size: var(--fs-field-touch) !important; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select { font-size: var(--fs-field-touch) !important; }
   /* link de texto e valor clicável no meio da linha: o alvo do dedo cresce até ~44px sem mudar o layout (área invisível
      ao redor). Horizontal menor que o vertical: dois links lado a lado (gap-x-5, 20px) só se encostam.
      Não funciona em elemento com overflow hidden (truncate): o recorte corta a área — truncar num span interno. */

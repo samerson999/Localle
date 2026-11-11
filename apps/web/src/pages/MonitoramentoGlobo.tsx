@@ -337,7 +337,7 @@ function Folha({ p, parada, setParada, onAltura, topo, children }: { p: Paleta; 
   return (
     <Sheet modal={false} bare label="Lista de veículos" detents={DETENTS} detent={PARADAS.indexOf(parada)} onDetent={(i) => setParada(PARADAS[i])} onVisible={onAltura}
       style={{ left: 7, right: 7, top: 'calc(max(12px, env(safe-area-inset-top)) + 60px)', height: 'auto', borderRadius: '32px 32px 0 0', background: p.folha, color: p.texto, ['--sheet-alca' as string]: p.alca }}
-      top={<div className="flex flex-col gap-4 px-4 pt-2 pb-4">{topo}</div>}>
+      top={<div className="flex flex-col gap-4 px-4 pb-4">{topo}</div>}>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 pb-[calc(var(--sheet-y,0px)+env(safe-area-inset-bottom,0px)+16px)]">{children}</div>
     </Sheet>
   );
