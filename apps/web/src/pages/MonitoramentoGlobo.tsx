@@ -8,8 +8,8 @@
 //
 // Tema: na Revolut o mapa é sempre escuro (doc 03 § 4.2); aqui ele segue o modo escolhido, pedido do usuário. O modo claro
 // é o mesmo desenho com os papéis invertidos (o que a Revolut faz no resto do app, § 4.2): terra clara, oceano branco,
-// destaque escuro. Enquanto o tema do app não existe, o seletor Claro/Escuro/Automático fica nesta tela (prévia na hora,
-// como a Revolut, § 4.1) e a escolha mora no navegador.
+// destaque escuro. O seletor Claro/Escuro/Automático desta tela é o mesmo tema do app (lib/tema.ts, também em Minha conta):
+// trocar aqui troca o app inteiro.
 //
 // Folha: não encosta nas bordas, três paradas (baixa = contadores; meio = mapa e lista; alta = lista), arrastar ou tocar
 // a alça troca. Contadores filtram a lista; tocar num veículo voa até ele e recolhe a folha com o cartão do veículo, que
@@ -17,6 +17,7 @@
 //
 // Dados do store, sincronizado pelo Layout.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -24,7 +25,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore, vehicleStatus } from '../lib/store';
 import { useCriticalMap } from '../lib/critical';
 import { PALETA, useTema, type Kind, type Modo, type Paleta } from '../lib/aparencia';
-import { useSheetDrag, cx, useScrollLock } from '../components/ui';
+import { cx, useScrollLock, Sheet, type SheetDetent } from '../components/ui';
 import { Icon, type IconName } from '../components/icons';
 import { CommandModal, ShareModal, linksGoogle } from './Monitoramento';
 import { fmtT, isPlate } from '@localle/shared/utils';
@@ -79,6 +80,7 @@ export default function MonitoramentoGlobo() {
   const [q, setQ] = useState('');
   const [parada, setParada] = useState<Parada>('meio');
   const [aparencia, setAparencia] = useState(false);
+  const aparenciaBtn = useRef<HTMLDivElement>(null);
   const [cmd, setCmd] = useState<null | { target: 'veiculo' | 'grupo'; assetId?: string; defId?: string }>(null);
   const [share, setShare] = useState<any>(null);
 
@@ -157,9 +159,9 @@ export default function MonitoramentoGlobo() {
       <div className="absolute inset-x-0 top-0 z-30 flex items-center gap-2 px-4 pt-[max(12px,env(safe-area-inset-top))] pointer-events-none [&>*]:pointer-events-auto">
         <Circulo p={P} label="Voltar para o início" icon="voltar" onClick={() => nav('/inicio')} />
         <span className="mr-auto" />
-        <div className="relative">
+        <div ref={aparenciaBtn}>
           <Circulo p={P} label="Aparência" icon="lua" onClick={() => setAparencia(!aparencia)} expanded={aparencia} />
-          {aparencia && <SeletorModo p={P} modo={modo} onModo={(m) => setModo(m)} onFechar={() => setAparencia(false)} />}
+          {aparencia && <SeletorModo p={P} modo={modo} ancora={aparenciaBtn} onModo={(m) => setModo(m)} onFechar={() => setAparencia(false)} />}
         </div>
         <Circulo p={P} label="Ver o globo" icon="zoom-menos" onClick={verGlobo} />
         <button type="button" onClick={verFrota} className="h-11 px-4 rounded-full flex items-center gap-2 font-medium text-[15px] active:scale-[0.97] transition-transform" style={{ background: P.primario, color: P.primarioTexto }}>
@@ -325,43 +327,19 @@ function useGlobo(itens: Item[], sel: string | null, setSel: (id: string | null)
 }
 
 // ---------- folha ----------
+// O Sheet do sistema (mesmo gesto e mesmas paradas do resto do app), com a geometria e a paleta do globo: flutua a 7px das
+// bordas, abaixo da barra do topo, e segue o tema do mapa.
 type Parada = 'alta' | 'meio' | 'baixa';
 const PARADAS: Parada[] = ['alta', 'meio', 'baixa'];
+const DETENTS: SheetDetent[] = ['aberta', 'meio', 'topo']; // alta = inteira; meio = mapa e lista; baixa = só o topo
 
 function Folha({ p, parada, setParada, onAltura, topo, children }: { p: Paleta; parada: Parada; setParada: (p: Parada) => void; onAltura: (h: number) => void; topo: React.ReactNode; children: React.ReactNode }) {
-  const box = useRef<HTMLDivElement>(null), top = useRef<HTMLDivElement>(null);
-  const [alt, setAlt] = useState({ h: 0, t: 0 });
-  useLayoutEffect(() => {
-    const medir = () => { const b = box.current, t = top.current; if (b && t) setAlt({ h: b.offsetHeight, t: t.offsetHeight }); };
-    medir();
-    const ro = new ResizeObserver(medir);
-    if (box.current) ro.observe(box.current);
-    if (top.current) ro.observe(top.current);
-    return () => ro.disconnect();
-  }, []);
-  // meio: topo a ~56% da tela (Revolut); baixa: só alça e contadores (e o cartão do veículo, se houver)
-  const y = parada === 'alta' ? 0 : parada === 'meio' ? Math.round(alt.h * 0.5) : Math.max(0, alt.h - alt.t);
-  useEffect(() => { onAltura(alt.h - y); }, [alt.h, y]);
-  const drag = useSheetDrag(box, (dy, vy) => {
-    const i = PARADAS.indexOf(parada);
-    if (dy > 40 || vy > 0.5) setParada(PARADAS[Math.min(PARADAS.length - 1, i + 1)]);
-    else if (dy < -40 || vy < -0.5) setParada(PARADAS[Math.max(0, i - 1)]);
-    else if (Math.abs(dy) < 6) setParada(parada === 'alta' ? 'meio' : 'alta');
-  });
   return (
-    <div className="absolute inset-x-[7px] top-[calc(max(12px,env(safe-area-inset-top))+60px)] bottom-0 z-20 overflow-hidden pointer-events-none">
-      <div ref={box} role="region" aria-label="Lista de veículos" style={{ transform: `translateY(${y}px)`, background: p.folha }}
-        className="pointer-events-auto h-full flex flex-col rounded-t-[32px] shadow-[0_-8px_32px_rgba(0,0,0,0.18)] transition-[transform,background-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none">
-        <div ref={top} {...drag} className="shrink-0 touch-none select-none flex flex-col gap-4 px-4 pb-4">
-          <button type="button" data-sheet-handle="" aria-label={parada === 'alta' ? 'Recolher lista' : 'Expandir lista'} aria-expanded={parada === 'alta'}
-            onClick={(e) => { if (e.detail === 0) setParada(parada === 'alta' ? 'meio' : 'alta'); }} className="flex w-full justify-center pt-3 pb-1">
-            <span aria-hidden="true" className="w-10 h-[5px] rounded-full" style={{ background: p.alca }} />
-          </button>
-          {topo}
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2" style={{ paddingBottom: `calc(${y}px + env(safe-area-inset-bottom, 0px) + 16px)` }}>{children}</div>
-      </div>
-    </div>
+    <Sheet modal={false} bare label="Lista de veículos" detents={DETENTS} detent={PARADAS.indexOf(parada)} onDetent={(i) => setParada(PARADAS[i])} onVisible={onAltura}
+      style={{ left: 7, right: 7, top: 'calc(max(12px, env(safe-area-inset-top)) + 60px)', height: 'auto', borderRadius: '32px 32px 0 0', background: p.folha, color: p.texto, ['--sheet-alca' as string]: p.alca }}
+      top={<div className="flex flex-col gap-4 px-4 pt-2 pb-4">{topo}</div>}>
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 pb-[calc(var(--sheet-y,0px)+env(safe-area-inset-bottom,0px)+16px)]">{children}</div>
+    </Sheet>
   );
 }
 
@@ -375,14 +353,22 @@ function Circulo({ p, label, icon, onClick, expanded }: { p: Paleta; label: stri
   );
 }
 
-// Claro / Escuro / Automático, com prévia na hora (Revolut, doc 03 § 4.1). Provisório: sai daqui quando o tema do app existir.
-function SeletorModo({ p, modo, onModo, onFechar }: { p: Paleta; modo: Modo; onModo: (m: Modo) => void; onFechar: () => void }) {
+// Claro / Escuro / Automático, com prévia na hora (Revolut, doc 03 § 4.1).
+// Preso à borda direita da tela, não ao botão: o botão fica no meio da barra e o menu, alinhado a ele, saía pela esquerda no
+// celular (390px). Cresce a partir do botão (transform-origin medido), como os outros menus.
+function SeletorModo({ p, modo, ancora, onModo, onFechar }: { p: Paleta; modo: Modo; ancora: React.RefObject<HTMLElement>; onModo: (m: Modo) => void; onFechar: () => void }) {
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, []);
+  const menu = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const a = ancora.current?.getBoundingClientRect(), m = menu.current;
+    if (a && m) m.style.transformOrigin = `${Math.round(a.left + a.width / 2 - m.getBoundingClientRect().left)}px top`;
+  }, []);
   const ops: { m: Modo; label: string; icon: IconName }[] = [{ m: 'claro', label: 'Claro', icon: 'sol' }, { m: 'escuro', label: 'Escuro', icon: 'lua' }, { m: 'auto', label: 'Automático', icon: 'config' }];
-  return (
-    <>
-      <div className="fixed inset-0" aria-hidden="true" onClick={onFechar} />
-      <div role="radiogroup" aria-label="Aparência" className="absolute right-0 top-[52px] z-10 w-[220px] p-2 rounded-3xl flex flex-col gap-1 shadow-[0_8px_32px_rgba(0,0,0,0.25)]" style={{ background: p.folha }}>
+  // portal acima da folha (o Sheet também vai para o body, em z 1060)
+  return createPortal(
+    <div className="fixed inset-0 z-[1070]">
+      <div className="absolute inset-0" aria-hidden="true" onClick={onFechar} />
+      <div ref={menu} role="radiogroup" aria-label="Aparência" className="anim-pop fixed right-4 top-[calc(max(12px,env(safe-area-inset-top))+52px)] w-[min(220px,calc(100vw-32px))] p-2 rounded-3xl flex flex-col gap-1 shadow-[0_8px_32px_rgba(0,0,0,0.25)]" style={{ background: p.folha, color: p.texto }}>
         {ops.map((o) => (
           <button key={o.m} type="button" role="radio" aria-checked={modo === o.m} onClick={() => onModo(o.m)}
             className="h-11 px-3 rounded-2xl flex items-center gap-3 text-[15px] font-medium text-left" style={{ background: modo === o.m ? p.cartao : undefined }}>
@@ -390,7 +376,8 @@ function SeletorModo({ p, modo, onModo, onFechar }: { p: Paleta; modo: Modo; onM
           </button>
         ))}
       </div>
-    </>
+    </div>,
+    document.body,
   );
 }
 

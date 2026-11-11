@@ -299,7 +299,7 @@ export function VehicleListItem({ silhouette, icon, photo, plate, kind, statusLa
         : iconUrl ? <img src={iconUrl} alt="" draggable={false} decoding="async" className="w-14 h-9 object-contain shrink-0 mt-hair" />
         : <AssetSilhouette category={silhouette} className="w-14 h-9 text-ink-3 shrink-0 mt-hair" />}
       <span className="flex flex-col gap-hair min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"><Plate name={plate} size="sm" /><StatusDot kind={kind} label={statusLabel} className="text-caption" /></span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"><Plate name={plate} size="md" /><StatusDot kind={kind} label={statusLabel} className="text-caption" /></span>
         {model && <span className="text-body font-medium text-ink truncate">{model}</span>}
         {driver && <span className="flex items-center gap-1 text-small text-ink-2 truncate"><Icon name="usuario" size={14} className="text-ink-3 shrink-0" />{driver}</span>}
         {pos && <span className="flex items-center gap-1 text-small text-ink-2 truncate"><Icon name="centralizar" size={14} className="text-ink-3 shrink-0" /><Address pos={pos} /></span>}

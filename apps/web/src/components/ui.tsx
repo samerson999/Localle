@@ -174,13 +174,13 @@ export function ColorSwatchPicker({ value, onChange, colors, label }: { value: s
         return (
           <button key={c} type="button" role="radio" aria-checked={sel} aria-label={`Cor ${c}`} onClick={() => onChange(c)} className={item(sel, c)} style={sel ? { borderColor: c } : undefined}>
             <span className={swatch(sel)} style={{ background: c }} />
-            {sel && <Icon name="ok" size={14} className={cx('absolute', light(c) ? 'text-ink' : 'text-on-dark')} />}
+            {sel && <Icon name="ok" size={14} className={cx('absolute', light(c) ? 'text-[var(--on-color-ink)]' : 'text-[var(--on-color)]')} />}
           </button>
         );
       })}
       <label className={cx(item(custom, value), 'cursor-pointer')} style={custom ? { borderColor: value } : undefined} title="Outra cor">
         <span className={swatch(custom)} style={{ background: custom ? value : 'conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)' }} />
-        {custom && <Icon name="ok" size={14} className={cx('absolute', light(value) ? 'text-ink' : 'text-on-dark')} />}
+        {custom && <Icon name="ok" size={14} className={cx('absolute', light(value) ? 'text-[var(--on-color-ink)]' : 'text-[var(--on-color)]')} />}
         <input type="color" aria-label="Outra cor" value={value} onChange={(e) => onChange(e.target.value)} className="sr-only" />
       </label>
       <input aria-label="Código da cor (hex)" value={hex} maxLength={7} spellCheck={false}
@@ -267,69 +267,168 @@ export function useIsMobile() {
   return m;
 }
 
-// Arrasto pela alça de uma folha inferior: o elemento segue o dedo (para cima, com resistência) e, ao soltar, volta ao
-// lugar e quem chamou decide pelo deslocamento e pela velocidade (px/ms). Toque em botão, link ou campo não arrasta.
-export function useSheetDrag(target: React.RefObject<HTMLElement>, onRelease: (dy: number, vy: number) => void) {
-  const g = useRef<{ id: number; y: number; t: number; dy: number } | null>(null);
-  const end = (e: React.PointerEvent) => {
-    const s = g.current, el = target.current;
-    if (!s || e.pointerId !== s.id) return;
-    g.current = null;
-    if (el) { el.style.transition = ''; el.style.translate = ''; }
-    onRelease(s.dy, s.dy / Math.max(16, e.timeStamp - s.t));
+// Gesto das folhas inferiores: um motor só para o Sheet (diálogo, painel sobre o mapa, Monitoramento do globo) e o Modal no
+// celular (skill gestures). Com o dedo na tela a folha é o dedo: transform escrito direto no elemento, sem transição e sem
+// render do React a cada movimento. Ao soltar, vai para a parada mais perto de onde chegaria com a velocidade do gesto
+// (projeção de momentum, como no iOS); um peteleco curto ainda anda uma parada; com onDismiss, passar da última fecha.
+// Pegar a folha no meio da animação parte de onde ela está (transform calculado), sem salto. Além das pontas, resistência
+// em vez de parede.
+// Topo (alça e cabeçalho, data-sheet-top): ponteiro com captura; toque em botão, link ou campo não arrasta; um dedo só.
+// Corpo: toque nativo (passive: false, decide no primeiro movimento, antes de o navegador rolar) — puxar para cima fora da
+// parada mais alta expande antes de rolar; puxar para baixo com a rolagem no começo recolhe ou fecha (Apple Maps).
+// detents = y (px) de cada parada, de cima para baixo. onDismiss que devolve false (ex.: "descartar o preenchido?" negado)
+// faz a folha voltar.
+const SHEET_RESIST = 0.2;
+const SHEET_PROJ_MS = 220; // quanto da velocidade de soltura vira deslocamento projetado
+const SHEET_FLICK = 0.4; // px/ms: acima disso, anda ao menos uma parada no sentido do gesto
+type SheetDrag = { id: number; y0: number; base: number; at: number; moved: boolean; samples: { y: number; t: number }[] };
+const scrollParent = (el: HTMLElement | null) => {
+  for (; el && el !== document.body; el = el.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight) return el;
+  }
+  return null;
+};
+export function useSheetGesture({ box, detents, index, onIndex, onDismiss, active = true }: {
+  box: React.RefObject<HTMLElement>; detents: number[]; index: number; onIndex: (i: number) => void;
+  onDismiss?: () => void | boolean | Promise<void | boolean>; active?: boolean;
+}) {
+  const cfg = useRef({ detents, index, onIndex, onDismiss }); cfg.current = { detents, index, onIndex, onDismiss };
+  const g = useRef<SheetDrag | null>(null);
+
+  const start = (id: number, y: number, t: number) => {
+    const el = box.current; if (!el) return;
+    const tr = getComputedStyle(el).transform;
+    const base = tr && tr !== 'none' ? new DOMMatrixReadOnly(tr).m42 : 0;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${base}px)`;
+    g.current = { id, y0: y, base, at: base, moved: false, samples: [{ y, t }] };
   };
+  const move = (y: number, t: number) => {
+    const s = g.current, el = box.current; if (!s || !el) return;
+    const { detents: ds, onDismiss: dismiss } = cfg.current;
+    const min = ds[0], max = ds[ds.length - 1], v = s.base + y - s.y0;
+    s.at = v < min ? min + (v - min) * SHEET_RESIST : v > max && !dismiss ? max + (v - max) * SHEET_RESIST : v;
+    s.moved ||= Math.abs(y - s.y0) >= 6;
+    el.style.transform = `translateY(${s.at}px)`;
+    s.samples.push({ y, t });
+    while (s.samples.length > 2 && t - s.samples[0].t > 100) s.samples.shift(); // velocidade dos últimos ~100ms
+  };
+  const release = (tap: boolean) => {
+    const s = g.current, el = box.current; g.current = null;
+    if (!s || !el) return;
+    const { detents: ds, index: cur, onIndex: setIndex, onDismiss: dismiss } = cfg.current;
+    const goTo = (i: number) => {
+      el.style.transition = '';
+      el.style.transform = `translateY(${ds[i]}px)`; // quem renderiza só reescreve se a parada mudar
+      if (i !== cur) setIndex(i);
+    };
+    if (tap) { goTo(ds.length > 1 ? (cur === 0 ? 1 : 0) : cur); return; }
+    const a = s.samples[0], b = s.samples[s.samples.length - 1];
+    const v = b.t > a.t ? (b.y - a.y) / (b.t - a.t) : 0;
+    const proj = s.at + v * SHEET_PROJ_MS;
+    const stops = ds.map((y, i) => ({ y, i }));
+    if (dismiss) stops.push({ y: el.offsetHeight, i: -1 });
+    let k = stops.reduce((m, o, j) => (Math.abs(o.y - proj) < Math.abs(stops[m].y - proj) ? j : m), 0);
+    if (stops[k].i === cur && Math.abs(v) > SHEET_FLICK) k = Math.min(stops.length - 1, Math.max(0, k + Math.sign(v)));
+    if (stops[k].i >= 0) { goTo(stops[k].i); return; }
+    // fechar: a folha fica onde o dedo largou e a saída (sheet-out) continua dali para baixo
+    el.style.transition = '';
+    void Promise.resolve(dismiss!()).then((ok) => { if (ok === false) goTo(cur); });
+  };
+
+  useEffect(() => {
+    const el = box.current; if (!el || !active) return;
+    let ini: { id: number; x: number; y: number } | null = null, mode: '' | 'sheet' | 'native' = '', scroller: HTMLElement | null = null;
+    const touch = (e: TouchEvent) => [...e.changedTouches].find((t) => t.identifier === ini?.id);
+    const onStart = (e: TouchEvent) => {
+      const target = e.target as HTMLElement;
+      if (g.current || e.touches.length > 1 || target.closest('[data-sheet-top],input,textarea,select,[data-sheet-no-drag]')) { ini = null; return; }
+      const t = e.touches[0]; ini = { id: t.identifier, x: t.clientX, y: t.clientY }; mode = ''; scroller = scrollParent(target);
+    };
+    const onMove = (e: TouchEvent) => {
+      const t = ini && touch(e); if (!ini || !t) return;
+      if (!mode) {
+        const dy = t.clientY - ini.y, dx = t.clientX - ini.x; if (!dy && !dx) return;
+        const sheet = Math.abs(dy) > Math.abs(dx) && ((dy < 0 && cfg.current.index > 0) || (dy > 0 && (!scroller || scroller.scrollTop <= 0)));
+        mode = sheet && e.cancelable ? 'sheet' : 'native';
+        if (mode === 'sheet') start(ini.id, ini.y, e.timeStamp);
+      }
+      if (mode === 'sheet') { e.preventDefault(); move(t.clientY, e.timeStamp); }
+    };
+    const onEnd = (e: TouchEvent) => { if (!ini || !touch(e)) return; if (mode === 'sheet') release(false); ini = null; mode = ''; };
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onEnd);
+    return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); el.removeEventListener('touchend', onEnd); el.removeEventListener('touchcancel', onEnd); };
+  }, [active]);
+
   return {
+    'data-sheet-top': '',
     onPointerDown: (e: React.PointerEvent) => {
-      if (e.button !== 0 || (e.target as HTMLElement).closest('a,input,select,textarea,button:not([data-sheet-handle])')) return;
-      g.current = { id: e.pointerId, y: e.clientY, t: e.timeStamp, dy: 0 };
+      if (g.current || e.button !== 0 || (e.target as HTMLElement).closest('a,input,select,textarea,button:not([data-sheet-handle])')) return;
       e.currentTarget.setPointerCapture(e.pointerId);
+      start(e.pointerId, e.clientY, e.timeStamp);
     },
-    onPointerMove: (e: React.PointerEvent) => {
-      const s = g.current, el = target.current;
-      if (!s || !el || e.pointerId !== s.id) return;
-      s.dy = e.clientY - s.y;
-      el.style.transition = 'none';
-      el.style.translate = `0 ${s.dy < 0 ? s.dy * 0.2 : s.dy}px`;
-    },
-    onPointerUp: end, onPointerCancel: end,
+    onPointerMove: (e: React.PointerEvent) => { if (g.current?.id === e.pointerId) move(e.clientY, e.timeStamp); },
+    onPointerUp: (e: React.PointerEvent) => { const s = g.current; if (s?.id === e.pointerId) release(!s.moved); },
+    onPointerCancel: (e: React.PointerEvent) => { if (g.current?.id === e.pointerId) release(false); },
   };
 }
 
-// Folha inferior do celular, o padrão único de sobreposição abaixo de md.
+// Folha inferior do celular, o padrão único de folha do sistema (diálogos, painéis sobre o mapa, Monitoramento do globo);
+// o gesto é o useSheetGesture, o mesmo do Modal no celular.
 // modal = diálogo (fundo escurecido, foco preso, rolagem da página travada); a altura segue o conteúdo, até 92% da tela;
 //   arrastar para baixo fecha.
-// modal={false} = painel de detalhe sobre o mapa (veículo, "Passou por aqui"): o mapa continua usável acima; abre recolhida
-//   (cabeçalho, ações e o começo do corpo) e expande até 88% da tela tocando ou arrastando a alça; arrastar para baixo
-//   recolhe e, recolhida, fecha. As ações ficam logo abaixo do cabeçalho, ao alcance do polegar nas duas alturas.
+// modal={false} = painel sobre o mapa (veículo, "Passou por aqui"): o mapa continua usável acima; abre na última parada e
+//   troca de parada tocando ou arrastando a alça (ou o corpo); arrastar para baixo da última fecha, se houver onClose.
+//   As ações ficam logo abaixo do cabeçalho, ao alcance do polegar em todas as paradas.
+// detents = paradas, de cima para baixo (padrão: modal ['aberta']; painel ['aberta', 'espiada']):
+//   aberta = inteira · meio = metade · espiada = topo + o começo do corpo · topo = só alça, cabeçalho, ações e `top`.
+//   detent/onDetent controlam de fora (índice em detents); onVisible recebe quanto da folha aparece (px), para o mapa
+//   centralizar no que sobra. A área que rola usa var(--sheet-y) no padding de baixo: a parte da folha abaixo da tela.
+// top = conteúdo fixo do topo, arrasta junto com a alça (contadores e busca do globo).
 // bare = o conteúdo traz o próprio cabeçalho, área rolável e rodapé (painel "Precisa de você"); a folha só põe a alça.
 // tall = altura fixa de 92% (abas que trocam de conteúdo não fazem a folha pular de tamanho).
+// style = posição e cores próprias (o globo flutua a 7px das bordas, com a paleta do mapa; --sheet-alca pinta a alça).
 // Quem chama controla a montagem (usePresence) e passa `closing` durante a saída, como no FloatingPanel.
-const SHEET_PEEK_BODY = 104; // quanto do corpo aparece com a folha recolhida
-export function Sheet({ modal = true, bare = false, tall = false, label, title, subtitle, header, onClose, actions, footer, closing, children }: {
-  modal?: boolean; bare?: boolean; tall?: boolean; label: string; title?: React.ReactNode; subtitle?: React.ReactNode; header?: React.ReactNode; onClose?: () => void;
+export type SheetDetent = 'aberta' | 'meio' | 'espiada' | 'topo';
+const SHEET_PEEK_BODY = 104; // quanto do corpo aparece na parada "espiada"
+const detentY = (d: SheetDetent, h: number, t: number) =>
+  d === 'meio' ? Math.round(h * 0.5) : d === 'topo' ? Math.max(0, h - t) : d === 'espiada' ? Math.max(0, h - Math.min(t + SHEET_PEEK_BODY, h * 0.6)) : 0;
+export function Sheet({ modal = true, bare = false, tall = false, label, title, subtitle, header, top: topSlot, onClose, actions, footer, closing, detents: ds, detent, onDetent, onVisible, style, children }: {
+  modal?: boolean; bare?: boolean; tall?: boolean; label: string; title?: React.ReactNode; subtitle?: React.ReactNode; header?: React.ReactNode; top?: React.ReactNode; onClose?: () => void;
   actions?: React.ReactNode; footer?: React.ReactNode; closing?: boolean; children?: React.ReactNode;
+  detents?: SheetDetent[]; detent?: number; onDetent?: (i: number) => void; onVisible?: (px: number) => void; style?: React.CSSProperties;
 }) {
   const box = useRef<HTMLDivElement>(null), top = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(modal);
-  const [peek, setPeek] = useState(0);
+  const detents = ds ?? (modal ? ['aberta'] : ['aberta', 'espiada']);
+  const [own, setOwn] = useState(detents.length - 1);
+  const index = Math.min(detent ?? own, detents.length - 1);
+  const setIndex = (i: number) => { if (detent === undefined) setOwn(i); onDetent?.(i); };
+  const [size, setSize] = useState({ h: 0, t: 0 });
+  const measure = detents.some((d) => d !== 'aberta');
   const closeRef = useRef(onClose); closeRef.current = onClose;
   useScrollLock(modal && !closing);
   useLayoutEffect(() => {
-    if (modal) return;
-    const measure = () => { const b = box.current, t = top.current; if (b && t) setPeek(Math.max(0, b.offsetHeight - Math.min(t.offsetHeight + SHEET_PEEK_BODY, b.offsetHeight * 0.6))); };
-    measure();
-    const ro = new ResizeObserver(measure);
+    if (!measure) return;
+    const m = () => { const b = box.current, t = top.current; if (b && t) setSize({ h: b.offsetHeight, t: t.offsetHeight }); };
+    m();
+    const ro = new ResizeObserver(m);
     if (box.current) ro.observe(box.current);
     if (top.current) ro.observe(top.current);
     return () => ro.disconnect();
-  }, [modal]);
+  }, [measure]);
+  const ys = detents.map((d) => detentY(d, size.h, size.t));
+  const y = ys[index];
+  useEffect(() => { if (size.h) onVisible?.(size.h - y); }, [size.h, y]);
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
     const focusables = () => Array.from(box.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input,select,textarea,[tabindex]:not([tabindex="-1"])') || []);
     if (modal) focusables()[0]?.focus();
     const k = (e: KeyboardEvent) => {
       // Esc fecha só a sobreposição do topo (um Modal aberto por cima do painel do veículo, como Comandos, fecha primeiro)
-      if (e.key === 'Escape' && !e.defaultPrevented) { const all = document.querySelectorAll('[aria-modal="true"],[data-sheet]'); if (all[all.length - 1] === box.current) { e.preventDefault(); closeRef.current?.(); } return; }
+      if (e.key === 'Escape' && !e.defaultPrevented) { const all = document.querySelectorAll('[aria-modal="true"],[data-sheet]'); if (all[all.length - 1] === box.current && closeRef.current) { e.preventDefault(); closeRef.current(); } return; }
       if (!modal || e.key !== 'Tab') return;
       const f = focusables(); if (!f.length) return;
       if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
@@ -338,26 +437,20 @@ export function Sheet({ modal = true, bare = false, tall = false, label, title, 
     document.addEventListener('keydown', k);
     return () => { document.removeEventListener('keydown', k); if (modal) back?.focus?.(); };
   }, [modal]);
-  const drag = useSheetDrag(box, (dy, vy) => {
-    const down = dy > 64 || vy > 0.5, up = dy < -40 || vy < -0.5;
-    if (modal) { if (down) onClose?.(); return; }
-    if (down) { if (expanded) setExpanded(false); else onClose?.(); }
-    else if (up) setExpanded(true);
-    else if (Math.abs(dy) < 6) setExpanded(!expanded);
-  });
-  const dragBody = !modal && !expanded;
+  const drag = useSheetGesture({ box, detents: ys, index, onIndex: setIndex, onDismiss: onClose });
+  const handle = 'block w-10 h-1 rounded-pill bg-[color:var(--sheet-alca,var(--line-strong))]';
   const sheet = (
     <div ref={box} data-sheet="" role={modal ? 'dialog' : 'region'} aria-modal={modal || undefined} aria-label={label}
-      style={modal ? undefined : { transform: `translateY(${expanded ? 0 : peek}px)` }}
+      style={{ ...style, transform: `translateY(${y}px)`, ['--sheet-y' as string]: `${y}px` }}
       className={cx('fixed inset-x-0 bottom-0 flex flex-col bg-card rounded-t-panel shadow-[var(--shadow-sheet)] bleed-card-sm no-print',
-        'transition-[transform,translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
+        'transition-[transform,background-color] duration-[450ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
         modal ? cx('z-[1310]', tall ? 'h-[92vh] supports-[height:100dvh]:h-[92dvh]' : 'max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh]') : 'z-[1060] h-[88vh] supports-[height:100dvh]:h-[88dvh]', // acima da barra inferior (z-1050): o painel do veículo a cobre enquanto aberto
         closing ? 'sheet-out' : 'sheet-in')}>
       <div ref={top} {...drag} className="shrink-0 touch-none select-none">
-        {modal
-          ? <span aria-hidden="true" className="block mx-auto mt-2 mb-1 w-10 h-1 rounded-pill bg-line-strong" />
-          : <button type="button" data-sheet-handle="" aria-label={expanded ? 'Recolher painel' : 'Expandir painel'} aria-expanded={expanded} onClick={(e) => { if (e.detail === 0) setExpanded(!expanded); /* teclado; o toque já alternou ao soltar */ }}
-              className="flex w-full justify-center pt-2 pb-1"><span aria-hidden="true" className="w-10 h-1 rounded-pill bg-line-strong" /></button>}
+        {detents.length > 1
+          ? <button type="button" data-sheet-handle="" aria-label={index === 0 ? 'Recolher painel' : 'Expandir painel'} aria-expanded={index === 0} onClick={(e) => { if (e.detail === 0) setIndex(index === 0 ? 1 : 0); /* teclado; o toque já alternou ao soltar */ }}
+              className="flex w-full justify-center pt-2 pb-1"><span aria-hidden="true" className={handle} /></button>
+          : <span aria-hidden="true" className={cx(handle, 'mx-auto mt-2 mb-1')} />}
         {!bare && (title || header || onClose) && (
           <header className="flex items-start gap-stack px-card-sm pt-tight">
             <div className="min-w-0 mr-auto flex flex-col gap-hair">{header}{title && <h2 className={cx(modal ? 'text-h2' : 'text-h3', 'font-semibold')}>{title}</h2>}{subtitle && <p className="text-small text-ink-2">{subtitle}</p>}</div>
@@ -365,10 +458,10 @@ export function Sheet({ modal = true, bare = false, tall = false, label, title, 
           </header>
         )}
         {actions && <div className="flex items-center gap-tight px-card-sm pt-stack pb-tight">{actions}</div>}
+        {topSlot}
       </div>
       {bare ? children : <>
-      <div {...(dragBody ? drag : {})} onClick={dragBody ? () => setExpanded(true) : undefined}
-        className={cx('flex-1 min-h-0 px-card-sm pt-card-head-sm', dragBody ? 'overflow-hidden touch-none' : 'overflow-y-auto overscroll-contain', !footer && 'pb-[max(var(--pad-card-sm),env(safe-area-inset-bottom))]')}>
+      <div className={cx('flex-1 min-h-0 overflow-y-auto overscroll-contain px-card-sm pt-card-head-sm', !footer && 'pb-[calc(var(--sheet-y,0px)+max(var(--pad-card-sm),env(safe-area-inset-bottom)))]')}>
         <HeadingLevel level={3}>{children}</HeadingLevel>
       </div>
       {footer && <footer className="shrink-0 flex flex-wrap items-center justify-end gap-tight px-card-sm pt-stack pb-[max(12px,env(safe-area-inset-bottom))] border-t border-line">{footer}</footer>}
@@ -1075,8 +1168,9 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
     return () => { el?.removeEventListener('input', mark); el?.removeEventListener(EDIT_EVENT, mark); };
   }, [open, mounted]);
   const requestClose = async () => {
-    if (guardDiscard && touched.current && !(await confirmAction({ title: 'Descartar o que foi preenchido?', detail: 'As informações deste formulário ainda não foram salvas e serão perdidas.', confirmLabel: 'Descartar', cancelLabel: 'Continuar editando' }))) return;
+    if (guardDiscard && touched.current && !(await confirmAction({ title: 'Descartar o que foi preenchido?', detail: 'As informações deste formulário ainda não foram salvas e serão perdidas.', confirmLabel: 'Descartar', cancelLabel: 'Continuar editando' }))) return false;
     closeRef.current();
+    return true;
   };
   // Foco (mesma regra do Sheet): ao abrir entra no diálogo — campo com autoFocus já está dentro e fica —, o Tab circula
   // só dentro do diálogo do topo, e ao fechar volta para quem abriu (sem isso o leitor de tela ficava na página de trás
@@ -1111,7 +1205,8 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
     };
   }, [open]);
   const mobile = useIsMobile();
-  const drag = useSheetDrag(box, (dy, vy) => { if (dy > 64 || vy > 0.5) void requestClose(); });
+  // celular: o mesmo gesto do Sheet, com uma parada só; arrastar para baixo fecha (ou volta, se o descarte for negado)
+  const drag = useSheetGesture({ box, detents: [0], index: 0, onIndex: () => {}, onDismiss: requestClose, active: mobile && mounted });
   if (!mounted) return null;
   const c = last.current;
   // portal no body: o modal não fica preso a painéis com transform/z-index de quem o abriu.
@@ -1121,7 +1216,7 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   // estourava metade para cima, fora da rolagem — o modal abria no meio do formulário, sem como subir até o título.
   return createPortal(
     <div className={cx('fixed inset-0 z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !(guardDiscard && touched.current) && onClose()}>
-      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] transition-[translate] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]', closing ? 'anim-pop-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-pop max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
+      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] max-md:transition-[transform] max-md:duration-[450ms] max-md:ease-[cubic-bezier(0.32,0.72,0,1)]', closing ? 'anim-pop-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-pop max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
         <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
           <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />
           <div className="flex items-start gap-stack mb-card-head"><div className="mr-auto flex flex-col gap-3">{c.icon}<h2 className="text-h2 font-semibold">{c.title}</h2></div><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={() => void requestClose()}><Icon name="fechar" /></IconButton></div>

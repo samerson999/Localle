@@ -259,7 +259,9 @@ function SidebarGroupLabel({ children }: { children: ReactNode }) {
 
 export const SidebarMenu = forwardRef<HTMLDivElement, { children: ReactNode; pill?: { top: number; height: number } | null }>(function SidebarMenu({ children, pill }, ref) {
   return (
-    <nav ref={ref} data-slot="sidebar-menu" aria-label="Módulos" className="relative flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-3">
+    // recolhida, a barra de rolagem some (a lista continua rolando): ela não escala com o zoom e, nos 72px, comia a
+    // largura dos itens e cortava os ícones
+    <nav ref={ref} data-slot="sidebar-menu" aria-label="Módulos" className="relative flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-3 group-data-[collapsible=icon]:[scrollbar-width:none] group-data-[collapsible=icon]:[&::-webkit-scrollbar]:hidden">
       {/* item ativo: usa a cor da revenda (--brand-soft/--brand-link), com fallback automático pra grafite
          já calculado em lib/brand.ts (brandVars) quando a cor da revenda é vermelha, de baixo contraste,
          ou lembra alerta — não precisa de lógica própria aqui, só consumir as variáveis derivadas. */}
