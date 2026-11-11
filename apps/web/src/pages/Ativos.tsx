@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, assetKm, useStoreData } from '../lib/store';
 import { atualizarIconeAtivo, atualizarIdentificacaoAtivo, criarMarca, criarModelo, renomearNoCatalogo, salvarTipoAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, reativarMotorista, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
-import { backendIdOf } from '../lib/localleMap';
-import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem, FilterSheet } from '../components/ui';
+import { backendIdOf, nomeDoAtivo } from '../lib/localleMap';
+import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem, FilterSheet, Avatar } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { couplingsOf, currentCoupling, compositionOf, compositionName, compositionError, setComposition, tractorHistory, TRAILER_TYPE, MAX_ITEMS, type TrailerType } from '@localle/shared/couplings';
 import { Num, StatusDot, AssetName, IdChip, KpiTile, type StatusKind } from '../components/story';
@@ -72,7 +72,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
   const t = q.trim().toLowerCase();
   const driver = (id: string) => s.drivers.find((d: any) => d.id === id)?.name || '';
   const tipos = tiposDoCliente((s.catalogoAtivos || CATALOGO_VAZIO).tipos);
-  const list = all.filter((a: any) => (!cat || categoryOf(a) === cat) && (!noTracker || !a.tracker) && (!docDue || docAlert(a)) && (!t || [a.name, a.plate, a.brand, a.model, driver(a.driverId), a.tracker?.imei].some((x) => (x || '').toLowerCase().includes(t))));
+  const list = all.filter((a: any) => (!cat || categoryOf(a) === cat) && (!noTracker || !a.tracker) && (!docDue || docAlert(a)) && (!t || [a.name, a.plate, a.apelido, a.brand, a.model, driver(a.driverId), a.tracker?.imei].some((x) => (x || '').toLowerCase().includes(t))));
   const group = (a: any) => (a.groupIds || []).map((g: string) => s.groups.find((x: any) => x.id === g)?.name).filter(Boolean).join(' · ');
   return (
     <>
@@ -102,6 +102,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
           <Button variant="ghost" size="sm" onClick={() => downloadAssets(s)}><Icon name="exportar" size={16} />Exportar</Button>
         </div>
         <Table minWidth={1160} onRow={(i) => onOpen(list[i])}
+          sort={{ 1: (i) => list[i].name, 2: (i) => nomeDoTipo(list[i], tipos), 3: (i) => `${list[i].brand || ''} ${list[i].model || ''}`.trim(), 5: (i) => (list[i].meter === 'km' ? assetKm(s, list[i].id) : null) }}
           emptyState={all.length ? <EmptyState illustration="ilu-busca-veiculo" layout="row" title="Nenhum ativo com esses filtros" detail="Tente outra busca ou limpe os filtros." action={<Button variant="dark" size="sm" onClick={() => { setCat(''); setNoTracker(false); setDocDue(false); setQ(''); }}>Limpar filtros</Button>} />
             : <EmptyState illustration="ilu-onboarding-frota" title="Nenhum ativo cadastrado" detail="Cadastre o primeiro ativo ou importe a sua frota por planilha." />}
           card={(i) => { const a = list[i]; const d = worstDoc(a); return (
@@ -120,7 +121,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
             const d = worstDoc(a);
             return [
               <AssetThumb asset={a} className="w-12 h-8" />,
-              <span className="flex flex-col items-start gap-hair"><button type="button" onClick={(e) => { e.stopPropagation(); onOpen(a); }} className="text-left rounded-chip hover:ring-1 hover:ring-line-hover"><AssetName name={a.name} /></button>{lifeOf(a) !== 'ativo' && <span className="block text-caption text-ink-2">{LIFECYCLE[lifeOf(a)].label}</span>}</span>,
+              <span className="flex flex-col items-start gap-hair"><button type="button" onClick={(e) => { e.stopPropagation(); onOpen(a); }} className="text-left rounded-chip hover:ring-1 hover:ring-line-hover"><AssetName name={a.name} /></button>{a.plate && a.apelido && <span className="block text-caption text-ink-2">{a.apelido}</span>}{lifeOf(a) !== 'ativo' && <span className="block text-caption text-ink-2">{LIFECYCLE[lifeOf(a)].label}</span>}</span>,
               <span className="text-ink-2 whitespace-nowrap">{nomeDoTipo(a, tipos)}</span>,
               <span>{a.brand} {a.model}{a.year && <span className="text-ink-2 num"> · {a.year}</span>}</span>,
               <span className="text-ink-2">{group(a) || '—'}</span>,
@@ -261,7 +262,7 @@ function AssetForm({ a, setA }: any) {
       if (!isRealAsset(a)) { id = await criarAtivo(plate, serial); if (a.id) s.remove('assets', a.id); }
       else if (orig && ((orig.plate || '') !== plate || (orig.serial || '') !== serial)) await atualizarIdentificacaoAtivo(id, plate, serial);
       if ((a.icon || '') !== (orig?.icon || '') || (a.icon && id !== a.id)) await atualizarIconeAtivo(id, a.icon || '');
-      const saved = s.upsert('assets', { ...a, driverId: orig ? orig.driverId : '', id, plate, serial, name: a.name.trim() || plate || serial, fuelGoal: +a.fuelGoal || 0, fuelBudget: +a.fuelBudget || 0, kmOffset: +a.kmOffset || 0 });
+      const saved = s.upsert('assets', { ...a, driverId: orig ? orig.driverId : '', id, plate, serial, apelido: (a.apelido || '').trim(), name: nomeDoAtivo(plate, a.apelido, serial), fuelGoal: +a.fuelGoal || 0, fuelBudget: +a.fuelBudget || 0, kmOffset: +a.kmOffset || 0 });
       if (isRealAsset(saved)) await definirGruposDoAtivo(saved.id, a.groupIds || []);
       if ((a.driverId || '') !== (orig?.driverId || '')) { if (isRealAsset(saved)) definirMotoristaDoAtivo(saved.id, a.driverId).catch((e: any) => toast('Motorista não gravado: ' + (e.message || e), { tone: 'crit' })); else setDriver(saved.id, a.driverId, 'escala'); }
       if (newLink) {
@@ -333,6 +334,7 @@ function AssetForm({ a, setA }: any) {
                     <Field label="Chassi"><Input className="font-mono uppercase" maxLength={17} value={a.chassi || ''} onChange={(e) => set('chassi', e.target.value.toUpperCase())} /></Field>
                     <Field label="Renavam"><Input className="font-mono" inputMode="numeric" maxLength={11} value={a.renavam || ''} onChange={(e) => set('renavam', e.target.value.replace(/\D/g, ''))} /></Field>
                     <Field label="Código interno / frota"><Input maxLength={60} value={a.serial || ''} onChange={(e) => set('serial', e.target.value)} /></Field>
+                    <CampoUf a={a} set={set} />
                   </div>
                   {msg && <p role="status" className="text-small text-ink-2 bg-card-2 border border-line rounded-ctl p-stack">{msg}</p>}
                 </>
@@ -342,7 +344,8 @@ function AssetForm({ a, setA }: any) {
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
                     <Field label={a.kind === 'implemento' ? 'Placa' : 'Placa (se tiver)'}><Input mask="placa" className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>
                     {a.kind === 'implemento' && <><Field label="Chassi"><Input className="font-mono uppercase" maxLength={17} value={a.chassi || ''} onChange={(e) => set('chassi', e.target.value.toUpperCase())} /></Field>
-                      <Field label="Renavam"><Input className="font-mono" inputMode="numeric" maxLength={11} value={a.renavam || ''} onChange={(e) => set('renavam', e.target.value.replace(/\D/g, ''))} /></Field></>}
+                      <Field label="Renavam"><Input className="font-mono" inputMode="numeric" maxLength={11} value={a.renavam || ''} onChange={(e) => set('renavam', e.target.value.replace(/\D/g, ''))} /></Field>
+                      <CampoUf a={a} set={set} /></>}
                     <MarcaModelo a={a} setA={setA} rotulo="Fabricante" />
                     <Field label="Ano"><Input mask="ano" value={a.year} onChange={(e) => set('year', e.target.value)} /></Field>
                     <Field label={a.kind === 'implemento' ? 'Código interno / frota' : 'Código interno ou nº de série'}><Input maxLength={60} value={a.serial || ''} onChange={(e) => set('serial', e.target.value)} /></Field>
@@ -350,7 +353,8 @@ function AssetForm({ a, setA }: any) {
                   </div>
                 </>
               )}
-              <Field label="Apelido / identificação no mapa"><Input value={a.name} onChange={(e) => set('name', e.target.value)} placeholder={isV ? 'Ex.: placa ou nome do veículo' : 'Ex.: Caixa fria CF-08'} /></Field>
+              <Field label="Apelido (opcional)" hint={a.plate?.trim() ? 'A placa continua sendo a identificação do ativo; o apelido aparece junto dela.' : 'Sem placa, o apelido identifica o ativo no mapa e nas listas.'}>
+                <Input value={a.apelido ?? ''} onChange={(e) => set('apelido', e.target.value)} placeholder={isV ? 'Ex.: Caminhão do Zé' : 'Ex.: Caixa fria CF-08'} /></Field>
               <div className="flex flex-col gap-2"><span className="text-small font-semibold">Grupos</span><div className="flex flex-wrap gap-4">{s.groups.map((g: any) => <Check key={g.id} label={g.name} checked={a.groupIds.includes(g.id)} onChange={(v) => set('groupIds', v ? [...a.groupIds, g.id] : a.groupIds.filter((x: string) => x !== g.id))} />)}</div></div>
             </div>
             <div className="flex-[1_1_280px] max-w-[340px] flex flex-col gap-grid">
@@ -384,11 +388,13 @@ function AssetForm({ a, setA }: any) {
                 <span className="text-small font-semibold">Origem da {a.meter === 'horimetro' ? 'leitura do horímetro' : 'quilometragem'}</span>
                 <span className="text-small text-ink-2">Alimenta os gatilhos de manutenção, metas de combustível e relatórios.</span>
                 <div className="grid md:grid-cols-3 gap-2">
-                  {(a.kind === 'implemento' ? [['engate', 'Engates', 'Soma o km dos cavalos enquanto ela esteve engatada'], ['rastreador', 'Rastreador próprio', 'Quando a carreta tem rastreador']] : [['rastreador', 'Rastreador', 'Odômetro GPS/CAN em tempo real'], ['manual', 'Lançamentos', 'Abastecimentos, checklists e OS'], ['mescla', 'Mescla', 'Rastreador corrigido pelos lançamentos']]).map(([k, l, d]) => (
+                  {(a.kind === 'implemento' ? [['engate', 'Engates', 'Soma o km dos cavalos enquanto ela esteve engatada'], ['rastreador', 'Rastreador próprio', 'Quando a carreta tem rastreador']] : [['rastreador', 'Rastreador', a.meter === 'horimetro' ? 'Horímetro do rastreador (ignição/CAN) em tempo real' : 'Odômetro GPS/CAN em tempo real'], ['manual', 'Lançamentos', 'Abastecimentos, checklists e OS'], ['mescla', 'Mescla', 'Rastreador corrigido pelos lançamentos']]).map(([k, l, d]) => (
                     <ChoiceCard key={k} checked={a.kmSource === k} onSelect={() => set('kmSource', k)} title={l} description={d} />
                   ))}
                 </div>
-                {a.kmSource === 'mescla' && <Field label="Ajuste do odômetro do rastreador (km)" hint="Diferença entre o painel do veículo e o rastreador. Na mescla, vale o maior entre rastreador ajustado e último lançamento." className="max-w-xs"><Input type="number" min={-9999999} value={a.kmOffset} onChange={(e) => set('kmOffset', e.target.value)} /></Field>}
+                {/* o mesmo kmOffset serve aos dois medidores: em assetKm (shared/km.ts) ele soma à leitura do rastreador, que é o horímetro quando meter = horimetro */}
+                {a.kmSource === 'mescla' && <Field label={a.meter === 'horimetro' ? 'Ajuste do horímetro do rastreador (h)' : 'Ajuste do odômetro do rastreador (km)'} className="max-w-xs"
+                  hint={a.meter === 'horimetro' ? 'Diferença entre o horímetro do painel da máquina e o do rastreador. Na mescla, vale o maior entre rastreador ajustado e último lançamento.' : 'Diferença entre o painel do veículo e o rastreador. Na mescla, vale o maior entre rastreador ajustado e último lançamento.'}><Input type="number" min={-9999999} value={a.kmOffset} onChange={(e) => set('kmOffset', e.target.value)} /></Field>}
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-field">
@@ -415,7 +421,9 @@ function AssetForm({ a, setA }: any) {
               ) : meus === null ? (
                 erroLista ? <p role="alert" className="text-small text-crit-ink">Não foi possível carregar os rastreadores: {erroLista}</p> : <p className="text-small text-ink-2">Carregando rastreadores…</p>
               ) : livres.length ? (
-                <Field label="Rastreador disponível"><Select value={rid} onChange={(e) => setRid(e.target.value)} options={[{ value: '', label: 'Sem rastreador' }, ...livres.map((r) => ({ value: r.id, label: `${r.imei} · ${r.modelo || 'modelo não informado'}` }))]} /></Field>
+                // busca por qualquer trecho do IMEI (ex.: só os últimos dígitos, que é o que fica legível na etiqueta) ou do modelo; o X limpa = sem rastreador
+                <Field label="Rastreador disponível" hint="Digite qualquer parte do IMEI, como os últimos dígitos, ou o modelo."><SearchSelect aria-label="Rastreador disponível" value={rid} onChange={setRid} placeholder="Sem rastreador · buscar IMEI ou modelo"
+                  emptyLabel="Nenhum rastreador disponível com esse número" options={livres.map((r) => ({ value: r.id, label: r.imei, sub: r.modelo || 'Modelo não informado' }))} /></Field>
               ) : (
                 <p className="text-small text-ink-2">Nenhum rastreador disponível. Os rastreadores são vinculados à sua conta pela Localle; fale com ela para incluir um.</p>
               )}
@@ -694,7 +702,7 @@ function Composicao({ tractorId }: { tractorId: string }) {
         {items.map((id, i) => (
           <li key={i} className="flex items-end gap-2">
             <span className="num text-ink-2 w-5 pb-stack">{i + 1}</span>
-            <div className="flex-1"><Select aria-label={`Implemento ${i + 1}`} value={id} onChange={(e) => setItems(items.map((x, j) => (j === i ? e.target.value : x)))} options={[{ value: '', label: 'Escolha o implemento' }, ...impl.map((x: any) => ({ value: x.id, label: label(x) }))]} /></div>
+            <div className="flex-1"><SearchSelect aria-label={`Implemento ${i + 1}`} value={id} onChange={(v) => setItems(items.map((x, j) => (j === i ? v : x)))} placeholder="Buscar placa ou nome do implemento" options={impl.map((x: any) => ({ value: x.id, label: label(x) }))} /></div>
             <TextButton tone="danger" className="pb-stack" onClick={() => setItems(items.filter((_, j) => j !== i))}>Remover</TextButton>
           </li>
         ))}
@@ -748,7 +756,7 @@ function GrupoForm({ g, onClose }: { g: { id?: string; name: string; assetIds: s
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const termo = q.trim().toLowerCase();
-  const visiveis = assets.filter((a: any) => !termo || `${a.name} ${a.plate || ''}`.toLowerCase().includes(termo));
+  const visiveis = assets.filter((a: any) => !termo || `${a.name} ${a.plate || ''} ${a.apelido || ''}`.toLowerCase().includes(termo));
   const todos = visiveis.length > 0 && visiveis.every((a: any) => sel.includes(a.id));
   const salvar = async () => {
     setBusy(true);
@@ -777,7 +785,7 @@ function GrupoForm({ g, onClose }: { g: { id?: string; name: string; assetIds: s
             <Check label={todos ? 'Desmarcar os listados' : 'Marcar os listados'} checked={todos} indeterminate={!todos && visiveis.some((a: any) => sel.includes(a.id))}
               onChange={(v) => setSel(v ? [...new Set([...sel, ...visiveis.map((a: any) => a.id)])] : sel.filter((id) => !visiveis.some((a: any) => a.id === id)))} />
             <div className="grid sm:grid-cols-2 gap-tight max-h-[320px] overflow-y-auto border border-line rounded-ctl p-tight">
-              {visiveis.map((a: any) => <Check key={a.id} label={a.name} description={a.plate && a.plate !== a.name ? a.plate : undefined} checked={sel.includes(a.id)} onChange={(v) => setSel(v ? [...sel, a.id] : sel.filter((x) => x !== a.id))} />)}
+              {visiveis.map((a: any) => <Check key={a.id} label={a.name} description={a.plate && a.apelido ? a.apelido : undefined} checked={sel.includes(a.id)} onChange={(v) => setSel(v ? [...sel, a.id] : sel.filter((x) => x !== a.id))} />)}
               {visiveis.length === 0 && <p className="text-small text-ink-2">Nenhum ativo encontrado.</p>}
             </div>
           </>}
@@ -791,6 +799,12 @@ function GrupoForm({ g, onClose }: { g: { id?: string; name: string; assetIds: s
 // Marca e modelo escolhidos na lista do cliente (apps/api/src/catalogo-ativos); "cadastrar novo" só quando não acha,
 // e antes de criar mostra o que já existe parecido ("13190" × "13.190"). O ativo grava o modelo (a marca vem dele).
 const NOVO = '__novo__:';
+
+// UF de registro do veículo (CRLV): IPVA, licenciamento e taxas mudam por estado
+const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
+function CampoUf({ a, set }: { a: any; set: (k: string, v: any) => void }) {
+  return <Field label="Estado (UF) de registro"><Select value={a.uf || ''} onChange={(e) => set('uf', e.target.value)} options={[{ value: '', label: '—' }, ...UFS.map((u) => ({ value: u, label: u }))]} /></Field>;
+}
 function MarcaModelo({ a, setA, rotulo, classes = ['', ''] }: { a: any; setA: (a: any) => void; rotulo: string; classes?: string[] }) {
   const c: CatalogoAtivos = useStore((s) => s.catalogoAtivos) || CATALOGO_VAZIO;
   const marcaId = a.marcaId || marcaModeloDoAtivo(a.modeloId, c)?.marcaId || '';
@@ -964,7 +978,7 @@ function Drivers() {
     <>
       <DriverConflicts />
       <Card title="Motoristas" icon="usuario" actions={<Button onClick={() => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' })} className="max-md:hidden"><Icon name="mais" size={16} />Novo motorista</Button>}>
-        <Table head={['Nome', 'CNH', 'Categoria', 'Validade da CNH', 'Exame toxicológico', 'Telefone', 'Veículo atual', '']} rows={drivers.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="num">{x.cnh}</span>, x.cnhCat, x.cnhDue ? <DocStatus d={{ due: x.cnhDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>, /^[CDE]/.test(x.cnhCat) ? (x.toxDue ? <DocStatus d={{ due: x.toxDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>) : <span className="text-ink-3">não exigido</span>, <span className="num">{x.phone}</span>, <AssetName name={assets.find((a: any) => a.driverId === x.id)?.name} />, <div className="flex gap-3"><TextButton onClick={() => setD({ ...x })}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Desativar o motorista ${x.name}?`, detail: 'Ele sai das telas e seletores. Viagens, marcações e eventos antigos continuam com o nome dele, e dá para reativar depois.' })) { try { await desativarMotorista(x.id); toast(`Motorista ${x.name} desativado.`); } catch (e: any) { toast('Não foi possível desativar: ' + (e.message || e), { tone: 'crit' }); } } }}>Desativar</TextButton></div>])} />
+        <Table head={['Nome', 'CNH', 'Categoria', 'Validade da CNH', 'Exame toxicológico', 'Telefone', 'Veículo atual', '']} rows={drivers.map((x: any) => [<span className="flex items-center gap-3"><Avatar name={x.name} size="sm" /><span className="font-medium">{x.name}</span></span>, <span className="num">{x.cnh}</span>, x.cnhCat, x.cnhDue ? <DocStatus d={{ due: x.cnhDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>, /^[CDE]/.test(x.cnhCat) ? (x.toxDue ? <DocStatus d={{ due: x.toxDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>) : <span className="text-ink-3">não exigido</span>, <span className="num">{x.phone}</span>, <AssetName name={assets.find((a: any) => a.driverId === x.id)?.name} />, <div className="flex gap-3"><TextButton onClick={() => setD({ ...x })}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Desativar o motorista ${x.name}?`, detail: 'Ele sai das telas e seletores. Viagens, marcações e eventos antigos continuam com o nome dele, e dá para reativar depois.' })) { try { await desativarMotorista(x.id); toast(`Motorista ${x.name} desativado.`); } catch (e: any) { toast('Não foi possível desativar: ' + (e.message || e), { tone: 'crit' }); } } }}>Desativar</TextButton></div>])} />
       </Card>
       {inativos.length > 0 && <Card title="Motoristas desativados" icon="usuario">
         <Table dense head={['Nome', 'CNH', '']} align={['left', 'left', 'right']} rows={inativos.map((x: any) => [<span className="font-medium">{x.name}</span>, <span className="num">{x.cnh || '—'}</span>,

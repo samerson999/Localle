@@ -94,6 +94,17 @@ describe('ficha do ativo (assets.dados)', () => {
     expect(ativoDaApi(row(), undefined)).toMatchObject({ id: 'lc_' + U, name: 'ABC1D23', kind: 'veiculo', groupIds: [], operationId: '' });
   });
 
+  it('apelido da ficha não substitui a placa: name é a placa, apelido fica à parte e volta para a ficha', () => {
+    const a = ativoDaApi(row({ dados: { name: 'Caminhão do Zé' } }), undefined);
+    expect(a).toMatchObject({ name: 'ABC1D23', apelido: 'Caminhão do Zé', plate: 'ABC1D23' });
+    expect(fichaDoAtivo(a).name).toBe('Caminhão do Zé');
+    expect(ativoDaApi(row({ dados: { name: 'ABC1D23' } }), undefined).apelido).toBe('');
+  });
+
+  it('sem placa, o apelido da ficha é o nome exibido', () => {
+    expect(ativoDaApi(row({ plate: null, identificador: 'TR-01', rotulo: 'TR-01', dados: { name: 'Trator de esteira' } }), undefined)).toMatchObject({ name: 'Trator de esteira', apelido: 'Trator de esteira' });
+  });
+
   it('ativo sem placa: nome vem do identificador; placa vazia e identificador vira o código interno', () => {
     expect(ativoDaApi(row({ plate: null, identificador: 'RETRO-01', rotulo: 'RETRO-01' }), undefined)).toMatchObject({ name: 'RETRO-01', plate: '', serial: 'RETRO-01' });
   });

@@ -16,13 +16,23 @@ export interface CurrentRow {
   telemetria?: Telemetria;
 }
 
+// Identificação do ativo (pedido do usuário, 11/11/2026): a placa, quando existe, é sempre a primeira forma de
+// identificação — o apelido nunca a substitui. Sem placa (linha amarela, equipamento), vale o apelido e, sem ele, o
+// código interno/nº de série. `name` é esse nome de exibição; o apelido digitado fica em `apelido`.
+export const nomeDoAtivo = (plate?: string | null, apelido?: string | null, reserva?: string | null) =>
+  plate?.trim() || apelido?.trim() || reserva?.trim() || '';
+/** Apelido de verdade: um `name` antigo que era só a placa ou o código não conta como apelido. */
+export const apelidoDe = (name: unknown, ...identificacoes: (string | null | undefined)[]) =>
+  typeof name === 'string' && name.trim() && !identificacoes.includes(name) ? name.trim() : '';
+
 export function toAsset(row: CurrentRow, prev: any, liveGroupId: string) {
+  const apelido = prev?.apelido ?? apelidoDe(prev?.name, prev?.plate, prev?.serial, row.plate, row.rotulo);
   return {
     kind: 'veiculo', meter: 'km', kmSource: 'rastreador', kmOffset: 0, customFields: [], active: true, photo: '', journeySource: 'teclado', fuelBudget: 0, fuelGoal: 0, specs: {},
     ...prev,
     id: assetIdFor(row.assetId),
-    // apelido do cadastro fica; nome que era só a placa (ou o identificador) acompanha o rótulo
-    name: prev?.name && prev.name !== prev.plate && prev.name !== prev.serial ? prev.name : row.rotulo ?? row.plate ?? '',
+    apelido,
+    name: nomeDoAtivo(row.plate, apelido, row.rotulo),
     plate: row.plate ?? '',
     // ícone ilustrado é do cadastro na API; resposta sem o campo (API antiga) mantém o do navegador
     icon: row.icone === undefined ? prev?.icon : row.icone || '',

@@ -1,4 +1,4 @@
-import { assetIdFor, backendIdOf } from './localleMap';
+import { apelidoDe, assetIdFor, backendIdOf, nomeDoAtivo } from './localleMap';
 import { CATALOGO_VAZIO, marcaModeloDoAtivo, type CatalogoAtivos } from './catalogoAtivos';
 
 // Mapeadores puros API ↔ formato do store para os módulos que saíram do navegador (motoristas, grupos,
@@ -181,17 +181,19 @@ export function tripToViagemBody(t: any) {
 // O que do cadastro do ativo vai para a API. Fica de fora: id/placa/ícone/motorista (colunas próprias), grupos
 // (vínculo no grupo), operação (`operacao_id`), rastreador (instalação), foto e arquivo dos documentos (sem
 // armazenamento de arquivo na API ainda: continuam no navegador).
-export const FICHA_CAMPOS = ['kind', 'category', 'tipo', 'name', 'brand', 'model', 'year', 'serial', 'chassi', 'renavam', 'specs', 'customFields', 'meter', 'kmSource', 'kmOffset', 'initialKm',
+export const FICHA_CAMPOS = ['kind', 'category', 'tipo', 'name', 'brand', 'model', 'year', 'serial', 'chassi', 'renavam', 'uf', 'specs', 'customFields', 'meter', 'kmSource', 'kmOffset', 'initialKm',
   'fuelGoal', 'fuelBudget', 'journeySource', 'trailerType', 'tireLayout', 'can', 'active', 'lifecycle', 'documents', 'odometerCheckDone', 'installation', 'kmCalculated'] as const;
 
 export function fichaDoAtivo(a: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of FICHA_CAMPOS) if (a[k] !== undefined) out[k] = a[k];
+  // `name` na ficha guarda o apelido digitado (é o que ativoDaApi lê de volta), não o nome de exibição com a placa
+  if (a.apelido !== undefined) out.name = a.apelido;
   if (Array.isArray(a.documents)) out.documents = a.documents.map(({ file: _f, ...d }: any) => d);
   return out;
 }
 /** Tem algo do cadastro além do que a API já sabe (para migrar o que estava só no navegador). */
-export const temFicha = (a: any) => !!(a && (a.brand || a.model || a.serial || (a.name && a.name !== a.plate) || Object.keys(a.specs || {}).length || (a.customFields || []).length
+export const temFicha = (a: any) => !!(a && (a.brand || a.model || a.serial || a.apelido || (a.name && a.name !== a.plate) || Object.keys(a.specs || {}).length || (a.customFields || []).length
   || (a.documents || []).length || +a.fuelGoal || +a.fuelBudget || a.lifecycle || (a.kind && a.kind !== 'veiculo')));
 
 const ATIVO_PADRAO = { kind: 'veiculo', meter: 'km', kmSource: 'rastreador', kmOffset: 0, customFields: [], active: true, photo: '', journeySource: 'teclado', fuelBudget: 0, fuelGoal: 0, specs: {}, groupIds: [], documents: [] };
@@ -216,8 +218,11 @@ export function ativoDaApi(row: any, prev: any, catalogo: CatalogoAtivos = CATAL
   const lifecycle = fora
     ? (atual === fora ? base.lifecycle : { status: fora, at: Date.parse(row.status_desde), note: '', history: base.lifecycle?.history || [] })
     : (atual === 'vendido' || atual === 'baixa' ? { status: 'ativo', at: Date.parse(row.status_desde), note: '', history: base.lifecycle?.history || [] } : base.lifecycle);
+  // ficha da API: o `name` dela é o apelido digitado; sem ficha, o apelido que o navegador já tinha
+  const apelido = dados ? apelidoDe(dados.name, row.plate, row.rotulo, row.identificador) : prev?.apelido ?? apelidoDe(prev?.name, prev?.plate, prev?.serial, row.plate, row.rotulo, row.identificador);
   return {
     ...base, id: assetIdFor(row.id), plate: row.plate || '', serial: row.identificador || '', icon: row.icone ?? base.icon ?? '',
+    apelido, name: nomeDoAtivo(row.plate, apelido, row.rotulo ?? row.identificador),
     // modelo da lista: marca e modelo vêm dela (renomear corrige em todos os ativos); sem modelo, fica o texto da ficha
     modeloId: row.modelo_id || '', ...pick(marcaModeloDoAtivo(row.modelo_id, catalogo), ['brand', 'model']),
     operationId: row.operacao_id || (dados ? '' : prev?.operationId || ''),

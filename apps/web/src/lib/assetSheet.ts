@@ -5,6 +5,7 @@ import { atualizarIdentificacaoAtivo, criarAtivo, criarMarca, criarModelo, defin
 import { CATALOGO_VAZIO, aplicarTipo, chaveCatalogo, mesmoNome, nomeDoTipo, parecidos, tiposDoCliente, type CatalogoAtivos, type OpcaoTipo } from './catalogoAtivos';
 import { lifeOf, setLifecycle } from './assetLifecycle';
 import { PNG_ICON_SUGGESTION } from './pngIcons';
+import { nomeDoAtivo } from './localleMap';
 import { auditEntry } from '@localle/shared/audit';
 
 // Planilha de ativos (Ativos › Importar/Exportar): cadastro em massa para quem chega com centenas de ativos.
@@ -35,7 +36,7 @@ export function exportRows(s: any): any[][] {
   const tipos = tiposDoCliente(catalogoDe(s).tipos);
   return [COLS as unknown as string[], ...s.assets.map((a: any) => [
     nomeDoTipo(a, tipos), a.plate || '', a.serial || '', a.brand || '', a.model || '', a.year || '', a.chassi || '', a.renavam || '',
-    MEDIDOR[a.meter] || '', SITUACAO_PLANILHA[lifeOf(a)] || 'Ativo', a.name && a.name !== a.plate && a.name !== a.serial ? a.name : '',
+    MEDIDOR[a.meter] || '', SITUACAO_PLANILHA[lifeOf(a)] || 'Ativo', a.apelido ?? (a.name && a.name !== a.plate && a.name !== a.serial ? a.name : ''),
     (a.groupIds || []).map(gname).filter(Boolean).join('; '),
     s.operations.find((o: any) => o.id === a.operationId)?.name || '',
     s.drivers.find((d: any) => d.id === a.driverId)?.cpf || '',
@@ -61,7 +62,7 @@ const INSTRUCOES: [Col, string, string][] = [
   ['Renavam', 'Não', '11 dígitos.'],
   ['Medidor de uso', 'Não', 'Horímetro, Quilometragem ou Sem medidor. Linha amarela usa horímetro; em branco, vale o padrão do tipo.'],
   ['Situação', 'Não', 'Ativo ou Inativo (parado temporariamente, mantém o rastreador). Venda e baixa só pela ficha do ativo.'],
-  ['Apelido', 'Não', 'Nome no mapa. Em branco, vale a placa ou o código interno.'],
+  ['Apelido', 'Não', 'Com placa, a placa continua sendo a identificação e o apelido aparece junto. Sem placa, o apelido é o nome no mapa; em branco, vale o código interno.'],
   ['Grupos', 'Não', 'Separe por ";". Grupo que não existe é criado.'],
   ['Operação', 'Não', 'Operação que não existe é criada.'],
   ['Motorista (CPF)', 'Não', 'CPF de um motorista já cadastrado.'],
@@ -149,7 +150,7 @@ export function planImport(rows: any[][], s: any): ImportPlan {
   }
   const get = (r: any[], c: Col) => (ix[c] >= 0 ? norm(r[ix[c]]) : '');
   const porPlaca = new Map<string, any>(), porCodigo = new Map<string, any>(), porNome = new Map<string, any>();
-  for (const a of s.assets) { if (a.plate) porPlaca.set(key(a.plate), a); if (a.serial) porCodigo.set(key(a.serial), a); if (a.name) porNome.set(key(a.name), a); }
+  for (const a of s.assets) { if (a.plate) porPlaca.set(key(a.plate), a); if (a.serial) porCodigo.set(key(a.serial), a); if (a.name) porNome.set(key(a.name), a); if (a.apelido) porNome.set(key(a.apelido), a); }
   const placas = new Set<string>(), codigos = new Set<string>(), newGroups = new Set<string>(), newOps = new Set<string>();
   const lines: ImportLine[] = [];
   rows.slice(1).forEach((r, i) => {
@@ -220,9 +221,8 @@ export function planImport(rows: any[][], s: any): ImportPlan {
     const imei = get(r, 'IMEI (só leitura)');
     if (imei && imei !== (ex?.tracker?.imei || '')) warnings.push('IMEI ignorado: o vínculo com rastreador é feito na ficha do ativo, com os dados da instalação.');
 
-    const name = apelido || (ex ? '' : plate || serial);
     const data: any = {
-      ...(plate && { plate }), ...(serial && { serial }), ...(name && { name }), ...(tipo && aplicarTipo(tipo)),
+      ...(plate && { plate }), ...(serial && { serial }), ...(apelido && { apelido }), name: nomeDoAtivo(plate || ex?.plate, apelido || ex?.apelido, serial || ex?.serial), ...(tipo && aplicarTipo(tipo)),
       ...(meter && { meter }), ...(!meter && !ex && kind && { meter: kind === 'veiculo' || kind === 'implemento' ? 'km' : kind === 'linha_amarela' ? 'horimetro' : 'nenhum' }),
       ...(year && { year }), ...(chassi && { chassi }), ...(renavam && { renavam }), ...(fuelGoal !== '' && { fuelGoal }), ...(fuelBudget !== '' && { fuelBudget }),
       // ativo novo já entra com o ícone do tipo (o cadastro manual exige foto ou ícone)

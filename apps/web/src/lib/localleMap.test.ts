@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventoToReplay, regraToRule, ruleToRegraBody, alertaIdOf, alertaToAlert, applyPosicao, cercaToFence, createSseParser, fenceToCercaBody, toAsset, toVehicle, type CurrentRow } from './localleMap';
+import { nomeDoAtivo, eventoToReplay, regraToRule, ruleToRegraBody, alertaIdOf, alertaToAlert, applyPosicao, cercaToFence, createSseParser, fenceToCercaBody, toAsset, toVehicle, type CurrentRow } from './localleMap';
 
 const row = (o: Partial<CurrentRow> = {}): CurrentRow => ({
   assetId: 'a1', plate: 'ABC1D23', fixTime: '2026-01-01T12:00:00.000Z', longitude: -34.88, latitude: -8.05,
@@ -32,6 +32,18 @@ describe('toAsset / toVehicle', () => {
     expect(toAsset(semPlaca, undefined, 'g')).toMatchObject({ name: 'RETRO-01', plate: '' });
     expect(toAsset(semPlaca, { name: 'RETRO-01', serial: 'RETRO-01' }, 'g').name).toBe('RETRO-01');
     expect(toAsset(semPlaca, { name: 'Retro do pátio' }, 'g').name).toBe('Retro do pátio');
+  });
+
+  it('com placa, a placa é o nome exibido e o apelido fica à parte (nunca a substitui)', () => {
+    expect(toAsset(row(), { name: 'Caminhão do Zé', plate: 'ABC1D23' }, 'g')).toMatchObject({ name: 'ABC1D23', apelido: 'Caminhão do Zé', plate: 'ABC1D23' });
+    expect(toAsset(row(), { apelido: 'Caminhão do Zé', name: 'ABC1D23' }, 'g')).toMatchObject({ name: 'ABC1D23', apelido: 'Caminhão do Zé' });
+    expect(toAsset(row(), { name: 'ABC1D23', plate: 'ABC1D23' }, 'g').apelido).toBe('');
+  });
+
+  it('nomeDoAtivo: placa, depois apelido, depois código', () => {
+    expect(nomeDoAtivo('ABC1D23', 'Apelido', 'COD-1')).toBe('ABC1D23');
+    expect(nomeDoAtivo('', 'Trator de esteira', 'COD-1')).toBe('Trator de esteira');
+    expect(nomeDoAtivo('  ', ' ', 'COD-1')).toBe('COD-1');
   });
 
   it('ícone ilustrado vem da API; null limpa; resposta sem o campo mantém o do navegador', () => {

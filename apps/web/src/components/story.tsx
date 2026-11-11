@@ -2,8 +2,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Skeleton, EmptyState, ErrorState, cx, IconButton, List, ListItem, DescList, DescRow, Card, CardHeader, CardFooter, Insight, Illustration, useHeadingLevel, HeadingLevel, Sheet, useIsMobile, usePresence } from './ui';
-import { Icon } from './icons';
-import { useCountUp } from '../lib/motion';
+import { Icon, type IconName } from './icons';
+import { NumeroRolante } from './NumeroRolante';
 import { isPlate } from '@localle/shared/utils';
 
 const fmt = (v: number, digits = 0) => v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -20,19 +20,22 @@ export type NumSize = 'display' | 'kpi' | 'lg' | 'body' | 'small';
 const NUM_SIZE: Record<NumSize, string> = { display: 'text-display !text-[clamp(36px,13cqi,var(--fs-display))] font-medium', kpi: 'text-kpi !text-[clamp(28px,11cqi,var(--fs-kpi))] font-medium', lg: 'text-h2 font-semibold', body: 'text-body', small: 'text-small' };
 // a mesma escala para textos que fazem papel de número (ex.: "1ª vida" num KpiTile)
 export const numSizeClass = (size: NumSize) => NUM_SIZE[size];
-export function Num({ value, unit, prefix, digits = 0, size, className = '', unitClass = '', count = false }: { value: number | null | undefined; unit?: string; prefix?: string; digits?: number; size?: NumSize; className?: string; unitClass?: string; count?: boolean }) {
-  const counted = useCountUp(count ? value : null);
-  const v = count ? counted : value;
+// count: número grande (kpi/display) rola como odômetro quando aparece e a cada mudança de valor (NumeroRolante; antes contava
+// de 0 só na primeira carga); count={false} desliga.
+export function Num({ value, unit, prefix, digits = 0, size, className = '', unitClass = '', count }: { value: number | null | undefined; unit?: string; prefix?: string; digits?: number; size?: NumSize; className?: string; unitClass?: string; count?: boolean }) {
+  const rola = count ?? (size === 'kpi' || size === 'display');
+  const v = value;
+  const txt = (t: string, inicio = 0) => (rola ? <NumeroRolante text={t} inicio={inicio} /> : t);
   if (v == null || !isFinite(v)) return <span className={cx('num', size && NUM_SIZE[size], className)}>—</span>;
   const glue = unit && unit !== '%' ? ' ' : '';
-  if (!size) return <span className={cx('num whitespace-nowrap', className)}>{prefix && <span className={cx('text-ink-3 font-normal', unitClass || 'text-[0.5em] tracking-normal')}>{prefix} </span>}{fmt(v, digits)}{unit && <span className={cx('text-ink-3 font-normal', unitClass || 'text-[0.5em] tracking-normal')}>{glue}{unit}</span>}</span>;
+  if (!size) return <span className={cx('num whitespace-nowrap', className)}>{prefix && <span className={cx('text-ink-3 font-normal', unitClass || 'text-[0.5em] tracking-normal')}>{prefix} </span>}{txt(fmt(v, digits))}{unit && <span className={cx('text-ink-3 font-normal', unitClass || 'text-[0.5em] tracking-normal')}>{glue}{unit}</span>}</span>;
   const big = size === 'display' || size === 'kpi' || size === 'lg';
   const [int, dec] = fmt(v, digits).split(',');
   const minor = 'text-[length:var(--num-minor)] tracking-normal';
   return (
     <span className={cx('num whitespace-nowrap', NUM_SIZE[size], className)}>
       {prefix && <span className={big ? cx(minor, 'mr-[0.15em]') : 'text-ink-2'}>{prefix}{big ? '' : ' '}</span>}
-      {int}{dec != null && (big && prefix ? <span className={minor}>,{dec}</span> : `,${dec}`)}
+      {txt(int)}{dec != null && (big && prefix ? <span className={minor}>{txt(',' + dec, int.length)}</span> : txt(`,${dec}`, int.length))}
       {unit && <span className={cx(big ? minor : 'text-ink-2', unitClass)}>{glue}{unit}</span>}
     </span>
   );
@@ -41,17 +44,73 @@ export function Num({ value, unit, prefix, digits = 0, size, className = '', uni
 // Placa e códigos (IMEI, OS, frota, contrato): chip cinza em mono com zero cortado.
 // Selecionada = aro escuro (a cor da revenda não marca seleção de conteúdo); desabilitada = apagada.
 type IdChipProps = { children: React.ReactNode; size?: 'sm' | 'md' | 'lg'; state?: 'default' | 'selected' | 'disabled'; className?: string; title?: string };
-const ID_SIZE = { sm: 'h-5 px-2 text-caption', md: 'h-6 px-2 text-small', lg: 'h-10 px-3 text-[22px] tracking-[0.03em]' };
+// Nunca passa da largura do contêiner: sm/md (tabela, lista) cortam com reticências e mostram o nome inteiro no title;
+// lg (cabeçalho de painel) quebra em linhas, porque ali o nome livre de linha amarela/equipamento ("TRATOR DE ESTEIRA")
+// é a identificação e não pode sumir pela metade.
+const ID_SIZE = { sm: 'h-5 px-2 text-caption whitespace-nowrap', md: 'h-6 px-2 text-small whitespace-nowrap', lg: 'min-h-10 py-1 px-3 text-[22px] leading-tight tracking-[0.03em] [overflow-wrap:anywhere]' };
 export function IdChip({ children, size = 'md', state = 'default', className = '', title }: IdChipProps) {
   return (
-    <span title={title} className={cx('inline-flex items-center rounded-chip font-mono font-semibold whitespace-nowrap tracking-[0.02em] align-middle', ID_SIZE[size],
+    <span title={title ?? (size !== 'lg' && typeof children === 'string' ? children : undefined)} className={cx('inline-flex items-center max-w-full rounded-chip font-mono font-semibold tracking-[0.02em] align-middle', ID_SIZE[size],
       state === 'disabled' ? 'bg-plate-off text-ink-3' : state === 'selected' ? 'bg-card text-plate-ink ring-[1.5px] ring-inset ring-[var(--plate-sel-line)]' : 'bg-plate text-plate-ink', className)}>
-      {children}
+      <span className={cx('min-w-0', size !== 'lg' && 'truncate')}>{children}</span>
     </span>
   );
 }
-export const Plate = ({ name, ...p }: Omit<IdChipProps, 'children'> & { name: string }) => <IdChip {...p}>{name || '—'}</IdChip>;
-// Nome de ativo: placa vira chip mono; nome livre ("Empilhadeira 02") fica em texto.
+// Placa de veículo no padrão Mercosul (Resolução Contran 780/2019; pedido do usuário em 11/11/2026, em todo o app): fundo
+// branco, borda preta, faixa azul no topo com "BRASIL" e a bandeira, caracteres pretos, proporção real de 40 × 13 cm. É um
+// objeto físico: não muda com o tema nem com a cor da revenda. Placa antiga (ABC-1234) também aparece neste desenho, sem
+// hífen. O que não tem formato de placa (IMEI, código) segue como IdChip.
+// Detalhes da placa real, do maior para o menor tamanho: faixa azul com o logo do Mercosul à esquerda, "BRASIL" ao centro e a
+// bandeira à direita; corpo branco com fundo de segurança ondulado, QR code e "BR" à esquerda (só no tamanho grande — nos
+// pequenos viram ruído); caracteres pretos em fonte condensada (a FE-Schrift oficial não é livre; Barlow Condensed é a
+// mais próxima do traço DIN); borda preta com leve relevo.
+const PLACA_ALTURA = { sm: 22, md: 28, lg: 44 } as const;
+const PLACA_FONTE = "'Barlow Condensed', 'DIN Condensed', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif";
+// QR fixo, só desenho (5×5 módulos com os três marcadores de canto simplificados)
+const QR = ['11101', '10111', '11010', '00111', '11101'];
+export function PlacaMercosul({ placa, size = 'md', state = 'default', className = '', title }: { placa: string; size?: IdChipProps['size']; state?: IdChipProps['state']; className?: string; title?: string }) {
+  const h = PLACA_ALTURA[size];
+  const grande = h >= 40;
+  const faixa = Math.max(5, Math.round(h * 0.25));
+  const icone = Math.max(3, Math.round(faixa * 0.66));
+  const lateral = Math.round(h * 0.12);
+  return (
+    <span title={title} className={cx('inline-flex flex-col shrink-0 overflow-hidden text-black align-middle select-none', state === 'disabled' && 'opacity-50',
+      state === 'selected' && 'ring-2 ring-offset-1 ring-[var(--plate-sel-line)]', className)}
+      style={{ height: h, width: Math.round(h * (40 / 13)), borderRadius: grande ? 6 : 3.5, border: `${grande ? 2 : 1.5}px solid #111`,
+        background: grande ? 'repeating-radial-gradient(ellipse 140% 60% at 50% 130%, #fff 0 3px, #F1F3F6 3px 4px)' : '#fff',
+        boxShadow: grande ? 'inset 0 0 0 1px #fff, 0 1px 2px rgba(0,0,0,.28)' : '0 0.5px 1px rgba(0,0,0,.25)' }}>
+      <span aria-hidden="true" className="relative flex items-center justify-center shrink-0" style={{ height: faixa, background: 'linear-gradient(#0A3EA8, #003399)' }}>
+        {/* logo do Mercosul: arco e as quatro estrelas do Cruzeiro do Sul, em branco */}
+        <svg viewBox="0 0 12 12" className="absolute top-1/2 -translate-y-1/2" style={{ left: lateral, height: icone }}>
+          <path d="M1.2 9.5C2.4 4.6 6.6 1.6 11 1.8" fill="none" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
+          <circle cx="7.6" cy="4.4" r="0.95" fill="#fff" /><circle cx="9.3" cy="6.6" r="0.8" fill="#fff" /><circle cx="6.9" cy="8.6" r="1" fill="#fff" /><circle cx="5.2" cy="6.4" r="0.7" fill="#fff" />
+        </svg>
+        {h >= 26 && <span className="font-semibold text-white leading-none" style={{ fontSize: Math.round(h * 0.17), letterSpacing: '0.16em', fontFamily: PLACA_FONTE }}>BRASIL</span>}
+        <svg viewBox="0 0 14 10" className="absolute top-1/2 -translate-y-1/2" style={{ right: lateral, height: icone }}>
+          <rect width="14" height="10" fill="#009B3A" /><path d="M7 1 13 5 7 9 1 5z" fill="#FEDF00" /><circle cx="7" cy="5" r="2.2" fill="#002776" />
+        </svg>
+      </span>
+      <span className="relative flex-1 flex items-center justify-center">
+        {grande && (
+          <span aria-hidden="true" className="absolute top-1/2 -translate-y-1/2 flex flex-col items-center gap-[2px]" style={{ left: Math.round(h * 0.1) }}>
+            <svg viewBox="0 0 5 5" width={Math.round(h * 0.2)} height={Math.round(h * 0.2)} shapeRendering="crispEdges">
+              {QR.flatMap((l, y) => [...l].map((c, x) => c === '1' ? <rect key={`${x}${y}`} x={x} y={y} width="1" height="1" fill="#111" /> : null))}
+            </svg>
+            <span className="font-bold leading-none" style={{ fontSize: Math.round(h * 0.16), fontFamily: PLACA_FONTE }}>BR</span>
+          </span>
+        )}
+        <span className="font-semibold leading-none uppercase whitespace-nowrap"
+          style={{ fontSize: Math.round(h * (grande ? 0.58 : 0.56)), letterSpacing: '0.05em', fontFamily: PLACA_FONTE, marginLeft: grande ? Math.round(h * 0.18) : 0, transform: 'translateY(0.04em)' }}>
+          {placa.replace(/[^a-z0-9]/gi, '')}
+        </span>
+      </span>
+    </span>
+  );
+}
+export const Plate = ({ name, ...p }: Omit<IdChipProps, 'children'> & { name: string }) =>
+  name && isPlate(name) ? <PlacaMercosul placa={name} {...p} /> : <IdChip {...p}>{name || '—'}</IdChip>;
+// Nome de ativo: placa vira placa Mercosul; nome livre ("Empilhadeira 02") fica em texto.
 export const AssetName = ({ name, size = 'sm', className = '' }: { name?: string | null; size?: IdChipProps['size']; className?: string }) =>
   name && isPlate(name) ? <Plate name={name} size={size} className={className} /> : <span className={cx('font-medium', className)}>{name || '—'}</span>;
 
@@ -66,7 +125,7 @@ export function DeltaChip({ value, unit = 'p.p.', digits = 1, suffix, good = 'up
   const ar = size === 'lg' ? 14 : 12;
   return (
     <span className={cx('inline-flex items-center font-medium whitespace-nowrap num', sz, tone)}>
-      {!flat && <svg aria-hidden="true" width={ar} height={ar} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">{up ? <path d="M6 10.5v-9M2 5.5l4-4 4 4" /> : <path d="M6 1.5v9M2 6.5l4 4 4-4" />}</svg>}
+      {!flat && <Icon name={up ? 'alta' : 'baixa'} size={ar} />}
       <span className="sr-only">{flat ? 'Estável' : `${up ? 'Alta' : 'Queda'} ${better ? '(melhor)' : '(pior)'} de`}</span>
       <span>{fmt(Math.abs(value), digits)}{unit === '%' ? '%' : unit ? ` ${unit}` : ''}</span>
       {suffix && <span className="font-normal opacity-80">{suffix}</span>}
@@ -126,7 +185,7 @@ export function Deadline({ kind, label, date, className = '' }: { kind: Deadline
   );
 }
 // Linha de prazo: ícone, o que vence e o detalhe, e o prazo à direita
-export function DeadlineRow({ icon, title, sub, kind, label, date, to }: { icon: string; title: React.ReactNode; sub?: React.ReactNode; kind: DeadlineKind; label: React.ReactNode; date?: React.ReactNode; to?: string }) {
+export function DeadlineRow({ icon, title, sub, kind, label, date, to }: { icon: IconName; title: React.ReactNode; sub?: React.ReactNode; kind: DeadlineKind; label: React.ReactNode; date?: React.ReactNode; to?: string }) {
   const inner = <>
     <Icon name={icon} size={22} className="text-ink-2 shrink-0" />
     <span className="flex flex-col min-w-0 mr-auto"><span className="text-body font-medium truncate" title={typeof title === 'string' ? title : undefined}>{title}</span>{sub && <span className="text-small text-ink-2 truncate">{sub}</span>}</span>
@@ -203,7 +262,7 @@ export function TipBand({ items }: { items: React.ReactNode[] }) {
 // ou `tips` (TipBand, cor da revenda — usar só quando o card pedir destaque maior que o rodapé padrão).
 // `title` opcional: quando a faixa de dica (tips) já conta a leitura, um card mais limpo (sem cabeçalho) pode
 // omitir título/ícone/período — ver "Ritmo do mês" em Combustivel.tsx.
-export function ChartCard({ title, icon, to, period, children, sentence, action, insight, insightTo, tips, state = 'ready', empty, onRetry, className = '', aside }: { title?: string; icon?: string; to?: string; period?: string; children: React.ReactNode; sentence?: React.ReactNode; action?: Action; insight?: React.ReactNode; insightTo?: string; tips?: React.ReactNode[]; state?: LoadState; empty?: { title: string; detail?: string }; onRetry?: () => void; className?: string; aside?: React.ReactNode }) {
+export function ChartCard({ title, icon, to, period, children, sentence, action, insight, insightTo, tips, state = 'ready', empty, onRetry, className = '', aside }: { title?: string; icon?: IconName; to?: string; period?: string; children: React.ReactNode; sentence?: React.ReactNode; action?: Action; insight?: React.ReactNode; insightTo?: string; tips?: React.ReactNode[]; state?: LoadState; empty?: { title: string; detail?: string }; onRetry?: () => void; className?: string; aside?: React.ReactNode }) {
   const ready = state !== 'loading' && state !== 'error' && state !== 'empty';
   const hasTips = ready && !!tips?.length;
   const foot = !ready || hasTips ? undefined : insight ? <Insight to={insightTo}>{insight}</Insight> : sentence ? <ChartFoot sentence={sentence} action={action} /> : undefined;
@@ -223,7 +282,7 @@ export function ChartCard({ title, icon, to, period, children, sentence, action,
 // à direita, o chip de variação com a comparação ("vs. set") ou, na situação crítica, o status; abaixo, o gráfico
 // (children) e, no rodapé, a leitura com o motivo da rota. A barra em destaque do gráfico é sempre azul de dado.
 export function KpiCard({ icon, title, to, value, prefix, unit, digits = 0, sub, delta, compare, status, children, insight, insightTo, state = 'ready', onRetry, empty, className = '' }: {
-  icon?: string; title: string; to?: string; value: number | null; prefix?: string; unit?: string; digits?: number; sub?: React.ReactNode;
+  icon?: IconName; title: string; to?: string; value: number | null; prefix?: string; unit?: string; digits?: number; sub?: React.ReactNode;
   delta?: { value: number | null; unit?: string; digits?: number; good?: 'up' | 'down' }; compare?: string;
   status?: { kind: StatusKind; label?: string; detail?: string }; children?: React.ReactNode; insight?: React.ReactNode; insightTo?: string;
   state?: LoadState; onRetry?: () => void; empty?: { title: string; detail?: string }; className?: string;
@@ -293,7 +352,7 @@ export function KpiHero({ title, period, value, unit, digits = 1, delta, sentenc
 }
 
 // Lista "Precisa de você": ícone linear sem fundo, título, contexto e chevron
-export interface NeedRow { id: string; icon: string; title: string; context?: React.ReactNode; to?: string; onClick?: () => void; tone?: 'crit' | 'warn' }
+export interface NeedRow { id: string; icon: IconName; title: string; context?: React.ReactNode; to?: string; onClick?: () => void; tone?: 'crit' | 'warn' }
 export function NeedsList({ items, empty = 'Nada pendente. Tudo em dia por aqui.', onNavigate }: { items: NeedRow[]; empty?: string; onNavigate?: () => void }) {
   if (!items.length) return <EmptyState icon="ok" title={empty} />;
   return (
@@ -401,7 +460,8 @@ export function PeriodButton({ label, compare, children }: { label: string; comp
   const btn = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open || mobile) return;
-    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    // o calendário do período personalizado abre em portal (fora de ref): clicar nele não fecha o painel
+    const h = (e: MouseEvent) => { const t = e.target as Element; if (!ref.current?.contains(t) && !t.closest?.('[role="dialog"]')) setOpen(false); };
     const k = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     document.addEventListener('mousedown', h); document.addEventListener('keydown', k);
     return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
@@ -417,7 +477,7 @@ export function PeriodButton({ label, compare, children }: { label: string; comp
         {compare && <span className="max-md:hidden text-ink-2 num truncate">vs {compare}</span>}
         <Icon name="abaixo" size={16} className="text-ink-3 shrink-0" />
       </button>
-      {open && !mobile && children && <div role="dialog" aria-label="Escolher período" className="absolute right-0 top-12 z-[600] bg-card border border-line rounded-pop p-4 shadow-pop anim-page min-w-[280px]">{children(close)}</div>}
+      {open && !mobile && children && <div role="dialog" aria-label="Escolher período" className="absolute right-0 top-12 z-[600] bg-card rounded-pop p-4 shadow-pop anim-page min-w-[280px]">{children(close)}</div>}
       {sheet.mounted && children && <Sheet label="Escolher período" title="Escolher período" onClose={() => { close(); btn.current?.focus(); }} closing={sheet.closing}>{children(close)}</Sheet>}
     </div>
   );

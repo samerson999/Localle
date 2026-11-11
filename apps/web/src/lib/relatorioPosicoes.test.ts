@@ -10,7 +10,7 @@ const percurso = (lat: number): Ponto[] => [
   [T0 + 2 * MIN, lat + 0.01, -34.9, 0, 0], [T0 + 12 * MIN, lat + 0.01, -34.9, 0, 0],
   [T0 + 13 * MIN, lat + 0.02, -34.9, 50, 1],
 ];
-const bloco = (id: string, plate: string, pts: Ponto[]): BlocoVeiculo => ({ a: { id, name: `Veículo ${plate}`, plate }, pts, n: pts.length, stats: routeStats(pts) });
+const bloco = (id: string, plate: string, pts: Ponto[]): BlocoVeiculo => ({ a: { id, name: plate, plate, apelido: `Veículo ${plate}` }, pts, n: pts.length, stats: routeStats(pts) });
 
 // Sprint de monitoramento 28/10/2026, bug 6: com a frota toda, as posições saíam misturadas entre veículos.
 describe('relatório de posições em blocos por veículo', () => {

@@ -13,7 +13,7 @@ export const rotuloIgnicao = (i: unknown) => (i === null || i === undefined ? 'N
 
 /** Ponto do percurso: [ts, lat, lng, km/h, ignição 0/1/null] (null = o rastreador não informa). */
 export type Ponto = [number, number, number, number, number | null];
-export interface BlocoVeiculo { a: { id: string; name: string; plate?: string }; pts: Ponto[]; n: number; stats: RouteStats }
+export interface BlocoVeiculo { a: { id: string; name: string; plate?: string; apelido?: string }; pts: Ponto[]; n: number; stats: RouteStats }
 
 /** Um bloco por veículo, ordenado pela placa (depois pelo nome); pontos de cada um em ordem cronológica. */
 export function blocosPorVeiculo<T extends BlocoVeiculo>(lista: T[]): T[] {
@@ -23,7 +23,8 @@ export function blocosPorVeiculo<T extends BlocoVeiculo>(lista: T[]): T[] {
     .map((b) => ({ ...b, pts: [...b.pts].sort((p, q) => p[0] - q[0]) }));
 }
 
-export const rotuloVeiculo = (a: BlocoVeiculo['a']) => (a.plate && a.plate !== a.name ? `${a.plate} · ${a.name}` : a.name || a.plate || '—');
+// placa primeiro; o apelido só acompanha
+export const rotuloVeiculo = (a: BlocoVeiculo['a']) => (a.plate ? (a.apelido ? `${a.plate} · ${a.apelido}` : a.plate) : a.name || '—');
 
 export const RESUMO_HEAD = ['Posições', 'Distância', 'Vel. máxima', 'Em movimento', 'Parado com ignição', 'Paradas (> 5 min)'];
 export const resumoLinha = ({ n, stats }: BlocoVeiculo) => [n, `${Math.round(stats.dist)} km`, `${Math.round(stats.vmax)} km/h`, hm(stats.moving), hmOuTraco(stats.idle), stats.stops.length];
@@ -54,10 +55,10 @@ export function secoesPdf(blocos: BlocoVeiculo[]): PdfSection[] {
 
 /** Excel: paradas de todos os veículos numa aba, com placa e veículo, na mesma ordem dos blocos. */
 export const PARADAS_PLANILHA_HEAD = ['Placa', 'Veículo', ...PARADAS_HEAD];
-export const paradasPlanilha = (blocos: BlocoVeiculo[]) => blocos.flatMap((b) => paradasLinhas(b).map((l) => [b.a.plate || '', b.a.name, ...l]));
+export const paradasPlanilha = (blocos: BlocoVeiculo[]) => blocos.flatMap((b) => paradasLinhas(b).map((l) => [b.a.plate || '', b.a.apelido || (b.a.plate ? '' : b.a.name), ...l]));
 export const RESUMO_PLANILHA_HEAD = ['Placa', 'Veículo', ...RESUMO_HEAD];
-export const resumoPlanilha = (blocos: BlocoVeiculo[]) => blocos.map((b) => [b.a.plate || '', b.a.name, ...resumoLinha(b)]);
+export const resumoPlanilha = (blocos: BlocoVeiculo[]) => blocos.map((b) => [b.a.plate || '', b.a.apelido || (b.a.plate ? '' : b.a.name), ...resumoLinha(b)]);
 
 /** Planilha (CSV/Excel): uma linha por posição com placa e veículo, blocos em sequência. */
 export const PLANILHA_HEAD = ['Placa', 'Veículo', ...POSICOES_HEAD];
-export const planilhaLinhas = (blocos: BlocoVeiculo[]) => blocos.flatMap((b) => posicoesLinhas(b).map((l) => [b.a.plate || '', b.a.name, ...l]));
+export const planilhaLinhas = (blocos: BlocoVeiculo[]) => blocos.flatMap((b) => posicoesLinhas(b).map((l) => [b.a.plate || '', b.a.apelido || (b.a.plate ? '' : b.a.name), ...l]));
