@@ -22,6 +22,7 @@ import { PainelModule } from './painel/painel.module';
 import { DbModule } from './db/db.module';
 import { GruposModule } from './grupos/grupos.module';
 import { OperacoesModule } from './operacoes/operacoes.module';
+import { AvatarModule } from './avatar/avatar.module';
 import { CatalogoAtivosModule } from './catalogo-ativos/catalogo-ativos.module';
 import { EmpresaModule } from './empresa/empresa.module';
 import { HealthController } from './health/health.controller';
@@ -86,6 +87,7 @@ import { ViagensModule } from './viagens/viagens.module';
     ConvitesModule,
     PainelModule,
     UsersModule,
+    AvatarModule,
   ],
   controllers: [HealthController],
   // AuthGuard global (achado #1 da auditoria de 23/10/2026) — fail-closed por padrão, ver auth/auth.guard.ts.
