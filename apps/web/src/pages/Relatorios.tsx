@@ -3,6 +3,8 @@ import { Card, Table, EmptyState, ErrorState, Stack, Grid, PageHeader } from '..
 import { listarRelatoriosGerados, useAdminQuery, type TipoRelatorio } from '../lib/localleApi';
 import { fmtDT, num } from '@localle/shared/utils';
 import { Icon, type IconName } from '../components/icons';
+import { useStore } from '../lib/store';
+import { paginaLiberada } from '../lib/paginas';
 import imgCerca from '../images/images-relatorios/cerca.png';
 import imgVelocidade from '../images/images-relatorios/velocidade.png';
 import imgPosicoes from '../images/images-relatorios/posições.png';
@@ -27,12 +29,13 @@ export default function Relatorios() {
   const hist = useAdminQuery(listarRelatoriosGerados);
   const lista = hist.data || [];
   const tipoDe = (k: TipoRelatorio) => TIPOS.find((t) => t.tipo === k);
+  const modules = useStore((s) => s.revenda.modules); // relatório desligado pela revenda some do hub
   return (
     <div>
       <PageHeader icon="relatorios" title="Relatórios" subtitle="Transforme os dados da sua frota em informações claras e acionáveis" />
       <Stack gap="grid">
         <Grid cols={4} equal>
-          {TIPOS.map((t) => (
+          {TIPOS.filter((t) => paginaLiberada(modules, t.path)).map((t) => (
             <button key={t.title} type="button" onClick={() => t.path && navigate(t.path)} className="text-left min-w-0">
               <Card title={t.title} icon={t.icon} className="h-full hover:bg-card-2 transition-colors"
                 footer={

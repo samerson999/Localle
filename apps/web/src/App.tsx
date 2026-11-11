@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import { Toaster, EmptyState, Skeleton } from './components/ui';
 import { useStore } from './lib/store';
@@ -46,13 +46,22 @@ const Design = lazy(() => import('./pages/Design'));
 const PrecisaDeVoce = lazy(() => import('./pages/PrecisaDeVoce'));
 const PortariaApp = lazy(() => import('./pages/PortariaApp'));
 import { canSeeFleet, homeOf } from './lib/support';
+import { paginaLiberada } from './lib/paginas';
 
 function Guard({ m, children, portaria }: { m: string; children: JSX.Element; portaria?: boolean }) {
   const on = useStore((s) => s.revenda.modules[m]);
   const session = useStore((s) => s.session);
   // revenda e Locale só entram na operação do cliente pelo acesso de suporte
   if (session && !canSeeFleet(session) && !(portaria && session.role === 'portaria')) return <NoAccess title="A operação da frota é do cliente" detail="Para vê-la, use o acesso de suporte no seu painel. Cada acesso fica registrado com quem, quando e o motivo." />;
-  return on ? children : <NoAccess title="Este módulo não está contratado" detail="Fale com a sua central de rastreamento para incluir o módulo no seu plano." />;
+  if (!on) return <NoAccess title="Este módulo não está contratado" detail="Fale com a sua central de rastreamento para incluir o módulo no seu plano." />;
+  return <Pagina>{children}</Pagina>;
+}
+
+// página desligada pela revenda em Configurações › Módulos (lib/paginas.ts); as rotas não têm parâmetro, então o caminho é a chave
+function Pagina({ children }: { children: JSX.Element }) {
+  const { pathname } = useLocation();
+  const on = useStore((s) => paginaLiberada(s.revenda.modules, pathname.replace(/\/$/, '') || '/'));
+  return on ? children : <NoAccess title="Esta página não está liberada" detail="Fale com a sua central de rastreamento para liberar a página no seu plano." />;
 }
 
 // sem acesso: ilustração de página (cadeado sobre pasta), nunca na cor da revenda
@@ -97,7 +106,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path="/inicio" element={<Guard m="monitoramento"><Inicio /></Guard>} />
-          <Route path="/precisa-de-voce" element={<PrecisaDeVoce />} />
+          <Route path="/precisa-de-voce" element={<Pagina><PrecisaDeVoce /></Pagina>} />
           <Route path="/monitoramento" element={<Guard m="monitoramento"><Monitoramento /></Guard>} />
           <Route path="/monitoramento/replay" element={<Guard m="monitoramento"><Replay /></Guard>} />
           <Route path="/monitoramento/cercas" element={<Guard m="monitoramento"><Cercas /></Guard>} />
@@ -117,9 +126,9 @@ export default function App() {
           <Route path="/jornada" element={<Guard m="jornada"><Jornada /></Guard>} />
           <Route path="/ranking" element={<Guard m="ranking"><Ranking /></Guard>} />
           <Route path="/pneus" element={<Guard m="pneus"><Pneus /></Guard>} />
-          <Route path="/setup" element={<Setup />} />
+          <Route path="/setup" element={<Pagina><Setup /></Pagina>} />
           <Route path="/conta" element={<MinhaConta />} />
-          <Route path="/equipe" element={<RoleOnly roles={['gestor']}><EquipeCliente /></RoleOnly>} />
+          <Route path="/equipe" element={<RoleOnly roles={['gestor']}><Pagina><EquipeCliente /></Pagina></RoleOnly>} />
           <Route path="/locale" element={<Locale />} />
           <Route path="/locale/contratos" element={<RoleOnly roles={['locale']}><Contratos /></RoleOnly>} />
           <Route path="/locale/clientes" element={<RoleOnly roles={['locale']}><Clientes /></RoleOnly>} />

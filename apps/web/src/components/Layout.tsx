@@ -11,6 +11,7 @@ import { useMaintJobs } from '../lib/maintJobs';
 import NeedsPanel from './NeedsPanel';
 import { canSeeFleet, endSupport, homeOf } from '../lib/support';
 import { fmtT } from '@localle/shared/utils';
+import { paginaLiberada } from '../lib/paginas';
 import CommandPalette, { isMac } from './CommandPalette';
 import simboloLocalle from '../images/localle-simbolo.png';
 import simbolo3d from '../images/localle-simbolo-3d.webp';
@@ -214,7 +215,9 @@ function LayoutBody() {
 
   // revenda e Locale só veem a frota do cliente em acesso de suporte
   const fleet = canSeeFleet(session);
-  const allowed = (l: typeof GESTAO) => (fleet ? l.filter((n) => rev.modules[(n as any).mod ?? n.key]) : []);
+  // módulo contratado e página não desligada pela revenda (Configurações › Módulos); subitens idem
+  const liberada = (to: string) => paginaLiberada(rev.modules, to);
+  const allowed = (l: typeof GESTAO) => (fleet ? l.filter((n) => rev.modules[(n as any).mod ?? n.key] && liberada(n.to)).map((n: any) => { const sub = n.sub?.filter((x: any) => liberada(x.to)); return sub ? { ...n, sub: sub.length ? sub : undefined } : n; }) : []);
   const admin: { key: string; label: string; to: string; icon: IconName }[] = session.role !== 'locale' ? [] : [
       { key: 'locale', label: 'Visão geral', to: '/locale', icon: 'locale' },
       { key: 'locale-contratos', label: 'Contratos', to: '/locale/contratos', icon: 'dinheiro' },
@@ -227,7 +230,7 @@ function LayoutBody() {
   ];
   const canConfig = session.role === 'revenda' || session.role === 'locale';
   // Setup (parâmetros de operação, docs/PLANO-SETUP-ADMIN.md): quem vê a frota configura a própria empresa; a API decide quem pode alterar
-  const mods = [...allowed(OPERACAO).flatMap((n: any) => [n, ...(n.sub || [])]), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }] : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'marca' }] : [])];
+  const mods = [...allowed(OPERACAO).flatMap((n: any) => [n, ...(n.sub || [])]), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }].filter((n) => liberada(n.to)) : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'marca' }] : [])];
   // celular: a barra superior diz em que tela se está (o título da página é discreto e o logo já mostra a revenda)
   const atual = mods.filter((m) => loc.pathname === m.to || loc.pathname.startsWith(m.to + '/')).sort((a, b) => b.to.length - a.to.length)[0]
     ?? (loc.pathname.startsWith('/precisa-de-voce') ? { label: 'Precisa de você' } : null);
@@ -315,7 +318,7 @@ function LayoutBody() {
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu ref={navRef} pill={pill}>
-            {fleet && (
+            {fleet && liberada('/precisa-de-voce') && (
               <div className="flex flex-col gap-hair mb-2">
                 <SidebarMenuButton to="/precisa-de-voce" icon="atencao" label="Precisa de você" badge={needs.length > 0 && <Counter n={needs.length} pulse={pulse} className={cx('shrink-0', fade)} />} />
               </div>
@@ -327,7 +330,7 @@ function LayoutBody() {
         </SidebarContent>
         <SidebarFooter>
           <div className="px-3 pt-2 pb-3 border-t border-line flex flex-col gap-hair">
-            {fleet && <NavLink to="/setup" title={mini ? 'Setup' : undefined} aria-label={mini ? 'Setup' : undefined} className={({ isActive }) => cx('flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body font-medium overflow-hidden', isActive ? 'bg-ink text-on-dark' : 'text-ink-2 hover:text-ink hover:bg-surface-hover')}><Icon name="config" className="shrink-0" /><span className={cx('truncate', fade)}>Setup</span></NavLink>}
+            {fleet && liberada('/setup') && <NavLink to="/setup" title={mini ? 'Setup' : undefined} aria-label={mini ? 'Setup' : undefined} className={({ isActive }) => cx('flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body font-medium overflow-hidden', isActive ? 'bg-ink text-on-dark' : 'text-ink-2 hover:text-ink hover:bg-surface-hover')}><Icon name="config" className="shrink-0" /><span className={cx('truncate', fade)}>Setup</span></NavLink>}
             {canConfig && <NavLink to="/revenda" title={mini ? 'Configurações' : undefined} aria-label={mini ? 'Configurações' : undefined} className={({ isActive }) => cx('flex items-center gap-3 h-10 pl-[14px] pr-3 rounded-ctl text-body font-medium overflow-hidden', isActive ? 'bg-ink text-on-dark' : 'text-ink-2 hover:text-ink hover:bg-surface-hover')}><Icon name="marca" className="shrink-0" /><span className={cx('truncate', fade)}>Configurações</span></NavLink>}
             <div className="relative">
               {footBtn({ icon: 'ajuda', label: 'Ajuda', onClick: () => setHelp(!help), expanded: help })}

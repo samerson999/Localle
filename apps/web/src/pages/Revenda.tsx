@@ -6,6 +6,7 @@ import { Dropzone } from '../components/Dropzone';
 import SupportAccess from '../components/SupportAccess';
 import { BrandMark } from '../components/Layout';
 import { MODULES } from '@localle/shared/catalog';
+import { PAGINAS_DO_MODULO, PAGINAS_GERAIS, type Pagina } from '../lib/paginas';
 import { brl, fmtDT, monthLabel, num } from '@localle/shared/utils';
 import { invoice, lastMonths, DEFAULT_BILLING, BillingCfg, Link } from '@localle/shared/billing';
 import { KpiTile, ChartCard, Num, IdChip, AssetName, StatusDot } from '../components/story';
@@ -76,7 +77,21 @@ function Modulos() {
   const s = useStoreData();
   const mods = s.revenda.modules;
   const set = (k: string, v: boolean) => s.patch((st: any) => ({ revenda: { ...st.revenda, modules: { ...st.revenda.modules, [k]: v } } }));
+  // página sem registro = liberada; desligar grava false (lib/paginas.ts)
+  const pagina = (p: Pagina, off = false) => {
+    const on = mods[p.to] !== false;
+    return (
+      <label key={p.to} className={cx('flex items-center gap-3 px-4 py-3 rounded-ctl border border-line', off ? 'opacity-60' : 'cursor-pointer hover:bg-card-2 transition-colors')}>
+        <Switch checked={on && !off} disabled={off} onChange={(v) => set(p.to, v)} aria-label={`Liberar ${p.label}`} />
+        <span className="min-w-0">
+          <span className="block text-body font-medium truncate">{p.label}</span>
+          <span className="block text-caption text-ink-2 font-mono truncate">{p.to}</span>
+        </span>
+      </label>
+    );
+  };
   return (
+    <Stack gap="grid">
     <Card title="Módulos liberados para este cliente">
       <p className="text-small text-ink-2 mb-4">Cada módulo é independente: monte o pacote que você vai vender. Módulos desligados somem do menu do cliente.</p>
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-grid">
@@ -94,6 +109,22 @@ function Modulos() {
         </div>
       )}
     </Card>
+    <Card title="Páginas liberadas para este cliente">
+      <p className="text-small text-ink-2 mb-4">Ligue ou desligue cada página. A página principal de cada módulo segue o módulo acima; páginas desligadas somem do menu e mostram aviso pelo link direto. Minha conta fica sempre liberada.</p>
+      <Stack gap="grid">
+        {Object.entries(PAGINAS_DO_MODULO).map(([mod, lista]) => (
+          <div key={mod}>
+            <p className="text-small font-medium text-ink-2 mb-2">{MODULES.find((m) => m.key === mod)?.label ?? mod}{!mods[mod] && ' · módulo desligado'}</p>
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-grid">{lista.map((p) => pagina(p, !mods[mod] || (p.to.startsWith('/relatorios/') && mods['/relatorios'] === false)))}</div>
+          </div>
+        ))}
+        <div>
+          <p className="text-small font-medium text-ink-2 mb-2">Geral</p>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-grid">{PAGINAS_GERAIS.map((p) => pagina(p))}</div>
+        </div>
+      </Stack>
+    </Card>
+    </Stack>
   );
 }
 
