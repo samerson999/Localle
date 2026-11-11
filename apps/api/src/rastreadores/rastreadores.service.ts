@@ -86,7 +86,8 @@ export class RastreadoresService {
         if (violouUnique(err, UNIQUE.rastreadorImeiAtivo)) throw new ConflictException(`Já existe um rastreador ativo com o identificador ${imei}`);
         throw err;
       }
-      const deviceId = data.traccarDeviceId ?? (await this.provisionarNoTraccar(criado.imei, nomeModelo));
+      // no Traccar vai só o nome: o decodificador compara o modelo do device (ex.: "VL100" no gt06), sem o fabricante
+      const deviceId = data.traccarDeviceId ?? (await this.provisionarNoTraccar(criado.imei, alvo.nome));
       let deviceLiberadoDe: string | null = null;
       if (deviceId !== null) {
         // recadastro do mesmo IMEI depois de desativar: o device do Traccar ainda estava no rastreador desativado

@@ -423,13 +423,15 @@ describe('RastreadoresService', () => {
       expect(r.imei).toBe(terminal); // espaços digitados não vão para o Traccar
     });
 
-    it('o device criado no Traccar leva o modelo', async () => {
+    // só o nome, sem o fabricante: o decodificador do Traccar compara o modelo do device (ex.: "VL100" no gt06)
+    it('o device criado no Traccar leva o nome do modelo, sem o fabricante', async () => {
       traccar.cfg = { url: 'http://traccar.fake', user: 'u', password: 'p' };
       const imei = digitos(15);
       const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei });
       rastreadoresCriados.push(r.id);
       traccar.cfg = null;
-      expect(traccar.devices.get(imei)).toMatchObject({ uniqueId: imei, model: `Teste ${sufixo} IMEI` });
+      expect(traccar.devices.get(imei)).toMatchObject({ uniqueId: imei, model: 'IMEI' });
+      expect(r.modelo).toBe(`Teste ${sufixo} IMEI`);
     });
 
     it('inventário mostra o modelo e marca protocolo detectado diferente do modelo', async () => {
