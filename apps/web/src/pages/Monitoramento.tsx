@@ -1,4 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { rectUi } from '../lib/uiZoom';
+import { useAlturaLivre } from '../lib/alturaLivre';
 import L from 'leaflet';
 import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-leaflet';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -20,7 +22,6 @@ import { leituraAntiga } from '../lib/diagnosticoRastreador';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { sendRealCommand } from '../lib/rastreioApi';
-import { rectUi } from '../lib/uiZoom';
 import { veSintaxeComando } from '../lib/support';
 
 // Lista ao vivo em lotes: com 600–2.000 veículos, montar todas as linhas de uma vez trava a rolagem. Mostra 80
@@ -118,6 +119,10 @@ function MonitoramentoMapa() {
   const entrarMapaCheio = () => { setMapaCheio(true); pedirNativo(); };
   const sairMapaCheio = () => { setMapaCheio(false); if (!full) sairNativo(); };
   useScrollLock(full || mapaCheio);
+  // Desktop: lista e mapa ocupam a altura livre da janela abaixo do topo deles, sem rolar a página no zoom de 100%
+  // (lib/alturaLivre). Fora da tela cheia, que já ocupa a janela inteira.
+  const linhaRef = useRef<HTMLDivElement>(null);
+  const alturaMapa = useAlturaLivre(linhaRef, { ativo: !full && assets.length > 0 });
   useEffect(() => {
     // Esc na tela cheia do navegador é consumido por ele: o fim da tela cheia nativa encerra o modo da tela junto
     const f = () => { if (!document.fullscreenElement && nativo.current) { nativo.current = false; setFull(false); setMapaCheio(false); } };
@@ -202,7 +207,8 @@ function MonitoramentoMapa() {
   );
 
   return (
-    <div>
+    // encaixado, o respiro do fim da página (--page-end, 96px) vira 24px: senão a página ainda rolaria até ele
+    <div style={alturaMapa ? { marginBottom: 'calc(var(--sp-6) - var(--page-end))' } : undefined}>
       {header}
       <PageBody>
       <Stack gap="grid">
@@ -226,10 +232,11 @@ function MonitoramentoMapa() {
         </div>
       )}
       {!full && !mobile && <FaixaFrota total={list.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
-      <div className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
+      <div ref={full ? undefined : linhaRef} style={!full && alturaMapa ? { ['--mon-h' as string]: `${alturaMapa}px` } : undefined}
+        className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
         <Card dense className={full
           ? cx('w-[360px] shrink-0 h-full max-md:hidden', !visao.cards && 'hidden')
-          : 'flex-[1_1_340px] md:max-w-[420px] min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px] max-md:hidden'}>
+          : 'flex-[1_1_340px] md:max-w-[420px] min-h-[360px] md:h-[var(--mon-h,calc(100vh/var(--ui-zoom)-128px))] max-md:hidden'}>
           <section aria-label="Veículos" className="flex flex-col gap-stack h-full min-h-0">
             {!full && <SearchInput value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />}
             {!full && <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />}
@@ -242,7 +249,7 @@ function MonitoramentoMapa() {
           ? 'fixed inset-0 z-[1100] overflow-hidden bg-canvas'
           : full
           ? 'flex-1 min-h-[240px] relative rounded-card overflow-hidden border border-line'
-          : 'flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line min-h-[360px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]'}>
+          : 'flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line min-h-[360px] md:h-[var(--mon-h,calc(100vh/var(--ui-zoom)-128px))]'}>
           <MapContainer ref={setMap} center={[-14.2, -51.9]} zoom={4} className="w-full h-full" zoomControl={false}>
             <TileLayer key={`${tileKey}-${mapStyle}`} className={mapStyle === 'satelite' ? 'tiles-satelite' : undefined} url={MAP_STYLES[mapStyle].url} attribution={MAP_STYLES[mapStyle].attribution} keepBuffer={6} updateWhenZooming={false} eventHandlers={{ tileerror: () => setTileErr((n) => n + 1) }} />
             {showF && <FenceShapes fences={fences} />}

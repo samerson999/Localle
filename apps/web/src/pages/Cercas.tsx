@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useAlturaLivre } from '../lib/alturaLivre';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Circle, Polygon, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { useSearchParams } from 'react-router-dom';
@@ -21,6 +22,9 @@ function Clicks({ onClick }: any) { useMapEvents({ click: (e) => onClick([e.latl
 function Center({ c }: any) { const m = useMap(); useEffect(() => { if (c) m.setView(c, 15); }, [c?.[0]]); return null; }
 
 export default function Cercas() {
+  // mapa e formulário cabem na janela, lado a lado (lib/alturaLivre); a tabela de cercas fica abaixo, rolando
+  const linhaRef = useRef<HTMLDivElement>(null);
+  const livre = useAlturaLivre(linhaRef);
   const [sp] = useSearchParams();
   const fences = useStore((s) => s.fences);
   const vehicles = useStoreData(10000).vehicles; // contagem "veículos dentro" a cada 10 s, sem redesenhar o mapa a cada passo
@@ -74,9 +78,9 @@ export default function Cercas() {
     <div>
       <MonitorHeader title="Cercas" subtitle="Áreas que geram alertas de entrada e saída." />
       <PageBody>
-      <div className="flex flex-wrap items-stretch gap-grid">
+      <div ref={linhaRef} style={livre ? { ['--livre' as string]: `${livre}px` } : undefined} className="flex flex-wrap items-stretch gap-grid">
         {/* mapa e formulário com a altura da tela, como no Monitoramento: o formulário rola por dentro e o "Salvar" fica à vista */}
-        <section className="flex-[999_1_520px] min-w-0 h-[55vh] min-h-[320px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px] rounded-card overflow-hidden border border-line relative">
+        <section className="flex-[999_1_520px] min-w-0 h-[55vh] min-h-[320px] md:h-[var(--livre,calc(100vh/var(--ui-zoom)-128px))] rounded-card overflow-hidden border border-line relative">
           <MapContainer ref={setMap} center={[-8.1, -34.92]} zoom={12} className={cx('w-full h-full', ((f.shape === 'circle' && !f.center) || drawing) && 'cursor-crosshair')} zoomControl={false}>
             <TileLayer url={TILE} attribution={ATTR} keepBuffer={6} updateWhenZooming={false} />
             <FenceShapes fences={others} />
@@ -92,7 +96,7 @@ export default function Cercas() {
           </div>
           <div className="absolute z-[400] bottom-3 left-3 right-3 sm:right-auto bg-card border border-line shadow-float rounded-btn px-3 py-2 text-caption font-medium text-ink-2">{tip}</div>
         </section>
-        <Card title={f.id ? 'Editar cerca' : 'Nova cerca'} className="flex-[1_1_340px] max-w-[440px] md:h-[calc(100vh/var(--ui-zoom)-128px)] md:min-h-[560px]"
+        <Card title={f.id ? 'Editar cerca' : 'Nova cerca'} className="flex-[1_1_340px] max-w-[440px] md:h-[var(--livre,calc(100vh/var(--ui-zoom)-128px))]"
           footer={<div className="flex flex-col gap-tight w-full">
             <Missing items={missing} />
             <div className="flex gap-tight w-full"><Button size="lg" disabled={!valid} onClick={save} className="flex-1">Salvar cerca</Button>{(f.id || dirty) && <Button size="lg" variant="quiet" onClick={reset}>{f.id ? 'Cancelar' : 'Limpar'}</Button>}</div>

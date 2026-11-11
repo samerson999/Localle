@@ -1,6 +1,7 @@
 import { opAssets, hadTracker } from '@localle/shared/assetStatus';
 import { RetiredToggle } from '../components/RetiredToggle';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAlturaLivre } from '../lib/alturaLivre';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import { useSearchParams } from 'react-router-dom';
 import { useStore, useStoreData } from '../lib/store';
@@ -26,6 +27,9 @@ function Fit({ pts, follow, cur }: any) { const m = useMap(); useEffect(() => { 
 
 export default function Replay() {
   const [sp] = useSearchParams();
+  // o mapa cabe na janela ao lado do "Ponto atual" (lib/alturaLivre); a tabela de eventos fica abaixo, rolando
+  const linhaRef = useRef<HTMLDivElement>(null);
+  const livre = useAlturaLivre(linhaRef);
   // com "Incluir inativos", vendidos/baixados que tiveram rastreador aparecem para rever o percurso antigo
   // estado sem as chaves ao vivo: o percurso só é lido ao carregar, não precisa redesenhar a cada 2 s
   const sd = useStoreData(60000);
@@ -138,8 +142,8 @@ export default function Replay() {
       </Grid>
       {/* celular: a linha mapa + "Ponto atual" se desfaz (contents) para os controles de reprodução ficarem logo abaixo do
           mapa; "Ponto atual" e a tabela de eventos descem (order) */}
-      <div className="flex flex-wrap items-start gap-grid max-md:contents">
-        <section className="flex-[999_1_560px] max-md:flex-none min-w-0 h-[50vh] min-h-[300px] md:h-[560px] rounded-card overflow-hidden border border-line relative">
+      <div ref={linhaRef} style={livre ? { ['--livre' as string]: `${livre}px` } : undefined} className="flex flex-wrap items-start gap-grid max-md:contents">
+        <section className="flex-[999_1_560px] max-md:flex-none min-w-0 h-[50vh] min-h-[300px] md:h-[var(--livre,560px)] rounded-card overflow-hidden border border-line relative">
           <MapContainer center={[-8.1, -34.92]} zoom={12} className="w-full h-full">
             <TileLayer url={TILE} attribution={ATTR} keepBuffer={6} updateWhenZooming={false} />
             {showF && <FenceShapes fences={fences} />}
