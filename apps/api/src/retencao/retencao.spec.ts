@@ -4,18 +4,33 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SettingsRepository } from '../settings/settings.repository';
 import { SettingsService } from '../settings/settings.service';
-import { RetencaoRepository } from './retencao.repository';
+import { RetencaoRepository, type PrazoCliente } from './retencao.repository';
 import { RetencaoService, subtrairMeses } from './retencao.service';
 
 /**
  * Retenção por plano contra o Postgres real: cada cliente perde só o que passou do `historico_meses` do
  * SEU contrato; eventos ficam no mínimo 24 meses; cliente sem contrato não é tocado; e a compressão das
  * hypertables (migration 1792970000000) está configurada.
+ *
+ * A rotina real percorre TODOS os clientes com contrato e apaga posição sem cliente da plataforma inteira; com os
+ * arquivos de teste rodando em paralelo, ela apagava dados de outros testes e o "idempotente" via exclusões alheias
+ * (flake de 11/11/2026). Aqui ela roda igual, mas sobre um repositório restrito aos clientes que este teste criou.
  */
+class RetencaoSoDoTeste extends RetencaoRepository {
+  readonly clientes = new Set<string>();
+  async prazosPorCliente(): Promise<PrazoCliente[]> {
+    return (await super.prazosPorCliente()).filter((p) => this.clientes.has(p.clientId));
+  }
+  // global por natureza (posição sem dono não tem cliente para filtrar): fora deste teste
+  async apagarPosicoesSemCliente(): Promise<number> {
+    return 0;
+  }
+}
 describe('retenção por plano do cliente', () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const settings = new SettingsService(new SettingsRepository(pool), pool);
-  const service = new RetencaoService(new RetencaoRepository(pool), settings);
+  const repo = new RetencaoSoDoTeste(pool);
+  const service = new RetencaoService(repo, settings);
   const agora = new Date('2026-10-26T12:00:00Z');
 
   let clienteCurto: string; // 3 meses
@@ -26,6 +41,7 @@ describe('retenção por plano do cliente', () => {
   const novoCliente = async (historicoMeses: number | null) => {
     const id = (await pool.query<{ id: string }>('insert into clients (name) values ($1) returning id', [`teste-ret-${randomUUID()}`])).rows[0].id;
     if (historicoMeses !== null) {
+      repo.clientes.add(id);
       const contrato = (await pool.query<{ id: string }>("insert into contratos (client_id, status) values ($1, 'ativo') returning id", [id])).rows[0].id;
       // duas versões: a mais recente é a que vale
       for (const meses of [120, historicoMeses]) {
@@ -78,7 +94,7 @@ describe('retenção por plano do cliente', () => {
 
   it('apaga só o que venceu o prazo de cada cliente; eventos ficam pelo menos 24 meses', async () => {
     const r = await service.executar(agora);
-    expect(r.clientes).toBeGreaterThanOrEqual(2);
+    expect(r.clientes).toBe(2);
     expect(await contar('posicoes', clienteCurto)).toBe(2); // 1 e 2 meses ficam; 4 e 25 saem
     expect(await contar('eventos', clienteCurto)).toBe(3); // só o de 25 meses sai (mínimo 24)
     expect(await contar('posicoes', clienteLongo)).toBe(3); // 1, 4, 11 ficam; 13 e 25 saem

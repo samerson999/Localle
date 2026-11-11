@@ -121,16 +121,17 @@ describe('senha: esqueci, redefinir e trocar', () => {
 
     await service.trocar(clientId, userId, 'senha-nova-789', 'senha-mais-nova-000');
     // granularidade de segundo do `iat` (JWT não carrega fração) × microssegundos de `now()`: empurra
-    // `senha_alterada_em` 2s à frente do que o SQL real gravou, só para tornar a asserção abaixo
+    // `senha_alterada_em` 3s à frente do que o SQL real gravou, só para tornar a asserção abaixo
     // determinística — sem isso, rodar o teste no mesmo segundo do `login` acima vira flake, não um bug
-    // de produto (comparação é sempre por segundo truncado, ver active-user.repository.ts).
-    await pool.query('update users set senha_alterada_em = senha_alterada_em + interval \'2 seconds\' where id = $1', [userId]);
+    // de produto (comparação por segundo truncado e com 1s de tolerância de relógio, ver active-user.repository.ts;
+    // 3s cobre a tolerância e o relógio do banco atrás da API).
+    await pool.query('update users set senha_alterada_em = senha_alterada_em + interval \'3 seconds\' where id = $1', [userId]);
 
     // o MESMO token (iat anterior à troca) não vale mais, mesmo sem ter expirado
     expect(await activeUsers.isActive(userId, iatAntigo)).toBe(false);
     // um login novo (bem depois da troca) continua funcionando normalmente
     const { accessToken: tokenNovo } = await auth.login(email, 'senha-mais-nova-000');
-    const iatNovo = verifyAuthToken(tokenNovo).iat! + 3; // os 2s empurrados acima + folga de 1s
+    const iatNovo = verifyAuthToken(tokenNovo).iat! + 3; // os 3s empurrados acima (a tolerância de 1s cobre a fração de segundo)
     expect(await activeUsers.isActive(userId, iatNovo)).toBe(true);
   });
 
