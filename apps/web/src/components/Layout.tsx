@@ -1,5 +1,5 @@
 import { Suspense, createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { useNeedsYou } from '../lib/needs';
 import { cx, IconButton, Skeleton, confirmAction, MobileFilterCtx, Tooltip, Avatar } from './ui';
@@ -127,6 +127,14 @@ function LayoutBody() {
   const nav = useNavigate();
   const loc = useLocation();
   const session = useStore((s) => s.session)!;
+  // direção da troca de tela (base.css › .tela-entra/.tela-volta): POP é o voltar do aparelho/navegador; a primeira
+  // carga também chega como POP, mas entra como ida. Decidida só quando a rota muda: o voltar da Conta (pushState próprio)
+  // é um POP na mesma rota, e trocar a classe ali reanimaria a tela de baixo
+  const navTipo = useNavigationType();
+  const direcao = useRef<{ path: string; volta: boolean } | null>(null);
+  if (!direcao.current) direcao.current = { path: loc.pathname, volta: false };
+  else if (direcao.current.path !== loc.pathname) direcao.current = { path: loc.pathname, volta: navTipo === 'POP' };
+  const volta = direcao.current.volta;
   const rev = useStore((s) => s.revenda);
   const patch = useStore((s) => s.patch);
   const needs = useNeedsYou();
@@ -409,7 +417,7 @@ function LayoutBody() {
           <AvisoBackend />
           </div>
           <OdometerAsk />
-          <main key={loc.pathname} id="conteudo" tabIndex={-1} className="focus-visible:outline-none focus-visible:shadow-none flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end max-md:pb-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] md:px-page-md md:pt-page-top-md anim-page"><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
+          <main key={loc.pathname} id="conteudo" tabIndex={-1} className={cx('focus-visible:outline-none focus-visible:shadow-none flex-1 min-w-0 overflow-x-clip px-page pt-page-top pb-page-end max-md:pb-[calc(env(safe-area-inset-bottom,0px)+7.5rem)] md:px-page-md md:pt-page-top-md', volta ? 'tela-volta' : 'tela-entra')}><Suspense fallback={<div aria-busy="true" className="flex flex-col gap-grid"><Skeleton className="h-ctl w-64" /><Skeleton className="h-64 w-full" /></div>}><Outlet /></Suspense></main>
         </div>
       </SidebarInset>
       <NeedsPanel open={panel} onClose={() => setPanel(false)} anchor={needsBtn.current} />

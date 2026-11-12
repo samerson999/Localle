@@ -152,6 +152,35 @@ a { text-underline-offset: 3px; }
 @keyframes sheet-out { to { translate: 0 100%; } }
 .sheet-in { animation: sheet-in 280ms var(--ease-out) backwards; }
 .sheet-out { animation: sheet-out 180ms var(--ease-out) forwards; pointer-events: none; }
+/* celular: o padrão de movimento (tokens.css › --ease-entra). Telas e sobreposições entram com distância de verdade e
+   desaceleram até parar; a tela empilhada (Conta) entra inteira pela direita, com sombra na borda para dar profundidade;
+   o conteúdo dela chega em cascata logo atrás (.cascata). */
+@keyframes tela-in { from { opacity: 0; transform: translateY(14px); } }
+@keyframes pop-in-m { from { opacity: 0; transform: scale(0.92); } }
+@keyframes empilha-in { from { transform: translateX(100%); } }
+@keyframes empilha-out { to { transform: translateX(100%); } }
+@keyframes cascata-in { from { opacity: 0; transform: translateY(10px); } }
+/* troca de rota (Layout › <main>): ir para uma tela entra pela direita, voltar (gesto/botão do aparelho) entra pela
+   esquerda — mesma curva e duração da tela empilhada. A tela anterior já saiu (o <main> remonta), então o deslocamento é
+   parcial e com esmaecimento: inteiro, mostraria a página vazia atrás. No desktop segue o page-in. */
+@keyframes rota-entra { from { opacity: 0; transform: translateX(28%); } }
+@keyframes rota-volta { from { opacity: 0; transform: translateX(-28%); } }
+.tela-entra, .tela-volta { animation: page-in var(--t-page) var(--ease-out) backwards; }
+@media (max-width: 767.98px) {
+  .tela-entra { animation: rota-entra var(--t-painel) var(--ease-entra) backwards; }
+  .tela-volta { animation: rota-volta var(--t-painel) var(--ease-entra) backwards; }
+  .anim-page { animation: tela-in var(--t-page) var(--ease-entra) backwards; }
+  .anim-fade { animation: fade-in var(--t-painel) ease both; }
+  .anim-pop { animation: pop-in-m var(--t-pop) var(--ease-entra) backwards; }
+  .anim-pop-out { animation: pop-out var(--t-pop-sai) var(--ease-sai) both; }
+  .anim-out { animation: page-out var(--t-pop-sai) var(--ease-sai) both; }
+  .anim-fade-out { animation: fade-out var(--t-exit) ease both; }
+  .panel-in { animation: empilha-in var(--t-painel) var(--ease-entra) backwards; box-shadow: -12px 0 32px rgb(0 0 0 / 0.12); }
+  .panel-out { animation: empilha-out var(--t-exit) var(--ease-sai) forwards; box-shadow: -12px 0 32px rgb(0 0 0 / 0.12); }
+  .sheet-in { animation: sheet-in var(--t-painel) var(--ease-entra) backwards; }
+  .sheet-out { animation: sheet-out var(--t-exit) var(--ease-sai) forwards; }
+  .cascata > * { animation: cascata-in 420ms var(--ease-entra) backwards; animation-delay: calc(140ms + var(--i, 0) * 50ms); }
+}
 /* abas que rolam de lado (ui.tsx › useSlider): esmaece a borda do lado onde há mais opções */
 [data-fade="r"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
 [data-fade="l"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
@@ -380,11 +409,13 @@ html[data-teclado] .dock:not([data-state="open"]) { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
   /* login: a cena aparece pronta e o carrossel não troca sozinho (a troca é pelo clique) */
   .login-stage *, .login-copy *, .login-seg-fill { animation: none !important; }
-  .anim-page, .anim-pop, .grow-y, .grow-x, .panel-in, .toast-in { animation: fade-in 150ms ease both !important; transform: none !important; }
+  .anim-page, .tela-entra, .tela-volta, .anim-pop, .grow-y, .grow-x, .panel-in, .toast-in { animation: fade-in 150ms ease both !important; transform: none !important; }
+  .tela-entra, .tela-volta { animation-fill-mode: backwards !important; }
   .reveal-x, .fade-after { animation: fade-in 150ms ease both !important; } /* sem zerar transform: a etiqueta do gráfico se posiciona por ele */
   .anim-page { animation-fill-mode: backwards !important; } /* mesmo motivo do .anim-page acima: sem contexto de empilhamento depois de entrar */
   .anim-out, .anim-pop-out, .panel-out, .toast-out, .sheet-out { animation: fade-out var(--t-exit) ease both !important; }
-  .sheet-in { animation: fade-in 150ms ease both !important; }
+  .sheet-in, .cascata > * { animation: fade-in 150ms ease both !important; }
+  .panel-in, .panel-out { box-shadow: none !important; }
   .dock-drawer, .dock-pill { transition: none !important; }
   .pulse-once { animation: none; }
   .anim-page { animation-fill-mode: backwards !important; } /* mesmo motivo do .anim-page acima: sem contexto de empilhamento depois de entrar */

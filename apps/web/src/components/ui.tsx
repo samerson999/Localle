@@ -16,7 +16,9 @@ export const cx = (...a: any[]) => a.filter(Boolean).join(' ');
 
 // Mantém montado durante a animação de saída: closing = true por --t-exit depois que open vira false.
 const EXIT_MS = 140;
-export function usePresence(open: boolean, ms = EXIT_MS) {
+// duração da saída vinda do token --t-exit (cresce no celular, tokens.css): desmontar antes cortava a animação no meio
+const exitMs = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-exit')) || EXIT_MS;
+export function usePresence(open: boolean, ms = exitMs()) {
   const [mounted, setMounted] = useState(open);
   useEffect(() => {
     if (open) { setMounted(true); return; }
@@ -1167,7 +1169,9 @@ export function LoadingBlock() {
   );
 }
 
-export function Modal({ open, onClose, title, children, width = 'max-w-2xl', footer, icon, guardDiscard = true }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; width?: string; footer?: React.ReactNode; icon?: React.ReactNode; guardDiscard?: boolean }) {
+// centro: no desktop fica no meio da tela (confirmação, curta); sem ele, preso ao topo — formulário longo cresce para baixo
+// sem a janela pular a cada campo que aparece
+export function Modal({ open, onClose, title, children, width = 'max-w-2xl', footer, icon, guardDiscard = true, centro }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; width?: string; footer?: React.ReactNode; icon?: React.ReactNode; guardDiscard?: boolean; centro?: boolean }) {
   const { mounted, closing } = usePresence(open);
   useScrollLock(open);
   // na saída, mostra o último conteúdo aberto (quem chamou costuma zerar os dados ao fechar)
@@ -1243,8 +1247,8 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   // max-md:justify-start: em coluna, o justify-center do desktop centralizava na vertical, e o form mais alto que a tela
   // estourava metade para cima, fora da rolagem — o modal abria no meio do formulário, sem como subir até o título.
   return createPortal(
-    <div className={cx('fixed inset-0 max-md:bottom-[var(--teclado,0px)] z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !(guardDiscard && touched.current) && onClose()}>
-      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] max-md:transition-[transform] max-md:duration-[450ms] max-md:ease-[cubic-bezier(0.32,0.72,0,1)]', closing ? 'anim-pop-out max-md:[animation:sheet-out_180ms_var(--ease-in)_forwards]' : 'anim-pop max-md:[animation:sheet-in_280ms_var(--ease-out)_backwards]', width)}>
+    <div className={cx('fixed inset-0 max-md:bottom-[var(--teclado,0px)] z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', centro && 'md:items-center', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !(guardDiscard && touched.current) && onClose()}>
+      <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] max-md:transition-[transform] max-md:duration-[450ms] max-md:ease-[cubic-bezier(0.32,0.72,0,1)]', closing ? 'anim-pop-out max-md:[animation:sheet-out_var(--t-exit)_var(--ease-sai)_forwards]' : 'anim-pop max-md:[animation:sheet-in_var(--t-painel)_var(--ease-entra)_backwards]', width)}>
         <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
           <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />
           <div className="flex items-start gap-stack mb-card-head"><div className="mr-auto flex flex-col gap-3">{c.icon}<h2 className="text-h2 font-semibold">{c.title}</h2></div><IconButton aria-label="Fechar" size="sm" className="-mr-1" onClick={() => void requestClose()}><Icon name="fechar" /></IconButton></div>
@@ -1848,7 +1852,7 @@ const setToasts = (f: (xs: ToastItem[]) => ToastItem[]) => { toastItems = f(toas
 const patchToast = (id: number, p: Partial<ToastItem>) => setToasts((xs) => xs.map((x) => (x.id === id ? { ...x, ...p } : x)));
 function dismissToast(id: number) {
   patchToast(id, { leaving: true });
-  setTimeout(() => setToasts((xs) => xs.filter((x) => x.id !== id)), EXIT_MS);
+  setTimeout(() => setToasts((xs) => xs.filter((x) => x.id !== id)), exitMs());
 }
 const TTL: Record<ToastTone, number> = { ok: 4000, info: 4000, crit: 8000 };
 function addToast(t: Omit<ToastItem, 'id'>) {
@@ -1918,7 +1922,7 @@ function ConfirmHost() {
   const r = confirmReq;
   const done = (v: boolean) => { if (!confirmReq) return; confirmReq.resolve(v); confirmReq = null; force((n) => n + 1); };
   return (
-    <Modal open={!!r} onClose={() => done(false)} title={r?.title || ''} width="max-w-md"
+    <Modal open={!!r} onClose={() => done(false)} title={r?.title || ''} width="max-w-md" centro
       icon={<span aria-hidden="true" className={cx('w-10 h-10 rounded-ctl flex items-center justify-center', r?.tone === 'primary' ? 'bg-surface-muted text-ink' : 'bg-crit-soft text-crit-ink')}><Icon name={r?.tone === 'primary' ? 'info' : 'alerta'} size={20} /></span>}
       // foco inicial no lado seguro: em ação destrutiva (Descartar, Excluir) um Enter apressado só cancela; em ação comum
       // (tone primary, ex.: Sair) o Enter confirma

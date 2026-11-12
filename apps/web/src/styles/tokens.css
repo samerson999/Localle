@@ -271,6 +271,24 @@
   --t-glide: 800ms; /* marcador do mapa indo para a nova posição */
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-dock: cubic-bezier(0.33, 1, 0.68, 1); /* barra inferior do celular: gaveta crescendo da pílula */
+  /* padrão de movimento (12/11/2026): entrada desacelera devagar até o fim (o --ease-out chega a 90% em ~1/3 do tempo e
+     parece um corte), saída acelera para fora e dura ~60% da entrada. No celular as durações crescem (ver abaixo). */
+  --ease-entra: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-sai: cubic-bezier(0.32, 0, 0.67, 0);
+  --t-pop: 200ms; /* menu, lista de opções, calendário */
+  --t-pop-sai: 140ms;
+  --t-painel: 280ms; /* tela empilhada, folha inferior, modal */
+}
+/* celular: superfícies maiores percorrem mais distância e pedem mais tempo para o olho acompanhar. --t-exit é lido pelo
+   usePresence (ui.tsx) para desmontar só depois da saída — é a maior saída da escala. */
+@media (max-width: 767.98px) {
+  :root {
+    --t-page: 320ms;
+    --t-pop: 280ms;
+    --t-pop-sai: 200ms;
+    --t-painel: 460ms;
+    --t-exit: 280ms;
+  }
 }
 
 /* ---------- tema escuro (lib/tema.ts põe data-theme="dark" no <html>) ----------
