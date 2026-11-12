@@ -125,14 +125,22 @@ async function apiGet<T>(path: string): Promise<T> {
 /** Km e minutos em movimento por veículo e por dia (hoje + 7 dias), do agregado `uso_5min` da API. `assetId` já no formato do store. */
 export type ResumoUso = { fuso: string; dias: string[]; uso: { assetId: string; dia: string; km: number; minutosMovimento: number }[] };
 const RESUMO_USO_MS = 5 * 60_000; // o agregado rematerializa a cada 10 min; a parte recente vem na hora
+// Última resposta guardada por sessão: voltar ao Início mostra o gráfico na hora (e atualiza por trás), em vez do skeleton
+// até a API responder de novo.
+let resumoUsoCache: { email: string; dados: ResumoUso } | null = null;
 export function useResumoUso() {
   const email = useStore((s) => s.session?.email);
-  const [st, setSt] = useState<{ dados: ResumoUso | null; carregando: boolean; erro: string }>({ dados: null, carregando: true, erro: '' });
+  const [st, setSt] = useState<{ dados: ResumoUso | null; carregando: boolean; erro: string }>(() =>
+    ({ dados: resumoUsoCache && resumoUsoCache.email === email ? resumoUsoCache.dados : null, carregando: true, erro: '' }));
   useEffect(() => {
     if (!email) return;
     let vivo = true;
     const buscar = () => apiGet<ResumoUso>('/monitoring/resumo-uso')
-      .then((r) => vivo && setSt({ dados: { ...r, uso: r.uso.map((u) => ({ ...u, assetId: assetIdFor(u.assetId) })) }, carregando: false, erro: '' }))
+      .then((r) => {
+        const dados = { ...r, uso: r.uso.map((u) => ({ ...u, assetId: assetIdFor(u.assetId) })) };
+        resumoUsoCache = { email, dados };
+        if (vivo) setSt({ dados, carregando: false, erro: '' });
+      })
       .catch((e) => vivo && setSt((x) => ({ dados: x.dados, carregando: false, erro: mensagemDeErro(e) })));
     void buscar();
     const t = setInterval(buscar, RESUMO_USO_MS);

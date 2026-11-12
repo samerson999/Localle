@@ -236,6 +236,10 @@ html[data-teclado] .dock:not([data-state="open"]) { visibility: hidden; }
 .pulse-once { animation: pulse-once 600ms var(--ease-out); box-shadow: 0 0 0 0 color-mix(in srgb, var(--counter-crit-bg) 50%, transparent); }
 /* barra de progresso: recorte animado (mantém a ponta arredondada, sem animar largura) */
 .progress-fill { transition: clip-path var(--t-progress) var(--ease-out); }
+/* anel (charts.tsx › Ring): o arco cresce do zero ao entrar (--c = circunferência) e acompanha o valor quando ele muda.
+   Sem preenchimento da animação: terminada, vale o atributo e a transição volta a funcionar. */
+@keyframes ring-in { from { stroke-dasharray: 0 var(--c); } }
+.ring-fill { animation: ring-in 700ms var(--ease-out); transition: stroke-dasharray var(--t-progress) var(--ease-out), stroke-width 100ms ease; }
 
 
 /* ---------- tela de login (pages/Login.tsx, components/LoginShowcase.tsx) ----------
@@ -418,6 +422,7 @@ html[data-teclado] .dock:not([data-state="open"]) { visibility: hidden; }
   .panel-in, .panel-out { box-shadow: none !important; }
   .dock-drawer, .dock-pill { transition: none !important; }
   .pulse-once { animation: none; }
+  .ring-fill { animation: none; transition: none; }
   .anim-page { animation-fill-mode: backwards !important; } /* mesmo motivo do .anim-page acima: sem contexto de empilhamento depois de entrar */
   .skeleton { animation: none; }
   /* só fades curtos: nada desliza nem cresce (pílulas, menu, barras de progresso mudam direto) */

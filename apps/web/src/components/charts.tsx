@@ -552,14 +552,20 @@ export function LineChart({ labels, series, goal, format = (v: number) => String
             const d = path(s.values);
             const lastI = s.values.reduce((a: number, v, i) => (v != null ? i : a), -1);
             const firstI = s.values.findIndex((v) => v != null);
+            // entrada: linha e área se revelam da esquerda para a direita; cada ponto aparece quando a revelação passa por ele
+            // (o --ease-out anda rápido no começo, daí o atraso curto) e a etiqueta por último. O ponto sob a etiqueta fica
+            // montado e só some (visibility): desmontar e remontar repetiria a entrada a cada passada do ponteiro.
+            const atraso = (i: number) => `${120 + (n <= 1 ? 0 : i / (n - 1)) * 380}ms`;
             return <g key={k}>
-              {s.area && s.tone === 'real' && lastI > firstI && <path d={`${d}L${x(lastI)},${y(lo)}L${x(firstI)},${y(lo)}Z`} fill={`url(#${gid}a)`} />}
-              <path d={d} mask={`url(#${gid}m)`} fill="none" stroke={stroke[s.tone]} strokeWidth={s.tone === 'prev' ? 1.5 : 2} strokeDasharray={s.tone === 'prev' ? '4 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />
-              {dots && s.tone === 'real' && s.values.map((v, i) => v == null || i === shown ? null : <circle key={i} cx={x(i)} cy={y(v)} r={3.5} fill="var(--card)" stroke="var(--real)" strokeWidth={2} />)}
+              <g className="reveal-x">
+                {s.area && s.tone === 'real' && lastI > firstI && <path d={`${d}L${x(lastI)},${y(lo)}L${x(firstI)},${y(lo)}Z`} fill={`url(#${gid}a)`} />}
+                <path d={d} mask={`url(#${gid}m)`} fill="none" stroke={stroke[s.tone]} strokeWidth={s.tone === 'prev' ? 1.5 : 2} strokeDasharray={s.tone === 'prev' ? '4 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />
+              </g>
+              {dots && s.tone === 'real' && s.values.map((v, i) => v == null ? null : <circle key={i} cx={x(i)} cy={y(v)} r={3.5} fill="var(--card)" stroke="var(--real)" strokeWidth={2} className="fade-after" style={{ animationDelay: atraso(i) }} visibility={i === shown ? 'hidden' : undefined} />)}
               {s.tone === 'real' && shown != null && s.values[shown] != null && (() => {
                 const v = s.values[shown]!, cx0 = x(shown), cy0 = y(v), t = format(v), w = textW(t, 13) + 20;
                 const px = Math.max(left - 8, Math.min(W - right - w + 8, cx0 - w / 2));
-                return <g>
+                return <g className="fade-after" style={{ animationDelay: '520ms' }}>
                   <circle cx={cx0} cy={cy0} r={11} fill="var(--real)" fillOpacity={0.15} />
                   <circle cx={cx0} cy={cy0} r={6} fill="var(--card)" stroke="var(--real)" strokeWidth={3} />
                   <rect x={px} y={cy0 - 42} width={w} height={26} rx={8} fill="var(--real)" />
@@ -792,7 +798,7 @@ export function Ring({ value, size = 168, thickness = 18, center, centerLabel, l
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" role="img" aria-label={`${label ?? 'Progresso'}: ${fmt(v)}`}>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--track)" strokeWidth={thickness} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--real)" strokeWidth={tip.active ? thickness + 3 : thickness} strokeLinecap="round" strokeDasharray={`${v * C} ${C}`} className="progress-fill cursor-default transition-[stroke-width] duration-100"
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--real)" strokeWidth={tip.active ? thickness + 3 : thickness} strokeLinecap="round" strokeDasharray={`${v * C} ${C}`} className="ring-fill cursor-default" style={{ ['--c' as any]: C }}
           {...tip.target('v', anchorTop, () => <TipBody title={label ?? 'Progresso'} rows={[{ swatch: <Swatch color="var(--real)" />, label: 'Parte', value: fmt(v), strong: true }, { swatch: <Swatch color="var(--track)" />, label: 'Restante', value: fmt(1 - v), tone: 'muted' }]} />)} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">{center}{centerLabel && <span className="text-small text-ink-2">{centerLabel}</span>}</div>
