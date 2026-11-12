@@ -16,7 +16,7 @@ import { tv } from '../lib/tokens';
 import { useCriticalMap, resolveReasons, recentTreatments, type CritReason } from '../lib/critical';
 import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { TreatDialog, TreatedLine } from '../components/TreatDialog';
-import { capacidadesComando, confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, lerParametro, listarLinks, revogarLink, tipoComandoLocalle } from '../lib/localleApi';
+import { capacidadesComando, confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, lerParametro, listarLinks, revogarLink, tipoComandoLocalle, useResumoUso } from '../lib/localleApi';
 import { lerVisao, salvarVisao, type VisaoMonitor } from '../lib/monitorPrefs';
 import { leituraAntiga } from '../lib/diagnosticoRastreador';
 import { velocidadePainelAtual } from '../lib/localleMap';
@@ -151,12 +151,21 @@ function MonitoramentoMapa() {
   const history = useStore((s) => s.history);
   const alerts = useStore((s) => s.alerts);
   const moving = list.filter((x: any) => x.v && !x.v.noSignal && x.v.speed > 2);
+  // km de hoje: o resumo de uso da API (dia inteiro, o mesmo da tela inicial). O histórico do navegador só guarda os últimos
+  // LIVE_HISTORY pontos de cada veículo desde que a página abriu — somado, dava bem menos que o real (12/11/2026, HML: 15 km
+  // aqui × 190 km no Início). Fica só como reserva enquanto o resumo não chega ou se a API falhar.
+  const { dados: resumoUso } = useResumoUso();
   const kmHoje = useMemo(() => {
+    const hoje = resumoUso?.dias[resumoUso.dias.length - 1];
+    if (hoje) {
+      const ids = new Set(assets.map((a: any) => a.id));
+      return resumoUso!.uso.reduce((s, u) => (u.dia === hoje && ids.has(u.assetId) ? s + u.km : s), 0);
+    }
     const t0 = new Date().setHours(0, 0, 0, 0);
     let km = 0;
     for (const a of assets) { const h = history[a.id] || []; for (let i = 1; i < h.length; i++) if (h[i][0] >= t0) km += haversine([h[i - 1][1], h[i - 1][2]], [h[i][1], h[i][2]]); }
     return km / 1000;
-  }, [assets, history]);
+  }, [assets, history, resumoUso]);
   const velMedia = moving.length ? moving.reduce((s: number, x: any) => s + x.v.speed, 0) / moving.length : 0;
   useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, mobile, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
   // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
