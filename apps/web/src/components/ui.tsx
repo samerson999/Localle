@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useId, useLayoutEffect, us
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { fileToDataURL } from '../lib/fileData';
+import { duracaoMs } from '../lib/duracao';
 import { Icon, type IconName } from './icons';
 import { AssetSilhouette, silhouetteOf } from './assetArt';
 import { pngIconUrl } from '../lib/pngIcons';
@@ -17,7 +18,7 @@ export const cx = (...a: any[]) => a.filter(Boolean).join(' ');
 // Mantém montado durante a animação de saída: closing = true por --t-exit depois que open vira false.
 const EXIT_MS = 140;
 // duração da saída vinda do token --t-exit (cresce no celular, tokens.css): desmontar antes cortava a animação no meio
-const exitMs = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-exit')) || EXIT_MS;
+const exitMs = () => duracaoMs(getComputedStyle(document.documentElement).getPropertyValue('--t-exit')) || EXIT_MS;
 export function usePresence(open: boolean, ms = exitMs()) {
   const [mounted, setMounted] = useState(open);
   useEffect(() => {
