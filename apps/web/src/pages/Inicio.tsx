@@ -84,7 +84,7 @@ export default function Inicio() {
   const media = anteriores.length ? anteriores.reduce((s, x) => s + x, 0) / anteriores.length : 0;
   const delta = (util[util.length - 1] ?? 0) - media;
   // o conteúdo muda de altura ao carregar o resumo e ao trocar de grupo (a faixa de grupos some): tenta encaixar de novo
-  const { ref: tela, encaixe } = useEncaixe(`${carregando}|${grupo}|${groups.length}|${erro ? 1 : 0}`);
+  const { ref: tela, encaixe, compacto } = useEncaixe(`${carregando}|${grupo}|${groups.length}|${erro ? 1 : 0}`);
 
   if (!todos.length) return (
     <div>
@@ -98,65 +98,73 @@ export default function Inicio() {
 
   return (
     <div className="w-full">
-      <PageHeader title="Início">
-        <FilterSheet count={grupo ? 1 : 0}>{gruposComFrota.length > 0 && <Select aria-label="Grupo" className="w-[220px] max-md:w-full" value={grupo} onChange={(e) => setGrupo(e.target.value)}
-          options={[{ value: '', label: 'Toda a frota' }, ...gruposComFrota.map((g: any) => ({ value: g.id, label: g.name }))]} />}</FilterSheet>
-      </PageHeader>
+      {/* sem a linha de cabeçalho da página (só guardava o filtro e ocupava ~84px que o painel precisa para caber na janela):
+          o título fica para o leitor de tela (no celular ele mora no cabeçalho do Layout) e o filtro de grupo vai para o canto
+          do cartão de resumo; no celular ele sobe para o cabeçalho (FilterSheet) */}
+      <h1 className="sr-only max-md:hidden">Início</h1>
       {erro && <p role="status" className="mb-grid text-small text-ink-2">Não foi possível carregar a atividade e a utilização ({erro}). O estado da frota continua ao vivo.</p>}
 
       {/* encaixado: altura = o que sobra da janela, e as três faixas (resumo, utilização, grupos) dividem essa altura; --fit
-          reduz os números grandes em janela mais baixa. Sem encaixe: faixas na altura natural, a página rola. */}
+          reduz os números grandes em janela mais baixa; compacto = o degrau antes de desistir. Sem encaixe: altura natural. */}
       <div ref={tela} style={encaixe ? { height: encaixe.altura, marginBottom: 'calc(var(--sp-6) - var(--page-end))', ['--fit' as any]: encaixe.fit } : undefined}
-        className={cx('grid grid-cols-1 lg:grid-cols-12 gap-grid', encaixe && 'grid-rows-[minmax(0,1.15fr)_minmax(0,0.95fr)_minmax(0,0.9fr)] [&>*]:min-h-0')}>
-        <Resumo className="lg:col-span-7" frota={frota} total={total} />
-        <div className="lg:col-span-5 grid gap-grid lg:grid-rows-[auto_minmax(0,1fr)] min-h-0">
+        className={cx('grid grid-cols-1 lg:grid-cols-12', compacto ? 'gap-3' : 'gap-grid', encaixe && 'grid-rows-[auto_minmax(0,1fr)_minmax(0,0.8fr)] [&>*]:min-h-0')}>
+        <Resumo className="lg:col-span-7" frota={frota} total={total} compacto={compacto}
+          filtro={<FilterSheet count={grupo ? 1 : 0}>{gruposComFrota.length > 0 && <div className="w-[200px] max-md:w-full"><Select aria-label="Grupo" value={grupo} onChange={(e) => setGrupo(e.target.value)}
+            options={[{ value: '', label: 'Toda a frota' }, ...gruposComFrota.map((g: any) => ({ value: g.id, label: g.name }))]} /></div>}</FilterSheet>} />
+        <div className={cx('lg:col-span-5 grid lg:grid-rows-[auto_minmax(0,1fr)] min-h-0', compacto ? 'gap-3' : 'gap-grid')}>
           <Atividade carregando={carregando} uso={hoje ? uso.get(hoje) : undefined} total={total} viagens={viagensOn ? viagensDoDia(trips, hoje, assets) : null} />
-          <Conectividade frota={frota} total={total} ultima={ultima} />
+          <Conectividade frota={frota} total={total} ultima={ultima} compacto={compacto} />
         </div>
-        <Utilizacao className="lg:col-span-12" carregando={carregando} dias={dias} util={util} usados={dias.map((d) => usadosNo(d))}
+        <Utilizacao className="lg:col-span-12" compacto={compacto} carregando={carregando} dias={dias} util={util} usados={dias.map((d) => usadosNo(d))}
           km={dias.map((d) => soma(uso.get(d), 'km'))} total={total} media={media} delta={delta} />
-        {mostraGrupos && <Grupos className="lg:col-span-8" frota={frota} groups={gruposComFrota} dias={dias.slice(0, -1)} usadosNo={usadosNo} carregando={carregando} />}
-        <Leitura className={mostraGrupos ? 'lg:col-span-4' : 'lg:col-span-12'} carregando={carregando} delta={delta} media={media} hoje={util[util.length - 1] ?? 0} />
+        {mostraGrupos && <Grupos className="lg:col-span-8" compacto={compacto} frota={frota} groups={gruposComFrota} dias={dias.slice(0, -1)} usadosNo={usadosNo} carregando={carregando} />}
+        <Leitura className={mostraGrupos ? 'lg:col-span-4' : 'lg:col-span-12'} compacto={compacto} carregando={carregando} delta={delta} media={media} hoje={util[util.length - 1] ?? 0} />
       </div>
     </div>
   );
 }
 
 // Encaixe na tela (lg+): o painel ocupa a altura livre da janela abaixo do seu topo, sem rolagem — mas só se o conteúdo
-// couber nela. Antes a altura tinha piso fixo (620 px) e, com o zoom do navegador alto, as faixas ficavam menores que o
-// conteúdo e tudo se sobrepunha. Agora: aplica a altura, confere se algum cartão transbordou e, se sim, desiste do encaixe
-// (altura natural, a página rola) até a janela mudar de tamanho ou o conteúdo mudar (`chave`). Abaixo de lg: altura natural.
-// Medida em coordenadas da interface (o <html> tem zoom, lib/uiZoom).
+// couber nela. A 1ª faixa (resumo, atividade, conectividade) fica com a altura do próprio conteúdo; o gráfico de utilização
+// e a tabela de grupos, que encolhem (e a tabela rola por dentro), dividem o resto. Em degraus: aplica a altura e confere se
+// algo transbordou; se sim, tenta o modo compacto (espaços e números menores, subtítulos secundários fora); se ainda não
+// couber, desiste (altura natural, a página rola) até a janela ou o conteúdo (`chave`) mudar. Abaixo de lg: altura natural.
+// Antes as três faixas dividiam a altura em proporções fixas e a 1ª não cabia num notebook em 100%: o encaixe desistia e a
+// página rolava (11/11/2026). Medida em coordenadas da interface (o <html> tem zoom, lib/uiZoom).
 const ALTURA_CHEIA = 900; // a partir desta altura livre os números ficam no tamanho cheio; abaixo, encolhem até FIT_MIN
 const FIT_MIN = 0.8;
+const FIT_MIN_COMPACTO = 0.7;
 function useEncaixe(chave: string) {
   const ref = useRef<HTMLDivElement>(null);
-  const [encaixe, setEncaixe] = useState<{ altura: number; fit: number } | null>(null);
+  const [altura, setAltura] = useState<number | null>(null);
+  const [nivel, setNivel] = useState(0); // 0 normal · 1 compacto · 2 não coube (altura natural)
   const medir = useCallback(() => {
     const el = ref.current;
-    if (!el || !window.matchMedia('(min-width: 1024px)').matches) { setEncaixe(null); return; }
-    const altura = Math.floor(viewportUi().h - (rectUi(el).top + paraUi(window.scrollY)) - 24);
-    setEncaixe({ altura, fit: Math.min(1, Math.max(FIT_MIN, altura / ALTURA_CHEIA)) });
+    setNivel(0);
+    if (!el || !window.matchMedia('(min-width: 1024px)').matches) { setAltura(null); return; }
+    setAltura(Math.floor(viewportUi().h - (rectUi(el).top + paraUi(window.scrollY)) - 24));
   }, []);
   useLayoutEffect(() => {
     window.addEventListener('resize', medir);
     return () => window.removeEventListener('resize', medir);
   }, [medir]);
   useLayoutEffect(medir, [medir, chave]);
-  // com a altura aplicada (antes da pintura): algum cartão ficou menor que o conteúdo? Rolagem própria (tabela de grupos)
-  // não conta — ela existe para isso.
+  // com a altura aplicada (antes da pintura): o painel ou algum cartão ficou menor que o conteúdo? Rolagem própria (tabela de
+  // grupos) não conta — ela existe para isso.
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!encaixe || !el) return;
-    const transborda = (n: Element, nivel: number): boolean => [...n.children].some((c) => {
-      if (!(c instanceof HTMLElement)) return false;
+    if (altura == null || nivel >= 2 || !el) return;
+    const transborda = (n: Element, prof: number): boolean => [...n.children].some((c) => {
+      if (!(c instanceof HTMLElement) || c.getAttribute('aria-hidden') === 'true') return false; // decoração não conta
       const oy = getComputedStyle(c).overflowY;
       if (oy !== 'auto' && oy !== 'scroll' && c.scrollHeight > c.clientHeight + 1) return true;
-      return nivel < 3 && transborda(c, nivel + 1);
+      return prof < 3 && transborda(c, prof + 1);
     });
-    if (transborda(el, 1)) setEncaixe(null);
-  }, [encaixe]);
-  return { ref, encaixe };
+    if (el.scrollHeight > el.clientHeight + 1 || transborda(el, 1)) setNivel(nivel + 1);
+  }, [altura, nivel]);
+  const base = altura == null ? 1 : Math.min(1, altura / ALTURA_CHEIA);
+  const encaixe = altura != null && nivel < 2 ? { altura, fit: Math.max(nivel === 1 ? FIT_MIN_COMPACTO : FIT_MIN, base) } : null;
+  return { ref, encaixe, compacto: !!encaixe && nivel === 1 };
 }
 
 function soma(m: UsoDia | undefined, k: 'km' | 'min') {
@@ -189,26 +197,26 @@ function Variacao({ delta }: { delta: number }) {
 }
 
 // 1) Resumo da frota: total grande, barra por estado (vão de 2 px entre trechos) e cada estado com número e %.
-function Resumo({ className, frota, total }: { className: string; frota: ItemFrota[]; total: number }) {
+function Resumo({ className, frota, total, compacto, filtro }: { className: string; frota: ItemFrota[]; total: number; compacto?: boolean; filtro?: React.ReactNode }) {
   const conta = (k: string) => frota.filter((x) => x.k === k).length;
   const recentes = frota.filter((x) => x.v && Date.now() - x.v.lastUpdate < RECENTE_MS).length;
   return (
-    <Card className={className} title="Resumo da frota" icon="tendencia" to="/monitoramento">
-      <div className="flex flex-col justify-between gap-6 h-full">
-        <div className="flex flex-col gap-4">
+    <Card className={className} dense={compacto} title="Resumo da frota" icon="tendencia" to="/monitoramento" actions={filtro}>
+      <div className={cx('flex flex-col justify-between h-full', compacto ? 'gap-3' : 'gap-6')}>
+        <div className={cx('flex flex-col', compacto ? 'gap-2' : 'gap-4')}>
           <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
             <Numero tamanho="xl"><Conta v={total} /></Numero>
             <span className="text-h2 text-ink-2 pb-1">{total === 1 ? 'veículo' : 'veículos'} rastreados</span>
           </div>
-          <span className="self-start inline-flex items-center gap-1.5 h-8 px-3 rounded-pill bg-card-2 text-small text-ink-2">
+          <span className={cx('self-start inline-flex items-center gap-1.5 px-3 rounded-pill bg-card-2 text-small text-ink-2', compacto ? 'h-7' : 'h-8')}>
             <span className="num font-semibold text-ink"><Conta v={pct(recentes, total)} f={fmt1} />%</span> com posição nos últimos 30 min
           </span>
         </div>
-        <div className="flex flex-col gap-5">
+        <div className={cx('flex flex-col', compacto ? 'gap-3' : 'gap-5')}>
           <div role="img" aria-label={ESTADOS.map((e) => `${e.label}: ${conta(e.k)}`).join(', ')} className="flex h-2.5 gap-[2px] rounded-pill overflow-hidden bg-track">
             {ESTADOS.map((e, i) => conta(e.k) > 0 && <span key={e.k} className="grow-x" style={{ flexGrow: conta(e.k), background: e.cor, ['--i' as any]: i * 2 }} />)}
           </div>
-          <ul className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-5">
+          <ul className={cx('grid grid-cols-2 sm:grid-cols-4 gap-x-4', compacto ? 'gap-y-2' : 'gap-y-5')}>
             {ESTADOS.map((e) => (
               <li key={e.k} className="flex flex-col gap-1.5 min-w-0">
                 <span className="flex items-center gap-tight text-small text-ink-2 truncate"><StatusGlyph kind={e.kind} />{e.label}</span>
@@ -251,7 +259,7 @@ function Atividade({ carregando, uso, total, viagens }: { carregando: boolean; u
 
 // 4) Conectividade: % transmitindo, anel e a separação entre "sem comunicação" (rastreador calado além do limite do cliente)
 // e os demais casos — diferente de veículo parado, que segue mandando posição.
-function Conectividade({ frota, total, ultima }: { frota: ItemFrota[]; total: number; ultima: number }) {
+function Conectividade({ frota, total, ultima, compacto }: { frota: ItemFrota[]; total: number; ultima: number; compacto?: boolean }) {
   const transmitindo = frota.filter((x) => x.v && !x.v.noSignal).length;
   const linhas: { label: string; n: number; kind: StatusKind; dica?: string }[] = [
     { label: 'Transmitindo', n: transmitindo, kind: 'mov' },
@@ -265,17 +273,17 @@ function Conectividade({ frota, total, ultima }: { frota: ItemFrota[]; total: nu
   const R = 34, C = 2 * Math.PI * R;
   return (
     <Card dense title="Conectividade dos rastreadores" icon="sinal" to="/monitoramento"
-      subtitle={ultima ? `Última posição às ${fmtT(ultima)} (${haQuanto(ultima)})` : 'Nenhuma posição recebida ainda'}>
-      <div className="grid grid-cols-[auto_1fr] sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.1fr)] items-center gap-x-6 gap-y-4">
+      subtitle={compacto ? undefined : ultima ? `Última posição às ${fmtT(ultima)} (${haQuanto(ultima)})` : 'Nenhuma posição recebida ainda'}>
+      <div className={cx('grid grid-cols-[auto_1fr] sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.1fr)] items-center gap-x-6', compacto ? 'gap-y-2' : 'gap-y-4')}>
         <div className="max-sm:col-span-2 flex flex-col gap-1.5">
           <Numero tamanho="lg"><Conta v={p} f={fmt1} />%</Numero>
           <span className="text-small text-ink-2">{transmitindo} de {total} transmitindo</span>
         </div>
-        <svg width="84" height="84" viewBox="0 0 84 84" role="img" aria-label={`${fmt1(p)}% transmitindo`}>
+        <svg width={compacto ? 64 : 84} height={compacto ? 64 : 84} viewBox="0 0 84 84" role="img" aria-label={`${fmt1(p)}% transmitindo`}>
           <circle cx="42" cy="42" r={R} fill="none" stroke="var(--track)" strokeWidth="10" />
           <circle cx="42" cy="42" r={R} fill="none" stroke="var(--real)" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${(pAnim / 100) * C} ${C}`} transform="rotate(-90 42 42)" />
         </svg>
-        <ul className="flex flex-col gap-2.5 min-w-0">
+        <ul className={cx('flex flex-col min-w-0', compacto ? 'gap-1' : 'gap-2.5')}>
           {visiveis.map((l) => {
             const linha = <li key={l.label} className="flex items-center gap-2.5 text-body"><StatusGlyph kind={l.kind} /><span className="flex-1 min-w-0 truncate">{l.label}</span><span className="num font-semibold">{l.n}</span></li>;
             return l.dica ? <Tooltip key={l.label} content={l.dica}>{linha}</Tooltip> : linha;
@@ -289,13 +297,15 @@ function Conectividade({ frota, total, ultima }: { frota: ItemFrota[]; total: nu
 // 3) Utilização: % da frota que rodou por dia, 7 dias anteriores + hoje. Uma série só (sem legenda), área com linha de 2 px.
 // O eixo começa 10 p.p. abaixo do menor valor (múltiplo de 10) e vai a 100%. Hoje fica marcado com o valor; os outros dias
 // mostram a dica ao passar o cursor/focar. O gráfico ocupa a altura do cartão. Tabela equivalente para leitor de tela.
-function Utilizacao({ className, carregando, dias, util, usados, km, total, media, delta }: {
-  className: string; carregando: boolean; dias: string[]; util: number[]; usados: number[]; km: number[]; total: number; media: number; delta: number;
+function Utilizacao({ className, compacto, carregando, dias, util, usados, km, total, media, delta }: {
+  className: string; compacto?: boolean; carregando: boolean; dias: string[]; util: number[]; usados: number[]; km: number[]; total: number; media: number; delta: number;
 }) {
   const n = dias.length;
   const marcado = n - 1; // hoje
   const piso = n ? Math.max(0, Math.floor((Math.min(...util) - 10) / 10) * 10) : 0;
   const marcas = Array.from({ length: (100 - piso) / 10 + 1 }, (_, i) => 100 - i * 10).filter((m, i, l) => l.length <= 6 || i % 2 === 0 || m === piso);
+  // compacto: o gráfico fica baixo e os rótulos do eixo se sobrepunham — só topo, meio e piso
+  const eixo = compacto ? [...new Set([100, piso + Math.round((100 - piso) / 20) * 10, piso])] : marcas;
   const x = (i: number) => (n > 1 ? (i / (n - 1)) * 100 : 50);
   const y = (v: number) => ((100 - v) / (100 - piso)) * 100;
   const pts = util.map((v, i) => [x(i), y(v)] as const);
@@ -309,9 +319,9 @@ function Utilizacao({ className, carregando, dias, util, usados, km, total, medi
   return (
     <Card dense className={className}>
       <div className="flex flex-col lg:flex-row gap-6 lg:gap-0 h-full">
-        <div className="lg:w-[300px] shrink-0 flex flex-col gap-5 lg:pr-8 lg:border-r border-line">
-          <CardHeader title="Utilização da frota" icon="grafico" subtitle={`Veículos que rodaram ${KM_USADO} km ou mais no dia`} />
-          <div className="flex flex-col gap-3">
+        <div className={cx('lg:w-[300px] shrink-0 flex flex-col lg:pr-8 lg:border-r border-line', compacto ? 'gap-2' : 'gap-5')}>
+          <CardHeader title="Utilização da frota" icon="grafico" subtitle={compacto ? undefined : `Veículos que rodaram ${KM_USADO} km ou mais no dia`} />
+          <div className={cx('flex flex-col', compacto ? 'gap-2' : 'gap-3')}>
             {carregando ? <Skeleton className="h-12 w-40" /> : <Numero tamanho="lg"><Conta v={util[n - 1] ?? 0} f={fmt1} />%</Numero>}
             {!carregando && n > 1 && <span className="flex flex-wrap items-center gap-2 text-small text-ink-2"><Variacao delta={delta} /> hoje vs. média dos 7 dias ({fmt1(media)}%)</span>}
           </div>
@@ -319,8 +329,8 @@ function Utilizacao({ className, carregando, dias, util, usados, km, total, medi
         <div className="flex-1 min-w-0 lg:pl-8 flex flex-col min-h-[220px] lg:min-h-0">
           {carregando ? <Skeleton className="flex-1 w-full" /> : (
             <>
-              <div className="relative flex-1 min-h-[110px] ml-11 mr-3 mt-8">
-                {marcas.map((g) => (
+              <div className={cx('relative flex-1 ml-11 mr-3 mt-8', compacto ? 'min-h-[64px]' : 'min-h-[110px]')}>
+                {eixo.map((g) => (
                   <span key={g} aria-hidden="true" className="absolute inset-x-0 border-t border-line" style={{ top: `${y(g)}%` }}>
                     <span className="absolute -left-11 -translate-y-1/2 w-9 text-right text-caption text-ink-2 num">{g}%</span>
                   </span>
@@ -348,7 +358,7 @@ function Utilizacao({ className, carregando, dias, util, usados, km, total, medi
                   </Tooltip>
                 ))}
               </div>
-              <div className="relative h-10 mt-2 ml-11 mr-3 shrink-0">
+              <div className={cx('relative ml-11 mr-3 shrink-0', compacto ? 'h-9 mt-1' : 'h-10 mt-2')}>
                 {dias.map((d, i) => (
                   <span key={d} className={cx('absolute -translate-x-1/2 flex flex-col items-center text-caption leading-snug whitespace-nowrap', i === marcado ? 'text-ink font-semibold' : 'text-ink-2')} style={{ left: `${x(i)}%` }}>
                     <span className="capitalize">{i === n - 1 ? 'Hoje' : diaCurto(d)}</span><span className="num">{diaMes(d)}</span>
@@ -370,7 +380,7 @@ function Utilizacao({ className, carregando, dias, util, usados, km, total, medi
 
 // 5) Por unidade/grupo: tamanho, em movimento agora e utilização média dos 7 dias anteriores (veículo-dias usados ÷
 // veículo-dias). Table do sistema: ordenável por coluna, vira cartões no celular.
-function Grupos({ className, frota, groups, dias, usadosNo, carregando }: { className: string; frota: ItemFrota[]; groups: any[]; dias: string[]; usadosNo: (dia: string, ids?: Set<string>) => number; carregando: boolean }) {
+function Grupos({ className, compacto, frota, groups, dias, usadosNo, carregando }: { className: string; compacto?: boolean; frota: ItemFrota[]; groups: any[]; dias: string[]; usadosNo: (dia: string, ids?: Set<string>) => number; carregando: boolean }) {
   const linhas = useMemo(() => {
     const de = (ids: Set<string>, nome: string, id: string) => {
       const n = ids.size;
@@ -383,7 +393,7 @@ function Grupos({ className, frota, groups, dias, usadosNo, carregando }: { clas
     return r.sort((a, b) => b.n - a.n);
   }, [frota, groups, dias, usadosNo]);
   return (
-    <Card dense className={className} title="Por unidade e grupo" icon="camadas" subtitle="Veículos em movimento agora e utilização média dos últimos 7 dias">
+    <Card dense className={className} title="Por unidade e grupo" icon="camadas" subtitle={compacto ? undefined : 'Veículos em movimento agora e utilização média dos últimos 7 dias'}>
       <div className="h-full overflow-y-auto"><Table dense head={['Unidade / grupo', 'Veículos', 'Em movimento', 'Utilização (7 dias)']} align={['left', 'right', 'right', 'left']} card={false} minWidth={520} loading={carregando}
         sort={{ 0: (i) => linhas[i].nome, 1: (i) => linhas[i].n, 2: (i) => linhas[i].mov, 3: (i) => linhas[i].util }}
         rows={linhas.map((l) => [
@@ -398,7 +408,7 @@ function Grupos({ className, frota, groups, dias, usadosNo, carregando }: { clas
 
 // Leitura da semana: uma frase sobre a utilização de hoje contra a média dos 7 dias anteriores. Cartão de destaque na cor de
 // dados (--real), sem imagem; a cor marca o cartão, não um status.
-function Leitura({ className, carregando, delta, media, hoje }: { className: string; carregando: boolean; delta: number; media: number; hoje: number }) {
+function Leitura({ className, compacto, carregando, delta, media, hoje }: { className: string; compacto?: boolean; carregando: boolean; delta: number; media: number; hoje: number }) {
   const alta = delta >= 1, queda = delta <= -1;
   const titulo = carregando ? 'Utilização da semana' : alta ? 'Utilização em alta' : queda ? 'Utilização em queda' : 'Utilização estável';
   const texto = carregando ? 'Calculando a comparação com a última semana…'
@@ -406,13 +416,17 @@ function Leitura({ className, carregando, delta, media, hoje }: { className: str
     : queda ? `A frota operou ${fmt1(-delta)} p.p. a menos que a média da última semana (${fmt1(media)}%).`
     : `Hoje (${fmt1(hoje)}%) está dentro da média da última semana (${fmt1(media)}%).`;
   return (
-    <section className={cx('relative overflow-hidden rounded-card p-card text-white flex flex-col justify-between gap-6 min-h-[180px] lg:min-h-0 shadow-card', className)}
+    <section className={cx('relative overflow-hidden rounded-card text-white flex flex-col justify-between min-h-[180px] lg:min-h-0 shadow-card', compacto ? 'p-card-sm gap-2' : 'p-card gap-6', className)}
       style={{ background: 'linear-gradient(140deg, color-mix(in srgb, var(--real) 80%, white) 0%, var(--real) 45%, color-mix(in srgb, var(--real) 70%, black) 100%)' }}>
-      <span aria-hidden="true" className="absolute -right-24 -bottom-32 w-72 h-72 rounded-full bg-white/[0.08]" />
-      <span aria-hidden="true" className="absolute -right-8 -bottom-44 w-72 h-72 rounded-full bg-white/[0.08]" />
-      <span aria-hidden="true" className="relative w-11 h-11 rounded-2xl flex items-center justify-center bg-white/[0.18]"><Icon name="tendencia" size={22} className={queda ? '-scale-y-100' : ''} /></span>
+      {/* círculos numa camada própria, recortada: soltos no cartão, entravam na altura do conteúdo (scrollHeight) e o encaixe
+          achava que o cartão transbordava */}
+      <span aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none">
+        <span className="absolute -right-24 -bottom-32 w-72 h-72 rounded-full bg-white/[0.08]" />
+        <span className="absolute -right-8 -bottom-44 w-72 h-72 rounded-full bg-white/[0.08]" />
+      </span>
+      <span aria-hidden="true" className={cx('relative w-11 h-11 rounded-2xl flex items-center justify-center bg-white/[0.18]', compacto && 'hidden')}><Icon name="tendencia" size={22} className={queda ? '-scale-y-100' : ''} /></span>
       <div className="relative">
-        <h2 className="text-h2 font-semibold">{titulo}</h2>
+        <h2 className={cx(compacto ? 'text-h3' : 'text-h2', 'font-semibold')}>{titulo}</h2>
         <p className="mt-2 text-body leading-snug text-white/85">{texto}</p>
       </div>
     </section>
