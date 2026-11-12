@@ -486,15 +486,18 @@ export function PeriodButton({ label, compare, children }: { label: string; comp
 // Cartão compacto de KPI: rótulo, número (text-kpi, encolhe com o card) em --ink, chip de variação e uma linha de contexto.
 // Rótulo → número 12; número → contexto 8. O número é o único protagonista do cartão.
 // O status (quando houver) é um ponto ao lado do rótulo, nunca a cor do número.
-export function KpiTile({ label, value, unit, digits = 0, delta, sub, status, display }: {
+// inset = tile compacto com borda, dentro de outro card (ex.: indicadores na barra de filtros do Replay)
+export function KpiTile({ label, value, unit, digits = 0, delta, sub, status, display, variant = 'default' }: {
   label: string; value?: number | null; unit?: string; digits?: number; display?: React.ReactNode;
   delta?: { value: number | null; unit?: string; digits?: number; good?: 'up' | 'down' }; sub?: React.ReactNode; status?: StatusKind;
+  variant?: 'default' | 'inset';
 }) {
+  const inset = variant === 'inset';
   return (
-    <div className="bg-card shadow-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size]">
-      <span className="text-small text-ink-2 flex items-start gap-tight">{status && <span className="ico-line"><StatusGlyph kind={status} /></span>}<span className="min-w-0">{label}</span></span>
-      <div className="flex flex-wrap items-baseline gap-x-tight gap-y-hair min-w-0 mt-kpi-title">
-        {display ?? <Num value={value} unit={unit} digits={digits} size="kpi" count />}
+    <div className={cx('bg-card rounded-card flex flex-col min-w-0 [container-type:inline-size]', inset ? 'border border-line px-3 py-2' : 'shadow-card p-card-sm')}>
+      <span className={cx(inset ? 'text-caption' : 'text-small', 'text-ink-2 flex items-start gap-tight')}>{status && <span className="ico-line"><StatusGlyph kind={status} /></span>}<span className="min-w-0 truncate">{label}</span></span>
+      <div className={cx('flex flex-wrap items-baseline gap-x-tight gap-y-hair min-w-0', inset ? 'mt-tight' : 'mt-kpi-title')}>
+        {display ?? <Num value={value} unit={unit} digits={digits} size={inset ? 'lg' : 'kpi'} count />}
         {delta && <DeltaChip {...delta} />}
       </div>
       {sub && <span className="text-caption text-ink-2 mt-kpi-meta">{sub}</span>}
