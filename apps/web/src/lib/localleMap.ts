@@ -75,9 +75,19 @@ export function applyPosicao(v: any, p: RealtimePosicao) {
   return { ...v, assetId: assetIdFor(p.assetId), live: true, pos: [p.lat, p.lon] as [number, number], speed, moving: speed > 3, ignition: p.ignition, lastUpdate, comunicacao: 'online', noSignal: false, ...(p.telemetria ? telemetriaDoVeiculo(p.telemetria) : {}) };
 }
 
-/** Telemetria da API → campos do veículo que a tela já usa (bateria em V, satélites, sinal 0–5, bloqueio, alimentação externa) e quando cada um chegou. */
+/** Telemetria da API → campos do veículo que a tela já usa (bateria em V, satélites, sinal 0–5, bloqueio, alimentação externa, odômetro do painel) e quando cada um chegou. */
 export function telemetriaDoVeiculo(t: Telemetria | undefined) {
-  return { battery: t?.tensaoV ?? null, gps: t?.satelites ?? null, gsm: t?.sinalGsm ?? null, blocked: t?.bloqueado ?? null, power: t?.alimentacaoExterna ?? null, telemetriaEm: t?.lidaEm ?? null };
+  return { battery: t?.tensaoV ?? null, gps: t?.satelites ?? null, gsm: t?.sinalGsm ?? null, blocked: t?.bloqueado ?? null, power: t?.alimentacaoExterna ?? null, odoPainel: t?.odometroPainelKm ?? null, velPainel: t?.velocidadePainelKmh ?? null, telemetriaEm: t?.lidaEm ?? null };
+}
+
+/**
+ * Velocidade do painel só vale se veio no pacote da posição que está na tela: o último valor de cada chave fica guardado
+ * e o aparelho deixa de mandar a velocidade com a ignição desligada, então um valor antigo mostraria o carro andando.
+ * A idade é do servidor do Traccar e a posição é do aparelho: tolerância de 1 min entre as duas.
+ */
+export function velocidadePainelAtual(v: { velPainel?: number | null; lastUpdate?: number; telemetriaEm?: { velocidadePainel?: string | null } | null } | null | undefined) {
+  const em = v?.telemetriaEm?.velocidadePainel ? Date.parse(v.telemetriaEm.velocidadePainel) : NaN;
+  return v?.velPainel != null && v.lastUpdate != null && Math.abs(em - v.lastUpdate) <= 60_000 ? v.velPainel : null;
 }
 
 /** Item do recálculo periódico do backend (kind 'comunicacao'); `null` = nada muda na tela. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nomeDoAtivo, eventoToReplay, regraToRule, ruleToRegraBody, alertaIdOf, alertaToAlert, applyPosicao, cercaToFence, createSseParser, fenceToCercaBody, toAsset, toVehicle, type CurrentRow } from './localleMap';
+import { nomeDoAtivo, eventoToReplay, regraToRule, ruleToRegraBody, alertaIdOf, alertaToAlert, applyPosicao, cercaToFence, createSseParser, fenceToCercaBody, toAsset, toVehicle, velocidadePainelAtual, type CurrentRow } from './localleMap';
 
 const row = (o: Partial<CurrentRow> = {}): CurrentRow => ({
   assetId: 'a1', plate: 'ABC1D23', fixTime: '2026-01-01T12:00:00.000Z', longitude: -34.88, latitude: -8.05,
@@ -65,6 +65,24 @@ describe('toAsset / toVehicle', () => {
     expect(applyPosicao(v, p)).toMatchObject({ battery: 13.3, gps: 15 });
     expect(applyPosicao(v, { ...p, telemetria: { ...t, satelites: 9, tensaoV: null } })).toMatchObject({ battery: null, gps: 9 });
     expect(applyPosicao(v, { ...p, telemetria: { ...t, tensaoV: 0.7, alimentacaoExterna: false } })).toMatchObject({ battery: 0.7, power: false });
+  });
+
+  it('odômetro do painel (CAN) vem da telemetria; aparelho sem CAN fica null', () => {
+    const t = { tensaoV: 12.8, satelites: 24, sinalGsm: 5, bloqueado: null, alimentacaoExterna: true, odometroPainelKm: 26840, lidaEm: { tensaoV: null, satelites: null, sinalGsm: null, bloqueado: null, alimentacaoExterna: null, odometroPainel: '2026-11-12T01:38:16.217Z' } };
+    const v = toVehicle(row({ telemetria: t }), undefined)!;
+    expect(v).toMatchObject({ odoPainel: 26840, telemetriaEm: { odometroPainel: '2026-11-12T01:38:16.217Z' } });
+    expect(toVehicle(row({ telemetria: { ...t, odometroPainelKm: undefined } }), undefined)!.odoPainel).toBeNull();
+  });
+
+  it('velocidade do painel só vale no pacote da posição atual: valor guardado de pacote antigo não aparece', () => {
+    const lastUpdate = Date.parse('2026-11-12T01:37:42.874Z');
+    const em = (iso: string) => ({ velocidadePainel: iso });
+    expect(velocidadePainelAtual({ velPainel: 27.7, lastUpdate, telemetriaEm: em('2026-11-12T01:37:42.153Z') })).toBe(27.7);
+    // ignição desligada: os pacotes seguintes não trazem obdSpeed e o 27,7 guardado é de meia hora antes
+    expect(velocidadePainelAtual({ velPainel: 27.7, lastUpdate: lastUpdate + 30 * 60_000, telemetriaEm: em('2026-11-12T01:37:42.153Z') })).toBeNull();
+    expect(velocidadePainelAtual({ velPainel: 27.7, lastUpdate, telemetriaEm: null })).toBeNull();
+    expect(velocidadePainelAtual({ velPainel: null, lastUpdate, telemetriaEm: em('2026-11-12T01:37:42.153Z') })).toBeNull();
+    expect(velocidadePainelAtual(undefined)).toBeNull();
   });
 
   it('sem posição ainda (aguardando) não vira veículo no mapa', () => {

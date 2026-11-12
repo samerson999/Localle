@@ -23,10 +23,20 @@ export interface Telemetria {
    */
   alimentacaoExterna: boolean | null;
   /**
+   * Odômetro do painel do veículo (rede CAN), em km. Só aparelho com CAN ligado ao veículo manda; o resto fica null.
+   * É diferente do hodômetro calculado pelo GPS.
+   */
+  odometroPainelKm?: number | null;
+  /**
+   * Velocidade do painel (rede CAN), em km/h. É do instante do pacote: como o último valor de cada chave fica guardado,
+   * a tela só a mostra quando `lidaEm.velocidadePainel` é o pacote da posição atual.
+   */
+  velocidadePainelKmh?: number | null;
+  /**
    * Quando chegou o atributo de cada leitura (ISO, horário do servidor do Traccar). Valor antigo continua valendo como
    * "último conhecido", mas a tela mostra a idade; `null` = idade desconhecida.
    */
-  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null; alimentacaoExterna: string | null };
+  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null; alimentacaoExterna: string | null; odometroPainel?: string | null; velocidadePainel?: string | null };
 }
 
 export interface RealtimePosicao {

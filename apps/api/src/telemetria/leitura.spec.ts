@@ -41,6 +41,31 @@ describe('lerTelemetria', () => {
     expect(lerTelemetria({ charge: 1 }).alimentacaoExterna).toBeNull();
   });
 
+  it('odômetro do painel (CAN): `obdOdometer` em metros vira km, com a idade da chave; sem CAN ou fora da faixa fica null', () => {
+    // JR12 instalado (tc_positions da HML, 11/11/2026): odômetro do painel em metros, passo de 1 km
+    const jr12 = { power: 12.992, sat: 24, rssi: 31, ignition: false, obdOdometer: 2.684e7, obdSpeed: 0, canStatus: 1 };
+    const vistos = { obdOdometer: '2026-11-12T01:38:16.217Z', power: '2026-11-12T02:08:16.274Z' };
+    const t = lerTelemetriaComIdade(jr12, vistos);
+    expect(t.odometroPainelKm).toBe(26840);
+    expect(t.lidaEm?.odometroPainel).toBe('2026-11-12T01:38:16.217Z');
+    expect(lerTelemetriaComIdade({ obdOdometer: 12_345_678 }, {}).odometroPainelKm).toBe(12345.7);
+    // modelo que manda o odômetro do painel em outra chave: vem do catálogo
+    expect(lerTelemetriaComIdade({ odo_can: 5_000_000 }, {}, { atributoTensao: null, sinalMax: null, atributoBloqueio: null, atributoOdometro: 'odo_can' }).odometroPainelKm).toBe(5000);
+    // hodômetro do GPS (`odometer`) não é o do painel
+    expect(lerTelemetriaComIdade(TELTONIKA, {}).odometroPainelKm).toBeNull();
+    expect(lerTelemetriaComIdade({ obdOdometer: -1 }, { obdOdometer: '2026-11-12T01:38:16.217Z' })).toMatchObject({ odometroPainelKm: null, lidaEm: { odometroPainel: null } });
+    expect(lerTelemetriaComIdade({ obdOdometer: '26840000' }, {}).odometroPainelKm).toBeNull();
+  });
+
+  it('velocidade do painel (CAN): `obdSpeed` em km/h com a idade da chave; fora da faixa ou sem CAN fica null', () => {
+    const vistos = { obdSpeed: '2026-11-12T01:37:42.153Z' };
+    expect(lerTelemetriaComIdade({ obdSpeed: 27.72 }, vistos)).toMatchObject({ velocidadePainelKmh: 27.7, lidaEm: { velocidadePainel: '2026-11-12T01:37:42.153Z' } });
+    expect(lerTelemetriaComIdade({ obdSpeed: 0 }, vistos).velocidadePainelKmh).toBe(0); // parado é leitura válida
+    expect(lerTelemetriaComIdade({ obdSpeed: 400 }, vistos)).toMatchObject({ velocidadePainelKmh: null, lidaEm: { velocidadePainel: null } });
+    expect(lerTelemetriaComIdade({ obdSpeed: '27' }, vistos).velocidadePainelKmh).toBeNull();
+    expect(lerTelemetriaComIdade(TELTONIKA, {}).velocidadePainelKmh).toBeNull();
+  });
+
   it('idade da alimentação é a da chave que decidiu', () => {
     const vistos = { power: '2026-11-05T10:00:00.000Z', charge: '2026-11-05T09:00:00.000Z' };
     expect(lerTelemetriaComIdade({ power: 12.6, charge: true }, vistos).lidaEm?.alimentacaoExterna).toBe('2026-11-05T10:00:00.000Z');

@@ -25,6 +25,7 @@ export interface CurrentPositionRow {
   atributo_tensao: string | null;
   sinal_max: number | null;
   atributo_bloqueio: string | null;
+  atributo_odometro: string | null;
 }
 
 export interface UsoDiarioRow {
@@ -80,7 +81,7 @@ export class MonitoringRepository {
          st_x(v.geom) as longitude, st_y(v.geom) as latitude,
          v.speed_kmh, v.ignition,
          i.rastreador_id, i.id as instalacao_id, r.imei, r.modelo, i.instalado_em,
-         rc.ultimos_atributos, rc.atributos_vistos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
+         rc.ultimos_atributos, rc.atributos_vistos_em, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio, m.atributo_odometro,
          -- pacote anterior à instalação vigente pertence ao ativo anterior (mesma regra da view)
          case when rc.ultimo_pacote_em >= i.instalado_em then rc.ultimo_pacote_em end as ultimo_pacote_em,
          case when rc.ultima_posicao_valida_em >= i.instalado_em then rc.ultima_posicao_valida_em end

@@ -287,8 +287,8 @@ describe('PositionsIngestService', () => {
     const r = await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 3, serverTime: t('00:30'), attributes: { power: 13.3, rssi: 2 } }));
     // cada leitura com a data da sua chave: o bloqueio é o do heartbeat das 12:00
     expect(r.status === 'gravada' && r.telemetria).toEqual({
-      tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false, alimentacaoExterna: true,
-      lidaEm: { tensaoV: t('00:30').toISOString(), satelites: t('00:15').toISOString(), sinalGsm: t('00:30').toISOString(), bloqueado: t('00:00').toISOString(), alimentacaoExterna: t('00:30').toISOString() },
+      tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false, alimentacaoExterna: true, odometroPainelKm: null, velocidadePainelKmh: null,
+      lidaEm: { tensaoV: t('00:30').toISOString(), satelites: t('00:15').toISOString(), sinalGsm: t('00:30').toISOString(), bloqueado: t('00:00').toISOString(), alimentacaoExterna: t('00:30').toISOString(), odometroPainel: null, velocidadePainel: null },
     });
 
     // reenvio atrasado (serverTime antigo) não volta o sinal para 4, mas traz a chave nova

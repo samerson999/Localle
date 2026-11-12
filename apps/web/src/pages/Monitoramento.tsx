@@ -19,6 +19,7 @@ import { TreatDialog, TreatedLine } from '../components/TreatDialog';
 import { capacidadesComando, confirmarSenha, criarLink, enviarComandoLocalle, isRealAsset, lerParametro, listarLinks, revogarLink, tipoComandoLocalle } from '../lib/localleApi';
 import { lerVisao, salvarVisao, type VisaoMonitor } from '../lib/monitorPrefs';
 import { leituraAntiga } from '../lib/diagnosticoRastreador';
+import { velocidadePainelAtual } from '../lib/localleMap';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
 import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { sendRealCommand } from '../lib/rastreioApi';
@@ -408,6 +409,7 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
   const fences = useStore((st) => st.fences.filter((f: any) => v?.inside?.includes(f.id)));
   const setPhoto = (data: string) => { useStore.getState().upsert('assets', { id: a.id, photo: data }); toast('Foto do veículo atualizada.'); };
   const hours = a.meter === 'horimetro';
+  const velPainel = velocidadePainelAtual(v);
   const mobile = useIsMobile();
   const nav = useNavigate();
   const bloqueio = v?.blocked
@@ -454,7 +456,9 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
       </div>
       <Pendencias assetId={a.id} reasons={reasons} />
       <div className="grid grid-cols-2 gap-grid mt-card-foot pt-card-foot border-t border-line">
-        <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Velocidade</p>{v?.noSignal ? <Num value={null} size="lg" className="block text-ink-3" /> : <Num value={Math.round(v?.speed || 0)} unit="km/h" size="lg" />}</div>
+        <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Velocidade</p>{v?.noSignal ? <Num value={null} size="lg" className="block text-ink-3" /> : <Num value={Math.round(v?.speed || 0)} unit="km/h" size="lg" />}
+          {/* a do GPS é a principal; a do painel (CAN) só aparece quando veio no mesmo pacote da posição */}
+          {!v?.noSignal && velPainel !== null && <p className="text-caption text-ink-2">Painel: <span className="num">{Math.round(velPainel)} km/h</span></p>}</div>
         <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Rodou hoje</p><Num value={kmToday} unit="km" digits={1} size="lg" /></div>
       </div>
       <DescList className="mt-card-head">
@@ -472,6 +476,8 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
           {v?.temp !== undefined && <DescRow label="Temperatura">{a.kind === 'veiculo' && v.temp > -12 ? <StatusDot kind="crit" label={`${num(v.temp, 1)} °C`} /> : `${num(v.temp, 1)} °C`}</DescRow>}
           {v?.door && <DescRow label="Porta do baú">{v.door === 'Aberta' ? <StatusDot kind="parado" label="Aberta" /> : v.door}</DescRow>}
           <DescRow label={hours ? 'Horímetro' : a.kmCalculated ? 'Odômetro (calculado)' : 'Odômetro'}>{hours ? <Num value={v?.hourmeter} unit="h" digits={1} size="body" /> : <Num value={odo} unit="km" size="body" />}</DescRow>
+          {/* odômetro do painel (rede CAN): só aparece quando o aparelho manda; é o número que o motorista vê no painel */}
+          {v?.odoPainel != null && <DescRow label="Odômetro do painel"><Num value={v.odoPainel} unit="km" size="body" /><Idade em={v.telemetriaEm?.odometroPainel} /></DescRow>}
           <DescRow label="Sinal GSM">{v?.gsm == null ? NAO_INFORMADO : <><span className="inline-flex items-center gap-icon"><Icon name="sinal" size={16} className="text-ink-2" /><span className="num">{v.gsm}/5</span></span><Idade em={v.telemetriaEm?.sinalGsm} /></>}</DescRow>
           <DescRow label="Atualizado"><time className="num">{fmtT(v?.lastUpdate)}</time></DescRow>
         </>}
