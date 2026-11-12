@@ -15,17 +15,18 @@
 // Fontes: estado ao vivo do store (posição, ignição, comunicação — o mesmo do Monitoramento) e o resumo de uso da API
 // (GET /monitoring/resumo-uso: km e minutos em movimento por veículo e por dia, do agregado uso_5min). "Usado" num dia =
 // rodou pelo menos 1 km. Viagens vêm do módulo Viagens, quando contratado. O filtro de grupo vale para a tela inteira.
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, vehicleStatus } from '../lib/store';
 import { useResumoUso } from '../lib/localleApi';
 import { Icon, type IconName } from '../components/icons';
 import { StatusGlyph, type StatusKind } from '../components/story';
+import { Ring, LineChart } from '../components/charts';
 import { Button, Card, CardHeader, EmptyState, PageHeader, Progress, Select, Skeleton, Table, Tooltip, cx, FilterSheet } from '../components/ui';
 import { fmtT, num } from '@localle/shared/utils';
 import { paraUi, rectUi, viewportUi } from '../lib/uiZoom';
-import { useCountUp } from '../lib/motion';
+import { useCountUp, reducedMotion } from '../lib/motion';
 
 const KM_USADO = 1; // rodou pelo menos isso no dia = veículo usado
 const RECENTE_MS = 30 * 60_000; // "dados recentes": posição dos últimos 30 minutos
@@ -117,8 +118,9 @@ export default function Inicio() {
         </div>
         <Utilizacao className="lg:col-span-12" compacto={compacto} carregando={carregando} dias={dias} util={util} usados={dias.map((d) => usadosNo(d))}
           km={dias.map((d) => soma(uso.get(d), 'km'))} total={total} media={media} delta={delta} />
-        {mostraGrupos && <Grupos className="lg:col-span-8" compacto={compacto} frota={frota} groups={gruposComFrota} dias={dias.slice(0, -1)} usadosNo={usadosNo} carregando={carregando} />}
-        <Leitura className={mostraGrupos ? 'lg:col-span-4' : 'lg:col-span-12'} compacto={compacto} carregando={carregando} delta={delta} media={media} hoje={util[util.length - 1] ?? 0} />
+        {mostraGrupos && <Grupos className="lg:col-span-8" compacto={compacto} frota={frota} groups={gruposComFrota} dias={dias.slice(0, -1)} uso={uso} carregando={carregando} />}
+        <Leitura className={mostraGrupos ? 'lg:col-span-4' : 'lg:col-span-12'} compacto={compacto} carregando={carregando} frota={frota} dias={dias.slice(0, -1)} uso={uso}
+          delta={delta} media={media} hoje={util[util.length - 1] ?? 0} />
       </div>
     </div>
   );
@@ -269,8 +271,6 @@ function Conectividade({ frota, total, ultima, compacto }: { frota: ItemFrota[];
   ];
   const visiveis = linhas.filter((l) => l.n > 0 || l.label === 'Transmitindo' || l.label === 'Sem comunicação');
   const p = pct(transmitindo, total);
-  const pAnim = useCountUp(p) ?? 0; // o anel enche junto com o número
-  const R = 34, C = 2 * Math.PI * R;
   return (
     <Card dense title="Conectividade dos rastreadores" icon="sinal" to="/monitoramento"
       subtitle={compacto ? undefined : ultima ? `Última posição às ${fmtT(ultima)} (${haQuanto(ultima)})` : 'Nenhuma posição recebida ainda'}>
@@ -279,10 +279,7 @@ function Conectividade({ frota, total, ultima, compacto }: { frota: ItemFrota[];
           <Numero tamanho="lg"><Conta v={p} f={fmt1} />%</Numero>
           <span className="text-small text-ink-2">{transmitindo} de {total} transmitindo</span>
         </div>
-        <svg width={compacto ? 64 : 84} height={compacto ? 64 : 84} viewBox="0 0 84 84" role="img" aria-label={`${fmt1(p)}% transmitindo`}>
-          <circle cx="42" cy="42" r={R} fill="none" stroke="var(--track)" strokeWidth="10" />
-          <circle cx="42" cy="42" r={R} fill="none" stroke="var(--real)" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${(pAnim / 100) * C} ${C}`} transform="rotate(-90 42 42)" />
-        </svg>
+        <Ring value={p / 100} size={compacto ? 64 : 84} thickness={compacto ? 8 : 10} label="Rastreadores transmitindo" />
         <ul className={cx('flex flex-col min-w-0', compacto ? 'gap-1' : 'gap-2.5')}>
           {visiveis.map((l) => {
             const linha = <li key={l.label} className="flex items-center gap-2.5 text-body"><StatusGlyph kind={l.kind} /><span className="flex-1 min-w-0 truncate">{l.label}</span><span className="num font-semibold">{l.n}</span></li>;
@@ -296,26 +293,14 @@ function Conectividade({ frota, total, ultima, compacto }: { frota: ItemFrota[];
 
 // 3) Utilização: % da frota que rodou por dia, 7 dias anteriores + hoje. Uma série só (sem legenda), área com linha de 2 px.
 // O eixo começa 10 p.p. abaixo do menor valor (múltiplo de 10) e vai a 100%. Hoje fica marcado com o valor; os outros dias
-// mostram a dica ao passar o cursor/focar. O gráfico ocupa a altura do cartão. Tabela equivalente para leitor de tela.
+// mostram a dica ao passar o cursor/tocar. O gráfico (LineChart do sistema) ocupa a altura do cartão.
 function Utilizacao({ className, compacto, carregando, dias, util, usados, km, total, media, delta }: {
   className: string; compacto?: boolean; carregando: boolean; dias: string[]; util: number[]; usados: number[]; km: number[]; total: number; media: number; delta: number;
 }) {
   const n = dias.length;
-  const marcado = n - 1; // hoje
   const piso = n ? Math.max(0, Math.floor((Math.min(...util) - 10) / 10) * 10) : 0;
-  const marcas = Array.from({ length: (100 - piso) / 10 + 1 }, (_, i) => 100 - i * 10).filter((m, i, l) => l.length <= 6 || i % 2 === 0 || m === piso);
-  // compacto: o gráfico fica baixo e os rótulos do eixo se sobrepunham — só topo, meio e piso
-  const eixo = compacto ? [...new Set([100, piso + Math.round((100 - piso) / 20) * 10, piso])] : marcas;
-  const x = (i: number) => (n > 1 ? (i / (n - 1)) * 100 : 50);
-  const y = (v: number) => ((100 - v) / (100 - piso)) * 100;
-  const pts = util.map((v, i) => [x(i), y(v)] as const);
-  // curva suave (Catmull-Rom → Bézier) passando pelos valores reais
-  const linha = pts.map(([px, py], i) => {
-    if (!i) return `M${px},${py}`;
-    const [x0, y0] = pts[Math.max(0, i - 2)], [x1, y1] = pts[i - 1], [x3, y3] = pts[Math.min(n - 1, i + 1)];
-    return `C${x1 + (px - x0) / 6},${y1 + (py - y0) / 6} ${px - (x3 - x1) / 6},${py - (y3 - y1) / 6} ${px},${py}`;
-  }).join(' ');
-  const detalhe = (i: number) => `${fmt1(util[i])}% · ${usados[i]} de ${total} veículos · ${num(Math.round(km[i]))} km`;
+  const rotulos = dias.map((d, i) => `${i === n - 1 ? 'Hoje' : diaCurto(d).replace(/^./, (c) => c.toUpperCase())}\n${diaMes(d)}`);
+  const detalhe = (i: number) => `${usados[i]} de ${total} veículos · ${num(Math.round(km[i]))} km`;
   return (
     <Card dense className={className}>
       <div className="flex flex-col lg:flex-row gap-6 lg:gap-0 h-full">
@@ -328,49 +313,8 @@ function Utilizacao({ className, compacto, carregando, dias, util, usados, km, t
         </div>
         <div className="flex-1 min-w-0 lg:pl-8 flex flex-col min-h-[220px] lg:min-h-0">
           {carregando ? <Skeleton className="flex-1 w-full" /> : (
-            <>
-              <div className={cx('relative flex-1 ml-11 mr-3 mt-8', compacto ? 'min-h-[64px]' : 'min-h-[110px]')}>
-                {eixo.map((g) => (
-                  <span key={g} aria-hidden="true" className="absolute inset-x-0 border-t border-line" style={{ top: `${y(g)}%` }}>
-                    <span className="absolute -left-11 -translate-y-1/2 w-9 text-right text-caption text-ink-2 num">{g}%</span>
-                  </span>
-                ))}
-                <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="reveal-x absolute inset-0 w-full h-full overflow-visible" aria-hidden="true">
-                  <defs><linearGradient id="util-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--real)" stopOpacity="0.20" /><stop offset="100%" stopColor="var(--real)" stopOpacity="0" /></linearGradient></defs>
-                  {n > 1 && <path d={`${linha} L${x(n - 1)},100 L0,100 Z`} fill="url(#util-area)" />}
-                  {n > 1 && <path d={linha} fill="none" stroke="var(--real)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" />}
-                </svg>
-                {/* etiqueta do dia escolhido */}
-                {marcado >= 0 && (
-                  <span className="fade-after absolute px-2.5 h-7 flex items-center rounded-btn text-small font-semibold num whitespace-nowrap pointer-events-none text-white bg-real"
-                    style={{ left: `${x(marcado)}%`, top: `${y(util[marcado] ?? 0)}%`, transform: `translate(${marcado === 0 ? '-12px' : marcado === n - 1 ? 'calc(-100% + 12px)' : '-50%'}, calc(-100% - 14px))` }}>
-                    {fmt1(util[marcado] ?? 0)}%
-                  </span>
-                )}
-                {/* pontos: cada um é o alvo do dia (dica com os números; tocar escolhe o dia) */}
-                {util.map((v, i) => (
-                  <Tooltip key={dias[i]} content={<><span className="capitalize">{diaLongo(dias[i])}</span>: {detalhe(i)}</>}>
-                    <span tabIndex={0} role="img" aria-label={`${diaLongo(dias[i])}: ${detalhe(i)}`}
-                      className="fade-after absolute w-9 h-9 -ml-[18px] -mt-[18px] rounded-full flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-real"
-                      style={{ left: `${x(i)}%`, top: `${y(v)}%`, ['--i' as any]: i }}>
-                      <span aria-hidden="true" className={cx('rounded-full bg-card transition-transform', i === marcado ? 'w-4 h-4 border-[3px] shadow-[0_0_0_5px_var(--real-soft)]' : 'w-2.5 h-2.5 border-2')} style={{ borderColor: 'var(--real)' }} />
-                    </span>
-                  </Tooltip>
-                ))}
-              </div>
-              <div className={cx('relative ml-11 mr-3 shrink-0', compacto ? 'h-9 mt-1' : 'h-10 mt-2')}>
-                {dias.map((d, i) => (
-                  <span key={d} className={cx('absolute -translate-x-1/2 flex flex-col items-center text-caption leading-snug whitespace-nowrap', i === marcado ? 'text-ink font-semibold' : 'text-ink-2')} style={{ left: `${x(i)}%` }}>
-                    <span className="capitalize">{i === n - 1 ? 'Hoje' : diaCurto(d)}</span><span className="num">{diaMes(d)}</span>
-                  </span>
-                ))}
-              </div>
-              <table className="sr-only">
-                <caption>Utilização da frota por dia</caption>
-                <thead><tr><th>Dia</th><th>Utilização</th><th>Veículos que rodaram</th><th>Km</th></tr></thead>
-                <tbody>{dias.map((d, i) => <tr key={d}><td>{diaLongo(d)}</td><td>{fmt1(util[i])}%</td><td>{usados[i]} de {total}</td><td>{Math.round(km[i])}</td></tr>)}</tbody>
-              </table>
-            </>
+            <LineChart height="fill" labels={rotulos} series={[{ label: 'Utilização', values: util, tone: 'real', area: true }]}
+              domain={[piso, 100]} format={(v) => `${Number.isInteger(v) ? v : fmt1(v)}%`} mark={n - 1} dots detail={detalhe} tickEvery={1} />
           )}
         </div>
       </div>
@@ -380,55 +324,136 @@ function Utilizacao({ className, compacto, carregando, dias, util, usados, km, t
 
 // 5) Por unidade/grupo: tamanho, em movimento agora e utilização média dos 7 dias anteriores (veículo-dias usados ÷
 // veículo-dias). Table do sistema: ordenável por coluna, vira cartões no celular.
-function Grupos({ className, compacto, frota, groups, dias, usadosNo, carregando }: { className: string; compacto?: boolean; frota: ItemFrota[]; groups: any[]; dias: string[]; usadosNo: (dia: string, ids?: Set<string>) => number; carregando: boolean }) {
+function Grupos({ className, compacto, frota, groups, dias, uso, carregando }: { className: string; compacto?: boolean; frota: ItemFrota[]; groups: any[]; dias: string[]; uso: Map<string, UsoDia>; carregando: boolean }) {
   const linhas = useMemo(() => {
     const de = (ids: Set<string>, nome: string, id: string) => {
       const n = ids.size;
-      const usados = dias.reduce((s, d) => s + usadosNo(d, ids), 0);
-      return { id, nome, n, mov: frota.filter((x) => ids.has(x.a.id) && x.k === 'mov').length, util: n && dias.length ? (usados / (n * dias.length)) * 100 : 0 };
+      let km = 0;
+      for (const d of dias) for (const [aid, x] of uso.get(d) ?? []) if (ids.has(aid)) km += x.km;
+      return { id, nome, n, mov: frota.filter((x) => ids.has(x.a.id) && x.k === 'mov').length, km: n && dias.length ? km / (n * dias.length) : 0 };
     };
     const r = groups.map((g: any) => de(new Set(frota.filter((x) => x.a.groupIds?.includes(g.id)).map((x) => x.a.id)), g.name, g.id)).filter((l) => l.n > 0);
     const sem = new Set(frota.filter((x) => !x.a.groupIds?.some((gid: string) => groups.some((g: any) => g.id === gid))).map((x) => x.a.id));
     if (sem.size && r.length) r.push(de(sem, 'Sem grupo', '_sem'));
     return r.sort((a, b) => b.n - a.n);
-  }, [frota, groups, dias, usadosNo]);
+  }, [frota, groups, dias, uso]);
+  const maior = Math.max(1, ...linhas.map((l) => l.km));
   return (
-    <Card dense className={className} title="Por unidade e grupo" icon="camadas" subtitle={compacto ? undefined : 'Veículos em movimento agora e utilização média dos últimos 7 dias'}>
-      <div className="h-full overflow-y-auto"><Table dense head={['Unidade / grupo', 'Veículos', 'Em movimento', 'Utilização (7 dias)']} align={['left', 'right', 'right', 'left']} card={false} minWidth={520} loading={carregando}
-        sort={{ 0: (i) => linhas[i].nome, 1: (i) => linhas[i].n, 2: (i) => linhas[i].mov, 3: (i) => linhas[i].util }}
+    <Card dense className={className} title="Por unidade e grupo" icon="camadas" subtitle={compacto ? undefined : 'Quanto cada veículo roda por dia, em média, nos últimos 7 dias'}>
+      <div className="h-full overflow-y-auto"><Table dense head={['Unidade / grupo', 'Veículos', 'Em movimento', 'Km por veículo/dia']} align={['left', 'right', 'right', 'left']} card={false} minWidth={520} loading={carregando}
+        sort={{ 0: (i) => linhas[i].nome, 1: (i) => linhas[i].n, 2: (i) => linhas[i].mov, 3: (i) => linhas[i].km }}
         rows={linhas.map((l) => [
           <span className="font-medium">{l.nome}</span>,
           <span className="num">{l.n}</span>,
           <span className="num">{l.mov}</span>,
-          <span className="flex items-center gap-3 min-w-[160px]"><Progress value={l.util / 100} label={`Utilização de ${l.nome}`} className="h-2 flex-1" /><span className="num w-12 text-right font-semibold">{fmt1(l.util)}%</span></span>,
+          <span className="flex items-center gap-3 min-w-[160px]"><Progress value={l.km / maior} label={`Km por veículo/dia de ${l.nome}`} className="h-2 flex-1" /><span className="num w-16 text-right font-semibold">{num(Math.round(l.km))} km</span></span>,
         ])} /></div>
     </Card>
   );
 }
 
-// Leitura da semana: uma frase sobre a utilização de hoje contra a média dos 7 dias anteriores. Cartão de destaque na cor de
-// dados (--real), sem imagem; a cor marca o cartão, não um status.
-function Leitura({ className, compacto, carregando, delta, media, hoje }: { className: string; compacto?: boolean; carregando: boolean; delta: number; media: number; hoje: number }) {
+// Leitura da semana: carrossel de frases na cor de dados (--real; a cor marca o cartão, não um status). Cada slide responde
+// uma pergunta que nenhum outro cartão da tela responde: quem está sem uso, quem mais rodou e se a semana está acima ou
+// abaixo do normal. Troca sozinho a cada LEITURA_MS (pausa com o ponteiro/foco em cima e com prefers-reduced-motion);
+// bolinhas e arrasto trocam na mão. Os slides ficam empilhados na mesma célula: a altura é a do maior e não muda ao trocar
+// (o encaixe da tela mede a altura do conteúdo).
+const LEITURA_MS = 7000;
+function Leitura({ className, compacto, carregando, frota, dias, uso, delta, media, hoje }: {
+  className: string; compacto?: boolean; carregando: boolean; frota: ItemFrota[]; dias: string[]; uso: Map<string, UsoDia>; delta: number; media: number; hoje: number;
+}) {
+  const porVeiculo = useMemo(() => frota.map((x) => {
+    let km = 0, semUso = 0;
+    for (const d of dias) { const k = uso.get(d)?.get(x.a.id)?.km ?? 0; km += k; if (k < KM_USADO) semUso++; }
+    return { nome: x.a.name || '—', km, semUso };
+  }), [frota, dias, uso]);
+  const n = dias.length;
+  const lista = (l: string[]) => (l.length <= 3 ? l.join(', ').replace(/, ([^,]*)$/, ' e $1') : `${l.slice(0, 3).join(', ')} e mais ${l.length - 3}`);
+
+  // 1) sem uso
+  const parados = porVeiculo.filter((x) => n && x.semUso === n).map((x) => x.nome).sort((a, b) => a.localeCompare(b));
+  const algum = porVeiculo.filter((x) => x.semUso > 0).length;
+  // 2) quem mais rodou
+  const kmTotal = porVeiculo.reduce((s, x) => s + x.km, 0);
+  const lider = porVeiculo.reduce<(typeof porVeiculo)[number] | null>((m, x) => (!m || x.km > m.km ? x : m), null);
+  // 3) semana × hoje
   const alta = delta >= 1, queda = delta <= -1;
-  const titulo = carregando ? 'Utilização da semana' : alta ? 'Utilização em alta' : queda ? 'Utilização em queda' : 'Utilização estável';
-  const texto = carregando ? 'Calculando a comparação com a última semana…'
-    : alta ? `A frota operou ${fmt1(delta)} p.p. a mais que a média da última semana.`
-    : queda ? `A frota operou ${fmt1(-delta)} p.p. a menos que a média da última semana (${fmt1(media)}%).`
-    : `Hoje (${fmt1(hoje)}%) está dentro da média da última semana (${fmt1(media)}%).`;
+
+  const slides: { icone: IconName; titulo: string; texto: string; to: string }[] = carregando
+    ? [{ icone: 'relogio', titulo: 'Leitura da semana', texto: 'Conferindo o que a frota fez nos últimos 7 dias…', to: '/relatorios/uso' }]
+    : [
+      {
+        icone: 'relogio', to: '/relatorios/uso',
+        titulo: parados.length ? `${parados.length} ${parados.length === 1 ? 'veículo parado' : 'veículos parados'} a semana toda` : algum ? 'Nenhum veículo parado a semana toda' : 'Toda a frota rodou todos os dias',
+        texto: parados.length ? `${lista(parados)} não ${parados.length === 1 ? 'rodou' : 'rodaram'} nos últimos ${n} dias.`
+          : algum ? `${algum} ${algum === 1 ? 'veículo teve' : 'veículos tiveram'} pelo menos um dia sem rodar nos últimos ${n} dias.`
+          : `Todos os ${frota.length} veículos rodaram em cada um dos últimos ${n} dias.`,
+      },
+      ...(lider && lider.km >= KM_USADO ? [{
+        icone: 'rota' as IconName, to: '/relatorios/uso',
+        titulo: `${lider.nome} foi o que mais rodou`,
+        texto: `${num(Math.round(lider.km))} km nos últimos ${n} dias${frota.length > 1 && kmTotal ? `, ${fmt1((lider.km / kmTotal) * 100)}% de tudo o que a frota percorreu` : ''}.`,
+      }] : []),
+      {
+        icone: 'tendencia', to: '/relatorios/uso',
+        titulo: alta ? 'Hoje acima da semana' : queda ? 'Hoje abaixo da semana' : 'Hoje dentro do normal',
+        texto: alta ? `${fmt1(hoje)}% da frota rodou hoje, ${fmt1(delta)} p.p. acima da média dos últimos ${n} dias (${fmt1(media)}%).`
+          : queda ? `${fmt1(hoje)}% da frota rodou hoje, ${fmt1(-delta)} p.p. abaixo da média dos últimos ${n} dias (${fmt1(media)}%).`
+          : `${fmt1(hoje)}% da frota rodou hoje, em linha com a média dos últimos ${n} dias (${fmt1(media)}%).`,
+      },
+    ];
+
+  const [atual, setAtual] = useState(0);
+  const [pausado, setPausado] = useState(false);
+  const ir = useCallback((i: number) => setAtual(((i % slides.length) + slides.length) % slides.length), [slides.length]);
+  const i0 = Math.min(atual, slides.length - 1);
+  useEffect(() => {
+    if (pausado || slides.length < 2 || reducedMotion()) return;
+    const t = window.setTimeout(() => ir(i0 + 1), LEITURA_MS);
+    return () => window.clearTimeout(t);
+  }, [pausado, slides.length, i0, ir]);
+  const arrasto = useRef<number | null>(null);
+
   return (
-    <section className={cx('relative overflow-hidden rounded-card text-white flex flex-col justify-between min-h-[180px] lg:min-h-0 shadow-card', compacto ? 'p-card-sm gap-2' : 'p-card gap-6', className)}
-      style={{ background: 'linear-gradient(140deg, color-mix(in srgb, var(--real) 80%, white) 0%, var(--real) 45%, color-mix(in srgb, var(--real) 70%, black) 100%)' }}>
+    <section aria-roledescription="carrossel" aria-label="Leitura da semana"
+      className={cx('relative overflow-hidden rounded-card text-white flex flex-col min-h-[180px] lg:min-h-0 shadow-card touch-pan-y', compacto ? 'p-card-sm gap-2' : 'p-card gap-4', className)}
+      style={{ background: 'linear-gradient(140deg, color-mix(in srgb, var(--real) 80%, white) 0%, var(--real) 45%, color-mix(in srgb, var(--real) 70%, black) 100%)' }}
+      onMouseEnter={() => setPausado(true)} onMouseLeave={() => setPausado(false)}
+      onFocus={() => setPausado(true)} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setPausado(false)}
+      onPointerDown={(e) => { arrasto.current = e.clientX; }}
+      onPointerUp={(e) => { const x0 = arrasto.current; arrasto.current = null; if (x0 != null && Math.abs(e.clientX - x0) > 40) ir(i0 + (e.clientX < x0 ? 1 : -1)); }}>
       {/* círculos numa camada própria, recortada: soltos no cartão, entravam na altura do conteúdo (scrollHeight) e o encaixe
           achava que o cartão transbordava */}
       <span aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none">
         <span className="absolute -right-24 -bottom-32 w-72 h-72 rounded-full bg-white/[0.08]" />
         <span className="absolute -right-8 -bottom-44 w-72 h-72 rounded-full bg-white/[0.08]" />
       </span>
-      <span aria-hidden="true" className={cx('relative w-11 h-11 rounded-2xl flex items-center justify-center bg-white/[0.18]', compacto && 'hidden')}><Icon name="tendencia" size={22} className={queda ? '-scale-y-100' : ''} /></span>
-      <div className="relative">
-        <h2 className={cx(compacto ? 'text-h3' : 'text-h2', 'font-semibold')}>{titulo}</h2>
-        <p className="mt-2 text-body leading-snug text-white/85">{texto}</p>
+      <div className="relative grid flex-1 min-h-0" aria-live={pausado ? 'polite' : 'off'}>
+        {slides.map((s, i) => (
+          <div key={s.titulo} aria-roledescription="slide" aria-label={`${i + 1} de ${slides.length}`} aria-hidden={i !== i0}
+            {...(i !== i0 ? { inert: '' } : {}) as any}
+            className={cx('[grid-area:1/1] flex flex-col justify-between transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none', compacto ? 'gap-2' : 'gap-5')}
+            style={{ opacity: i === i0 ? 1 : 0, transform: `translateX(${i === i0 ? 0 : i < i0 ? -24 : 24}px)` }}>
+            <span aria-hidden="true" className={cx('w-11 h-11 rounded-2xl flex items-center justify-center bg-white/[0.18]', compacto && 'hidden')}><Icon name={s.icone} size={22} className={s.icone === 'tendencia' && queda ? '-scale-y-100' : ''} /></span>
+            <div>
+              <h2 className={cx(compacto ? 'text-h3' : 'text-h2', 'font-semibold')}>{s.titulo}</h2>
+              <p className="mt-2 text-body leading-snug text-white/85">{s.texto}</p>
+            </div>
+          </div>
+        ))}
       </div>
+      {slides.length > 1 && (
+        <div className="relative flex items-center justify-between gap-3">
+          <Link to={slides[i0].to} className="text-small font-semibold text-white/90 hover:text-white underline-offset-4 hover:underline outline-none focus-visible:underline">Ver relatório de uso</Link>
+          <div className="flex items-center gap-1">
+            {slides.map((s, i) => (
+              <button key={s.titulo} type="button" onClick={() => ir(i)} aria-label={`Mostrar leitura ${i + 1} de ${slides.length}`} aria-current={i === i0}
+                className="w-6 h-6 flex items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-white">
+                <span aria-hidden="true" className={cx('h-1.5 rounded-pill bg-white transition-all duration-300', i === i0 ? 'w-5' : 'w-1.5 opacity-50')} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

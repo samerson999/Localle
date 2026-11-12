@@ -228,15 +228,17 @@ export function StackedBars({ data, series, format = (v: number) => String(v), p
 function useWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [w, setW] = useState(0);
+  const [h, setH] = useState(0); // só o LineChart com height="fill" usa
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     setW(el.clientWidth); // px da página (getBoundingClientRect viria na escala da tela, lib/uiZoom.ts)
-    const ro = new ResizeObserver(([e]) => setW(e.contentRect.width));
+    setH(el.clientHeight);
+    const ro = new ResizeObserver(([e]) => { setW(e.contentRect.width); setH(e.contentRect.height); });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  return [ref, w] as const;
+  return [ref, w, h] as const;
 }
 const AXIS = { fontSize: 11, fill: 'var(--ink-3)', fontFamily: 'var(--font-sans)' } as const;
 const VAL = { fontSize: 12, fill: 'var(--ink-2)', fontFamily: 'var(--font-sans)', fontWeight: 500 } as const;
@@ -495,10 +497,16 @@ const nearest = (clientX: number, box: HTMLElement | null, left: number, inner: 
 
 // ---------- linhas: atual em azul (com área e ponto final), anterior tracejado neutro; meta tracejada ----------
 export type LineSeries = { label: string; values: (number | null)[]; tone: 'real' | 'prev' | 'loss'; area?: boolean };
-export function LineChart({ labels, series, goal, format = (v: number) => String(v), height = 190, domain, tickEvery }: {
-  labels: string[]; series: LineSeries[]; goal?: { value: number; label?: string }; format?: (v: number) => string; height?: number; domain?: [number, number]; tickEvery?: number;
+// height="fill": ocupa a altura que sobrar no pai (que precisa ser flex em coluna). labels com "\n" viram duas linhas no eixo.
+// mark: índice com o valor escrito numa etiqueta sobre o ponto (em vez do ponto final). dots: um ponto por valor.
+// detail: linha extra na dica do ponto, para série única.
+export function LineChart({ labels, series, goal, format = (v: number) => String(v), height = 190, domain, tickEvery, mark, dots, detail }: {
+  labels: string[]; series: LineSeries[]; goal?: { value: number; label?: string }; format?: (v: number) => string; height?: number | 'fill'; domain?: [number, number]; tickEvery?: number;
+  mark?: number; dots?: boolean; detail?: (i: number) => React.ReactNode;
 }) {
-  const [ref, W] = useWidth<HTMLDivElement>();
+  const [ref, W, Hbox] = useWidth<HTMLDivElement>();
+  const fill = height === 'fill';
+  const multi = labels.some((l) => l.includes('\n'));
   const tip = useChartTip();
   const gid = useId().replace(/:/g, '');
   const all = series.flatMap((s) => s.values.filter((v): v is number => v != null)).concat(goal ? [goal.value] : []);
@@ -506,10 +514,11 @@ export function LineChart({ labels, series, goal, format = (v: number) => String
   const nt = niceTicks(lo, domain?.[1] ?? Math.max(1, ...all) * 1.05);
   const hi = domain?.[1] ?? nt.top;
   const ticks = nt.ticks.filter((t) => t >= lo && t <= hi);
-  const top = 12, bottom = 22, left = axisLeft(ticks.map(format), 32), right = 10, H = height, n = labels.length;
+  const top = mark != null ? 40 : 12, bottom = multi ? 36 : 22, left = axisLeft(ticks.map(format), 32), right = 10, n = labels.length;
+  const H = fill ? Math.max(top + bottom + 40, Hbox) : height;
   const x = (i: number) => left + (W - left - right) * (n <= 1 ? 0.5 : i / (n - 1));
   const y = (v: number) => top + (H - top - bottom) * (1 - (v - lo) / (hi - lo || 1));
-  const every = Math.max(tickEvery ?? Math.ceil(n / 6), stepFor(labels, (W - left - right) / Math.max(1, n - 1)));
+  const every = Math.max(tickEvery ?? Math.ceil(n / 6), stepFor(labels.flatMap((l) => l.split('\n')), (W - left - right) / Math.max(1, n - 1)));
   const stroke = { real: 'var(--real)', prev: 'var(--target)', loss: 'var(--loss)' };
   // cada trecho sem buraco vira uma curva suave; null interrompe a linha
   const path = (vals: (number | null)[]) => {
@@ -518,21 +527,23 @@ export function LineChart({ labels, series, goal, format = (v: number) => String
     return runs.map(smooth).join('');
   };
   const idx = typeof tip.active === 'number' ? tip.active : null;
+  const shown = mark == null ? null : idx ?? mark; // com mark, a etiqueta e o destaque seguem o ponteiro
   const at = (i: number) => { const vs = series.map((s) => s.values[i]).filter((v): v is number => v != null); return anchorIn(ref.current, x(i), vs.length ? y(Math.max(...vs)) : top); };
   const body = (i: number) => (
-    <TipBody title={labels[i]} rows={[...series.map((s) => ({ swatch: <Swatch color={stroke[s.tone]} line dashed={s.tone === 'prev'} />, label: s.label, value: s.values[i] == null ? '—' : format(s.values[i]!), strong: s.tone !== 'prev', tone: s.tone === 'prev' ? 'muted' as const : undefined })), ...(goal ? [{ swatch: <Swatch color="var(--ink-2)" line dashed />, label: 'Meta', value: format(goal.value), tone: 'muted' as const }] : [])]}
-      foot={series.length > 1 && series[0].values[i] != null && series[1].values[i] != null ? <>vs {series[1].label.toLowerCase()}: <DeltaText cur={series[0].values[i]!} prev={series[1].values[i]} /></> : undefined} />
+    <TipBody title={labels[i].replace('\n', ' ')} rows={[...series.map((s) => ({ swatch: <Swatch color={stroke[s.tone]} line dashed={s.tone === 'prev'} />, label: s.label, value: s.values[i] == null ? '—' : format(s.values[i]!), strong: s.tone !== 'prev', tone: s.tone === 'prev' ? 'muted' as const : undefined })), ...(goal ? [{ swatch: <Swatch color="var(--ink-2)" line dashed />, label: 'Meta', value: format(goal.value), tone: 'muted' as const }] : [])]}
+      foot={series.length > 1 && series[0].values[i] != null && series[1].values[i] != null ? <>vs {series[1].label.toLowerCase()}: <DeltaText cur={series[0].values[i]!} prev={series[1].values[i]} /></> : detail?.(i)} />
   );
   const move = (e: React.PointerEvent | React.MouseEvent, pin: boolean) => { const i = nearest(e.clientX, ref.current, left, W - left - right, n); tip.show(i, at(i), body(i), pin); };
   return (
-    <figure className="m-0">
+    <figure className={cx('m-0', fill && 'flex-1 min-h-0 flex flex-col')}>
       {series.length > 1 && <figcaption className="mb-3 flex flex-wrap justify-end gap-x-5 gap-y-tight text-caption text-ink-2">{series.map((s) => <span key={s.label} className="inline-flex items-center gap-tight"><svg width="18" height="8" aria-hidden="true"><line x1="1" x2="17" y1="4" y2="4" stroke={stroke[s.tone]} strokeWidth="2" strokeDasharray={s.tone === 'prev' ? '3 3' : undefined} /></svg>{s.label}</span>)}</figcaption>}
       <SrTable caption="Série" head={['Ponto', ...series.map((s) => s.label)]} rows={labels.map((l, i) => [l, ...series.map((s) => (s.values[i] == null ? '—' : format(s.values[i]!)))])} />
-      <div ref={ref} aria-hidden="true">
-        {W > 0 && <svg width={W} height={H} className="block overflow-visible">
+      <div ref={ref} aria-hidden="true" className={fill ? 'relative flex-1 min-h-0' : undefined}>
+        {W > 0 && <svg width={W} height={H} className={cx('block overflow-visible', fill && 'absolute inset-0')}>
           <defs><linearGradient id={`${gid}a`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--real)" stopOpacity="0.18" /><stop offset="1" stopColor="var(--real)" stopOpacity="0" /></linearGradient>{edgeFade(gid, left, W - right, H)}</defs>
           {ticks.map((t, k) => <g key={k}><line x1={left} x2={W - right} y1={y(t)} y2={y(t)} stroke={k === 0 ? 'var(--line-strong)' : 'var(--line)'} /><text x={left - 8} y={y(t) + 4} textAnchor="end" {...AXIS}>{format(t)}</text></g>)}
-          {labels.map((l, i) => showX(i, n, every) && <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} {...AXIS}>{l}</text>)}
+          {labels.map((l, i) => showX(i, n, every) && <text key={i} x={x(i)} y={H - (multi ? 20 : 5)} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} {...AXIS}
+            {...(i === shown ? { fill: 'var(--ink)', fontWeight: 600 } : {})}>{l.split('\n').map((s, j) => <tspan key={j} x={x(i)} dy={j ? 14 : 0}>{s}</tspan>)}</text>)}
           {goal && <g>
             <line x1={left} x2={W - right} y1={y(goal.value)} y2={y(goal.value)} stroke="var(--ink-2)" strokeDasharray="4 4" strokeWidth={1.25} />
             <text x={W - right} y={y(goal.value) + 16 > H - bottom - 4 ? y(goal.value) - 6 : y(goal.value) + 16} textAnchor="end" fontSize={12} fontWeight={600} fill="var(--ink)" stroke="var(--card)" strokeWidth={4} paintOrder="stroke">{goal.label ?? `Meta ${format(goal.value)}`}</text>
@@ -544,13 +555,24 @@ export function LineChart({ labels, series, goal, format = (v: number) => String
             return <g key={k}>
               {s.area && s.tone === 'real' && lastI > firstI && <path d={`${d}L${x(lastI)},${y(lo)}L${x(firstI)},${y(lo)}Z`} fill={`url(#${gid}a)`} />}
               <path d={d} mask={`url(#${gid}m)`} fill="none" stroke={stroke[s.tone]} strokeWidth={s.tone === 'prev' ? 1.5 : 2} strokeDasharray={s.tone === 'prev' ? '4 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />
-              {s.tone === 'real' && lastI >= 0 && idx == null && <g><circle cx={x(lastI)} cy={y(s.values[lastI]!)} r={8} fill="var(--real)" fillOpacity={0.15} /><circle cx={x(lastI)} cy={y(s.values[lastI]!)} r={4} fill="var(--card)" stroke="var(--real)" strokeWidth={2} /></g>}
+              {dots && s.tone === 'real' && s.values.map((v, i) => v == null || i === shown ? null : <circle key={i} cx={x(i)} cy={y(v)} r={3.5} fill="var(--card)" stroke="var(--real)" strokeWidth={2} />)}
+              {s.tone === 'real' && shown != null && s.values[shown] != null && (() => {
+                const v = s.values[shown]!, cx0 = x(shown), cy0 = y(v), t = format(v), w = textW(t, 13) + 20;
+                const px = Math.max(left - 8, Math.min(W - right - w + 8, cx0 - w / 2));
+                return <g>
+                  <circle cx={cx0} cy={cy0} r={11} fill="var(--real)" fillOpacity={0.15} />
+                  <circle cx={cx0} cy={cy0} r={6} fill="var(--card)" stroke="var(--real)" strokeWidth={3} />
+                  <rect x={px} y={cy0 - 42} width={w} height={26} rx={8} fill="var(--real)" />
+                  <text x={px + w / 2} y={cy0 - 24.5} textAnchor="middle" fontSize={13} fontWeight={600} fill="var(--on-color)" fontFamily="var(--font-sans)" className="num">{t}</text>
+                </g>;
+              })()}
+              {s.tone === 'real' && mark == null && lastI >= 0 && idx == null && <g><circle cx={x(lastI)} cy={y(s.values[lastI]!)} r={8} fill="var(--real)" fillOpacity={0.15} /><circle cx={x(lastI)} cy={y(s.values[lastI]!)} r={4} fill="var(--card)" stroke="var(--real)" strokeWidth={2} /></g>}
             </g>;
           })}
           {/* régua e pontos do índice sob o ponteiro */}
           {idx != null && idx < n && <g pointerEvents="none">
             <line x1={x(idx)} x2={x(idx)} y1={top} y2={H - bottom} stroke="var(--ink-3)" strokeWidth={1} strokeDasharray="3 3" />
-            {series.map((s, k) => s.values[idx] == null ? null : <circle key={k} cx={x(idx)} cy={y(s.values[idx]!)} r={4.5} fill="var(--card)" stroke={stroke[s.tone]} strokeWidth={2} />)}
+            {series.map((s, k) => s.values[idx] == null || (mark != null && s.tone === 'real') ? null : <circle key={k} cx={x(idx)} cy={y(s.values[idx]!)} r={4.5} fill="var(--card)" stroke={stroke[s.tone]} strokeWidth={2} />)}
           </g>}
           <rect x={left} y={0} width={Math.max(0, W - left - right)} height={H - bottom} fill="transparent" className="cursor-crosshair" data-chart-hit=""
             onPointerMove={(e) => e.pointerType === 'mouse' && move(e, false)} onPointerLeave={(e) => e.pointerType === 'mouse' && tip.hide()} onClick={(e) => { e.stopPropagation(); move(e, true); }} />
