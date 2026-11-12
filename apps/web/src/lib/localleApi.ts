@@ -5,8 +5,9 @@ import type { Alerta, RealtimeMessage, RealtimePosicao } from '@localle/shared/r
 import type { BillingType, ContractStatus, ContractTerms, ContractVersion } from '@localle/shared/contratos';
 import type { TipoIdentificador } from '@localle/shared/rastreadorModelos';
 import { inFence } from '@localle/shared/utils';
-import { alertaIdOf, alertaToAlert, alertIdFor, applyComunicacao, applyPosicao, assetIdFor, backendIdOf, cercaToFence, createSseParser, fenceToCercaBody, regraToRule, ruleToRegraBody, eventoToReplay, type EventoApi, type RegraApi, toAsset, toVehicle, type CercaApi, type CurrentRow } from './localleMap';
+import { alertaIdOf, alertaToAlert, alertIdFor, applyComunicacao, applyPosicao, assetIdFor, backendIdOf, cercaToFence, createSseParser, fenceToCercaBody, regraToRule, ruleToRegraBody, eventoToReplay, type EventoApi, type RegraApi, mesclarFrota, type CercaApi, type CurrentRow } from './localleMap';
 import { useStore } from './store';
+import { estadoSemCliente } from './estadoInicial';
 import * as M from './localleModulos';
 import { LIVE_GROUP } from './rastreioApi';
 import { erroHttp, fetchOuErro, mensagemDeErro, MSG_SESSAO } from './apiErro';
@@ -61,7 +62,15 @@ export function iniciarRenovacaoSessao(): void {
 /** Token recusado pela API (expirado, usuário desativado): derruba também a sessão do front. */
 function encerrarSessao() {
   setToken(null);
-  useStore.getState().patch(() => ({ session: null }));
+  limparDadosDoCliente();
+}
+
+/**
+ * Apaga do store (e do localStorage, pelo persist) tudo o que é do cliente da sessão: troca de sessão no mesmo
+ * navegador nunca pode mostrar a frota, alertas ou cadastros do cliente anterior. `session` é a nova (ou null).
+ */
+export function limparDadosDoCliente(session: unknown = null) {
+  useStore.setState(estadoSemCliente(useStore.getState(), session) as any, true);
 }
 
 async function postLogin(path: string, email: string, password: string): Promise<string | null> {
@@ -104,8 +113,10 @@ export async function login(email: string, password: string): Promise<'gestor' |
 
 /** Desinscreve o push antes de derrubar o token — precisa da sessão ainda válida para a chamada à API. */
 export async function logout(): Promise<void> {
-  await desativarPush().catch(() => {});
+  // melhor esforço com teto: rede lenta na desinscrição não pode segurar a saída
+  await Promise.race([desativarPush().catch(() => {}), new Promise((r) => setTimeout(r, 3000))]);
   setToken(null);
+  limparDadosDoCliente();
 }
 
 /** Confere a senha do usuário logado (confirmação de comando ao rastreador), sem trocar a sessão. */
@@ -213,11 +224,15 @@ function suportaPush(): boolean {
   return 'serviceWorker' in navigator && 'PushManager' in window;
 }
 
+// `serviceWorker.ready` nunca resolve sem service worker registrado (no `pnpm dev` ele não é registrado, main.tsx) —
+// travava o logout para sempre. `getRegistration` responde na hora, com `undefined` quando não há.
+const registroSw = () => navigator.serviceWorker.getRegistration();
+
 export async function estadoPush(): Promise<EstadoPush> {
   if (!suportaPush()) return 'nao_suportado';
   if (Notification.permission === 'denied') return 'bloqueado';
-  const reg = await navigator.serviceWorker.ready;
-  return (await reg.pushManager.getSubscription()) ? 'ativo' : 'inativo';
+  const reg = await registroSw();
+  return reg && (await reg.pushManager.getSubscription()) ? 'ativo' : 'inativo';
 }
 
 /** Pede a permissão no toque (nunca ao abrir o app) e registra o aparelho na API. `false`: negada, bloqueada, ou canal não configurado neste ambiente (503 da API). */
@@ -230,7 +245,8 @@ export async function ativarPush(): Promise<boolean> {
   } catch {
     return false;
   }
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await registroSw();
+  if (!reg) return false;
   const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ParaUint8Array(publicKey) }));
   const json = sub.toJSON();
   await apiSend('POST', '/notificacoes/aparelhos', { endpoint: json.endpoint, keys: json.keys, userAgent: navigator.userAgent });
@@ -240,8 +256,8 @@ export async function ativarPush(): Promise<boolean> {
 /** Desinscreve no navegador e apaga na API — melhor esforço (chamado no logout; nunca deve travá-lo). */
 export async function desativarPush(): Promise<void> {
   if (!suportaPush()) return;
-  const reg = await navigator.serviceWorker.ready;
-  const sub = await reg.pushManager.getSubscription();
+  const reg = await registroSw();
+  const sub = await reg?.pushManager.getSubscription();
   if (!sub) return;
   const endpoint = sub.endpoint;
   await sub.unsubscribe().catch(() => {});
@@ -564,18 +580,8 @@ const LIVE_HISTORY = 120;
 export async function syncFrota() {
   const rows = await apiGet<CurrentRow[]>('/monitoring/current');
   useStore.getState().patch((s: any) => {
-    const byId: Record<string, any> = Object.fromEntries(s.assets.map((a: any) => [a.id, a]));
-    const assets = [...s.assets];
-    const vehicles = { ...s.vehicles };
-    for (const row of rows) {
-      const id = assetIdFor(row.assetId);
-      const a = toAsset(row, byId[id], LIVE_GROUP.id);
-      if (byId[id]) assets[assets.findIndex((x: any) => x.id === id)] = a; else assets.push(a);
-      const v = toVehicle(row, vehicles[id]);
-      if (v) vehicles[id] = v;
-    }
     const groups = s.groups.some((g: any) => g.id === LIVE_GROUP.id) ? s.groups : [...s.groups, LIVE_GROUP];
-    return { assets, vehicles, groups };
+    return { ...mesclarFrota(s, rows, LIVE_GROUP.id), groups };
   });
   useLocalle.setState({ status: 'ok', ts: Date.now(), count: rows.length, error: '' });
 }

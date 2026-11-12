@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nomeDoAtivo, eventoToReplay, regraToRule, ruleToRegraBody, alertaIdOf, alertaToAlert, applyPosicao, cercaToFence, createSseParser, fenceToCercaBody, toAsset, toVehicle, velocidadePainelAtual, type CurrentRow } from './localleMap';
+import { nomeDoAtivo, eventoToReplay, regraToRule, ruleToRegraBody, alertaIdOf, alertaToAlert, applyPosicao, cercaToFence, createSseParser, fenceToCercaBody, mesclarFrota, toAsset, toVehicle, velocidadePainelAtual, type CurrentRow } from './localleMap';
 
 const row = (o: Partial<CurrentRow> = {}): CurrentRow => ({
   assetId: 'a1', plate: 'ABC1D23', fixTime: '2026-01-01T12:00:00.000Z', longitude: -34.88, latitude: -8.05,
@@ -159,5 +159,32 @@ describe('eventos → Replay', () => {
   });
   it('evento sem posição fica fora do mapa', () => {
     expect(eventoToReplay({ ...base, tipo: 'sos', latitude: null, longitude: null })).toBeNull();
+  });
+});
+
+// Bug da HML (12/11/2026): ativo de outra sessão salva no navegador nunca saía da tela.
+describe('mesclarFrota', () => {
+  const s = {
+    assets: [{ id: 'lc_outro', plate: 'OUT1R00' }, { id: 'lc_a1', plate: 'ABC1D23', apelido: 'Van' }, { id: 'local_x' }],
+    vehicles: { lc_outro: { pos: [1, 1] }, lc_a1: { lastUpdate: 0 } },
+    history: { lc_outro: [[1, 1, 1, 0, 1]] },
+  };
+
+  it('retira ativo da API que não veio na frota do cliente, com veículo e trilha', () => {
+    const r = mesclarFrota(s, [row()], 'g');
+    expect(r.assets.map((a) => a.id)).toEqual(['lc_a1', 'local_x']);
+    expect(Object.keys(r.vehicles)).toEqual(['lc_a1']);
+    expect(r.history).toEqual({});
+  });
+
+  it('atualiza o ativo que veio, mantendo o que é do navegador, e inclui o novo', () => {
+    const r = mesclarFrota(s, [row(), row({ assetId: 'a2', plate: 'NOV1A22' })], 'g');
+    expect(r.assets.find((a) => a.id === 'lc_a1').apelido).toBe('Van');
+    expect(r.assets.find((a) => a.id === 'lc_a2').plate).toBe('NOV1A22');
+    expect(r.vehicles.lc_a2.pos).toEqual([-8.05, -34.88]);
+  });
+
+  it('frota vazia retira todos os ativos da API', () => {
+    expect(mesclarFrota(s, [], 'g').assets.map((a) => a.id)).toEqual(['local_x']);
   });
 });

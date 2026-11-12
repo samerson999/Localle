@@ -6,7 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { BrandMark } from '../components/Layout';
 import { homeOf } from '../lib/support';
-import { aceitarConvite, aceitarConviteLocalle, consultarConvite, consultarConviteLocalle, consultarRedefinicao, redefinirSenha } from '../lib/localleApi';
+import { aceitarConvite, limparDadosDoCliente, aceitarConviteLocalle, consultarConvite, consultarConviteLocalle, consultarRedefinicao, redefinirSenha } from '../lib/localleApi';
 
 type Tipo = 'cliente' | 'localle' | 'redefinir';
 const TIPOS: Record<Tipo, { consultar: (t: string) => Promise<{ email: string; clientName?: string }>; aceitar: (t: string, p: string) => Promise<void>; role: 'gestor' | 'locale'; titulo: string; botao: string; indisponivel: string }> = {
@@ -39,7 +39,7 @@ export default function Convite({ tipo = 'cliente' }: { tipo?: Tipo }) {
     setBusy(true); setErr('');
     try {
       await t.aceitar(token, pass);
-      useStore.getState().patch(() => ({ session: { email: convite.email, role: t.role, name: convite.email } }));
+      limparDadosDoCliente({ email: convite.email, role: t.role, name: convite.email });
       nav(homeOf({ role: t.role }), { replace: true });
     } catch (e: any) {
       setErr(e.message || String(e));

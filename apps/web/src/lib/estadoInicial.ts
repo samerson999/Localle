@@ -33,3 +33,15 @@ export function estadoInicial() {
     escLog: {}, outbox: [], platform: { demoBilling: { ...DEFAULT_BILLING }, clients: [], contracts: [] }, driverLinks: [], trackerStock: [],
   };
 }
+
+/**
+ * Estado do store sem nenhum dado de cliente, para trocar de sessão (login, logout, sessão derrubada). Tudo o que
+ * o store guarda é do cliente logado e vai para o localStorage: sem isso, quem entra no cliente B no mesmo
+ * navegador via a frota do cliente A. Chaves fora do estado inicial (criadas depois por tela) saem como
+ * `undefined`; funções (ações do store) ficam. Use com `setState(..., true)`.
+ */
+export function estadoSemCliente(atual: Record<string, unknown>, session: unknown = null): Record<string, unknown> {
+  const limpo: Record<string, unknown> = { ...estadoInicial(), maintGoals: { availability: 0.95 }, session };
+  for (const k of Object.keys(atual)) if (typeof atual[k] === 'function') limpo[k] = atual[k];
+  return limpo;
+}

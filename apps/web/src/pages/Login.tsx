@@ -4,7 +4,7 @@ import { Icon, type IconName } from '../components/icons';
 import { useStore } from '../lib/store';
 import { BrandMark } from '../components/Layout';
 import { homeOf } from '../lib/support';
-import { esqueciSenha, login } from '../lib/localleApi';
+import { esqueciSenha, limparDadosDoCliente, login } from '../lib/localleApi';
 import { Button, Input, Field, TextButton, cx, useIsMobile } from '../components/ui';
 import LoginShowcase from '../components/LoginShowcase';
 import logoLocalle from '../images/localle-logo.webp';
@@ -35,7 +35,7 @@ export default function Login() {
     setBusy(true); setErr('');
     try {
       const role = await login(email.trim(), pass);
-      useStore.getState().patch(() => ({ session: { email: email.trim(), role, name: email.trim() } }));
+      limparDadosDoCliente({ email: email.trim(), role, name: email.trim() });
       nav(homeOf({ role }));
     } catch (e: any) {
       setErr(e.message || String(e));

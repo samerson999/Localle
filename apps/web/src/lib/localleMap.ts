@@ -68,6 +68,29 @@ export function toVehicle(row: CurrentRow, prev: any) {
   };
 }
 
+/**
+ * Junta a frota de `GET /monitoring/current` ao store. A resposta é a frota inteira do cliente: ativo da API
+ * (`lc_…`) que não veio nela saiu (inativado, apagado, ou era de outra sessão salva no navegador) e é retirado,
+ * com veículo e trilha — nunca fica na tela de quem não é dono dele.
+ */
+export function mesclarFrota(s: { assets: any[]; vehicles: Record<string, any>; history: Record<string, any> }, rows: CurrentRow[], liveGroupId: string) {
+  const byId: Record<string, any> = Object.fromEntries(s.assets.map((a) => [a.id, a]));
+  const daResposta = new Set(rows.map((r) => assetIdFor(r.assetId)));
+  const fora = (id: string) => id.startsWith('lc_') && !daResposta.has(id);
+  const assets = s.assets.filter((a) => !fora(a.id));
+  const vehicles = Object.fromEntries(Object.entries(s.vehicles).filter(([id]) => !fora(id)));
+  const history = Object.fromEntries(Object.entries(s.history).filter(([id]) => !fora(id)));
+  for (const row of rows) {
+    const id = assetIdFor(row.assetId);
+    const a = toAsset(row, byId[id], liveGroupId);
+    const i = assets.findIndex((x) => x.id === id);
+    if (i >= 0) assets[i] = a; else assets.push(a);
+    const v = toVehicle(row, vehicles[id]);
+    if (v) vehicles[id] = v;
+  }
+  return { assets, vehicles, history };
+}
+
 export function applyPosicao(v: any, p: RealtimePosicao) {
   const lastUpdate = Date.parse(p.fixTime);
   if (v && v.lastUpdate >= lastUpdate) return null; // fora de ordem: o que está na tela é mais novo
