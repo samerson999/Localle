@@ -1,22 +1,31 @@
 // Minha conta: dados de acesso e troca da própria senha (exige a atual). Usuário de cliente usa
 // POST /auth/senha; equipe da Localle, POST /superadmin/senha. Foto do avatar: /auth/avatar ou /superadmin/avatar. Aparência (tema claro/escuro) vale para este aparelho.
 import { useEffect, useRef, useState } from 'react';
-import { Card, PageHeader, PageBody, Section, Field, Input, Button, FormGroup, Tabs, Avatar, TextButton, toast } from '../components/ui';
+import { Card, PageHeader, PageBody, Section, Field, Input, Button, FormGroup, Tabs, Avatar, TextButton, Switch, toast } from '../components/ui';
 import { useStore } from '../lib/store';
 import { useTema, type Modo } from '../lib/tema';
-import { ativarPush, estadoPush, removerAvatar, salvarAvatar, trocarSenha, type EstadoPush } from '../lib/localleApi';
+import { ativarPush, desativarPush, estadoPush, removerAvatar, salvarAvatar, trocarSenha, type EstadoPush } from '../lib/localleApi';
 import { fotoAvatar } from '../lib/fileData';
+import type { IconName } from '../components/icons';
 
 function NotificacoesPush() {
   const [estado, setEstado] = useState<EstadoPush | 'carregando'>('carregando');
   const [busy, setBusy] = useState(false);
   useEffect(() => { void estadoPush().then(setEstado); }, []);
 
-  const ativar = async () => {
+  const alternar = async (ligar: boolean) => {
     setBusy(true);
     try {
-      if (await ativarPush()) { setEstado('ativo'); toast('Notificações ativadas neste aparelho.'); }
-      else { setEstado(await estadoPush()); toast.error('Não foi possível ativar — confira a permissão de notificação do navegador.'); }
+      if (ligar) {
+        if (await ativarPush()) { setEstado('ativo'); toast('Notificações ativadas neste aparelho.'); }
+        else { setEstado(await estadoPush()); toast.error('Não foi possível ativar — confira a permissão de notificação do navegador.'); }
+      } else {
+        await desativarPush();
+        const novo = await estadoPush();
+        setEstado(novo);
+        if (novo === 'ativo') toast.error('Não foi possível desativar as notificações. Tente de novo.');
+        else toast('Notificações desativadas neste aparelho.');
+      }
     } finally { setBusy(false); }
   };
 
@@ -31,7 +40,7 @@ function NotificacoesPush() {
               {estado === 'carregando' ? 'Verificando…' : estado === 'ativo' ? 'Ativadas — você recebe mesmo com o app em segundo plano.' : estado === 'bloqueado' ? 'Bloqueadas nas configurações do navegador.' : 'Desativadas.'}
             </span>
           </div>
-          {estado !== 'ativo' && estado !== 'bloqueado' && <Button onClick={ativar} loading={busy}>Ativar notificações</Button>}
+          <Switch aria-label="Alertas push neste aparelho" checked={estado === 'ativo'} onChange={(v) => void alternar(v)} disabled={busy || estado === 'carregando' || estado === 'bloqueado'} />
         </div>
       </Card>
     </Section>
@@ -83,7 +92,7 @@ function FotoAvatar({ role }: { role: 'locale' | 'gestor' }) {
 }
 
 // Tema: trilho em surface-muted porque o padrão do Tabs (bg-card) sumiria dentro do card. A troca aplica na hora (a própria tela é a prévia) e fica guardada neste aparelho (lib/tema.ts).
-const MODOS: { key: Modo; label: string }[] = [{ key: 'claro', label: 'Claro' }, { key: 'escuro', label: 'Escuro' }, { key: 'auto', label: 'Automático' }];
+const MODOS: { key: Modo; label: string; icon: IconName }[] = [{ key: 'claro', label: 'Claro', icon: 'sol' }, { key: 'escuro', label: 'Escuro', icon: 'lua' }, { key: 'auto', label: 'Automático', icon: 'aparelho' }];
 function Aparencia() {
   const { modo, setModo } = useTema();
   return (

@@ -55,6 +55,7 @@ import Comando from '~icons/solar/code-square-bold-duotone';
 import Inicio from '~icons/solar/home-2-bold-duotone';
 import Lua from '~icons/solar/moon-bold-duotone';
 import Sol from '~icons/solar/sun-bold-duotone';
+import Aparelho from '~icons/solar/monitor-smartphone-bold-duotone';
 // ações
 import MaisOpcoes from '~icons/solar/menu-dots-bold-duotone';
 import Editar from '~icons/solar/pen-bold-duotone';
@@ -117,7 +118,7 @@ const ICONS = {
   mais: Mais, menos: Menos, check: Check, traco: Traco, play: Play, pause: Pause, reiniciar: Reiniciar, filtro: Filtro, exportar: Exportar,
   importar: Importar, calendario: Calendario, externo: Externo, banco: Banco, sinal: Sinal, alerta: Atencao, ok: Ok,
   relogio: Jornada, dinheiro: Dinheiro, cadeado: Cadeado, camera: Camera, rota: Rota, comando: Comando,
-  inicio: Inicio, lua: Lua, sol: Sol,
+  inicio: Inicio, lua: Lua, sol: Sol, aparelho: Aparelho,
   'mais-opcoes': MaisOpcoes, editar: Editar, excluir: Excluir, visualizar: Visualizar, duplicar: Duplicar,
   historico: Historico, imprimir: Imprimir, compartilhar: Compartilhar, enviar: Enviar, link: Link, anexo: Anexo,
   ordenar: Ordenar, alta: Alta, baixa: Baixa,

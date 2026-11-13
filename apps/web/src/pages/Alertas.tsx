@@ -24,7 +24,7 @@ export default function Alertas() {
     <div>
       <MonitorHeader title="Alertas e comandos" subtitle="Regras que disparam alertas e o histórico de comandos enviados." />
       <Stack gap="card-head">
-      <PageTabs value={tab} onChange={setTab} tabs={[{ key: 'alertas', label: 'Central de alertas' }, { key: 'regras', label: 'Regras de alerta' }, { key: 'comandos', label: 'Comandos cadastrados' }, { key: 'historico', label: 'Histórico de comandos' }]} />
+      <PageTabs value={tab} onChange={setTab} tabs={[{ key: 'alertas', label: 'Central de alertas', curto: 'Alertas' }, { key: 'regras', label: 'Regras de alerta', curto: 'Regras' }, { key: 'comandos', label: 'Comandos cadastrados', curto: 'Comandos' }, { key: 'historico', label: 'Histórico de comandos', curto: 'Histórico' }]} />
       <TabPanel id={tab} loading={carregando}>
         {tab === 'alertas' && <AlertLog />}
         {tab === 'regras' && <Rules />}

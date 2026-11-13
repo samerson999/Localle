@@ -1014,7 +1014,7 @@ export function CountBadge({ n, className = '' }: { n: number; className?: strin
   return <span className={cx('min-w-[20px] h-5 px-2 rounded-pill bg-[var(--counter-bg)] text-[var(--counter-ink)] text-caption font-semibold inline-flex items-center justify-center num', className)}>{n > 99 ? '99+' : n}</span>;
 }
 // Controle segmentado: opção ativa na cor da revenda (--brand-fill, com fallback grafite), indicador que desliza.
-type TabItem = { key: string; label: string; count?: number };
+type TabItem = { key: string; label: string; curto?: string; count?: number; icon?: IconName }; // com icon, mostra só o ícone (label vira nome acessível e title)
 export function Tabs({ tabs, value, onChange, size = 'md', className = '' }: { tabs: TabItem[]; value: string; onChange: (k: string) => void; size?: 'sm' | 'md'; className?: string }) {
   const { box, indicator, style } = useSlider(value);
   return (
@@ -1022,8 +1022,8 @@ export function Tabs({ tabs, value, onChange, size = 'md', className = '' }: { t
       {style && <span ref={indicator} aria-hidden="true" style={style} className={segIndicator} />}
       {tabs.map((t) => {
         const on = value === t.key;
-        return <button key={t.key} data-k={t.key} type="button" role="tab" aria-selected={on} onClick={() => onChange(t.key)} className={segItem(size, on, style)}>
-          {t.label}{t.count != null && <span className={cx('num text-caption', on ? 'opacity-80' : 'text-ink-3')}>{t.count}</span>}
+        return <button key={t.key} data-k={t.key} type="button" role="tab" aria-selected={on} onClick={() => onChange(t.key)} className={segItem(size, on, style)} aria-label={t.icon ? t.label : undefined} title={t.icon ? t.label : undefined}>
+          {t.icon ? <Icon name={t.icon} size={18} /> : t.label}{t.count != null && <span className={cx('num text-caption', on ? 'opacity-80' : 'text-ink-3')}>{t.count}</span>}
         </button>;
       })}
     </div>
@@ -1047,14 +1047,19 @@ export function NavTabs({ tabs, size = 'md', className = '' }: { tabs: NavTabIte
   );
 }
 // Abas de página: sublinhado na cor da revenda na aba ativa.
+// `curto`: rótulo do celular, quando o nome inteiro de várias abas não cabe nos 390px. A aba ativa rola para a vista
+// (chegar por link numa aba do fim não a deixa escondida) e a borda com mais abas esmaece (useEdgeFade).
 export function PageTabs({ tabs, value, onChange }: { tabs: TabItem[]; value: string; onChange: (k: string) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEdgeFade(box);
+  useEffect(() => { box.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [value]);
   return (
-    <div role="tablist" className="flex gap-6 shadow-[inset_0_-1px_0_var(--line)] overflow-x-auto overflow-y-hidden">
+    <div ref={box} role="tablist" className="flex gap-6 max-md:gap-5 shadow-[inset_0_-1px_0_var(--line)] overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((t) => {
         const on = value === t.key;
         return <button key={t.key} type="button" role="tab" aria-selected={on} onClick={() => onChange(t.key)}
           className={cx('relative h-11 text-body inline-flex items-center gap-2 whitespace-nowrap transition-colors', on ? 'text-ink font-semibold' : 'text-ink-2 hover:text-ink')}>
-          {t.label}{t.count != null && <CountBadge n={t.count} />}
+          {t.curto ? <><span className="max-md:hidden">{t.label}</span><span className="md:hidden">{t.curto}</span></> : t.label}{t.count != null && <CountBadge n={t.count} />}
           <span aria-hidden="true" className={cx('absolute left-0 right-0 bottom-0 h-[2px] rounded-pill transition-colors', on ? 'bg-brand-fill' : 'bg-transparent')} />
         </button>;
       })}
