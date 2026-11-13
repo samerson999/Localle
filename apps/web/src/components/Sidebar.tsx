@@ -206,7 +206,7 @@ function SidebarDock({ open, onClose, pill, action, children }: { open: boolean;
 export function DockItem({ to, icon, label, active, badge, onClick, expanded }: { to?: string; icon: IconName; label: string; active?: boolean; badge?: ReactNode; onClick?: () => void; expanded?: boolean }) {
   const cls = cx('dock-item relative flex min-w-0 items-center justify-center gap-2 h-[54px] rounded-pill [-webkit-tap-highlight-color:transparent]',
     active ? 'dock-item-ativo bg-card text-ink px-4' : 'text-ink-2 active:bg-surface-hover');
-  const inner = <><span className="dock-icone relative shrink-0"><Icon name={icon} size={22} />{badge}</span>{/* tela estreita demais para o rótulo (zoom de 200%): só o ícone, o texto fica para o leitor de tela */}<span className={cx('dock-rotulo min-w-0 truncate text-[14px] leading-none font-semibold', active ? 'max-[300px]:sr-only' : 'sr-only')}>{label}</span></>;
+  const inner = <><span className="dock-icone relative shrink-0"><Icon name={icon} size={22} />{badge}</span>{/* tela estreita demais para o rótulo (zoom de 200%): só o ícone, o texto fica para o leitor de tela */}<span className={cx('dock-rotulo min-w-0 truncate text-[13px] leading-none font-semibold', active ? 'max-[300px]:sr-only' : 'sr-only')}>{label}</span></>;
   return to
     ? <NavLink to={to} aria-current={active ? 'page' : undefined} className={cls}>{inner}</NavLink>
     : <button type="button" onClick={onClick} aria-expanded={expanded} aria-haspopup="dialog" className={cls}>{inner}</button>;

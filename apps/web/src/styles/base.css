@@ -185,28 +185,42 @@ a { text-underline-offset: 3px; }
 [data-fade="r"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
 [data-fade="l"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
 [data-fade="lr"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
-/* barra inferior do celular (Sidebar.tsx › SidebarDock), valores do #mobile-bottom-nav do Visor (03/11/2026): a gaveta
-   cresce da pílula (escala a partir da base, 500 ms na abertura e 200 ms no fechamento) e a pílula se recolhe na
-   horizontal. O fundo é transparente: só captura o toque fora. Flutua, então leva sombra; o vidro deixa o mapa e as
+/* barra inferior do celular (Sidebar.tsx › SidebarDock), a partir do #mobile-bottom-nav do Visor (03/11/2026): a gaveta
+   cresce da pílula (escala a partir da base) e a pílula se recolhe na horizontal. Tempos revistos em 13/11/2026: com
+   200 ms e curva de saída no fechamento o movimento acontecia quase todo nos 2–3 primeiros quadros e a gaveta "piscava"
+   achatada; agora 520 ms abrindo e 360 ms fechando, o fechamento com curva que acelera devagar e a pílula voltando
+   depois que a gaveta já encolheu um pouco. O fundo é transparente: só captura o toque fora. Flutua, então leva sombra; o vidro deixa o mapa e as
    listas aparecerem por trás sem perder leitura (fundo do card a 82%). */
 .dock-glass { background: color-mix(in srgb, var(--card) 82%, transparent); border: 1px solid color-mix(in srgb, var(--card) 40%, transparent); box-shadow: var(--shadow-dock-float); -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); }
 .dock-backdrop { opacity: 0; pointer-events: none; }
-.dock-drawer { pointer-events: none; visibility: hidden; transform: scaleX(0.15) scaleY(0.02); transition: transform 200ms var(--ease-dock), visibility 0s 200ms; }
-.dock-pill { transform-origin: 50%; transition: transform 200ms var(--ease-dock); }
+.dock-drawer { pointer-events: none; visibility: hidden; opacity: 0; transform: scaleX(0.15) scaleY(0.02); transition: transform 360ms cubic-bezier(0.4, 0, 0.2, 1), opacity 240ms ease-in 120ms, visibility 0s 360ms; }
+.dock-pill { transform-origin: 50%; transition: transform 320ms var(--ease-dock) 120ms; }
 .dock[data-state="open"] .dock-backdrop { pointer-events: auto; }
-.dock[data-state="open"] .dock-drawer { pointer-events: auto; visibility: visible; transform: none; transition: transform 500ms var(--ease-dock), visibility 0s; }
-.dock[data-state="open"] .dock-pill { pointer-events: none; transform: scaleX(0.0001); }
+.dock[data-state="open"] .dock-drawer { pointer-events: auto; visibility: visible; opacity: 1; transform: none; transition: transform 520ms var(--ease-entra), opacity 200ms ease-out, visibility 0s; }
+.dock[data-state="open"] .dock-pill { pointer-events: none; transform: scaleX(0.0001); transition: transform 280ms var(--ease-sai); }
+/* fechamento sem "print" da gaveta (13/11/2026): encolhendo com o conteúdo à vista, o menu inteiro virava uma miniatura
+   achatada que pousava sobre a pílula. O conteúdo some nos primeiros quadros do fechamento e só a casca de vidro encolhe;
+   a casca esmaece enquanto encolhe, sem sobrar um retângulo sobre a pílula; na abertura o conteúdo entra depois que a
+   casca já cresceu. A gaveta mantém a largura da aberta (o botão Fechar, 62 px + 8 de
+   vão, sai no mesmo quadro em que o fechamento começa e a gaveta saltava 70 px para a direita) e encolhe rumo ao centro
+   da pílula, que volta ocupando a largura toda. */
+.dock-drawer > .dock-glass > * { opacity: 0; transition: opacity 120ms ease; }
+.dock[data-state="open"] .dock-drawer > .dock-glass > * { opacity: 1; transition: opacity 240ms ease 220ms; }
+.dock:not([data-state="open"]) .dock-drawer { right: calc(62px + 0.5rem); transform-origin: calc(50% + 35px) 100%; }
 /* barra inferior recolhida ao rolar para baixo (Revolut, docs/pesquisa-ux/01-home-revolut.md § 3.5 e § 6.1; diretrizes
    § 9.7): encolhe a ~86% (ícone 22 → 19, alvo 54 → 46), com a base no mesmo lugar; o rótulo do ativo fica. A direção da rolagem
    decide (SidebarDock); com movimento reduzido ela não recolhe. */
 .dock-pill { transform-origin: 50% 100%; }
-.dock[data-recolhida]:not([data-state="open"]) .dock-pill { transform: scale(0.86); transition-duration: 250ms; }
+.dock[data-recolhida]:not([data-state="open"]) .dock-pill { transform: scale(0.86); transition-duration: 250ms; transition-delay: 0ms; }
 /* item ativo no molde da referência Iconly (12/11/2026): pílula clara e com sombra sobre a barra acinzentada, ícone e
-   rótulo lado a lado; os inativos mostram só o ícone. O ativo cresce (flex-grow) e a troca de aba anima a largura. */
+   rótulo lado a lado; os inativos mostram só o ícone. O ativo ocupa ~1,5× um inativo (medido na referência: ~32% da barra com 4 itens) e a troca de aba anima a largura. */
 .dock-pill.dock-glass { background: color-mix(in srgb, var(--canvas) 78%, transparent); }
 .dock-item { flex: 1 1 0%; transition: flex-grow 300ms var(--ease-dock), background-color 150ms ease, color 150ms ease; }
-.dock-item-ativo { flex-grow: 2.2; box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06), 0 4px 12px -4px rgba(17, 24, 39, 0.14); }
-@media (prefers-reduced-motion: reduce) { .dock-item { transition: none; } }
+.dock-item-ativo { flex-grow: 1.5; box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06), 0 4px 12px -4px rgba(17, 24, 39, 0.14); }
+/* toque: o ícone afunda um pouco (o item não, ele já anima a largura) — confirma que a barra ouviu o dedo */
+.dock-icone { transition: transform 140ms var(--ease-out); }
+.dock-item:active .dock-icone { transform: scale(0.88); }
+@media (prefers-reduced-motion: reduce) { .dock-item, .dock-icone { transition: none; } .dock-item:active .dock-icone { transform: none; } }
 /* cabeçalho do celular (Layout): controles de vidro (desfoque, fundo translúcido, borda fina clara) e, com a página rolada,
    uma faixa de desfoque progressivo atrás deles — o conteúdo borra ao passar por baixo, sem linha de corte (referência do
    usuário, 11/11/2026). Desfoque em 2 camadas por vez no máximo, fora o vidro dos botões (diretrizes § 7). */

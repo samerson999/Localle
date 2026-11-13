@@ -264,13 +264,17 @@ function LayoutBody() {
   };
   const gestao = allowed(GESTAO);
   const atalhos = fleet ? allowed(OPERACAO).slice(0, 2) : mods.slice(0, 3);
-  const noAtalho = atalhos.some((m: any) => naRota(m.to, m.end)) || (fleet && naRota('/precisa-de-voce'));
+  // Central de alertas mora sob /monitoramento, mas no dock é do "Críticos" (é onde a notificação de alerta abre), não do Mapa
+  const naCentral = naRota('/monitoramento/alertas');
+  const noAtalhoItem = (m: any) => naRota(m.to, m.end) && !(naCentral && m.to === '/monitoramento');
+  const noCriticos = fleet && (naRota('/precisa-de-voce') || naCentral);
+  const noAtalho = atalhos.some(noAtalhoItem) || noCriticos;
   const dockPill = <>
     {/* dock: rótulo curto quando o nome não cabe nos ~60px do item ("Monitora…") */}
-    {atalhos.slice(0, 2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to, m.end)} />)}
-    {fleet && <DockItem icon="atencao" label="Críticos" active={naRota('/precisa-de-voce')} onClick={() => setPanel(true)} expanded={panel}
-      badge={needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute -top-1.5 left-3" />} />}
-    {atalhos.slice(2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to, m.end)} />)}
+    {atalhos.slice(0, 2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={noAtalhoItem(m)} />)}
+    {/* sem contador na barra inferior (pedido do usuário, 13/11/2026): o número fica no cabeçalho e no próprio painel */}
+    {fleet && <DockItem icon="atencao" label="Críticos" active={noCriticos} onClick={() => setPanel(true)} expanded={panel} />}
+    {atalhos.slice(2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={noAtalhoItem(m)} />)}
     <DockItem icon="menu" label="Mais" active={!noAtalho} onClick={() => setOpenMobile(true)} expanded={openMobile} />
   </>;
   // botão redondo: só Fechar, com o menu aberto (a pílula se recolhe e o "Mais" some). A busca mora no cabeçalho
