@@ -9,6 +9,7 @@ import { FaturasRepository } from '../contratos/faturas.repository';
 import { TraccarClient } from '../ingest/traccar-client';
 import { MailService } from '../mail/mail.service';
 import type IORedis from 'ioredis';
+import { DespesasRepository } from './despesas.repository';
 import { PainelRepository } from './painel.repository';
 import { mesesAte, PainelService } from './painel.service';
 
@@ -22,7 +23,7 @@ describe('PainelService', () => {
   class TraccarFora extends TraccarClient {
     config() { return { url: 'http://127.0.0.1:1', user: 'x', password: 'x' }; }
   }
-  const painel = new PainelService(new PainelRepository(pool), contratos, faturas, faturamento, new TraccarFora(), redis, new MailService());
+  const painel = new PainelService(new PainelRepository(pool), contratos, faturas, faturamento, new TraccarFora(), redis, new MailService(), new DespesasRepository(pool));
   const superadminId = randomUUID();
   const clientes: string[] = [];
   const rastreadores: string[] = [];
@@ -85,6 +86,9 @@ describe('PainelService', () => {
     expect(v.historico[4].fechado).toBe(true);
     expect(v.historico[5].fechado).toBe(false);
     expect(v.rastreadoresSemSinal24h).toBeGreaterThanOrEqual(1);
+    // custo pelo cadastro de despesas (o banco pode ter outras; só a forma e a soma)
+    expect(v.custos.total).toBeCloseTo(v.custos.fixas + v.custos.porVeiculo, 2);
+    expect(v.historico.every((h) => typeof h.custo === 'number')).toBe(true);
   });
 
   it('contrato vencendo em 60 dias (relativo a hoje do banco)', async () => {

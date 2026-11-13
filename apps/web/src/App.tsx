@@ -40,6 +40,7 @@ const Equipe = lazy(() => import('./pages/Equipe'));
 const MinhaConta = lazy(() => import('./pages/MinhaConta'));
 const EquipeCliente = lazy(() => import('./pages/EquipeCliente'));
 const Saude = lazy(() => import('./pages/Saude'));
+const Despesas = lazy(() => import('./pages/Despesas'));
 const Juridico = lazy(() => import('./pages/Juridico'));
 const Rastreadores = lazy(() => import('./pages/Rastreadores'));
 const TiposAlerta = lazy(() => import('./pages/TiposAlerta'));
@@ -134,6 +135,7 @@ export default function App() {
           <Route path="/locale/contratos" element={<RoleOnly roles={['locale']}><Contratos /></RoleOnly>} />
           <Route path="/locale/clientes" element={<RoleOnly roles={['locale']}><Clientes /></RoleOnly>} />
           <Route path="/locale/faturamento" element={<RoleOnly roles={['locale']}><Faturamento /></RoleOnly>} />
+          <Route path="/locale/despesas" element={<RoleOnly roles={['locale']}><Despesas /></RoleOnly>} />
           <Route path="/locale/equipe" element={<RoleOnly roles={['locale']}><Equipe /></RoleOnly>} />
           <Route path="/locale/saude" element={<RoleOnly roles={['locale']}><Saude /></RoleOnly>} />
           <Route path="/locale/juridico" element={<RoleOnly roles={['locale']}><Juridico /></RoleOnly>} />

@@ -282,12 +282,18 @@ export interface VisaoGeral {
   competencia: string; contratosPorSituacao: Partial<Record<ContractStatus, number>>; veiculosAgora: number;
   receitaPrevista: number; apuradoAteHoje: number; porTipoCobranca: Partial<Record<BillingType, number>>;
   frotaPorCliente: { clientName: string; veiculos: number }[];
-  historico: { competencia: string; faturado: number; veiculos: number; fechado: boolean }[];
+  /** Custo do mês pelas despesas vigentes (Console › Despesas); as por veículo usam os veículos de agora. */
+  custos: { fixas: number; porVeiculo: number; total: number; itens: { id: string; nome: string; tipo: TipoDespesa; valorUnitario: number; total: number }[] };
+  historico: { competencia: string; faturado: number; veiculos: number; fechado: boolean; custo: number }[];
   inadimplentes: { clientId: string; clientName: string; competencia: string; emAberto: number; diasAtraso: number; critico: boolean }[];
   contratosVencendo: { clientId: string; clientName: string; fimEm: string }[];
   rastreadoresSemSinal24h: number;
   aRecolher: { instalacaoId: string; imei: string; modelo: string | null; clientName: string; placa: string }[];
 }
+/** Despesa da Locale: fixa no mês ou por veículo ativo; vigência por mês 'YYYY-MM' (fimEm null = sem fim). */
+export type TipoDespesa = 'fixa' | 'por_veiculo';
+export interface Despesa { id: string; nome: string; tipo: TipoDespesa; valor: number; inicioEm: string; fimEm: string | null; observacao: string | null; atualizadoEm: string }
+export type DespesaBody = Omit<Despesa, 'id' | 'atualizadoEm'>;
 type Situacao = 'ok' | 'degradado' | 'fora' | 'desligado';
 export interface Saude {
   banco: { tamanhoBytes: number; posicoesBytes: number | null; posicoes24h: number };
@@ -446,6 +452,10 @@ export const adminApi = {
   registrarPagamento: (faturaId: string, body: { valor: number; pagoEm: string; forma: string; observacao?: string }) => apiSend<{ saldo: number }>('POST', `/superadmin/faturas/${faturaId}/pagamentos`, body),
   visaoGeral: () => apiGet<VisaoGeral>('/superadmin/visao-geral'),
   saude: () => apiGet<Saude>('/superadmin/saude'),
+  despesas: () => apiGet<Despesa[]>('/superadmin/despesas'),
+  criarDespesa: (body: DespesaBody) => apiSend<Despesa>('POST', '/superadmin/despesas', body),
+  atualizarDespesa: (id: string, body: DespesaBody) => apiSend<Despesa>('PUT', `/superadmin/despesas/${id}`, body),
+  excluirDespesa: (id: string) => apiSend('DELETE', `/superadmin/despesas/${id}`),
   renameClient: (id: string, name: string) => apiSend('PATCH', `/clients/${id}`, { name }),
   rastreadores: () => apiGet<AdminRastreador[]>('/superadmin/rastreadores'),
   createRastreador: (body: { imei: string } & EscolhaDeModelo) => apiSend<AdminRastreador>('POST', '/superadmin/rastreadores', body),

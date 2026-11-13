@@ -224,6 +224,7 @@ function LayoutBody() {
       { key: 'locale-contratos', label: 'Contratos', to: '/locale/contratos', icon: 'dinheiro' },
       { key: 'locale-clientes', label: 'Clientes', to: '/locale/clientes', icon: 'revenda' },
       { key: 'locale-faturamento', label: 'Faturamento', to: '/locale/faturamento', icon: 'banco' },
+      { key: 'locale-despesas', label: 'Despesas', to: '/locale/despesas', icon: 'dinheiro' },
       { key: 'locale-rastreadores', label: 'Rastreadores e chips', to: '/locale/rastreadores', icon: 'sinal' },
       { key: 'locale-alertas', label: 'Tipos de alerta', to: '/locale/alertas', icon: 'alerta' },
       { key: 'locale-juridico', label: 'Jurídico', to: '/locale/juridico', icon: 'documento' },

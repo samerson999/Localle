@@ -1,15 +1,14 @@
 // Console da Locale · Visão geral: panorama da operação, receita e pontos de atenção — tudo do backend
 // (/superadmin/visao-geral): contratos, faturas fechadas, apuração do mês e instalações reais.
-// Custos (chip + infraestrutura) seguem estimados por constante (@localle/shared/platformOverview) até existir
-// cadastro de custo: a margem é estimativa, e a tela diz isso.
+// Custos vêm do cadastro de despesas do Console (/locale/despesas), vigentes em cada mês.
 import { Donut, CompareBars, RankBars } from '../components/charts';
 import { ChartCard, KpiTile, Num } from '../components/story';
-import { Card, PageHeader, PageBody, Section, Grid, EmptyState, List, ListItem, Callout } from '../components/ui';
+import { Card, PageHeader, PageBody, Section, Grid, EmptyState, List, ListItem, Callout, Button } from '../components/ui';
+import { useNavigate } from 'react-router-dom';
 import SupportAccess from '../components/SupportAccess';
 import { Icon, type IconName } from '../components/icons';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery } from '../lib/localleApi';
-import { CHIP_COST, INFRA_COST, custoDoMes } from '@localle/shared/platformOverview';
 import type { BillingType } from '@localle/shared/contratos';
 import { brl, fmtD, num, monthLabel } from '@localle/shared/utils';
 
@@ -20,6 +19,7 @@ const money = (v: number) => brl(v).replace(',00', '');
 
 export default function Locale() {
   const session = useStore((s) => s.session);
+  const navigate = useNavigate();
   const { data, error, loading } = useAdminQuery(adminApi.visaoGeral);
   if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com o acesso da Locale para ver o Console da Locale." /></Card>;
   if (!data) {
@@ -33,7 +33,7 @@ export default function Locale() {
 
   const revenue = data.receitaPrevista;
   const vehicles = data.veiculosAgora;
-  const costs = custoDoMes(vehicles);
+  const costs = data.custos.total;
   const margin = revenue - costs;
   const hist = data.historico;
   const prev = hist[hist.length - 2];
@@ -43,7 +43,7 @@ export default function Locale() {
     .map((bt, i) => ({ label: BILLING_LABEL[bt], value: data.porTipoCobranca[bt] ?? 0, color: COLORS[i] }))
     .filter((p) => p.value > 0);
   const leader = [...donutParts].sort((a, b) => b.value - a.value)[0];
-  const compareGroups = hist.map((h) => ({ label: monthLabel(h.competencia), cur: h.faturado, prev: custoDoMes(Math.round(h.veiculos)) }));
+  const compareGroups = hist.map((h) => ({ label: monthLabel(h.competencia), cur: h.faturado, prev: h.custo }));
   const fleetRank = data.frotaPorCliente.slice(0, 8).map((f) => ({ label: f.clientName, value: f.veiculos }));
   const atraso = data.inadimplentes.reduce((a, i) => a + i.emAberto, 0);
 
@@ -62,7 +62,7 @@ export default function Locale() {
           <Grid cols={4} equal>
             <KpiTile label="Receita prevista" display={<Num value={revenue} prefix="R$" digits={2} size="kpi" count />} delta={prev?.fechado ? { value: rel(revenue, prev.faturado), unit: '%', good: 'up' } : undefined} sub={prev?.fechado ? `vs. faturado em ${monthLabel(prev.competencia)}` : `Apurado até hoje: ${money(data.apuradoAteHoje)}`} />
             <KpiTile label="Veículos ativos" value={vehicles} sub="Com rastreador instalado agora" />
-            <KpiTile label="Margem estimada" display={<Num value={margin} prefix="R$" digits={2} size="kpi" count />} sub={revenue ? `${num((margin / revenue) * 100, 0)}% da receita · custos estimados` : 'Custos estimados'} />
+            <KpiTile label="Margem estimada" display={<Num value={margin} prefix="R$" digits={2} size="kpi" count />} sub={revenue ? `${num((margin / revenue) * 100, 0)}% da receita` : undefined} />
             <KpiTile label="Clientes ativos" value={clientesAtivos} sub={`${data.contratosPorSituacao.implantacao ?? 0} em implantação · ${data.contratosPorSituacao.suspenso ?? 0} suspensos`} />
           </Grid>
           <Grid split="6/6" wide equal>
@@ -70,7 +70,7 @@ export default function Locale() {
               sentence={leader && revenue ? `${leader.label} responde por ${num((leader.value / revenue) * 100, 0)}% da receita deste mês.` : undefined}>
               {donutParts.length ? <Donut parts={donutParts} center={<Num value={revenue} prefix="R$" digits={2} size="lg" />} centerLabel="receita prevista" /> : <EmptyState title="Sem contratos com receita" />}
             </ChartCard>
-            <ChartCard title="Faturado vs. custos estimados" icon="grafico" period="Últimos 6 meses"
+            <ChartCard title="Faturado vs. custos" icon="grafico" period="Últimos 6 meses"
               sentence="Meses fechados mostram o faturado; o mês corrente, o apurado até hoje.">
               <CompareBars groups={compareGroups} format={money} curLabel="Faturado" prevLabel="Custos" good="up" />
             </ChartCard>
@@ -92,13 +92,22 @@ export default function Locale() {
               {fleetRank.length ? <RankBars items={fleetRank} format={(v) => `${num(v)} veículos`} max={Math.max(...fleetRank.map((f) => f.value), 1)} /> : <EmptyState title="Nenhum veículo instalado" />}
             </ChartCard>
           </Grid>
-          <Card title={`Custos estimados · ${monthLabel(data.competencia)}`} icon="dinheiro">
+          <Card title={`Custos · ${monthLabel(data.competencia)}`} icon="dinheiro" actions={<Button variant="quiet" size="sm" onClick={() => navigate('/locale/despesas')}>Configurar despesas</Button>}>
             <Grid cols={3} equal>
-              <KpiTile label="Chips" display={<Num value={vehicles * CHIP_COST} prefix="R$" digits={0} size="lg" />} sub={`${num(vehicles)} veículos × R$ ${CHIP_COST}`} />
-              <KpiTile label="Infraestrutura" display={<Num value={INFRA_COST} prefix="R$" digits={0} size="lg" />} sub={revenue ? `${num((INFRA_COST / revenue) * 100, 0)}% da receita` : undefined} />
+              <KpiTile label="Fixas no mês" display={<Num value={data.custos.fixas} prefix="R$" digits={0} size="lg" />} sub={revenue ? `${num((data.custos.fixas / revenue) * 100, 0)}% da receita` : undefined} />
+              <KpiTile label="Por veículo" display={<Num value={data.custos.porVeiculo} prefix="R$" digits={0} size="lg" />} sub={`${num(vehicles)} veículos ativos`} />
               <KpiTile label="Total de custos" display={<Num value={costs} prefix="R$" digits={0} size="lg" />} sub={revenue ? `${num((costs / revenue) * 100, 0)}% da receita` : undefined} />
             </Grid>
-            <p className="text-caption text-ink-2 mt-stack">Custo por chip e de infraestrutura são valores fixos de estimativa, ainda sem cadastro próprio.</p>
+            {data.custos.itens.length ? (
+              <List className="-mx-bleed mt-stack">
+                {data.custos.itens.map((i) => (
+                  <ListItem key={i.id} className="flex items-baseline justify-between gap-stack w-full px-[max(var(--bleed),var(--cell-x))] py-tight">
+                    <span className="text-small min-w-0">{i.nome}{i.tipo === 'por_veiculo' && <span className="text-ink-2"> · {brl(i.valorUnitario)} × {num(vehicles)}</span>}</span>
+                    <span className="num text-small shrink-0">{brl(i.total)}</span>
+                  </ListItem>
+                ))}
+              </List>
+            ) : <p className="text-caption text-ink-2 mt-stack">Nenhuma despesa vigente neste mês. Cadastre em Despesas para a margem descontar os custos.</p>}
           </Card>
         </Section>
         <Section title="Acesso de suporte"><SupportAccess /></Section>

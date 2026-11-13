@@ -6,6 +6,7 @@ import { FaturasRepository } from '../contratos/faturas.repository';
 import { TraccarClient } from '../ingest/traccar-client';
 import { MailService } from '../mail/mail.service';
 import { REDIS_CONNECTION } from '../queue/redis.provider';
+import { custoDoMes, DespesasRepository } from './despesas.repository';
 import { PainelRepository } from './painel.repository';
 
 type Situacao = 'ok' | 'degradado' | 'fora' | 'desligado';
@@ -31,16 +32,18 @@ export class PainelService {
     private readonly traccar: TraccarClient,
     @Inject(REDIS_CONNECTION) private readonly redisConn: IORedis,
     private readonly mail: MailService,
+    private readonly despesas: DespesasRepository,
   ) {}
 
   /**
    * Visão geral: tudo derivado de contratos, faturas e instalações reais. Meses fechados vêm das faturas
-   * (o que foi faturado); o mês corrente é a apuração em aberto até hoje.
+   * (o que foi faturado); o mês corrente é a apuração em aberto até hoje. Custo de cada mês pelas despesas vigentes nele
+   * (cadastro em /superadmin/despesas); o do mês corrente usa os veículos de agora, os anteriores a média faturada.
    */
   async visaoGeral(hoje = hojeLocal()) {
     const ym = hoje.slice(0, 7);
     const meses = mesesAte(ym, 6);
-    const [linhas, contratos, totais, comSaldo, vencendo, semSinal, aRecolher] = await Promise.all([
+    const [linhas, contratos, totais, comSaldo, vencendo, semSinal, aRecolher, despesas] = await Promise.all([
       this.faturamento.apuracao(ym, hoje),
       this.contratos.findAll(),
       this.faturas.totaisPorCompetencia(meses[0]),
@@ -48,6 +51,7 @@ export class PainelService {
       this.repo.contratosVencendo(60),
       this.repo.semSinal(24),
       this.repo.aRecolher(),
+      this.despesas.listar(),
     ]);
     const tolerancia = new Map(contratos.map((c) => [c.clientId, c.versaoAtual.toleranceDays]));
     const porMes = new Map(totais.map((t) => [t.competencia, t]));
@@ -56,18 +60,20 @@ export class PainelService {
       .filter(({ s }) => s.diasAtraso > 0)
       .map(({ f, s }) => ({ clientId: f.clientId, clientName: f.clientName, competencia: f.competencia, emAberto: s.emAberto, diasAtraso: s.diasAtraso, critico: s.critico }));
 
+    const veiculosAgora = linhas.reduce((a, l) => a + l.veiculosAgora, 0);
     return {
       competencia: ym,
       contratosPorSituacao: contratos.reduce<Record<string, number>>((a, c) => ({ ...a, [c.status]: (a[c.status] ?? 0) + 1 }), {}),
-      veiculosAgora: linhas.reduce((a, l) => a + l.veiculosAgora, 0),
+      veiculosAgora,
+      custos: custoDoMes(despesas, ym, veiculosAgora),
       receitaPrevista: linhas.reduce((a, l) => a + l.previsto, 0),
       apuradoAteHoje: linhas.reduce((a, l) => a + l.apurado, 0),
       porTipoCobranca: linhas.reduce<Record<string, number>>((a, l) => ({ ...a, [l.billingType]: (a[l.billingType] ?? 0) + l.previsto }), {}),
       frotaPorCliente: linhas.map((l) => ({ clientName: l.clientName, veiculos: l.veiculosAgora })).sort((a, b) => b.veiculos - a.veiculos),
       historico: meses.map((m) =>
         m === ym
-          ? { competencia: m, faturado: linhas.reduce((a, l) => a + l.apurado, 0), veiculos: linhas.reduce((a, l) => a + l.veiculosMedia, 0), fechado: false }
-          : { competencia: m, faturado: porMes.get(m)?.total ?? 0, veiculos: porMes.get(m)?.veiculos ?? 0, fechado: porMes.has(m) },
+          ? { competencia: m, faturado: linhas.reduce((a, l) => a + l.apurado, 0), veiculos: linhas.reduce((a, l) => a + l.veiculosMedia, 0), fechado: false, custo: custoDoMes(despesas, m, veiculosAgora).total }
+          : { competencia: m, faturado: porMes.get(m)?.total ?? 0, veiculos: porMes.get(m)?.veiculos ?? 0, fechado: porMes.has(m), custo: custoDoMes(despesas, m, Math.round(porMes.get(m)?.veiculos ?? 0)).total },
       ),
       inadimplentes,
       contratosVencendo: vencendo,

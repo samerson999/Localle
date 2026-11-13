@@ -30,13 +30,16 @@ const ACTION_LABEL: Record<string, string> = {
   'alerta_tipo.criar': 'Criou tipo de alerta',
   'alerta_tipo.atualizar': 'Alterou tipo de alerta',
   'alerta_tipo.excluir': 'Excluiu tipo de alerta',
+  'despesa.criar': 'Cadastrou despesa',
+  'despesa.atualizar': 'Alterou despesa',
+  'despesa.excluir': 'Excluiu despesa',
 };
 const situacao = (m: MembroLocalle) => (m.desativado_em ? { tone: 'red', label: 'Desativado' } : m.pendente ? { tone: 'orange', label: 'Convite pendente' } : { tone: 'green', label: 'Ativo' });
 const actionLabel = (a: string) => ACTION_LABEL[a] || a;
 
 function detalhe(e: AdminAuditEntry): string {
   const after = (e.after || {}) as Record<string, unknown>;
-  return ['name', 'email', 'role', 'imei', 'iccid'].filter((k) => after[k] != null).map((k) => String(after[k])).join(' · ');
+  return ['name', 'nome', 'email', 'role', 'imei', 'iccid'].filter((k) => after[k] != null).map((k) => String(after[k])).join(' · ');
 }
 
 const carregar = () => Promise.all([adminApi.equipe(), adminApi.auditoria()]);
