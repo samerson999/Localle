@@ -27,4 +27,9 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('Service worker não registrado', err));
   });
+  // toque na notificação com o app já aberto (public/sw.js, notificationclick): troca a rota do HashRouter
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    const rota = e.data?.tipo === 'abrir' ? e.data.rota : null;
+    if (typeof rota === 'string' && rota.startsWith('/')) window.location.hash = rota;
+  });
 }

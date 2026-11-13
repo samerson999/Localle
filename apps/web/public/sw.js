@@ -95,15 +95,16 @@ async function redePrimeiro(req) {
   }
 }
 
-// Push (docs/PLANO-APK-TWA.md § 3): payload é {alertaId, assetId, tipo, titulo, prioridade} — dado, não
-// URL (o SW decide a rota). `tag` por veículo+tipo: um alerta novo do mesmo veículo/tipo substitui o
-// anterior em vez de empilhar notificação. `requireInteraction` só na prioridade alta (não dispensa sozinha).
+// Push (docs/PLANO-APK-TWA.md § 3): payload é {alertaId, assetId, tipo, titulo, corpo, prioridade} — o texto já vem
+// pronto da API (título curto = veículo, corpo = a frase do alerta); o `tipo` cru nunca aparece, só compõe a `tag`.
+// `tag` por veículo+tipo: um alerta novo do mesmo veículo/tipo substitui o anterior em vez de empilhar notificação.
+// `requireInteraction` só na prioridade alta (não dispensa sozinha).
 self.addEventListener('push', (event) => {
   if (!event.data) return;
   let dados;
   try { dados = event.data.json(); } catch { return; }
-  event.waitUntil(self.registration.showNotification(dados.titulo || 'Localle', {
-    body: dados.tipo || '',
+  event.waitUntil(self.registration.showNotification(dados.titulo || 'Alerta da frota', {
+    body: dados.corpo || '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: dados.assetId && dados.tipo ? `${dados.assetId}:${dados.tipo}` : undefined,
@@ -112,19 +113,21 @@ self.addEventListener('push', (event) => {
   }));
 });
 
-// Foca uma aba já aberta (navega para Alertas) em vez de abrir outra; só abre nova se não houver nenhuma.
+// Leva direto ao alerta na Central de alertas (?alerta=<id>, Alertas.tsx destaca a linha). Com o app já aberto, foca a
+// janela e pede a troca de rota por mensagem (main.tsx) — `navigate()` do cliente não é confiável no iPhone; sem janela
+// aberta, abre uma já na rota.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const destino = '/#/alertas';
+  const id = event.notification.data && event.notification.data.alertaId;
+  const rota = id ? `/monitoramento/alertas?alerta=${encodeURIComponent(id)}` : '/monitoramento/alertas';
   event.waitUntil((async () => {
     const clientes = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const c of clientes) {
-      if ('focus' in c) {
-        await c.focus();
-        if ('navigate' in c) await c.navigate(destino);
-        return;
-      }
+    const c = clientes.find((x) => 'focus' in x);
+    if (c) {
+      await c.focus();
+      c.postMessage({ tipo: 'abrir', rota });
+      return;
     }
-    await self.clients.openWindow(destino);
+    await self.clients.openWindow(`/#${rota}`);
   })());
 });
