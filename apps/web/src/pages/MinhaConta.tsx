@@ -26,6 +26,10 @@ function NotificacoesPush() {
         if (novo === 'ativo') toast.error('Não foi possível desativar as notificações. Tente de novo.');
         else toast('Notificações desativadas neste aparelho.');
       }
+    } catch {
+      // registro do aparelho na API falhou (rede, sessão): o estado volta ao que o navegador diz
+      setEstado(await estadoPush().catch(() => 'inativo' as const));
+      toast.error('Não foi possível alterar as notificações agora. Tente de novo.');
     } finally { setBusy(false); }
   };
 

@@ -923,7 +923,9 @@ export function Radio({ label, description, checked, onChange, name, disabled, c
 export function Switch({ checked, onChange, ...p }: { checked: boolean; onChange: (v: boolean) => void; 'aria-label'?: string; disabled?: boolean }) {
   return (
     <span className="relative inline-flex shrink-0">
-      <input type="checkbox" role="switch" {...p} className="peer sr-only" checked={!!checked} onChange={(e) => onChange(e.target.checked)} />
+      {/* o próprio checkbox, transparente, cobre o trilho e recebe o toque (44px no celular). Antes era sr-only e só
+          funcionava dentro de um <label>; solto (Minha conta, Setup, Revenda, Contratos) o toque no trilho não fazia nada */}
+      <input type="checkbox" role="switch" {...p} className="peer absolute inset-0 [@media(pointer:coarse)]:-inset-x-1 [@media(pointer:coarse)]:-inset-y-2.5 z-[1] m-0 opacity-0 cursor-pointer disabled:cursor-not-allowed" checked={!!checked} onChange={(e) => onChange(e.target.checked)} />
       <span aria-hidden="true" className={cx('w-10 h-6 rounded-pill bg-switch-off transition-colors duration-150 peer-checked:bg-brand-fill peer-disabled:opacity-45 peer-disabled:cursor-not-allowed after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-pill after:bg-card after:shadow-seg after:transition-transform after:duration-[120ms] peer-checked:after:translate-x-4', peerFocus)} />
     </span>
   );
