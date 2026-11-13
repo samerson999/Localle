@@ -201,11 +201,12 @@ function SidebarDock({ open, onClose, pill, action, children }: { open: boolean;
   );
 }
 
-// Item da pílula da barra inferior: ícone e rótulo curto (só ícone seria adivinhação, ver crítica de 03/11).
+// Item da pílula da barra inferior (ref. Iconly enviada pelo usuário, 12/11/2026): o ativo vira uma pílula branca com
+// ícone e rótulo lado a lado e ocupa mais espaço; os outros mostram só o ícone (o rótulo fica para o leitor de tela).
 export function DockItem({ to, icon, label, active, badge, onClick, expanded }: { to?: string; icon: IconName; label: string; active?: boolean; badge?: ReactNode; onClick?: () => void; expanded?: boolean }) {
-  const cls = cx('relative flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 h-[54px] rounded-pill transition-colors duration-150 [-webkit-tap-highlight-color:transparent]',
-    active ? 'bg-brand-soft text-brand-link' : 'text-ink-2 active:bg-surface-hover');
-  const inner = <><span className="dock-icone relative"><Icon name={icon} size={22} />{badge}</span>{/* tela estreita demais para qualquer rótulo (zoom de 200%): só o ícone, o texto fica para o leitor de tela */}<span className="dock-rotulo max-w-full truncate px-1 text-[11px] leading-none font-medium max-[300px]:sr-only">{label}</span></>;
+  const cls = cx('dock-item relative flex min-w-0 items-center justify-center gap-2 h-[54px] rounded-pill [-webkit-tap-highlight-color:transparent]',
+    active ? 'dock-item-ativo bg-card text-ink px-4' : 'text-ink-2 active:bg-surface-hover');
+  const inner = <><span className="dock-icone relative shrink-0"><Icon name={icon} size={22} />{badge}</span>{/* tela estreita demais para o rótulo (zoom de 200%): só o ícone, o texto fica para o leitor de tela */}<span className={cx('dock-rotulo min-w-0 truncate text-[14px] leading-none font-semibold', active ? 'max-[300px]:sr-only' : 'sr-only')}>{label}</span></>;
   return to
     ? <NavLink to={to} aria-current={active ? 'page' : undefined} className={cls}>{inner}</NavLink>
     : <button type="button" onClick={onClick} aria-expanded={expanded} aria-haspopup="dialog" className={cls}>{inner}</button>;

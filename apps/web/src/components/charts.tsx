@@ -766,7 +766,7 @@ export function Donut({ parts, center, centerLabel, size = 168, thickness = 20 }
       <div ref={box} className="relative shrink-0" style={{ width: size, height: size }} data-chart-hit=""
         onPointerMove={(e) => { if (e.pointerType !== 'mouse') return; const i = partAt(e); if (i < 0) tip.hide(); else if (i !== act) showPart(i, false); }}
         onPointerLeave={(e) => e.pointerType === 'mouse' && tip.hide()} onClick={(e) => { e.stopPropagation(); const i = partAt(e); if (i >= 0) showPart(i, true); else tip.hide(true); }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={parts.map((p) => `${p.label}: ${p.value} (${pct(p.value)})`).join('; ')} className="-rotate-90">
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={parts.map((p) => `${p.label}: ${p.value} (${pct(p.value)})`).join('; ')} className="-rotate-90 overflow-visible">
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--track)" strokeWidth={thickness} />
           {parts.map((p, i) => {
             const len = (p.value / t) * C, off = acc; acc += len;
@@ -796,7 +796,7 @@ export function Ring({ value, size = 168, thickness = 18, center, centerLabel, l
   const fmt = (x: number) => `${(Math.round(x * 1000) / 10).toLocaleString('pt-BR')}%`;
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" role="img" aria-label={`${label ?? 'Progresso'}: ${fmt(v)}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90 overflow-visible" role="img" aria-label={`${label ?? 'Progresso'}: ${fmt(v)}`}>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--track)" strokeWidth={thickness} />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--real)" strokeWidth={tip.active ? thickness + 3 : thickness} strokeLinecap="round" strokeDasharray={`${v * C} ${C}`} className="ring-fill cursor-default" style={{ ['--c' as any]: C }}
           {...tip.target('v', anchorTop, () => <TipBody title={label ?? 'Progresso'} rows={[{ swatch: <Swatch color="var(--real)" />, label: 'Parte', value: fmt(v), strong: true }, { swatch: <Swatch color="var(--track)" />, label: 'Restante', value: fmt(1 - v), tone: 'muted' }]} />)} />

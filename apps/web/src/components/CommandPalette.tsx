@@ -33,6 +33,8 @@ export default function CommandPalette({ open, onClose, modules }: { open: boole
   const mobile = useIsMobile();
   if (!mounted) return null;
   const go = (to: string) => { onClose(); nav(to); };
+  // o anel de foco global (base.css › :focus-visible) é outline + sombra; o outline-none do campo só tira o outline, e a
+  // sombra sobrava como um retângulo quase transparente por cima da barra. O campo já mostra o foco pelo cursor.
   const campo = (cls: string) => (
     <input ref={input} value={q} onChange={(e) => { setQ(e.target.value); setI(0); }} placeholder="Buscar placa, motorista ou módulo…" aria-label="Buscar" role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-activedescendant={results[i]?.id}
       onKeyDown={(e) => {
@@ -40,7 +42,7 @@ export default function CommandPalette({ open, onClose, modules }: { open: boole
         else if (e.key === 'ArrowUp') { e.preventDefault(); setI(Math.max(0, i - 1)); }
         else if (e.key === 'Enter' && results[i]) go(results[i].to);
         else if (e.key === 'Escape') onClose();
-      }} className={cls} />
+      }} className={cx(cls, 'focus-visible:shadow-none')} />
   );
   const lista = (cls: string) => (
     <ul id="cmdk-list" role="listbox" className={cls}>

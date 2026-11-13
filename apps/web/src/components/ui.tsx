@@ -1237,6 +1237,11 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
       }, 0);
     };
   }, [open]);
+  // Celular: a folha entra de baixo (translate 100%) e esse deslocamento conta na área rolável do fundo; o autoFocus do
+  // botão (confirmação) ou do campo rola o fundo até ele no mesmo commit, e a folha aparecia no meio da tela e só depois
+  // pulava para baixo quando a animação terminava. Antes da pintura, o fundo volta ao topo: a folha sobe do lugar certo.
+  const fundo = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (open && mounted && fundo.current) fundo.current.scrollTop = 0; }, [open, mounted]);
   const mobile = useIsMobile();
   // celular: o mesmo gesto do Sheet, com uma parada só; arrastar para baixo fecha (ou volta, se o descarte for negado)
   const drag = useSheetGesture({ box, detents: [0], index: 0, onIndex: () => {}, onDismiss: requestClose, active: mobile && mounted });
@@ -1248,7 +1253,7 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
   // max-md:justify-start: em coluna, o justify-center do desktop centralizava na vertical, e o form mais alto que a tela
   // estourava metade para cima, fora da rolagem — o modal abria no meio do formulário, sem como subir até o título.
   return createPortal(
-    <div className={cx('fixed inset-0 max-md:bottom-[var(--teclado,0px)] z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', centro && 'md:items-center', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !(guardDiscard && touched.current) && onClose()}>
+    <div ref={fundo} className={cx('fixed inset-0 max-md:bottom-[var(--teclado,0px)] z-[1300] bg-scrim flex items-start justify-center p-4 md:p-10 overflow-y-auto overscroll-contain max-md:flex-col max-md:justify-start max-md:items-stretch max-md:p-0 max-md:pt-[8dvh]', centro && 'md:items-center', closing ? 'anim-fade-out' : 'anim-fade')} onMouseDown={(e) => e.target === e.currentTarget && !(guardDiscard && touched.current) && onClose()}>
       <div ref={box} role="dialog" aria-modal="true" aria-label={c.title} tabIndex={-1} className={cx('w-full outline-none bg-card rounded-panel shadow-modal p-card bleed-card flex flex-col max-md:mt-auto max-md:rounded-b-none max-md:shadow-[var(--shadow-sheet)] max-md:pb-[max(var(--pad-card),env(safe-area-inset-bottom))] max-md:transition-[transform] max-md:duration-[450ms] max-md:ease-[cubic-bezier(0.32,0.72,0,1)]', closing ? 'anim-pop-out max-md:[animation:sheet-out_var(--t-exit)_var(--ease-sai)_forwards]' : 'anim-pop max-md:[animation:sheet-in_var(--t-painel)_var(--ease-entra)_backwards]', width)}>
         <div {...(mobile ? drag : {})} className="max-md:touch-none max-md:select-none max-md:-mt-card max-md:pt-2">
           <span aria-hidden="true" className="md:hidden block mx-auto mb-stack w-10 h-1 rounded-pill bg-line-strong" />
