@@ -259,6 +259,12 @@ export function useUrlItem<T>(name: string, find: (id: string) => T | undefined,
 const EDIT_EVENT = 'localle-edit';
 const signalEdit = (el?: Element | null) => el?.dispatchEvent(new Event(EDIT_EVENT, { bubbles: true }));
 
+// Tela de toque: campo de texto não recebe foco sozinho (autoFocus, foco de abertura de folha). No iPhone o foco vindo de
+// um toque abre o teclado na hora, e o formulário abria já com o teclado em cima e a folha empurrada para o alto
+// (13/11/2026). O teclado abre quando a pessoa toca no campo.
+const semFocoAutomatico = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+const TEXTO_FOCAVEL = 'input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]),textarea,[contenteditable="true"]';
+
 // Régua do celular: abaixo de md (768 px), a mesma do Tailwind e da barra lateral.
 const MOBILE_MQ = '(max-width: 767px)';
 export function useIsMobile() {
@@ -455,7 +461,8 @@ export function Sheet({ modal = true, bare = false, tall = false, label, title, 
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
     const focusables = () => Array.from(box.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input,select,textarea,[tabindex]:not([tabindex="-1"])') || []);
-    if (modal) focusables()[0]?.focus();
+    // toque: o foco de abertura pula campo de texto (semFocoAutomatico); sem outro focável, ninguém recebe foco
+    if (modal) (semFocoAutomatico() ? focusables().find((el) => !el.matches(TEXTO_FOCAVEL)) : focusables()[0])?.focus({ preventScroll: true });
     const k = (e: KeyboardEvent) => {
       // Esc fecha só a sobreposição do topo (um Modal aberto por cima do painel do veículo, como Comandos, fecha primeiro)
       if (e.key === 'Escape' && !e.defaultPrevented) { const all = document.querySelectorAll('[aria-modal="true"],[data-sheet]'); if (all[all.length - 1] === box.current && closeRef.current) { e.preventDefault(); closeRef.current(); } return; }
@@ -692,8 +699,9 @@ const inputCls = 'h-ctl w-full border border-line-strong rounded-ctl px-3 text-b
 // logo abaixo. type="number": mínimo 0 quando não informado (passe min negativo onde negativo faz sentido), sem
 // notação científica (e, +), sem sinal de menos quando o mínimo é ≥ 0 e sem a roda do mouse mudar o valor.
 type InputProps = React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean; mask?: Mascara; maxDigits?: number };
-export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className = '', invalid, mask, maxDigits, ...p }, r) => {
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className = '', invalid, mask, maxDigits, autoFocus, ...q }, r) => {
   const [saiu, setSaiu] = useState(false);
+  const p = { ...q, autoFocus: autoFocus && !semFocoAutomatico() };
   if (p.type === 'date' || p.type === 'datetime-local' || p.type === 'month') return <DateInput {...(p as any)} className={className} />;
   if (p.type === 'time') { const { type, ...t } = p; return <TimeInput {...(t as any)} className={className} />; }
   if (mask) {
@@ -874,8 +882,8 @@ export function SearchSelect({ options, value, onChange, onQuery, placeholder = 
     </div>
   );
 }
-export function Textarea({ className = '', ...p }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...p} className={cx('w-full border border-line-strong rounded-ctl p-3 text-body text-ink bg-card placeholder:text-ink-3 hover:border-line-hover focus:outline-none transition-colors disabled:bg-surface-muted disabled:text-ink-3', className)} />;
+export function Textarea({ className = '', autoFocus, ...p }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...p} autoFocus={autoFocus && !semFocoAutomatico()}className={cx('w-full border border-line-strong rounded-ctl p-3 text-body text-ink bg-card placeholder:text-ink-3 hover:border-line-hover focus:outline-none transition-colors disabled:bg-surface-muted disabled:text-ink-3', className)} />;
 }
 // Controles de seleção: marcados na cor da revenda (--brand-fill, com fallback grafite). Foco = anel duplo.
 const peerFocus = 'peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--focus-outer)] peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[var(--focus-inner)]';
@@ -1252,6 +1260,10 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl', foo
     const topo = () => { const all = document.querySelectorAll('[aria-modal="true"]'); return all[all.length - 1] === box.current; };
     const focusables = () => Array.from(box.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled):not([type="hidden"]),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])') || [])
       .filter((el) => el.getClientRects().length > 0 && !el.closest('[inert]'));
+    // toque: campo de texto que pegou o foco na abertura (autoFocus cru, fora do Input) o devolve ao diálogo — senão o
+    // teclado do iPhone abre junto com o formulário (semFocoAutomatico)
+    const a = document.activeElement as HTMLElement | null;
+    if (semFocoAutomatico() && a && box.current?.contains(a) && a.matches(TEXTO_FOCAVEL)) box.current.focus({ preventScroll: true });
     if (!box.current?.contains(document.activeElement)) (focusables()[0] ?? box.current)?.focus({ preventScroll: true });
     const k = (e: KeyboardEvent) => {
       if (e.defaultPrevented || !topo()) return;
