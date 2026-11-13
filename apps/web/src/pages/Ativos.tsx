@@ -357,7 +357,7 @@ function AssetForm({ a, setA }: any) {
                 <Input value={a.apelido ?? ''} onChange={(e) => set('apelido', e.target.value)} placeholder={isV ? 'Ex.: Caminhão do Zé' : 'Ex.: Caixa fria CF-08'} /></Field>
               <div className="flex flex-col gap-2"><span className="text-small font-semibold">Grupos</span><div className="flex flex-wrap gap-4">{s.groups.map((g: any) => <Check key={g.id} label={g.name} checked={a.groupIds.includes(g.id)} onChange={(v) => set('groupIds', v ? [...a.groupIds, g.id] : a.groupIds.filter((x: string) => x !== g.id))} />)}</div></div>
             </div>
-            <div className="flex-[1_1_280px] max-w-[340px] flex flex-col gap-grid">
+            <div className="flex-[1_1_280px] md:max-w-[340px] flex flex-col gap-grid">
               <Dropzone label="Foto do ativo" hint="Aparece no mapa e no detalhe. JPG, PNG ou WebP até 4 MB." value={a.photo} onChange={(d) => set('photo', d)} previewAlt={`Foto de ${a.name || 'ativo'}`} />
               <IconPicker category={a.category || categoryOf(a)} value={a.icon} onChange={(v) => set('icon', v)} />
             </div>

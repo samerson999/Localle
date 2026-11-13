@@ -517,7 +517,7 @@ function FichaTraccarModelo({ modelo }: { modelo: AdminRastreadorModelo }) {
       {data && (
         <ul className="flex flex-col gap-tight">
           {itensDaFicha(modelo, data).map((i, k) => (
-            <li key={k} className="flex gap-2 text-small"><span aria-hidden className={`mt-[7px] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} /><span>{i.texto}</span></li>
+            <li key={k} className="flex gap-2 text-small"><span aria-hidden className={`mt-[calc((var(--lh-small)*1em-0.5rem)/2)] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} /><span>{i.texto}</span></li>
           ))}
         </ul>
       )}
@@ -548,7 +548,7 @@ function DiagnosticoModal({ rastreador, recemCadastrado, modelo, onClose, onEdit
         <ol className="flex flex-col gap-stack">
           {itens.map((i) => (
             <li key={i.etapa} className="flex gap-3 text-small">
-              <span aria-hidden className={`mt-[7px] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} />
+              <span aria-hidden className={`mt-[calc((var(--lh-small)*1em-0.5rem)/2)] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} />
               <span><b className="font-medium">{i.etapa}</b><span className="block text-ink-2">{i.texto}</span></span>
             </li>
           ))}
@@ -577,7 +577,7 @@ function SinaisPainel({ s }: { s: SinaisMotorDiagnostico }) {
         <ol className="flex flex-col gap-stack">
           {itens.map((i) => (
             <li key={i.etapa} className="flex gap-3 text-small">
-              <span aria-hidden className={`mt-[7px] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} />
+              <span aria-hidden className={`mt-[calc((var(--lh-small)*1em-0.5rem)/2)] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} />
               <span><b className="font-medium">{i.etapa}</b><span className="block text-ink-2">{i.texto}</span></span>
             </li>
           ))}

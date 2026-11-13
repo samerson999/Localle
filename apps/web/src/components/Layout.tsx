@@ -84,7 +84,7 @@ function AvisoBackend() {
           ? <><b>Sem conexão com o tempo real.</b> As posições e alertas podem estar desatualizados. {r.error}</>
           : <><b>Não foi possível carregar:</b> {r.modulosFalhos.join(', ')}. {r.error}</>}
       </span>
-      <button type="button" disabled={tentando} className="h-8 px-3 rounded-btn border border-current font-medium hover:bg-card disabled:opacity-60" onClick={tentar}>{tentando ? 'Tentando…' : 'Tentar agora'}</button>
+      <button type="button" disabled={tentando} className="h-8 [@media(pointer:coarse)]:h-11 px-3 rounded-btn border border-current font-medium hover:bg-card disabled:opacity-60" onClick={tentar}>{tentando ? 'Tentando…' : 'Tentar agora'}</button>
     </div>
   );
 }
@@ -418,7 +418,7 @@ function LayoutBody() {
           {session.support && (
             <div role="status" className="flex flex-wrap items-center gap-x-stack gap-y-hair px-page md:px-page-md py-tight bg-ink text-on-dark text-small">
               <Icon name="cadeado" size={16} className="shrink-0" /><span className="mr-auto">Acesso de suporte a <b>{session.support.client}</b> desde {fmtT(session.support.at)} · {session.support.reason}</span>
-              <button type="button" className="h-8 px-3 rounded-btn border border-on-dark-hover hover:bg-on-dark-hover font-medium" onClick={() => { endSupport(); nav(homeOf({ ...session, support: undefined })); }}>Encerrar acesso</button>
+              <button type="button" className="h-8 [@media(pointer:coarse)]:h-11 px-3 rounded-btn border border-on-dark-hover hover:bg-on-dark-hover font-medium" onClick={() => { endSupport(); nav(homeOf({ ...session, support: undefined })); }}>Encerrar acesso</button>
             </div>
           )}
           <AvisoBackend />

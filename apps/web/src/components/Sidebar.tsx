@@ -303,7 +303,7 @@ export const SidebarMenu = forwardRef<HTMLDivElement, { children: ReactNode; pil
 export function SidebarMenuButton({ to, icon, label, badge, end, trilha, ativo, secao, aberto, onToggle }: { to: string; icon: IconName; label: string; badge?: ReactNode; end?: boolean; trilha?: boolean; ativo?: boolean; secao?: boolean; aberto?: boolean; onToggle?: () => void }) {
   const mini = useMini();
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
-  const cls = (on: boolean) => cx('relative z-[1] flex items-center gap-3 h-10 pl-[14px] rounded-ctl text-body overflow-hidden transition-colors duration-150', onToggle && !mini ? 'pr-10' : 'pr-3', on || trilha || secao ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover');
+  const cls = (on: boolean) => cx('relative z-[1] flex items-center gap-3 h-10 [@media(pointer:coarse)]:h-11 pl-[14px] rounded-ctl text-body overflow-hidden transition-colors duration-150', onToggle && !mini ? 'pr-10' : 'pr-3', on || trilha || secao ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover');
   const gesto = (e: MouseEvent<HTMLElement>) => animarGesto(e.currentTarget, icon);
   const inner = <><Icon name={icon} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{label}</span>{badge}</>;
   const link = ativo === undefined
@@ -315,7 +315,7 @@ export function SidebarMenuButton({ to, icon, label, badge, end, trilha, ativo, 
       {link}
       {!mini && (
         <button type="button" onClick={onToggle} aria-expanded={aberto} aria-label={`${aberto ? 'Fechar' : 'Abrir'} ${label}`}
-          className="absolute right-1 top-1/2 z-[2] -translate-y-1/2 size-8 grid place-items-center rounded-ctl text-ink-3 hover:text-ink hover:bg-surface-hover">
+          className="absolute right-1 top-1/2 z-[2] -translate-y-1/2 size-8 [@media(pointer:coarse)]:size-11 grid place-items-center rounded-ctl text-ink-3 hover:text-ink hover:bg-surface-hover">
           <Icon name="abaixo" size={16} className={cx('transition-transform duration-200 motion-reduce:transition-none', !aberto && '-rotate-90')} />
         </button>
       )}
