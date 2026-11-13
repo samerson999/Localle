@@ -84,13 +84,21 @@ export function iniciarTeclado() {
   const vv = window.visualViewport;
   if (!vv) return;
   const raiz = document.documentElement;
+  // Sonda fixa e invisível do tamanho da área onde os `fixed` se posicionam: a base dela é onde um `bottom: 0` termina de
+  // fato. Antes a conta usava clientHeight (a página inteira), supondo que o `fixed` fica atrás do teclado; no PWA do
+  // iPhone (13/11/2026) essa área já encolhe com o teclado, e somar --teclado por cima levantava a folha duas vezes.
+  const sonda = document.createElement('div');
+  sonda.setAttribute('aria-hidden', 'true');
+  sonda.style.cssText = 'position:fixed;inset:0;visibility:hidden;pointer-events:none;z-index:-1';
+  document.body.appendChild(sonda);
   let quadro = 0;
   const medir = () => {
     cancelAnimationFrame(quadro);
     quadro = requestAnimationFrame(() => {
-      // clientHeight = a página (layout); vv = o que se vê. A diferença embaixo é o teclado (o zoom de pinça também
-      // encolhe o vv, mas aí a escala é > 1 e não é teclado)
-      const cobre = vv.scale > 1.01 ? 0 : Math.max(0, Math.round(raiz.clientHeight - vv.height - vv.offsetTop));
+      // base do `fixed` menos a base do que se vê (vv) = o quanto o teclado cobre. O zoom de pinça também encolhe o vv,
+      // mas aí a escala é > 1 e não é teclado
+      const base = sonda.getBoundingClientRect().bottom;
+      const cobre = vv.scale > 1.01 ? 0 : Math.max(0, Math.round(base - vv.height - vv.offsetTop));
       const aberto = cobre > 80;
       raiz.style.setProperty('--teclado', `${aberto ? cobre : 0}px`);
       if (aberto) raiz.dataset.teclado = ''; else delete raiz.dataset.teclado;
@@ -98,5 +106,6 @@ export function iniciarTeclado() {
   };
   vv.addEventListener('resize', medir);
   vv.addEventListener('scroll', medir);
+  window.addEventListener('resize', medir); // a área dos `fixed` pode mudar sem o vv mudar
   medir();
 }
