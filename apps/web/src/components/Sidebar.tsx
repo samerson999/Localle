@@ -286,10 +286,8 @@ export const SidebarMenu = forwardRef<HTMLDivElement, { children: ReactNode; pil
     // recolhida, a barra de rolagem some (a lista continua rolando): ela não escala com o zoom e, nos 72px, comia a
     // largura dos itens e cortava os ícones
     <nav ref={ref} data-slot="sidebar-menu" aria-label="Módulos" className="relative flex-1 overflow-y-auto overflow-x-hidden px-3 pt-3 pb-3 group-data-[collapsible=icon]:[scrollbar-width:none] group-data-[collapsible=icon]:[&::-webkit-scrollbar]:hidden">
-      {/* item ativo: usa a cor da revenda (--brand-soft/--brand-link), com fallback automático pra grafite
-         já calculado em lib/brand.ts (brandVars) quando a cor da revenda é vermelha, de baixo contraste,
-         ou lembra alerta — não precisa de lógica própria aqui, só consumir as variáveis derivadas. */}
-      {pill && <span aria-hidden="true" className="absolute left-3 right-3 rounded-ctl bg-brand-soft transition-[top,height] duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none" style={{ top: pill.top, height: pill.height }} />}
+      {/* item ativo: pílula preta com texto claro, a mesma do Setup (13/11/2026: antes era a cor da revenda) */}
+      {pill && <span aria-hidden="true" className="absolute left-3 right-3 rounded-ctl bg-ink transition-[top,height] duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none" style={{ top: pill.top, height: pill.height }} />}
       {children}
     </nav>
   );
@@ -303,7 +301,7 @@ export const SidebarMenu = forwardRef<HTMLDivElement, { children: ReactNode; pil
 export function SidebarMenuButton({ to, icon, label, badge, end, trilha, ativo, secao, aberto, onToggle }: { to: string; icon: IconName; label: string; badge?: ReactNode; end?: boolean; trilha?: boolean; ativo?: boolean; secao?: boolean; aberto?: boolean; onToggle?: () => void }) {
   const mini = useMini();
   const fade = cx('transition-opacity motion-reduce:transition-none', mini ? 'opacity-0 duration-100' : 'opacity-100 duration-200 delay-100');
-  const cls = (on: boolean) => cx('relative z-[1] flex items-center gap-3 h-10 [@media(pointer:coarse)]:h-11 pl-[14px] rounded-ctl text-body overflow-hidden transition-colors duration-150', onToggle && !mini ? 'pr-10' : 'pr-3', on || trilha || secao ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover');
+  const cls = (on: boolean) => cx('relative z-[1] flex items-center gap-3 h-10 [@media(pointer:coarse)]:h-11 pl-[14px] rounded-ctl text-body overflow-hidden transition-colors duration-150', onToggle && !mini ? 'pr-10' : 'pr-3', on || trilha ? 'font-semibold text-on-dark' : secao ? 'font-semibold text-ink hover:bg-surface-hover' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover');
   const gesto = (e: MouseEvent<HTMLElement>) => animarGesto(e.currentTarget, icon);
   const inner = <><Icon name={icon} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{label}</span>{badge}</>;
   const link = ativo === undefined
@@ -311,11 +309,12 @@ export function SidebarMenuButton({ to, icon, label, badge, end, trilha, ativo, 
     : <Link to={to} onMouseEnter={gesto} data-slot="sidebar-menu-button" data-trilha={trilha || undefined} title={mini ? label : undefined} aria-label={mini ? label : undefined} aria-current={ativo ? 'page' : undefined} className={cls(ativo)}>{inner}</Link>;
   if (!onToggle) return link;
   return (
-    <div className="relative">
+    <div className="relative group/item" data-pilula={trilha || undefined}>
       {link}
       {!mini && (
+        // sobre a pílula preta (item ativo ou trilha), a seta fica clara
         <button type="button" onClick={onToggle} aria-expanded={aberto} aria-label={`${aberto ? 'Fechar' : 'Abrir'} ${label}`}
-          className="absolute right-1 top-1/2 z-[2] -translate-y-1/2 size-8 [@media(pointer:coarse)]:size-11 grid place-items-center rounded-ctl text-ink-3 hover:text-ink hover:bg-surface-hover">
+          className="absolute right-1 top-1/2 z-[2] -translate-y-1/2 size-8 [@media(pointer:coarse)]:size-11 grid place-items-center rounded-ctl text-ink-3 hover:text-ink hover:bg-surface-hover group-has-[a[aria-current=page]]/item:text-on-dark group-data-[pilula]/item:text-on-dark group-has-[a[aria-current=page]]/item:hover:bg-transparent group-data-[pilula]/item:hover:bg-transparent">
           <Icon name="abaixo" size={16} className={cx('transition-transform duration-200 motion-reduce:transition-none', !aberto && '-rotate-90')} />
         </button>
       )}
@@ -345,7 +344,7 @@ export function SidebarSubMenu({ items, aberto = true }: { items: { key: string;
         const on = subItemAtivo(s.to, loc);
         return (
           <Link key={s.key} to={s.to} onMouseEnter={(e) => animarGesto(e.currentTarget, s.icon)} data-slot="sidebar-menu-button" aria-current={on ? 'page' : undefined} title={mini ? s.label : undefined} aria-label={mini ? s.label : undefined}
-            className={cx('relative z-[1] flex items-center gap-3 h-9 [@media(pointer:coarse)]:h-11 pr-3 rounded-ctl text-small overflow-hidden transition-[color,background-color,padding] duration-150 motion-reduce:transition-none', mini ? 'pl-[15px]' : 'pl-[36px]', on ? 'font-semibold text-brand-link' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
+            className={cx('relative z-[1] flex items-center gap-3 h-9 [@media(pointer:coarse)]:h-11 pr-3 rounded-ctl text-small overflow-hidden transition-[color,background-color,padding] duration-150 motion-reduce:transition-none', mini ? 'pl-[15px]' : 'pl-[36px]', on ? 'font-semibold text-on-dark' : 'font-medium text-ink-2 hover:text-ink hover:bg-surface-hover')}>
             <Icon name={s.icon} size={18} className="shrink-0" /><span className={cx('truncate mr-auto', fade)}>{s.label}</span>
           </Link>
         );
