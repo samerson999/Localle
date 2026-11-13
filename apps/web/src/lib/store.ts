@@ -115,7 +115,8 @@ export function useStoreData(liveMs = 30000): any {
 // Decisão do usuário em 12/11/2026: 10 minutos.
 export const POSICAO_RECENTE_MS = 10 * 60_000;
 
-export type StatusFrota = 'mov' | 'par' | 'des' | 'pnd' | 'sem';
+// agu: rastreador instalado que ainda não mandou posição — não é "sem sinal" e não entra nos cards de status
+export type StatusFrota = 'mov' | 'par' | 'des' | 'pnd' | 'sem' | 'agu';
 
 /**
  * Ignição de agora: a do último pacote (com ou sem GPS) quando ele é mais novo que a posição na tela; senão a da posição.
@@ -129,30 +130,36 @@ export function ignicaoAtual(v: any): boolean | null {
 }
 
 // status do veículo para a interface: as cores vêm dos tokens --status-* (StatusDot/StatusGlyph), não daqui
-export const vehicleStatus = (v: any, agora = Date.now()): { key: StatusFrota; label: string } => {
-  if (!v) return { key: 'sem', label: 'Aguardando 1ª posição' }; // rastreador instalado que ainda não mandou posição
-  // veículo da nossa API: quem decide "sem sinal" é o backend, com o limite do cliente (monitoramento.sem_sinal_h),
-  // relido a cada carga da frota (localleApi.syncFrota). As 6 h fixas ficam só para a integração antiga (rastreioApi).
-  const semSinal = v.comunicacao !== undefined ? v.noSignal : v.noSignal || agora - v.lastUpdate > 6 * 3600000;
-  // sem GPS: o aparelho fala, mas sem posição válida — conta no tile Sem sinal (a posição na tela é antiga), com rótulo próprio
-  if (semSinal) return { key: 'sem', label: v.comunicacao === 'sem_gps' ? 'Sem GPS' : 'Sem sinal' };
+// semPosicao: a posição na tela é antiga (sem GPS ou mais de 10 min) — a velocidade dela não vale para agora
+export const vehicleStatus = (v: any, agora = Date.now()): { key: StatusFrota; label: string; semPosicao?: true } => {
+  if (!v) return { key: 'agu', label: 'Aguardando 1ª posição' }; // rastreador instalado que ainda não mandou posição
+  // "Sem sinal" é só o rastreador que não comunica há mais que o limite do cliente (decisão do usuário em 13/11/2026).
+  // Veículo da nossa API: quem decide é o backend, com monitoramento.sem_sinal_h, relido a cada carga da frota
+  // (localleApi.syncFrota). As 6 h fixas ficam só para a integração antiga (rastreioApi).
+  const semSinal = v.comunicacao !== undefined ? v.comunicacao === 'sem_sinal' : v.noSignal || agora - v.lastUpdate > 6 * 3600000;
+  if (semSinal) return { key: 'sem', label: 'Sem sinal' };
   const ign = ignicaoAtual(v);
   // pacote mais novo que a posição dizendo que o motor desligou: desligado, mesmo que a última posição fosse andando
   const desligouDepois = ign === false && v.ignition !== false;
-  // última posição andando ou com ignição ligada, e nada novo há mais de 10 min: não dá para afirmar o que faz agora.
-  // Desligado ou parado sem ignição continua como está (aparelho estacionado manda posição com menos frequência).
-  if (!desligouDepois && agora - v.lastUpdate > POSICAO_RECENTE_MS && (v.moving || ign === true)) return { key: 'sem', label: 'Sem posição recente' };
-  if (v.moving && !desligouDepois) return { key: 'mov', label: 'Em movimento' };
-  if (ign === true) return { key: 'par', label: 'Parado ligado' };
-  if (ign === false) return { key: 'des', label: 'Desligado' };
+  // Sem GPS (o aparelho fala, sem posição válida), ou última posição andando/ligado e nada novo há mais de 10 min: não dá
+  // para afirmar movimento; o status fica pelo que se sabe da ignição (13/11/2026). Desligado ou parado sem ignição
+  // continua como está (aparelho estacionado manda posição com menos frequência).
+  const semGps = v.comunicacao === 'sem_gps';
+  const antiga = semGps || (!desligouDepois && agora - v.lastUpdate > POSICAO_RECENTE_MS && (v.moving || ign === true));
+  if (v.moving && !desligouDepois && !antiga) return { key: 'mov', label: 'Em movimento' };
+  const com = (key: StatusFrota, label: string) =>
+    antiga ? { key, label: `${label} · ${semGps ? 'sem GPS' : 'sem posição recente'}`, semPosicao: true as const } : { key, label };
+  if (ign === true) return com('par', 'Parado ligado');
+  if (ign === false) return com('des', 'Ignição desligada');
   // o rastreador não informa ignição: parado, sem afirmar desligado (decisão do usuário em 12/11/2026, card próprio)
-  return { key: 'pnd', label: 'Parado' };
+  return com('pnd', 'Parado');
 };
 
-// Tiles do Monitoramento: em movimento, parado ligado, desligado, parado (sem ignição informada) e sem sinal. As cinco
-// chaves são exclusivas e somam o total; "desligado" é um veículo comunicando, nunca entra em "sem sinal".
+// Tiles do Monitoramento: em movimento, parado ligado, ignição desligada, parado (sem ignição informada) e sem sinal,
+// mais "aguardando 1ª posição" (sem card). As chaves são exclusivas e somam o total; "ignição desligada" é um veículo
+// comunicando, nunca entra em "sem sinal".
 export function contarStatusFrota(vehicles: any[], agora = Date.now()) {
-  const counts: Record<StatusFrota, number> = { mov: 0, par: 0, des: 0, pnd: 0, sem: 0 };
+  const counts: Record<StatusFrota, number> = { mov: 0, par: 0, des: 0, pnd: 0, sem: 0, agu: 0 };
   for (const v of vehicles) counts[vehicleStatus(v, agora).key]++;
   return counts;
 }

@@ -32,12 +32,14 @@ const KM_USADO = 1; // rodou pelo menos isso no dia = veículo usado
 const RECENTE_MS = 30 * 60_000; // "dados recentes": posição dos últimos 30 minutos
 
 // "Parado" = rastreador que não informa ignição (12/11/2026): só aparece quando há veículo nele
-const ESTADOS: { k: StatusFrota; label: string; kind: StatusKind; cor: string }[] = [
+const ESTADOS: { k: StatusFrota; label: string; kind: StatusKind; cor: string; glifo?: string }[] = [
   { k: 'mov', label: 'Em movimento', kind: 'mov', cor: 'var(--status-mov)' },
   { k: 'par', label: 'Parado ligado', kind: 'parado', cor: 'var(--status-parado)' },
-  { k: 'des', label: 'Desligado', kind: 'off', cor: 'var(--status-off)' },
-  { k: 'pnd', label: 'Parado', kind: 'stop', cor: 'color-mix(in srgb, var(--status-off) 55%, transparent)' }, // mais claro que o desligado, ao lado dele na barra
-  { k: 'sem', label: 'Sem sinal', kind: 'nosignal', cor: 'var(--ink-3)' },
+  { k: 'des', label: 'Ignição desligada', kind: 'off', cor: 'var(--status-off)' },
+  { k: 'pnd', label: 'Parado', kind: 'stop', cor: 'color-mix(in srgb, var(--status-off) 55%, transparent)' }, // mais claro que o de ignição desligada, ao lado dele na barra
+  // vermelho só neste gráfico (13/11/2026): sem sinal é rastreador calado além do limite do Setup, pede ação. No mapa o
+  // vermelho continua sendo do Crítico
+  { k: 'sem', label: 'Sem sinal', kind: 'nosignal', cor: 'var(--status-crit)', glifo: '!text-[color:var(--status-crit)]' },
 ];
 
 type ItemFrota = { a: any; v: any; k: StatusFrota };
@@ -211,7 +213,7 @@ function Resumo({ className, frota, total, compacto, filtro }: { className: stri
   const estados = ESTADOS.filter((e) => e.k !== 'pnd' || conta('pnd') > 0);
   const recentes = frota.filter((x) => x.v && Date.now() - x.v.lastUpdate < RECENTE_MS).length;
   return (
-    <Card className={className} dense={compacto} title="Resumo da frota" icon="tendencia" to="/monitoramento" actions={filtro}>
+    <Card className={className} dense={compacto} title="Resumo da frota" icon="tendencia" actions={filtro}>
       <div className={cx('flex flex-col justify-between h-full', compacto ? 'gap-3' : 'gap-6')}>
         <div className={cx('flex flex-col', compacto ? 'gap-2' : 'gap-4')}>
           <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
@@ -229,7 +231,7 @@ function Resumo({ className, frota, total, compacto, filtro }: { className: stri
           <ul className={cx('grid grid-cols-2 gap-x-4', estados.length > 4 ? 'sm:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-4', compacto ? 'gap-y-2' : 'gap-y-5')}>
             {estados.map((e) => (
               <li key={e.k} className="flex flex-col gap-1.5 min-w-0">
-                <span className="flex items-center gap-tight text-small text-ink-2 truncate"><StatusGlyph kind={e.kind} />{e.label}</span>
+                <span className="flex items-center gap-tight text-small text-ink-2 truncate"><StatusGlyph kind={e.kind} className={e.glifo} />{e.label}</span>
                 <span className="flex items-baseline gap-1.5"><Numero><Conta v={conta(e.k)} /></Numero><span className="num text-small text-ink-2">({fmt1(pct(conta(e.k), total))}%)</span></span>
               </li>
             ))}
@@ -251,14 +253,14 @@ function Atividade({ carregando, uso, total, viagens }: { carregando: boolean; u
       : { icone: 'ativos', valor: <Conta v={rodaram} />, rot: `de ${total} rodaram`, espera: carregando },
   ];
   return (
-    <Card dense title="Atividade de hoje" icon="viagens" to="/relatorios/uso">
-      <div className="grid grid-cols-3 sm:divide-x divide-line">
+    <Card dense title="Atividade de hoje" icon="viagens">
+      <div className="grid grid-cols-3 divide-x divide-line">
         {itens.map((x) => (
-          <div key={x.icone} className="flex items-start gap-tight min-w-0 sm:px-4 sm:first:pl-0 sm:last:pr-0">
+          <div key={x.icone} className="flex items-start gap-tight min-w-0 px-3 sm:px-4 first:pl-0 last:pr-0">
             <Icon name={x.icone} size={22} className="mt-0.5 shrink-0 text-ink-2 max-sm:hidden" />
             <div className="min-w-0 flex flex-col gap-1">
               {x.espera ? <Skeleton className="h-6 w-20" /> : <Numero className="truncate">{x.valor}</Numero>}
-              <span className="text-small text-ink-2 truncate">{x.rot}</span>
+              <span className="text-small text-ink-2 max-sm:leading-snug max-sm:line-clamp-2 sm:truncate">{x.rot}</span>
             </div>
           </div>
         ))}
@@ -280,7 +282,7 @@ function Conectividade({ frota, total, ultima, compacto }: { frota: ItemFrota[];
   const visiveis = linhas.filter((l) => l.n > 0 || l.label === 'Transmitindo' || l.label === 'Sem comunicação');
   const p = pct(transmitindo, total);
   return (
-    <Card dense title="Conectividade dos rastreadores" icon="sinal" to="/monitoramento"
+    <Card dense title="Conectividade dos rastreadores" icon="sinal"
       subtitle={compacto ? undefined : ultima ? `Última posição ${shortDT(ultima)} (${haQuanto(ultima)})` : 'Nenhuma posição recebida ainda'}>
       <div className={cx('grid grid-cols-[auto_1fr] sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.1fr)] items-center gap-x-6', compacto ? 'gap-y-2' : 'gap-y-4')}>
         <div className="max-sm:col-span-2 flex flex-col gap-1.5">

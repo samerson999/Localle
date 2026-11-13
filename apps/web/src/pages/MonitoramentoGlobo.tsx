@@ -89,13 +89,16 @@ export default function MonitoramentoGlobo() {
     const v = vehicles[a.id], s = vehicleStatus(v, agora);
     return {
       id: a.id, plate: a.name, model: [a.brand, a.model].filter(Boolean).join(' '), driver: drivers.find((d: any) => d.id === a.driverId)?.name || 'Sem motorista',
-      pos: v?.pos, key: s.key, kind: crit.has(a.id) ? 'crit' : KIND_DE[s.key] || 'off', label: crit.has(a.id) ? 'Crítico' : s.label, speed: v && s.key !== 'sem' ? Math.round(v.speed || 0) : null, ts: v?.lastUpdate,
+      pos: v?.pos, key: s.key, kind: crit.has(a.id) ? 'crit' : KIND_DE[s.key] || 'off', label: crit.has(a.id) ? 'Crítico' : s.label, speed: v && s.key !== 'sem' && !s.semPosicao ? Math.round(v.speed || 0) : null, ts: v?.lastUpdate,
       blocked: !!v?.blocked, asset: a,
     };
   }), [assets, vehicles, drivers, crit, agora]);
-  const contagem = useMemo(() => { const c = { mov: 0, par: 0, des: 0, pnd: 0, sem: 0 } as Record<string, number>; for (const i of itens) c[i.key]++; return c; }, [itens]);
-  const lista = itens.filter((i) => (!st || i.key === st) && (!q || (i.plate + i.model + i.driver).toLowerCase().includes(q.toLowerCase())));
+  // os contadores contam o veículo aberto no cartão ou, sem ele, o recorte da busca; o filtro de status não entra, senão
+  // tocar num contador zerava os outros
+  const buscados = useMemo(() => itens.filter((i) => !q || (i.plate + i.model + i.driver).toLowerCase().includes(q.toLowerCase())), [itens, q]);
+  const lista = buscados.filter((i) => !st || i.key === st);
   const atual = itens.find((i) => i.id === sel);
+  const contagem = useMemo(() => { const c = { mov: 0, par: 0, des: 0, pnd: 0, sem: 0, agu: 0 } as Record<string, number>; for (const i of atual ? [atual] : buscados) c[i.key]++; return c; }, [buscados, atual]);
   const ultima = Math.max(0, ...itens.filter((i) => i.speed !== null && i.ts).map((i) => i.ts as number));
 
   // o globo mostra o mesmo recorte da lista (contador e busca); o veículo aberto fica mesmo fora dele
@@ -167,7 +170,7 @@ export default function MonitoramentoGlobo() {
           {aparencia && <SeletorModo p={P} modo={modo} ancora={aparenciaBtn} onModo={(m) => setModo(m)} onFechar={() => setAparencia(false)} />}
         </div>
         <Circulo p={P} label="Ver o globo" icon="zoom-menos" onClick={verGlobo} />
-        <button type="button" onClick={verFrota} className="h-11 px-4 rounded-full flex items-center gap-2 font-medium text-[15px] active:scale-[0.97] transition-transform" style={{ background: P.primario, color: P.primarioTexto }}>
+        <button type="button" onClick={verFrota} className="h-11 px-4 rounded-full flex items-center gap-2 font-medium text-body active:scale-[0.97] transition-transform" style={{ background: P.primario, color: P.primarioTexto }}>
           <Icon name="centralizar" size={18} />Ver a frota
         </button>
       </div>
@@ -179,7 +182,7 @@ export default function MonitoramentoGlobo() {
               <button key={c.k} type="button" aria-pressed={st === c.k} onClick={() => setSt(st === c.k ? '' : c.k)}
                 className="flex flex-col items-center gap-0.5 py-1 rounded-2xl transition-colors" style={{ background: st === c.k ? P.cartao : undefined }}>
                 <span className="text-[32px] leading-[40px] font-semibold num"><Contador v={contagem[c.k]} /></span>
-                <span className="flex items-center gap-1.5 text-[14px]" style={{ color: P.texto2 }}><span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ background: P.status[KIND_DE[c.k]] }} />{c.label}</span>
+                <span className="flex items-center gap-1.5 text-small" style={{ color: P.texto2 }}><span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ background: P.status[KIND_DE[c.k]] }} />{c.label}</span>
               </button>
             ))}
           </div>
@@ -193,7 +196,7 @@ export default function MonitoramentoGlobo() {
               className="w-full h-12 pl-11 pr-4 rounded-full text-[16px] outline-none focus-visible:ring-2" style={{ background: P.cartao, color: P.texto }} />
           </label>
         </>}>
-        <p className="px-1 pb-2 text-[13px]" style={{ color: P.texto2 }}>
+        <p className="px-1 pb-2 text-caption" style={{ color: P.texto2 }}>
           {lista.length} {lista.length === 1 ? 'veículo' : 'veículos'}{st ? ` · ${CONTADORES.find((c) => c.k === st)?.label.toLowerCase()}` : ''}{ultima ? <> · atualizado às <time className="num">{shortDT(ultima)}</time></> : null}
         </p>
         <ul aria-label="Veículos" className="flex flex-col">
@@ -204,16 +207,16 @@ export default function MonitoramentoGlobo() {
                 <Marca p={P} kind={i.kind} />
                 <span className="min-w-0 flex-1 flex flex-col">
                   {isPlate(i.plate) ? <span className="mb-1"><Plate name={i.plate} size="md" /></span> : <span className="text-[16px] font-semibold truncate">{i.plate}</span>}
-                  <span className="text-[13px] truncate" style={{ color: P.texto2 }}>{i.label}{i.blocked ? ' · bloqueado' : ''} · {i.driver}</span>
+                  <span className="text-caption truncate" style={{ color: P.texto2 }}>{i.label}{i.blocked ? ' · bloqueado' : ''} · {i.driver}</span>
                 </span>
                 <span className="shrink-0 flex flex-col items-end">
-                  <span className="text-[15px] font-medium num">{i.speed !== null ? `${i.speed} km/h` : '—'}</span>
+                  <span className="text-body font-medium num">{i.speed !== null ? `${i.speed} km/h` : '—'}</span>
                   <span className="text-[12px] num" style={{ color: P.texto2 }}>{i.ts ? shortDT(i.ts) : ''}</span>
                 </span>
               </button>
             </li>
           ))}
-          {!lista.length && <li className="py-10 text-center text-[14px]" style={{ color: P.texto2 }}>{itens.length ? 'Nenhum veículo com esse filtro.' : 'Nenhum veículo rastreado ainda.'}</li>}
+          {!lista.length && <li className="py-10 text-center text-small" style={{ color: P.texto2 }}>{itens.length ? 'Nenhum veículo com esse filtro.' : 'Nenhum veículo rastreado ainda.'}</li>}
         </ul>
         <p className="pt-6 pb-2 text-center text-[11px]" style={{ color: P.texto2 }}>Mapa © OpenStreetMap · OpenFreeMap · Estados © IBGE</p>
       </Folha>
@@ -374,7 +377,7 @@ function SeletorModo({ p, modo, ancora, onModo, onFechar }: { p: Paleta; modo: M
       <div ref={menu} role="radiogroup" aria-label="Aparência" className="anim-pop fixed right-4 top-[calc(max(12px,env(safe-area-inset-top))+52px)] w-[min(220px,calc(100vw-32px))] p-2 rounded-3xl flex flex-col gap-1 shadow-[0_8px_32px_rgba(0,0,0,0.25)]" style={{ background: p.folha, color: p.texto }}>
         {ops.map((o) => (
           <button key={o.m} type="button" role="radio" aria-checked={modo === o.m} onClick={() => onModo(o.m)}
-            className="h-11 px-3 rounded-2xl flex items-center gap-3 text-[15px] font-medium text-left" style={{ background: modo === o.m ? p.cartao : undefined }}>
+            className="h-11 px-3 rounded-2xl flex items-center gap-3 text-body font-medium text-left" style={{ background: modo === o.m ? p.cartao : undefined }}>
             <Icon name={o.icon} size={20} /><span className="flex-1">{o.label}</span>{modo === o.m && <Icon name="ok" size={18} />}
           </button>
         ))}
@@ -396,15 +399,15 @@ function Marca({ p, kind }: { p: Paleta; kind: Kind }) {
 // Cartão do veículo selecionado com as ações do rastreador (antes levavam ao Monitoramento): bloqueio em destaque — o que
 // se faz na rua —, outros comandos, compartilhar e percurso. O envio passa pelo CommandModal, que exige a senha.
 function CartaoVeiculo({ p, it, onFechar, onCmd, onShare, onPercurso }: { p: Paleta; it: Item; onFechar: () => void; onCmd: (defId?: string) => void; onShare: () => void; onPercurso: () => void }) {
-  const acao = 'h-11 rounded-full font-medium text-[15px] flex items-center justify-center gap-2 active:scale-[0.97] transition-transform';
+  const acao = 'h-11 rounded-full font-medium text-body flex items-center justify-center gap-2 active:scale-[0.97] transition-transform';
   return (
     <section aria-label={`Veículo ${it.plate}`} className="rounded-3xl p-4 flex flex-col gap-3" style={{ background: p.cartao }}>
       <div className="flex items-start gap-3">
         <Marca p={p} kind={it.kind} />
         <div className="min-w-0 flex-1">
           <h2 className="text-[17px] font-semibold truncate">{isPlate(it.plate) ? <span className="block mb-1.5"><Plate name={it.plate} size="lg" /></span> : it.plate}</h2>
-          <p className="text-[14px] truncate" style={{ color: p.texto2 }}>{it.label}{it.speed !== null ? ` · ${it.speed} km/h` : ''}{it.ts ? ` · ${shortDT(it.ts)}` : ''}</p>
-          <p className="text-[14px] truncate" style={{ color: p.texto2 }}>{it.driver}{it.model ? ` · ${it.model}` : ''}{it.blocked ? ' · bloqueado' : ''}</p>
+          <p className="text-small truncate" style={{ color: p.texto2 }}>{it.label}{it.speed !== null ? ` · ${it.speed} km/h` : ''}{it.ts ? ` · ${shortDT(it.ts)}` : ''}</p>
+          <p className="text-small truncate" style={{ color: p.texto2 }}>{it.driver}{it.model ? ` · ${it.model}` : ''}{it.blocked ? ' · bloqueado' : ''}</p>
         </div>
         <button type="button" aria-label="Fechar veículo" onClick={onFechar} className="w-9 h-9 -mr-1 -mt-1 rounded-full flex items-center justify-center" style={{ color: p.texto2 }}><Icon name="fechar" size={20} /></button>
       </div>

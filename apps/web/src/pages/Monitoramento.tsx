@@ -140,9 +140,13 @@ function MonitoramentoMapa() {
   ];
   const [limit, setLimit] = useState(BATCH);
   useEffect(() => setLimit(BATCH), [q, st, grp]);
-  const counts = contarStatusFrota(list.map((x: any) => x.v), agora);
-  const shown = list.filter((x: any) => (st === 'todos' || x.s.key === st) && (!grp || x.a.groupIds?.includes(grp)) && (!q || (x.a.name + x.a.plate + (x.d?.name || '') + x.a.model).toLowerCase().includes(q.toLowerCase())));
+  const recorte = list.filter((x: any) => (!grp || x.a.groupIds?.includes(grp)) && (!q || (x.a.name + x.a.plate + (x.d?.name || '') + x.a.model).toLowerCase().includes(q.toLowerCase())));
+  const shown = recorte.filter((x: any) => st === 'todos' || x.s.key === st);
   const cur = list.find((x: any) => x.a.id === sel);
+  // os KPIs contam o veículo aberto no painel ou, sem ele, o recorte da busca e do grupo; o filtro de status não entra,
+  // senão clicar num card zerava os outros
+  const contados = cur ? [cur] : recorte;
+  const counts = contarStatusFrota(contados.map((x: any) => x.v), agora);
   // o mapa mostra o mesmo recorte da lista (status do card, grupo e busca); o veículo aberto no painel fica mesmo fora dele
   const noMapa = shown.filter((x: any) => x.v).concat(cur?.v && !shown.includes(cur) ? [cur] : []);
   // painéis sobre o mapa: na saída mostram o último conteúdo enquanto deslizam para fora
@@ -154,7 +158,7 @@ function MonitoramentoMapa() {
   const alerts = useStore((s) => s.alerts);
   // os mesmos do card "Em movimento" (vehicleStatus): com outro corte de velocidade, a velocidade média dizia "de 6 em
   // movimento" ao lado de um card com 5
-  const moving = list.filter((x: any) => x.s.key === 'mov');
+  const moving = contados.filter((x: any) => x.s.key === 'mov');
   // km de hoje: só o resumo de uso da API (dia inteiro, o mesmo da tela inicial), por veículo e somado. O histórico do
   // navegador só guarda os últimos LIVE_HISTORY pontos de cada veículo desde que a página abriu — somado, dava bem menos que
   // o real (12/11/2026, HML: 15 km aqui × 190 km no Início). Sem o resumo (carregando ou erro) a tela mostra "—", nunca a
@@ -167,7 +171,7 @@ function MonitoramentoMapa() {
     for (const u of resumoUso!.uso) if (u.dia === hoje) m.set(u.assetId, u.km);
     return m;
   }, [resumoUso]);
-  const kmHoje = useMemo(() => (kmHojePorAtivo ? assets.reduce((s: number, a: any) => s + (kmHojePorAtivo.get(a.id) ?? 0), 0) : null), [assets, kmHojePorAtivo]);
+  const kmHoje = kmHojePorAtivo ? contados.reduce((s: number, x: any) => s + (kmHojePorAtivo.get(x.a.id) ?? 0), 0) : null;
   const velMedia = moving.length ? moving.reduce((s: number, x: any) => s + x.v.speed, 0) / moving.length : 0;
   useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, mobile, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
   // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
@@ -194,7 +198,7 @@ function MonitoramentoMapa() {
           <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
             model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
             tracker={v ? { ignition: ignicaoAtual(v), gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
-            speed={v && s.key !== 'sem' ? Math.round(v.speed) : null} time={v ? shortDT(v.lastUpdate) : ''}
+            speed={v && s.key !== 'sem' && !s.semPosicao ? Math.round(v.speed) : null} time={v ? shortDT(v.lastUpdate) : ''}
             menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
               { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
         </li>
@@ -243,7 +247,7 @@ function MonitoramentoMapa() {
           <Button variant="secondary" size="sm" className="max-md:order-1 max-md:w-ctl max-md:h-ctl max-md:!px-0" onClick={sairTelaCheia} title="Sair da tela cheia (Esc)" aria-label="Sair da tela cheia"><Icon name="tela-cheia" size={16} className="max-md:hidden" /><Icon name="fechar" size={20} className="md:hidden" /><span className="max-md:hidden">Sair da tela cheia</span></Button>
         </div>
       )}
-      {!full && !mobile && <FaixaFrota total={list.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
+      {!full && !mobile && <FaixaFrota total={contados.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
       <div ref={full ? undefined : linhaRef} style={!full && alturaMapa ? { ['--mon-h' as string]: `${alturaMapa}px` } : undefined}
         className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
         <Card dense className={full
@@ -346,7 +350,7 @@ function MonitoramentoMapa() {
               emptyState={<EmptyState icon="busca" layout="row" title="Nenhum veículo com esses filtros" action={<Button variant="dark" size="sm" onClick={clearFilters}>Limpar filtros</Button>} />}
               rows={shown.map(({ a, v, s, k, d }: any) => [
                 <AssetName name={a.name} />, <StatusDot kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} />,
-                <span className="num">{v && s.key !== 'sem' ? `${Math.round(v.speed)} km/h` : '—'}</span>,
+                <span className="num">{v && s.key !== 'sem' && !s.semPosicao ? `${Math.round(v.speed)} km/h` : '—'}</span>,
                 v ? (ignicaoAtual(v) == null ? <span className="text-ink-2">Não informada</span> : ignicaoAtual(v) ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>) : '—',
                 d?.name || <span className="text-ink-2">Sem motorista</span>,
                 v ? <time className="num">{shortDT(v.lastUpdate)}</time> : '—',
@@ -371,7 +375,7 @@ function MonitoramentoMapa() {
 const STATUS_FROTA: { k: StatusFrota; kind: StatusKind; label: string }[] = [
   { k: 'mov', kind: 'mov', label: 'Em movimento' },
   { k: 'par', kind: 'parado', label: 'Parado ligado' },
-  { k: 'des', kind: 'off', label: 'Desligado' },
+  { k: 'des', kind: 'off', label: 'Ignição desligada' },
   { k: 'pnd', kind: 'stop', label: 'Parado' },
   { k: 'sem', kind: 'nosignal', label: 'Sem sinal' },
 ];
@@ -434,7 +438,7 @@ function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }:
     : <Button variant="danger" size={mobile ? 'md' : 'sm'} className={cx(mobile && 'flex-1')} onClick={() => onCmd('c_bloq')}><Icon name="cadeado" size={16} />Bloquear</Button>;
   return (
     <FloatingPanel label={`Detalhe de ${a.name}`} closing={closing} onClose={onClose}
-      header={<StatusLine kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} sub={[v && s.key !== 'sem' ? `${Math.round(v.speed || 0)} km/h` : null, fences.length ? `em ${fences.map((f: any) => f.name).join(', ')}` : null].filter(Boolean).join(' · ') || undefined} />}
+      header={<StatusLine kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} sub={[v && s.key !== 'sem' && !s.semPosicao ? `${Math.round(v.speed || 0)} km/h` : null, fences.length ? `em ${fences.map((f: any) => f.name).join(', ')}` : null].filter(Boolean).join(' · ') || undefined} />}
       // celular: só o que se faz na rua cabe na linha (comandos e bloqueio); o resto vai para o menu e a foto para o corpo.
       // Seis botões quebravam em três linhas e o painel ficava sem espaço para o próprio conteúdo.
       footer={mobile ? <>
@@ -473,9 +477,9 @@ function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }:
       </div>
       <Pendencias assetId={a.id} reasons={reasons} />
       <div className="grid grid-cols-2 gap-grid mt-card-foot pt-card-foot border-t border-line">
-        <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Velocidade</p>{!v || s.key === 'sem' ? <Num value={null} size="lg" className="block text-ink-3" /> : <Num value={Math.round(v?.speed || 0)} unit="km/h" size="lg" />}
+        <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Velocidade</p>{!v || s.key === 'sem' || s.semPosicao ? <Num value={null} size="lg" className="block text-ink-3" /> : <Num value={Math.round(v?.speed || 0)} unit="km/h" size="lg" />}
           {/* a do GPS é a principal; a do painel (CAN) só aparece quando veio no mesmo pacote da posição */}
-          {s.key !== 'sem' && velPainel !== null && <p className="text-caption text-ink-2">Painel: <span className="num">{Math.round(velPainel)} km/h</span></p>}</div>
+          {s.key !== 'sem' && !s.semPosicao && velPainel !== null && <p className="text-caption text-ink-2">Painel: <span className="num">{Math.round(velPainel)} km/h</span></p>}</div>
         <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Rodou hoje</p><Num value={kmToday} unit="km" digits={1} size="lg" /></div>
       </div>
       <DescList className="mt-card-head">

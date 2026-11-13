@@ -94,7 +94,7 @@ export default function Design() {
   const tableBlock = st === 'loading' ? <div className="flex flex-col gap-3">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
     : st === 'error' ? <ErrorState detail="A conexão caiu ao buscar a lista de ativos. Seus dados estão salvos." onRetry={() => setSt('ready')} />
     : st === 'empty' ? <EmptyState icon="ativos" title="Nenhum ativo neste filtro" detail="Remova o filtro de grupo ou cadastre o primeiro ativo." action={<Button size="sm"><Icon name="mais" size={16} />Novo ativo</Button>} />
-    : <Table minWidth={560} align={['left', 'left', 'left', 'right']} head={['Placa', 'Modelo', 'Status', 'Odômetro']} rows={vehicles.map((a: any) => { const v = s.vehicles[a.id]; const vs = vehicleStatus(v); return [<Plate name={a.name} />, <span>{a.brand} {a.model} <span className="text-ink-3">{a.year?.slice(0, 4)}</span></span>, <StatusDot kind={statusKind(vs.key)} />, <Num value={assetKm(s, a.id)} unit="km" size="body" />]; })} />;
+    : <Table minWidth={560} align={['left', 'left', 'left', 'right']} head={['Placa', 'Modelo', 'Status', 'Odômetro']} rows={vehicles.map((a: any) => { const v = s.vehicles[a.id]; const vs = vehicleStatus(v); return [<Plate name={a.name} />, <span>{a.brand} {a.model} <span className="text-ink-3">{a.year?.slice(0, 4)}</span></span>, <StatusDot kind={statusKind(vs.key)} label={vs.label} />, <Num value={assetKm(s, a.id)} unit="km" size="body" />]; })} />;
 
   return (
     <div style={vars as any} className="max-w-[1240px]">
