@@ -62,13 +62,13 @@ a { text-underline-offset: 3px; }
 .st-dot { fill: currentColor; }
 .st-mov { color: var(--status-mov); }
 .st-parado { color: var(--status-parado); }
-.st-off, .st-nosignal { color: var(--status-off); }
+.st-off, .st-stop, .st-nosignal { color: var(--status-off); } /* parado sem ignição informada: ponto cheio, não o anel do desligado */
 .st-crit { color: var(--status-crit); }
 .st-loss { color: var(--loss); }
 .st-ring { fill: none; stroke: currentColor; stroke-width: 1.5; }
 .st-ring.dashed { stroke-dasharray: 2 1.6; }
 /* status mudou (em movimento → parado): a cor faz a passagem em vez de trocar seco, na lista e no marcador */
-.st-mov, .st-parado, .st-off, .st-nosignal, .st-crit, .st-loss { transition: color var(--t-bar) ease; }
+.st-mov, .st-parado, .st-off, .st-stop, .st-nosignal, .st-crit, .st-loss { transition: color var(--t-bar) ease; }
 
 /* ---------- mapa ---------- */
 .leaflet-container { font-family: inherit; background: var(--map-bg); }
@@ -197,14 +197,16 @@ a { text-underline-offset: 3px; }
 .dock[data-state="open"] .dock-drawer { pointer-events: auto; visibility: visible; transform: none; transition: transform 500ms var(--ease-dock), visibility 0s; }
 .dock[data-state="open"] .dock-pill { pointer-events: none; transform: scaleX(0.0001); }
 /* barra inferior recolhida ao rolar para baixo (Revolut, docs/pesquisa-ux/01-home-revolut.md § 3.5 e § 6.1; diretrizes
-   § 9.7): perde os rótulos e encolhe a ~86% (ícone 22 → 19, alvo 54 → 46), com a base no mesmo lugar. A direção da rolagem
+   § 9.7): encolhe a ~86% (ícone 22 → 19, alvo 54 → 46), com a base no mesmo lugar; o rótulo do ativo fica. A direção da rolagem
    decide (SidebarDock); com movimento reduzido ela não recolhe. */
 .dock-pill { transform-origin: 50% 100%; }
-.dock-icone { transition: transform 250ms var(--ease-dock); }
-.dock-rotulo { transition: opacity 150ms ease; }
 .dock[data-recolhida]:not([data-state="open"]) .dock-pill { transform: scale(0.86); transition-duration: 250ms; }
-.dock[data-recolhida]:not([data-state="open"]) .dock-icone { transform: translateY(6px); }
-.dock[data-recolhida]:not([data-state="open"]) .dock-rotulo { opacity: 0; }
+/* item ativo no molde da referência Iconly (12/11/2026): pílula clara e com sombra sobre a barra acinzentada, ícone e
+   rótulo lado a lado; os inativos mostram só o ícone. O ativo cresce (flex-grow) e a troca de aba anima a largura. */
+.dock-pill.dock-glass { background: color-mix(in srgb, var(--canvas) 78%, transparent); }
+.dock-item { flex: 1 1 0%; transition: flex-grow 300ms var(--ease-dock), background-color 150ms ease, color 150ms ease; }
+.dock-item-ativo { flex-grow: 2.2; box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06), 0 4px 12px -4px rgba(17, 24, 39, 0.14); }
+@media (prefers-reduced-motion: reduce) { .dock-item { transition: none; } }
 /* cabeçalho do celular (Layout): controles de vidro (desfoque, fundo translúcido, borda fina clara) e, com a página rolada,
    uma faixa de desfoque progressivo atrás deles — o conteúdo borra ao passar por baixo, sem linha de corte (referência do
    usuário, 11/11/2026). Desfoque em 2 camadas por vez no máximo, fora o vidro dos botões (diretrizes § 7). */

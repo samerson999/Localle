@@ -5,7 +5,7 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-leaflet';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { useStore, vehicleStatus, contarStatusFrota, assetKm } from '../lib/store';
+import { useStore, useAgora, vehicleStatus, contarStatusFrota, ignicaoAtual, assetKm, type StatusFrota } from '../lib/store';
 import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, confirmAction, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb, IconButton, Tooltip } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
 import { glyphOf, silhouetteOf } from '../components/assetArt';
@@ -21,7 +21,7 @@ import { lerVisao, salvarVisao, type VisaoMonitor } from '../lib/monitorPrefs';
 import { leituraAntiga } from '../lib/diagnosticoRastreador';
 import { velocidadePainelAtual } from '../lib/localleMap';
 import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useShareOpens } from '../lib/shares';
-import { fmtDT, fmtT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
+import { fmtDT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { sendRealCommand } from '../lib/rastreioApi';
 import { veSintaxeComando } from '../lib/support';
 
@@ -72,7 +72,8 @@ function MonitoramentoMapa() {
   const drivers = useStore((s) => s.drivers);
   const fences = useStore((s) => s.fences);
   const crit = useCriticalMap();
-  const kindOf = (assetId: string, v: any): StatusKind => (crit.has(assetId) ? 'crit' : statusKind(vehicleStatus(v).key));
+  const agora = useAgora(); // o status vence com o tempo (posição recente): re-renderiza mesmo sem posição nova
+  const kindOf = (assetId: string, v: any): StatusKind => (crit.has(assetId) ? 'crit' : statusKind(vehicleStatus(v, agora).key));
   const [q, setQ] = useState('');
   const [st, setSt] = useState('todos');
   const [grp, setGrp] = useState('');
@@ -135,37 +136,38 @@ function MonitoramentoMapa() {
   useEffect(() => { const id = sp.get('ativo'); if (id) setSel(id); }, [sp]); // busca (⌘K) pode trocar o veículo sem remontar a tela
 
   const list = [
-    ...assets.map((a: any) => { const v = vehicles[a.id]; return { a, v, s: vehicleStatus(v), k: kindOf(a.id, v), d: drivers.find((d: any) => d.id === a.driverId) }; }),
+    ...assets.map((a: any) => { const v = vehicles[a.id]; return { a, v, s: vehicleStatus(v, agora), k: kindOf(a.id, v), d: drivers.find((d: any) => d.id === a.driverId) }; }),
   ];
   const [limit, setLimit] = useState(BATCH);
   useEffect(() => setLimit(BATCH), [q, st, grp]);
-  const counts = contarStatusFrota(list.map((x: any) => x.v));
+  const counts = contarStatusFrota(list.map((x: any) => x.v), agora);
   const shown = list.filter((x: any) => (st === 'todos' || x.s.key === st) && (!grp || x.a.groupIds?.includes(grp)) && (!q || (x.a.name + x.a.plate + (x.d?.name || '') + x.a.model).toLowerCase().includes(q.toLowerCase())));
   const cur = list.find((x: any) => x.a.id === sel);
+  // o mapa mostra o mesmo recorte da lista (status do card, grupo e busca); o veículo aberto no painel fica mesmo fora dele
+  const noMapa = shown.filter((x: any) => x.v).concat(cur?.v && !shown.includes(cur) ? [cur] : []);
   // painéis sobre o mapa: na saída mostram o último conteúdo enquanto deslizam para fora
   const vp = usePresence(!!(cur && !pass)), pp = usePresence(!!pass);
   const lastCur = useRef<any>(null), lastPass = useRef<any>(null);
   if (cur && !pass) lastCur.current = cur;
   if (pass) lastPass.current = pass;
   const lastUpd = Math.max(0, ...list.filter((x: any) => x.v && !x.v.noSignal).map((x: any) => x.v.lastUpdate));
-  const history = useStore((s) => s.history);
   const alerts = useStore((s) => s.alerts);
-  const moving = list.filter((x: any) => x.v && !x.v.noSignal && x.v.speed > 2);
-  // km de hoje: o resumo de uso da API (dia inteiro, o mesmo da tela inicial). O histórico do navegador só guarda os últimos
-  // LIVE_HISTORY pontos de cada veículo desde que a página abriu — somado, dava bem menos que o real (12/11/2026, HML: 15 km
-  // aqui × 190 km no Início). Fica só como reserva enquanto o resumo não chega ou se a API falhar.
+  // os mesmos do card "Em movimento" (vehicleStatus): com outro corte de velocidade, a velocidade média dizia "de 6 em
+  // movimento" ao lado de um card com 5
+  const moving = list.filter((x: any) => x.s.key === 'mov');
+  // km de hoje: só o resumo de uso da API (dia inteiro, o mesmo da tela inicial), por veículo e somado. O histórico do
+  // navegador só guarda os últimos LIVE_HISTORY pontos de cada veículo desde que a página abriu — somado, dava bem menos que
+  // o real (12/11/2026, HML: 15 km aqui × 190 km no Início). Sem o resumo (carregando ou erro) a tela mostra "—", nunca a
+  // conta do navegador.
   const { dados: resumoUso } = useResumoUso();
-  const kmHoje = useMemo(() => {
+  const kmHojePorAtivo = useMemo(() => {
     const hoje = resumoUso?.dias[resumoUso.dias.length - 1];
-    if (hoje) {
-      const ids = new Set(assets.map((a: any) => a.id));
-      return resumoUso!.uso.reduce((s, u) => (u.dia === hoje && ids.has(u.assetId) ? s + u.km : s), 0);
-    }
-    const t0 = new Date().setHours(0, 0, 0, 0);
-    let km = 0;
-    for (const a of assets) { const h = history[a.id] || []; for (let i = 1; i < h.length; i++) if (h[i][0] >= t0) km += haversine([h[i - 1][1], h[i - 1][2]], [h[i][1], h[i][2]]); }
-    return km / 1000;
-  }, [assets, history, resumoUso]);
+    if (!hoje) return null;
+    const m = new Map<string, number>();
+    for (const u of resumoUso!.uso) if (u.dia === hoje) m.set(u.assetId, u.km);
+    return m;
+  }, [resumoUso]);
+  const kmHoje = useMemo(() => (kmHojePorAtivo ? assets.reduce((s: number, a: any) => s + (kmHojePorAtivo.get(a.id) ?? 0), 0) : null), [assets, kmHojePorAtivo]);
   const velMedia = moving.length ? moving.reduce((s: number, x: any) => s + x.v.speed, 0) / moving.length : 0;
   useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, mobile, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
   // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
@@ -176,7 +178,7 @@ function MonitoramentoMapa() {
     return () => document.removeEventListener('keydown', k);
   }, [full, mapaCheio, cmd, sel]);
   const pick = (id: string) => setSel(id);
-  const fitAll = (animate = true) => { const pts = list.filter((x: any) => x.v).map((x: any) => x.v.pos); if (map && pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 15, animate }); };
+  const fitAll = (animate = true) => { const pts = noMapa.map((x: any) => x.v.pos); if (map && pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 15, animate }); };
   // Ao abrir a tela (inclusive voltando de outra): enquadra a frota toda uma vez, assim que houver posição. Sem isso o
   // mapa ficava no centro fixo do MapContainer até alguém clicar em "Ver a frota toda". Sem animação: já abre enquadrado.
   const enquadrou = useRef(false);
@@ -187,12 +189,12 @@ function MonitoramentoMapa() {
 
   const listaVeiculos = (
     <ul className="flex-1 min-h-0 overflow-y-auto -mx-2 pb-16" aria-label={`${shown.length} veículos`}>
-      {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, k, d }: any) => (
+      {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, s, k, d }: any) => (
         <li key={a.id}>
           <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
             model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
-            tracker={v ? { ignition: v.ignition, gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
-            speed={v && !v.noSignal ? Math.round(v.speed) : null} time={v ? fmtT(v.lastUpdate) : ''}
+            tracker={v ? { ignition: ignicaoAtual(v), gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
+            speed={v && s.key !== 'sem' ? Math.round(v.speed) : null} time={v ? shortDT(v.lastUpdate) : ''}
             menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
               { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
         </li>
@@ -203,7 +205,7 @@ function MonitoramentoMapa() {
   );
 
   const header = (
-    <MonitorHeader title="Monitoramento" subtitle={<>Ao vivo · {list.length} veículos rastreados{lastUpd ? <> · atualizado às <time className="num">{fmtT(lastUpd)}</time></> : null}</>}>
+    <MonitorHeader title="Monitoramento" subtitle={<>Ao vivo · {list.length} veículos rastreados{lastUpd ? <> · atualizado às <time className="num">{shortDT(lastUpd)}</time></> : null}</>}>
       <Button variant="secondary" className="max-w-full min-w-0" onClick={() => setCmd({ target: 'grupo' })} disabled={!list.length}><Icon name="comando" size={18} className="shrink-0" /><span className="truncate">Comando para grupo</span></Button>
     </MonitorHeader>
   );
@@ -228,7 +230,7 @@ function MonitoramentoMapa() {
         <div className="flex flex-wrap items-center gap-stack shrink-0">
           <div className="min-w-0 mr-auto">
             <h1 className="sr-only">Monitoramento</h1>
-            <p className="text-caption text-ink-2">Ao vivo · {list.length} veículos{lastUpd ? <> · atualizado às <time className="num">{fmtT(lastUpd)}</time></> : null}</p>
+            <p className="text-caption text-ink-2">Ao vivo · {list.length} veículos{lastUpd ? <> · atualizado às <time className="num">{shortDT(lastUpd)}</time></> : null}</p>
           </div>
           <SearchInput className="w-64 max-md:w-full max-md:order-2" value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />
           <Select aria-label="Grupo" className="max-md:order-2 max-md:w-full" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />
@@ -263,7 +265,7 @@ function MonitoramentoMapa() {
           <MapContainer ref={setMap} center={[-14.2, -51.9]} zoom={4} className="w-full h-full" zoomControl={false}>
             <TileLayer key={`${tileKey}-${mapStyle}`} className={mapStyle === 'satelite' ? 'tiles-satelite' : undefined} url={MAP_STYLES[mapStyle].url} attribution={MAP_STYLES[mapStyle].attribution} keepBuffer={6} updateWhenZooming={false} eventHandlers={{ tileerror: () => setTileErr((n) => n + 1) }} />
             {showF && <FenceShapes fences={fences} />}
-            <ClusteredVehicles selected={sel} grouped={grouped} items={list.filter((x: any) => x.v).map(({ a, v, k }: any) => ({ id: a.id, pos: v.pos, kind: k, node: () => <GlideMarker category={glyphOf(a)} position={v.pos} title={`${a.name} · ${STATUS_LABEL[k as StatusKind]}`} plate={a.name} kind={k} heading={v.heading} selected={sel === a.id} onClick={() => setSel(a.id)} onContextMenu={(pt) => { setCtx(null); setVctx({ ...pt, id: a.id }); }} /> }))} />
+            <ClusteredVehicles selected={sel} grouped={grouped} items={noMapa.map(({ a, v, k }: any) => ({ id: a.id, pos: v.pos, kind: k, node: () => <GlideMarker category={glyphOf(a)} position={v.pos} title={`${a.name} · ${STATUS_LABEL[k as StatusKind]}`} plate={a.name} kind={k} heading={v.heading} selected={sel === a.id} onClick={() => setSel(a.id)} onContextMenu={(pt) => { setCtx(null); setVctx({ ...pt, id: a.id }); }} /> }))} />
             {pass && <Circle center={[pass.lat, pass.lng]} radius={pass.radius} pathOptions={{ color: tv('--graphite'), weight: 1.5, dashArray: '5 5', fillColor: tv('--graphite'), fillOpacity: 0.06 }} />}
             <FlyTo pos={cur?.v?.pos} />
             <Ctx onCtx={(p) => { setCtx(p); setVctx(null); }} />
@@ -333,7 +335,7 @@ function MonitoramentoMapa() {
                 ]} />
             );
           })()}
-          {vp.mounted && lastCur.current && <VehiclePanel closing={vp.closing} x={lastCur.current} reasons={crit.get(lastCur.current.a.id) || []} onClose={() => setSel(null)} onCmd={(defId?: string) => comandar(lastCur.current.a.id, defId)} onShare={() => setShareA(lastCur.current.a)} />}
+          {vp.mounted && lastCur.current && <VehiclePanel closing={vp.closing} x={lastCur.current} kmToday={kmHojePorAtivo ? kmHojePorAtivo.get(lastCur.current.a.id) ?? 0 : null} reasons={crit.get(lastCur.current.a.id) || []} onClose={() => setSel(null)} onCmd={(defId?: string) => comandar(lastCur.current.a.id, defId)} onShare={() => setShareA(lastCur.current.a)} />}
           {pp.mounted && lastPass.current && <PassPanel closing={pp.closing} pass={lastPass.current} setPass={setPass} />}
         </section>
         {full && visao.tabela && (
@@ -344,10 +346,10 @@ function MonitoramentoMapa() {
               emptyState={<EmptyState icon="busca" layout="row" title="Nenhum veículo com esses filtros" action={<Button variant="dark" size="sm" onClick={clearFilters}>Limpar filtros</Button>} />}
               rows={shown.map(({ a, v, s, k, d }: any) => [
                 <AssetName name={a.name} />, <StatusDot kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} />,
-                <span className="num">{v && !v.noSignal ? `${Math.round(v.speed)} km/h` : '—'}</span>,
-                v ? (v.ignition == null ? <span className="text-ink-2">Não informada</span> : v.ignition ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>) : '—',
+                <span className="num">{v && s.key !== 'sem' ? `${Math.round(v.speed)} km/h` : '—'}</span>,
+                v ? (ignicaoAtual(v) == null ? <span className="text-ink-2">Não informada</span> : ignicaoAtual(v) ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>) : '—',
                 d?.name || <span className="text-ink-2">Sem motorista</span>,
-                v ? <time className="num">{fmtT(v.lastUpdate)}</time> : '—',
+                v ? <time className="num">{shortDT(v.lastUpdate)}</time> : '—',
                 v?.pos ? <Address pos={v.pos} className="text-small" /> : '—',
               ])} />
           </Card>
@@ -364,17 +366,19 @@ function MonitoramentoMapa() {
 }
 
 // Faixa de KPIs acima do mapa e da lista (transformado de painel lateral em 07/11/2026, pedido do usuário).
-// Total + os 4 status filtram a lista (clicar de novo volta para todos); percurso e velocidade só informam.
-const STATUS_FROTA: { k: 'mov' | 'par' | 'des' | 'sem'; kind: StatusKind; label: string }[] = [
+// Total + os status filtram a lista e o mapa (clicar de novo volta para todos); percurso e velocidade só informam.
+// "Parado" (rastreador sem ignição informada, 12/11/2026) só aparece quando há veículo nele.
+const STATUS_FROTA: { k: StatusFrota; kind: StatusKind; label: string }[] = [
   { k: 'mov', kind: 'mov', label: 'Em movimento' },
   { k: 'par', kind: 'parado', label: 'Parado ligado' },
   { k: 'des', kind: 'off', label: 'Desligado' },
+  { k: 'pnd', kind: 'stop', label: 'Parado' },
   { k: 'sem', kind: 'nosignal', label: 'Sem sinal' },
 ];
 
 function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[number]; count: number; pct: number; active: boolean; onClick: () => void }) {
   return (
-    <Tooltip content={active ? 'Mostrar todos na lista' : `Filtrar a lista: ${s.label.toLowerCase()}`}>
+    <Tooltip content={active ? 'Mostrar todos na lista e no mapa' : `Filtrar lista e mapa: ${s.label.toLowerCase()}`}>
     <button type="button" aria-pressed={active} onClick={onClick}
       className={cx('text-left bg-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size] border transition-colors',
         active ? 'border-brand-fill ring-1 ring-inset ring-brand-fill' : 'border-transparent shadow-card hover:bg-card-2')}>
@@ -389,14 +393,15 @@ function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[
 }
 
 function FaixaFrota({ total, counts, st, onStatus, kmHoje, velMedia, emMovimento }: {
-  total: number; counts: Record<'mov' | 'par' | 'des' | 'sem', number>; st: string; onStatus: (k: string) => void;
-  kmHoje: number; velMedia: number; emMovimento: number;
+  total: number; counts: Record<StatusFrota, number>; st: string; onStatus: (k: string) => void;
+  kmHoje: number | null; velMedia: number; emMovimento: number;
 }) {
   const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+  const status = STATUS_FROTA.filter((s) => s.k !== 'pnd' || counts.pnd > 0 || st === 'pnd');
   return (
-    <section aria-label="KPIs da frota" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-grid">
+    <section aria-label="KPIs da frota" className={cx('grid grid-cols-2 sm:grid-cols-3 gap-grid', status.length > 4 ? 'lg:grid-cols-8' : 'lg:grid-cols-7')}>
       <KpiTile label="Frota" value={total} digits={0} sub="rastreados" />
-      {STATUS_FROTA.map((s) => <StatusKpi key={s.k} s={s} count={counts[s.k]} pct={pct(counts[s.k])} active={st === s.k} onClick={() => onStatus(s.k)} />)}
+      {status.map((s) => <StatusKpi key={s.k} s={s} count={counts[s.k]} pct={pct(counts[s.k])} active={st === s.k} onClick={() => onStatus(s.k)} />)}
       <KpiTile label="Percurso hoje" value={kmHoje} unit="km" digits={0} sub="soma da frota" />
       <KpiTile label="Velocidade média" value={emMovimento ? velMedia : null} unit="km/h" digits={0} sub={emMovimento ? `de ${emMovimento} em movimento` : 'nenhum em movimento'} />
     </section>
@@ -411,13 +416,16 @@ const NAO_INFORMADO = <span className="text-ink-2">Não informado</span>;
 // leitura antiga (o rastreador continua no último valor conhecido, mas o dado não chega há tempo): mostra a idade
 const Idade = ({ em }: { em: string | null | undefined }) => { const a = leituraAntiga(em); return a ? <span className="text-ink-2"> · lido {a}</span> : null; };
 
-function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
+// kmToday: do resumo de uso da API (null = ainda não chegou ou falhou → "—"); a soma do histórico do navegador só via os
+// pontos desde que a página abriu e mostrava bem menos que o real.
+function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }: any) {
   const { a, v, s, k, d } = x;
-  const kmToday = useStore((st) => { const h = st.history[a.id] || []; const t0 = new Date().setHours(0, 0, 0, 0); let km = 0; for (let i = 1; i < h.length; i++) if (h[i][0] >= t0) km += haversine([h[i - 1][1], h[i - 1][2]], [h[i][1], h[i][2]]); return km / 1000; });
   const odo = useStore((st) => assetKm(st, a.id));
   const fences = useStore((st) => st.fences.filter((f: any) => v?.inside?.includes(f.id)));
   const setPhoto = (data: string) => { useStore.getState().upsert('assets', { id: a.id, photo: data }); toast('Foto do veículo atualizada.'); };
   const hours = a.meter === 'horimetro';
+  const daApi = a.id.startsWith('lc_'); // veículo da nossa API (localleMap.assetIdFor)
+  const ign = ignicaoAtual(v); // a do último pacote quando mais nova que a posição (pacote sem GPS)
   const velPainel = velocidadePainelAtual(v);
   const mobile = useIsMobile();
   const nav = useNavigate();
@@ -426,7 +434,7 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
     : <Button variant="danger" size={mobile ? 'md' : 'sm'} className={cx(mobile && 'flex-1')} onClick={() => onCmd('c_bloq')}><Icon name="cadeado" size={16} />Bloquear</Button>;
   return (
     <FloatingPanel label={`Detalhe de ${a.name}`} closing={closing} onClose={onClose}
-      header={<StatusLine kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} sub={[v && !v.noSignal ? `${Math.round(v.speed || 0)} km/h` : null, fences.length ? `em ${fences.map((f: any) => f.name).join(', ')}` : null].filter(Boolean).join(' · ') || undefined} />}
+      header={<StatusLine kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} sub={[v && s.key !== 'sem' ? `${Math.round(v.speed || 0)} km/h` : null, fences.length ? `em ${fences.map((f: any) => f.name).join(', ')}` : null].filter(Boolean).join(' · ') || undefined} />}
       // celular: só o que se faz na rua cabe na linha (comandos e bloqueio); o resto vai para o menu e a foto para o corpo.
       // Seis botões quebravam em três linhas e o painel ficava sem espaço para o próprio conteúdo.
       footer={mobile ? <>
@@ -465,9 +473,9 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
       </div>
       <Pendencias assetId={a.id} reasons={reasons} />
       <div className="grid grid-cols-2 gap-grid mt-card-foot pt-card-foot border-t border-line">
-        <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Velocidade</p>{v?.noSignal ? <Num value={null} size="lg" className="block text-ink-3" /> : <Num value={Math.round(v?.speed || 0)} unit="km/h" size="lg" />}
+        <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Velocidade</p>{!v || s.key === 'sem' ? <Num value={null} size="lg" className="block text-ink-3" /> : <Num value={Math.round(v?.speed || 0)} unit="km/h" size="lg" />}
           {/* a do GPS é a principal; a do painel (CAN) só aparece quando veio no mesmo pacote da posição */}
-          {!v?.noSignal && velPainel !== null && <p className="text-caption text-ink-2">Painel: <span className="num">{Math.round(velPainel)} km/h</span></p>}</div>
+          {s.key !== 'sem' && velPainel !== null && <p className="text-caption text-ink-2">Painel: <span className="num">{Math.round(velPainel)} km/h</span></p>}</div>
         <div className="flex flex-col gap-hair"><p className="text-caption text-ink-2">Rodou hoje</p><Num value={kmToday} unit="km" digits={1} size="lg" /></div>
       </div>
       <DescList className="mt-card-head">
@@ -477,18 +485,23 @@ function VehiclePanel({ x, reasons, onClose, onCmd, onShare, closing }: any) {
           {/* aparelho calado com o fio cortado antes: é o retrato do furto, então o último estado conhecido continua na tela */}
           {v.power === false && <DescRow label="Alimentação"><StatusDot kind="crit" label="Cortada antes de perder o sinal" /><Idade em={v.telemetriaEm?.alimentacaoExterna} /></DescRow>}
         </> : <>
-          <DescRow label="Ignição">{v?.ignition == null ? <span className="text-ink-2">Não informada</span> : <StatusDot kind={v.ignition ? 'mov' : 'off'} label={v.ignition ? 'Ligada' : 'Desligada'} />}</DescRow>
+          <DescRow label="Ignição">{ign == null ? <span className="text-ink-2">Não informada</span> : <StatusDot kind={ign ? 'mov' : 'off'} label={ign ? 'Ligada' : 'Desligada'} />}</DescRow>
           <DescRow label="Alimentação">{v?.power == null ? NAO_INFORMADO : <>{v.power ? 'Ligada' : <StatusDot kind="crit" label="Cortada · na bateria interna" />}<Idade em={v.telemetriaEm?.alimentacaoExterna} /></>}</DescRow>
           <DescRow label="Bateria">{v?.battery == null ? NAO_INFORMADO : <>{v.battery < BATTERY_LOW_V && !leituraAntiga(v.telemetriaEm?.tensaoV) ? <StatusDot kind="crit" label={`${num(v.battery, 1)} V · baixa`} /> : `${num(v.battery, 1)} V`}<Idade em={v.telemetriaEm?.tensaoV} /></>}</DescRow>
           <DescRow label="GPS">{v?.gps == null ? NAO_INFORMADO : <>{v.gps} satélites<Idade em={v.telemetriaEm?.satelites} /></>}</DescRow>
           <DescRow label="Bloqueio">{v?.blocked == null ? NAO_INFORMADO : <>{v.blocked ? <StatusDot kind="crit" label="Bloqueado" /> : 'Livre'}<Idade em={v.telemetriaEm?.bloqueado} /></>}</DescRow>
           {v?.temp !== undefined && <DescRow label="Temperatura">{a.kind === 'veiculo' && v.temp > -12 ? <StatusDot kind="crit" label={`${num(v.temp, 1)} °C`} /> : `${num(v.temp, 1)} °C`}</DescRow>}
           {v?.door && <DescRow label="Porta do baú">{v.door === 'Aberta' ? <StatusDot kind="parado" label="Aberta" /> : v.door}</DescRow>}
-          <DescRow label={hours ? 'Horímetro' : a.kmCalculated ? 'Odômetro (calculado)' : 'Odômetro'}>{hours ? <Num value={v?.hourmeter} unit="h" digits={1} size="body" /> : <Num value={odo} unit="km" size="body" />}</DescRow>
-          {/* odômetro do painel (rede CAN): só aparece quando o aparelho manda; é o número que o motorista vê no painel */}
-          {v?.odoPainel != null && <DescRow label="Odômetro do painel"><Num value={v.odoPainel} unit="km" size="body" /><Idade em={v.telemetriaEm?.odometroPainel} /></DescRow>}
+          {/* km/horas só o que o aparelho manda (decisão do usuário em 12/11/2026): por enquanto, o odômetro do painel (rede CAN),
+              o número que o motorista vê. Antes a linha somava o odômetro do rastreador, que a nossa API não preenche — dava 0 km,
+              ou o km da instalação parado para sempre. A integração antiga (rastreioApi) traz odômetro e horímetro de verdade. */}
+          {hours
+            ? <DescRow label="Horímetro">{daApi ? NAO_INFORMADO : <Num value={v?.hourmeter} unit="h" digits={1} size="body" />}</DescRow>
+            : <DescRow label={v?.odoPainel != null ? 'Odômetro do painel' : 'Odômetro'}>{v?.odoPainel != null
+              ? <><Num value={v.odoPainel} unit="km" size="body" /><Idade em={v.telemetriaEm?.odometroPainel} /></>
+              : daApi ? NAO_INFORMADO : <Num value={odo} unit="km" size="body" />}</DescRow>}
           <DescRow label="Sinal GSM">{v?.gsm == null ? NAO_INFORMADO : <><span className="inline-flex items-center gap-icon"><Icon name="sinal" size={16} className="text-ink-2" /><span className="num">{v.gsm}/5</span></span><Idade em={v.telemetriaEm?.sinalGsm} /></>}</DescRow>
-          <DescRow label="Atualizado"><time className="num">{fmtT(v?.lastUpdate)}</time></DescRow>
+          <DescRow label="Atualizado"><time className="num">{shortDT(v?.lastUpdate)}</time></DescRow>
         </>}
         <DescRow label="Endereço"><Address pos={v?.pos} className="text-small" /></DescRow>
         <DescRow label="Posição"><span className="num text-caption text-ink-2">{v?.pos?.[0].toFixed(5)}, {v?.pos?.[1].toFixed(5)}</span></DescRow>

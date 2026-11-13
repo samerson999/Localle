@@ -88,7 +88,12 @@ export class MonitoringController {
     return {
       fuso: FUSO_OPERACAO,
       dias: diasAte(agora, RESUMO_DIAS, FUSO_OPERACAO),
-      uso: rows.map((r) => ({ assetId: r.asset_id, dia: r.dia, km: Math.round(r.dist_m / 100) / 10, minutosMovimento: r.minutos_mov })),
+      // kmAteAgora: o mesmo km, só até a hora de agora — o Início compara hoje (incompleto) com os dias anteriores até a
+      // mesma hora; com o dia inteiro, toda manhã aparecia "hoje abaixo da semana"
+      uso: rows.map((r) => ({
+        assetId: r.asset_id, dia: r.dia, km: Math.round(r.dist_m / 100) / 10, kmAteAgora: Math.round(r.dist_ate_agora_m / 100) / 10,
+        minutosMovimento: r.minutos_mov,
+      })),
     };
   }
 

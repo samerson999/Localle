@@ -47,6 +47,10 @@ export function lerTelemetria(attributes: Record<string, unknown> | null | undef
   };
 }
 
+/** Chave padrão do Traccar; aparelho sem fio de ignição não manda (null). */
+export const ignicaoDosAtributos = (attributes: Record<string, unknown> | null | undefined): boolean | null =>
+  typeof attributes?.ignition === 'boolean' ? attributes.ignition : null;
+
 /**
  * `lerTelemetria` + quando chegou o atributo de cada leitura (`rastreador_comunicacao.atributos_vistos_em`). O valor
  * vem do último conhecido de cada chave, que pode ser de dias atrás: a idade é o que deixa isso visível na tela.
@@ -65,8 +69,11 @@ export function lerTelemetriaComIdade(
   const odometro = lerSinal(attributes, 'odometro', { ...SEM_MAPEAMENTO_SINAIS, atributos: { ...SEM_MAPEAMENTO_SINAIS.atributos, odometro: m.atributoOdometro ?? null } });
   const odometroValido = odometro.tipo === 'valida';
   const velocidadePainel = faixa((attributes ?? {}).obdSpeed, 0, 300);
+  const ignicao = ignicaoDosAtributos(attributes);
   return {
     ...t,
+    // ignição do último pacote que a trouxe, com ou sem GPS válido (a da posição na tela é a da última posição válida)
+    ignicao,
     odometroPainelKm: odometroValido ? Math.round(odometro.valor / 100) / 10 : null,
     // velocidade do painel: chave padrão do Traccar, em km/h; a tela só mostra quando veio no pacote da posição atual
     velocidadePainelKmh: velocidadePainel,
@@ -75,6 +82,7 @@ export function lerTelemetriaComIdade(
       alimentacaoExterna: t.alimentacaoExterna === null ? null : em(t.tensaoV !== null ? tensao : 'charge'),
       odometroPainel: odometroValido ? em(odometro.atributo) : null,
       velocidadePainel: velocidadePainel === null ? null : em('obdSpeed'),
+      ignicao: ignicao === null ? null : em('ignition'),
     },
   };
 }

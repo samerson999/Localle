@@ -159,6 +159,24 @@ describe('monitoramento — frota atual e histórico', () => {
     expect(await repo.eventos(clientA, ...periodo, assetAguardando)).toHaveLength(0);
   });
 
+  // 13/11/2026: alarme de pacote de status leva a hora em que chegou; a posição repetida é de antes (attributes.posicaoEm)
+  it("evento com hora de chegada ainda acha o ponto da posição repetida", async () => {
+    const { rows: pos } = await pool.query<{ id: string }>(`select id from posicoes where rastreador_id = $1 and traccar_position_id = 2`, [rastreadorId]);
+    const { rows: ev } = await pool.query<{ id: string }>(
+      `insert into eventos (rastreador_id, client_id, asset_id, origem, tipo, ts, posicao_id, attributes)
+       values ($1, $2, $3, 'aparelho', 'lowBattery', '2026-01-01T15:30:00Z', $4, '{"posicaoEm": "2026-01-01T12:00:00.000Z"}'::jsonb) returning id`,
+      [rastreadorId, clientA, assetComPosicao, pos[0].id],
+    );
+    try {
+      const todos = await repo.eventos(clientA, new Date("2026-01-01T00:00:00Z"), new Date("2026-01-02T00:00:00Z"), null);
+      const bateria = todos.find((e) => e.tipo === "lowBattery");
+      expect(bateria?.ts.toISOString()).toBe("2026-01-01T15:30:00.000Z");
+      expect([Number(bateria?.longitude), Number(bateria?.latitude), Number(bateria?.speed_kmh)]).toEqual([-34.8, -8, 42]);
+    } finally {
+      await pool.query('delete from eventos where id = $1', [ev[0].id]);
+    }
+  });
+
   it("eventos não retorna nada para outro cliente, nem filtrando pelo ativo do primeiro", async () => {
     const periodo = [new Date("2026-01-01T00:00:00Z"), new Date("2026-01-02T00:00:00Z")] as const;
     expect(await repo.eventos(clientB, ...periodo, null)).toHaveLength(0);

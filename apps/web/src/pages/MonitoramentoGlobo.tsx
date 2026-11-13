@@ -22,13 +22,13 @@ import { useNavigate } from 'react-router-dom';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useShallow } from 'zustand/react/shallow';
-import { useStore, vehicleStatus } from '../lib/store';
+import { useStore, useAgora, vehicleStatus } from '../lib/store';
 import { useCriticalMap } from '../lib/critical';
 import { PALETA, useTema, type Kind, type Modo, type Paleta } from '../lib/aparencia';
 import { cx, useScrollLock, Sheet, type SheetDetent } from '../components/ui';
 import { Icon, type IconName } from '../components/icons';
 import { CommandModal, ShareModal, linksGoogle } from './Monitoramento';
-import { fmtT, isPlate } from '@localle/shared/utils';
+import { shortDT, isPlate } from '@localle/shared/utils';
 import { Plate } from '../components/story';
 import { useCountUp } from '../lib/motion';
 
@@ -41,11 +41,11 @@ const Z_VETOR = 5;
 const MALHA_UF = `${import.meta.env.BASE_URL}geo/br-uf.json`;
 const CONTINENTES = `${import.meta.env.BASE_URL}geo/continentes.json`;
 
-const ROTULO: Record<Kind, string> = { mov: 'Em movimento', parado: 'Parado ligado', off: 'Desligado', nosignal: 'Sem sinal', crit: 'Crítico' };
-const KIND_DE: Record<string, Kind> = { mov: 'mov', par: 'parado', des: 'off', sem: 'nosignal' };
+// parado sem ignição informada (pnd) usa a cor do desligado no globo; o contador do celular não mostra nenhum dos dois
+const KIND_DE: Record<string, Kind> = { mov: 'mov', par: 'parado', des: 'off', pnd: 'off', sem: 'nosignal' };
 const CONTADORES: { k: 'mov' | 'par' | 'sem'; label: string }[] = [{ k: 'mov', label: 'Em movimento' }, { k: 'par', label: 'Parados ligados' }, { k: 'sem', label: 'Sem sinal' }];
 
-type Item = { id: string; plate: string; model: string; driver: string; pos?: [number, number]; key: string; kind: Kind; speed: number | null; ts?: number; blocked: boolean; asset: any };
+type Item = { id: string; plate: string; model: string; driver: string; pos?: [number, number]; key: string; kind: Kind; label: string; speed: number | null; ts?: number; blocked: boolean; asset: any };
 
 // raio do globo em px no zoom z é 512·2^z/(2π); escolhe o zoom em que ele ocupa ~92% do menor lado da área livre
 const zoomDoGlobo = (w: number, h: number) => Math.log2((Math.max(120, Math.min(w, h)) * 0.92 * Math.PI) / 512);
@@ -84,20 +84,23 @@ export default function MonitoramentoGlobo() {
   const [cmd, setCmd] = useState<null | { target: 'veiculo' | 'grupo'; assetId?: string; defId?: string }>(null);
   const [share, setShare] = useState<any>(null);
 
+  const agora = useAgora(); // o status vence com o tempo (posição recente): re-renderiza mesmo sem posição nova
   const itens: Item[] = useMemo(() => assets.map((a: any) => {
-    const v = vehicles[a.id], s = vehicleStatus(v);
+    const v = vehicles[a.id], s = vehicleStatus(v, agora);
     return {
       id: a.id, plate: a.name, model: [a.brand, a.model].filter(Boolean).join(' '), driver: drivers.find((d: any) => d.id === a.driverId)?.name || 'Sem motorista',
-      pos: v?.pos, key: s.key, kind: crit.has(a.id) ? 'crit' : KIND_DE[s.key] || 'off', speed: v && !v.noSignal ? Math.round(v.speed || 0) : null, ts: v?.lastUpdate,
+      pos: v?.pos, key: s.key, kind: crit.has(a.id) ? 'crit' : KIND_DE[s.key] || 'off', label: crit.has(a.id) ? 'Crítico' : s.label, speed: v && s.key !== 'sem' ? Math.round(v.speed || 0) : null, ts: v?.lastUpdate,
       blocked: !!v?.blocked, asset: a,
     };
-  }), [assets, vehicles, drivers, crit]);
-  const contagem = useMemo(() => { const c = { mov: 0, par: 0, des: 0, sem: 0 } as Record<string, number>; for (const i of itens) c[i.key]++; return c; }, [itens]);
+  }), [assets, vehicles, drivers, crit, agora]);
+  const contagem = useMemo(() => { const c = { mov: 0, par: 0, des: 0, pnd: 0, sem: 0 } as Record<string, number>; for (const i of itens) c[i.key]++; return c; }, [itens]);
   const lista = itens.filter((i) => (!st || i.key === st) && (!q || (i.plate + i.model + i.driver).toLowerCase().includes(q.toLowerCase())));
   const atual = itens.find((i) => i.id === sel);
   const ultima = Math.max(0, ...itens.filter((i) => i.speed !== null && i.ts).map((i) => i.ts as number));
 
-  const { box: mapaBox, map, pronto } = useGlobo(itens, sel, (id) => { setSel(id); if (id) setParada('baixa'); }, P);
+  // o globo mostra o mesmo recorte da lista (contador e busca); o veículo aberto fica mesmo fora dele
+  const noMapa = useMemo(() => itens.filter((i) => i.id === sel || ((!st || i.key === st) && (!q || (i.plate + i.model + i.driver).toLowerCase().includes(q.toLowerCase())))), [itens, st, q, sel]);
+  const { box: mapaBox, map, pronto } = useGlobo(noMapa, sel, (id) => { setSel(id); if (id) setParada('baixa'); }, P);
   const alturaFolha = useRef(0);
   const [visivel, setVisivel] = useState(0); // quanto da folha aparece (px): o mapa centraliza no que sobra acima dela
   const TOPO = 64; // barra do topo flutuante
@@ -139,7 +142,7 @@ export default function MonitoramentoGlobo() {
     m.flyTo({ center: centro, zoom: zoomDoGlobo(el.clientWidth, el.clientHeight - alturaFolha.current - TOPO), duration: 1600 });
   };
   const verFrota = () => {
-    const m = map.current; const pts = itens.filter((i) => i.pos).map((i) => [i.pos![1], i.pos![0]] as [number, number]);
+    const m = map.current; const pts = noMapa.filter((i) => i.pos).map((i) => [i.pos![1], i.pos![0]] as [number, number]);
     if (!m || !pts.length) return;
     const b = pts.reduce((bb, p) => bb.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
     // o padding do mapa (barra do topo e folha) já entra na conta; este é só o respiro em volta da frota
@@ -191,7 +194,7 @@ export default function MonitoramentoGlobo() {
           </label>
         </>}>
         <p className="px-1 pb-2 text-[13px]" style={{ color: P.texto2 }}>
-          {lista.length} {lista.length === 1 ? 'veículo' : 'veículos'}{st ? ` · ${CONTADORES.find((c) => c.k === st)?.label.toLowerCase()}` : ''}{ultima ? <> · atualizado às <time className="num">{fmtT(ultima)}</time></> : null}
+          {lista.length} {lista.length === 1 ? 'veículo' : 'veículos'}{st ? ` · ${CONTADORES.find((c) => c.k === st)?.label.toLowerCase()}` : ''}{ultima ? <> · atualizado às <time className="num">{shortDT(ultima)}</time></> : null}
         </p>
         <ul aria-label="Veículos" className="flex flex-col">
           {lista.map((i) => (
@@ -201,11 +204,11 @@ export default function MonitoramentoGlobo() {
                 <Marca p={P} kind={i.kind} />
                 <span className="min-w-0 flex-1 flex flex-col">
                   {isPlate(i.plate) ? <span className="mb-1"><Plate name={i.plate} size="md" /></span> : <span className="text-[16px] font-semibold truncate">{i.plate}</span>}
-                  <span className="text-[13px] truncate" style={{ color: P.texto2 }}>{ROTULO[i.kind]}{i.blocked ? ' · bloqueado' : ''} · {i.driver}</span>
+                  <span className="text-[13px] truncate" style={{ color: P.texto2 }}>{i.label}{i.blocked ? ' · bloqueado' : ''} · {i.driver}</span>
                 </span>
                 <span className="shrink-0 flex flex-col items-end">
                   <span className="text-[15px] font-medium num">{i.speed !== null ? `${i.speed} km/h` : '—'}</span>
-                  <span className="text-[12px] num" style={{ color: P.texto2 }}>{i.ts ? fmtT(i.ts) : ''}</span>
+                  <span className="text-[12px] num" style={{ color: P.texto2 }}>{i.ts ? shortDT(i.ts) : ''}</span>
                 </span>
               </button>
             </li>
@@ -400,7 +403,7 @@ function CartaoVeiculo({ p, it, onFechar, onCmd, onShare, onPercurso }: { p: Pal
         <Marca p={p} kind={it.kind} />
         <div className="min-w-0 flex-1">
           <h2 className="text-[17px] font-semibold truncate">{isPlate(it.plate) ? <span className="block mb-1.5"><Plate name={it.plate} size="lg" /></span> : it.plate}</h2>
-          <p className="text-[14px] truncate" style={{ color: p.texto2 }}>{ROTULO[it.kind]}{it.speed !== null ? ` · ${it.speed} km/h` : ''}{it.ts ? ` · ${fmtT(it.ts)}` : ''}</p>
+          <p className="text-[14px] truncate" style={{ color: p.texto2 }}>{it.label}{it.speed !== null ? ` · ${it.speed} km/h` : ''}{it.ts ? ` · ${shortDT(it.ts)}` : ''}</p>
           <p className="text-[14px] truncate" style={{ color: p.texto2 }}>{it.driver}{it.model ? ` · ${it.model}` : ''}{it.blocked ? ' · bloqueado' : ''}</p>
         </div>
         <button type="button" aria-label="Fechar veículo" onClick={onFechar} className="w-9 h-9 -mr-1 -mt-1 rounded-full flex items-center justify-center" style={{ color: p.texto2 }}><Icon name="fechar" size={20} /></button>

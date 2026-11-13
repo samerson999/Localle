@@ -33,10 +33,16 @@ export interface Telemetria {
    */
   velocidadePainelKmh?: number | null;
   /**
+   * Ignição do último pacote que a informou, com ou sem GPS válido. A posição na tela é a última VÁLIDA e traz a ignição
+   * daquele instante; um pacote mais novo sem GPS (garagem, túnel) pode dizer que o motor já desligou. A tela usa esta
+   * quando `lidaEm.ignicao` é mais nova que a posição.
+   */
+  ignicao?: boolean | null;
+  /**
    * Quando chegou o atributo de cada leitura (ISO, horário do servidor do Traccar). Valor antigo continua valendo como
    * "último conhecido", mas a tela mostra a idade; `null` = idade desconhecida.
    */
-  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null; alimentacaoExterna: string | null; odometroPainel?: string | null; velocidadePainel?: string | null };
+  lidaEm?: { tensaoV: string | null; satelites: string | null; sinalGsm: string | null; bloqueado: string | null; alimentacaoExterna: string | null; odometroPainel?: string | null; velocidadePainel?: string | null; ignicao?: string | null };
 }
 
 export interface RealtimePosicao {
@@ -131,7 +137,8 @@ export type ComunicacaoStatus = 'sem_rastreador' | 'aguardando' | 'online' | 'se
  */
 export interface RealtimeComunicacao {
   kind: 'comunicacao';
-  ativos: { assetId: string; comunicacao: ComunicacaoStatus; fixTime: string | null }[];
+  /** `ignicao`/`ignicaoEm`: a do último pacote, com ou sem GPS (ver `Telemetria.ignicao`) — chega à tela sem posição nova. */
+  ativos: { assetId: string; comunicacao: ComunicacaoStatus; fixTime: string | null; ignicao?: boolean | null; ignicaoEm?: string | null }[];
 }
 
 export type RealtimeMessage = RealtimePosicao | RealtimeEvento | RealtimeSnapshot | RealtimeAlerta | RealtimeComandoStatus | RealtimeComunicacao;

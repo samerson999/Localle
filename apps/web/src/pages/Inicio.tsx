@@ -18,28 +18,31 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { useStore, vehicleStatus } from '../lib/store';
+import { useStore, useAgora, vehicleStatus, type StatusFrota } from '../lib/store';
 import { useResumoUso } from '../lib/localleApi';
 import { Icon, type IconName } from '../components/icons';
 import { StatusGlyph, type StatusKind } from '../components/story';
 import { Ring, LineChart } from '../components/charts';
 import { Button, Card, CardHeader, EmptyState, PageHeader, Progress, Select, Skeleton, Table, Tooltip, cx, FilterSheet } from '../components/ui';
-import { fmtT, num } from '@localle/shared/utils';
+import { shortDT, num } from '@localle/shared/utils';
 import { paraUi, rectUi, viewportUi } from '../lib/uiZoom';
 import { useCountUp, reducedMotion } from '../lib/motion';
 
 const KM_USADO = 1; // rodou pelo menos isso no dia = veículo usado
 const RECENTE_MS = 30 * 60_000; // "dados recentes": posição dos últimos 30 minutos
 
-const ESTADOS: { k: 'mov' | 'par' | 'des' | 'sem'; label: string; kind: StatusKind; cor: string }[] = [
+// "Parado" = rastreador que não informa ignição (12/11/2026): só aparece quando há veículo nele
+const ESTADOS: { k: StatusFrota; label: string; kind: StatusKind; cor: string }[] = [
   { k: 'mov', label: 'Em movimento', kind: 'mov', cor: 'var(--status-mov)' },
   { k: 'par', label: 'Parado ligado', kind: 'parado', cor: 'var(--status-parado)' },
   { k: 'des', label: 'Desligado', kind: 'off', cor: 'var(--status-off)' },
+  { k: 'pnd', label: 'Parado', kind: 'stop', cor: 'color-mix(in srgb, var(--status-off) 55%, transparent)' }, // mais claro que o desligado, ao lado dele na barra
   { k: 'sem', label: 'Sem sinal', kind: 'nosignal', cor: 'var(--ink-3)' },
 ];
 
-type ItemFrota = { a: any; v: any; k: 'mov' | 'par' | 'des' | 'sem' };
-type UsoDia = Map<string, { km: number; min: number }>;
+type ItemFrota = { a: any; v: any; k: StatusFrota };
+// kmAte: km do dia só até a hora de agora (null = a API não mandou)
+type UsoDia = Map<string, { km: number; kmAte: number | null; min: number }>;
 
 const pct = (n: number, d: number) => (d ? (n / d) * 100 : 0);
 const fmt1 = (v: number) => v.toFixed(1).replace('.', ',');
@@ -61,7 +64,8 @@ export default function Inicio() {
   const [grupo, setGrupo] = useState('');
 
   const assets = useMemo(() => (grupo ? todos.filter((a: any) => a.groupIds?.includes(grupo)) : todos), [todos, grupo]);
-  const frota: ItemFrota[] = useMemo(() => assets.map((a: any) => ({ a, v: vehicles[a.id], k: vehicleStatus(vehicles[a.id]).key as ItemFrota['k'] })), [assets, vehicles]);
+  const agora = useAgora(); // o status vence com o tempo (posição recente): re-renderiza mesmo sem posição nova
+  const frota: ItemFrota[] = useMemo(() => assets.map((a: any) => ({ a, v: vehicles[a.id], k: vehicleStatus(vehicles[a.id], agora).key })), [assets, vehicles, agora]);
   const total = frota.length;
 
   const uso = useMemo(() => {
@@ -71,7 +75,7 @@ export default function Inicio() {
     for (const u of dados.uso) {
       if (!ids.has(u.assetId)) continue;
       if (!m.has(u.dia)) m.set(u.dia, new Map());
-      m.get(u.dia)!.set(u.assetId, { km: u.km, min: u.minutosMovimento });
+      m.get(u.dia)!.set(u.assetId, { km: u.km, kmAte: u.kmAteAgora ?? null, min: u.minutosMovimento });
     }
     return m;
   }, [dados, assets]);
@@ -80,10 +84,13 @@ export default function Inicio() {
   const usadosNo = (d: string, ids?: Set<string>) => [...(uso.get(d)?.entries() ?? [])].filter(([id, x]) => x.km >= KM_USADO && (!ids || ids.has(id))).length;
   const util = dias.map((d) => pct(usadosNo(d), total));
   const ultima = Math.max(0, ...frota.filter((x) => x.v).map((x) => x.v.lastUpdate));
-  // hoje × média dos 7 dias anteriores (o gráfico e o cartão de leitura usam a mesma conta)
-  const anteriores = util.slice(0, -1);
-  const media = anteriores.length ? anteriores.reduce((s, x) => s + x, 0) / anteriores.length : 0;
-  const delta = (util[util.length - 1] ?? 0) - media;
+  // hoje × média dos 7 dias anteriores ATÉ A MESMA HORA (o cartão de utilização e o de leitura usam a mesma conta). Com os
+  // dias inteiros, o dia de hoje (ainda em andamento) ficava "abaixo da semana" toda manhã. O gráfico segue com os dias
+  // inteiros. API antiga, sem o km até agora: sem comparação (null), em vez de uma conta enganosa.
+  const comparavel = !!dados && dados.uso.every((u) => u.kmAteAgora != null);
+  const utilAte = dias.slice(0, -1).map((d) => pct([...(uso.get(d)?.values() ?? [])].filter((x) => (x.kmAte ?? 0) >= KM_USADO).length, total));
+  const media = comparavel && utilAte.length ? utilAte.reduce((s, x) => s + x, 0) / utilAte.length : null;
+  const delta = media == null ? null : (util[util.length - 1] ?? 0) - media;
   // o conteúdo muda de altura ao carregar o resumo e ao trocar de grupo (a faixa de grupos some): tenta encaixar de novo
   const { ref: tela, encaixe, compacto } = useEncaixe(`${carregando}|${grupo}|${groups.length}|${erro ? 1 : 0}`);
 
@@ -201,6 +208,7 @@ function Variacao({ delta }: { delta: number }) {
 // 1) Resumo da frota: total grande, barra por estado (vão de 2 px entre trechos) e cada estado com número e %.
 function Resumo({ className, frota, total, compacto, filtro }: { className: string; frota: ItemFrota[]; total: number; compacto?: boolean; filtro?: React.ReactNode }) {
   const conta = (k: string) => frota.filter((x) => x.k === k).length;
+  const estados = ESTADOS.filter((e) => e.k !== 'pnd' || conta('pnd') > 0);
   const recentes = frota.filter((x) => x.v && Date.now() - x.v.lastUpdate < RECENTE_MS).length;
   return (
     <Card className={className} dense={compacto} title="Resumo da frota" icon="tendencia" to="/monitoramento" actions={filtro}>
@@ -215,11 +223,11 @@ function Resumo({ className, frota, total, compacto, filtro }: { className: stri
           </span>
         </div>
         <div className={cx('flex flex-col', compacto ? 'gap-3' : 'gap-5')}>
-          <div role="img" aria-label={ESTADOS.map((e) => `${e.label}: ${conta(e.k)}`).join(', ')} className="flex h-2.5 gap-[2px] rounded-pill overflow-hidden bg-track">
-            {ESTADOS.map((e, i) => conta(e.k) > 0 && <span key={e.k} className="grow-x" style={{ flexGrow: conta(e.k), background: e.cor, ['--i' as any]: i * 2 }} />)}
+          <div role="img" aria-label={estados.map((e) => `${e.label}: ${conta(e.k)}`).join(', ')} className="flex h-2.5 gap-[2px] rounded-pill overflow-hidden bg-track">
+            {estados.map((e, i) => conta(e.k) > 0 && <span key={e.k} className="grow-x" style={{ flexGrow: conta(e.k), background: e.cor, ['--i' as any]: i * 2 }} />)}
           </div>
-          <ul className={cx('grid grid-cols-2 sm:grid-cols-4 gap-x-4', compacto ? 'gap-y-2' : 'gap-y-5')}>
-            {ESTADOS.map((e) => (
+          <ul className={cx('grid grid-cols-2 gap-x-4', estados.length > 4 ? 'sm:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-4', compacto ? 'gap-y-2' : 'gap-y-5')}>
+            {estados.map((e) => (
               <li key={e.k} className="flex flex-col gap-1.5 min-w-0">
                 <span className="flex items-center gap-tight text-small text-ink-2 truncate"><StatusGlyph kind={e.kind} />{e.label}</span>
                 <span className="flex items-baseline gap-1.5"><Numero><Conta v={conta(e.k)} /></Numero><span className="num text-small text-ink-2">({fmt1(pct(conta(e.k), total))}%)</span></span>
@@ -273,7 +281,7 @@ function Conectividade({ frota, total, ultima, compacto }: { frota: ItemFrota[];
   const p = pct(transmitindo, total);
   return (
     <Card dense title="Conectividade dos rastreadores" icon="sinal" to="/monitoramento"
-      subtitle={compacto ? undefined : ultima ? `Última posição às ${fmtT(ultima)} (${haQuanto(ultima)})` : 'Nenhuma posição recebida ainda'}>
+      subtitle={compacto ? undefined : ultima ? `Última posição ${shortDT(ultima)} (${haQuanto(ultima)})` : 'Nenhuma posição recebida ainda'}>
       <div className={cx('grid grid-cols-[auto_1fr] sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.1fr)] items-center gap-x-6', compacto ? 'gap-y-2' : 'gap-y-4')}>
         <div className="max-sm:col-span-2 flex flex-col gap-1.5">
           <Numero tamanho="lg"><Conta v={p} f={fmt1} />%</Numero>
@@ -295,7 +303,7 @@ function Conectividade({ frota, total, ultima, compacto }: { frota: ItemFrota[];
 // O eixo começa 10 p.p. abaixo do menor valor (múltiplo de 10) e vai a 100%. Hoje fica marcado com o valor; os outros dias
 // mostram a dica ao passar o cursor/tocar. O gráfico (LineChart do sistema) ocupa a altura do cartão.
 function Utilizacao({ className, compacto, carregando, dias, util, usados, km, total, media, delta }: {
-  className: string; compacto?: boolean; carregando: boolean; dias: string[]; util: number[]; usados: number[]; km: number[]; total: number; media: number; delta: number;
+  className: string; compacto?: boolean; carregando: boolean; dias: string[]; util: number[]; usados: number[]; km: number[]; total: number; media: number | null; delta: number | null;
 }) {
   const n = dias.length;
   const piso = n ? Math.max(0, Math.floor((Math.min(...util) - 10) / 10) * 10) : 0;
@@ -308,7 +316,7 @@ function Utilizacao({ className, compacto, carregando, dias, util, usados, km, t
           <CardHeader title="Utilização da frota" icon="grafico" subtitle={compacto ? undefined : `Veículos que rodaram ${KM_USADO} km ou mais no dia`} />
           <div className={cx('flex flex-col', compacto ? 'gap-2' : 'gap-3')}>
             {carregando ? <Skeleton className="h-12 w-40" /> : <Numero tamanho="lg"><Conta v={util[n - 1] ?? 0} f={fmt1} />%</Numero>}
-            {!carregando && n > 1 && <span className="flex flex-wrap items-center gap-2 text-small text-ink-2"><Variacao delta={delta} /> hoje vs. média dos 7 dias ({fmt1(media)}%)</span>}
+            {!carregando && n > 1 && delta != null && media != null && <span className="flex flex-wrap items-center gap-2 text-small text-ink-2"><Variacao delta={delta} /> hoje vs. média dos 7 dias até {shortDT(Date.now())} ({fmt1(media)}%)</span>}
           </div>
         </div>
         <div className="flex-1 min-w-0 lg:pl-8 flex flex-col min-h-[220px] lg:min-h-0">
@@ -359,7 +367,7 @@ function Grupos({ className, compacto, frota, groups, dias, uso, carregando }: {
 // (o encaixe da tela mede a altura do conteúdo).
 const LEITURA_MS = 7000;
 function Leitura({ className, compacto, carregando, frota, dias, uso, delta, media, hoje }: {
-  className: string; compacto?: boolean; carregando: boolean; frota: ItemFrota[]; dias: string[]; uso: Map<string, UsoDia>; delta: number; media: number; hoje: number;
+  className: string; compacto?: boolean; carregando: boolean; frota: ItemFrota[]; dias: string[]; uso: Map<string, UsoDia>; delta: number | null; media: number | null; hoje: number;
 }) {
   const porVeiculo = useMemo(() => frota.map((x) => {
     let km = 0, semUso = 0;
@@ -376,7 +384,7 @@ function Leitura({ className, compacto, carregando, frota, dias, uso, delta, med
   const kmTotal = porVeiculo.reduce((s, x) => s + x.km, 0);
   const lider = porVeiculo.reduce<(typeof porVeiculo)[number] | null>((m, x) => (!m || x.km > m.km ? x : m), null);
   // 3) semana × hoje
-  const alta = delta >= 1, queda = delta <= -1;
+  const alta = delta != null && delta >= 1, queda = delta != null && delta <= -1;
 
   const slides: { icone: IconName; titulo: string; texto: string; to: string }[] = carregando
     ? [{ icone: 'relogio', titulo: 'Leitura da semana', texto: 'Conferindo o que a frota fez nos últimos 7 dias…', to: '/relatorios/uso' }]
@@ -393,13 +401,13 @@ function Leitura({ className, compacto, carregando, frota, dias, uso, delta, med
         titulo: `${lider.nome} foi o que mais rodou`,
         texto: `${num(Math.round(lider.km))} km nos últimos ${n} dias${frota.length > 1 && kmTotal ? `, ${fmt1((lider.km / kmTotal) * 100)}% de tudo o que a frota percorreu` : ''}.`,
       }] : []),
-      {
-        icone: 'tendencia', to: '/relatorios/uso',
+      ...(delta != null && media != null ? [{
+        icone: 'tendencia' as IconName, to: '/relatorios/uso',
         titulo: alta ? 'Hoje acima da semana' : queda ? 'Hoje abaixo da semana' : 'Hoje dentro do normal',
-        texto: alta ? `${fmt1(hoje)}% da frota rodou hoje, ${fmt1(delta)} p.p. acima da média dos últimos ${n} dias (${fmt1(media)}%).`
-          : queda ? `${fmt1(hoje)}% da frota rodou hoje, ${fmt1(-delta)} p.p. abaixo da média dos últimos ${n} dias (${fmt1(media)}%).`
-          : `${fmt1(hoje)}% da frota rodou hoje, em linha com a média dos últimos ${n} dias (${fmt1(media)}%).`,
-      },
+        texto: alta ? `${fmt1(hoje)}% da frota rodou hoje, ${fmt1(delta)} p.p. acima da média dos últimos ${n} dias até esta hora (${fmt1(media)}%).`
+          : queda ? `${fmt1(hoje)}% da frota rodou hoje, ${fmt1(-delta)} p.p. abaixo da média dos últimos ${n} dias até esta hora (${fmt1(media)}%).`
+          : `${fmt1(hoje)}% da frota rodou hoje, em linha com a média dos últimos ${n} dias até esta hora (${fmt1(media)}%).`,
+      }] : []),
     ];
 
   const [atual, setAtual] = useState(0);
@@ -427,7 +435,8 @@ function Leitura({ className, compacto, carregando, frota, dias, uso, delta, med
         <span className="absolute -right-24 -bottom-32 w-72 h-72 rounded-full bg-white/[0.08]" />
         <span className="absolute -right-8 -bottom-44 w-72 h-72 rounded-full bg-white/[0.08]" />
       </span>
-      <div className="relative grid flex-1 min-h-0" aria-live={pausado ? 'polite' : 'off'}>
+      {/* sem min-h-0: o slide mais alto define a altura mínima; com ele, o texto vazava por cima do rodapé */}
+      <div className="relative grid flex-1" aria-live={pausado ? 'polite' : 'off'}>
         {slides.map((s, i) => (
           <div key={s.titulo} aria-roledescription="slide" aria-label={`${i + 1} de ${slides.length}`} aria-hidden={i !== i0}
             {...(i !== i0 ? { inert: '' } : {}) as any}

@@ -16,17 +16,20 @@ describe('monitoramento — uso diário (agregado uso_5min)', () => {
   let clientB: string;
   let assetA: string;
   let rastreadorId: string;
+  const dia = <T>(r: T | undefined): T => { expect(r).toBeDefined(); return r!; };
 
-  // percurso conhecido em Recife: 4 pontos em movimento, 3 no bloco 10:00–10:05 e 1 no bloco seguinte (13:00Z = 10:00 local)
+  // percurso conhecido em Recife: 4 pontos em movimento, 3 no bloco 10:00–10:05 e 1 no bloco seguinte (13:00Z = 10:00 local),
+  // e a chegada a 1 km/h — antes (só pontos > 2 km/h) ela ficava de fora e o km saía abaixo do odômetro (HML, 12/11/2026)
   const pontos: [string, number, number, number][] = [
     ['2026-01-01T13:00:00Z', -34.9000, -8.0500, 30],
     ['2026-01-01T13:02:00Z', -34.8950, -8.0500, 40],
     ['2026-01-01T13:04:00Z', -34.8900, -8.0500, 35],
     ['2026-01-01T13:06:00Z', -34.8850, -8.0500, 20],
-    // parado (não soma distância nem minutos)
-    ['2026-01-01T15:00:00Z', -34.8850, -8.0500, 0],
+    ['2026-01-01T13:08:00Z', -34.8840, -8.0500, 1],
+    // parado no mesmo lugar (não soma distância nem minutos)
+    ['2026-01-01T15:00:00Z', -34.8840, -8.0500, 0],
     // 01:00Z do dia 2 = 22:00 do dia 1 em Recife: conta no dia 1, não no 2
-    ['2026-01-02T01:00:00Z', -34.8850, -8.0500, 0],
+    ['2026-01-02T01:00:00Z', -34.8840, -8.0500, 0],
   ];
 
   beforeAll(async () => {
@@ -56,18 +59,35 @@ describe('monitoramento — uso diário (agregado uso_5min)', () => {
     await pool.end();
   });
 
-  it('soma a distância da trajetória em movimento, inclusive o trecho entre blocos de 5 minutos', async () => {
+  it('soma a distância da trajetória de todos os pontos válidos, inclusive lentos e o trecho entre blocos de 5 minutos', async () => {
     const rows = await repo.usoDiario(clientA, agora, 7, FUSO);
     const dia1 = rows.find((r) => r.asset_id === assetA && r.dia === '2026-01-01');
     expect(dia1).toBeDefined();
     const { rows: esperado } = await pool.query<{ m: number }>(
       `select st_length(st_makeline(array[
-         st_makepoint(-34.9000, -8.0500), st_makepoint(-34.8950, -8.0500), st_makepoint(-34.8900, -8.0500), st_makepoint(-34.8850, -8.0500)
+         st_makepoint(-34.9000, -8.0500), st_makepoint(-34.8950, -8.0500), st_makepoint(-34.8900, -8.0500), st_makepoint(-34.8850, -8.0500),
+         st_makepoint(-34.8840, -8.0500)
        ])::geography)::float8 as m`,
     );
     expect(dia1!.dist_m).toBeCloseTo(esperado[0].m, 0);
     // dois blocos com velocidade > 5 km/h (10:00 e 10:05)
     expect(dia1!.minutos_mov).toBe(10);
+  });
+
+  it('até a hora de agora: dos dias anteriores, só os blocos que começaram até a mesma hora (no fuso)', async () => {
+    // 09:00 local: o percurso do dia 1 (10:00–10:06) ainda não tinha começado nessa hora
+    const cedo = (await repo.usoDiario(clientA, agora, 7, FUSO)).find((r) => r.asset_id === assetA && r.dia === '2026-01-01');
+    expect(dia(cedo).dist_ate_agora_m).toBe(0);
+    expect(dia(cedo).dist_m).toBeGreaterThan(0);
+    // 10:02 local: entra o bloco das 10:00 (3 pontos), não o das 10:05 nem o trecho que leva até ele
+    const meio = (await repo.usoDiario(clientA, new Date('2026-01-02T13:02:00Z'), 7, FUSO)).find((r) => r.asset_id === assetA && r.dia === '2026-01-01');
+    const { rows: esperado } = await pool.query<{ m: number }>(
+      `select st_length(st_makeline(array[
+         st_makepoint(-34.9000, -8.0500), st_makepoint(-34.8950, -8.0500), st_makepoint(-34.8900, -8.0500)
+       ])::geography)::float8 as m`,
+    );
+    expect(dia(meio).dist_ate_agora_m).toBeCloseTo(esperado[0].m, 0);
+    expect(dia(meio).dist_ate_agora_m).toBeLessThan(dia(meio).dist_m);
   });
 
   it('agrupa pelo dia no fuso da operação (22:00 local ainda é o mesmo dia)', async () => {

@@ -135,9 +135,9 @@ export function DeltaChip({ value, unit = 'p.p.', digits = 1, suffix, good = 'up
 
 // Status = ponto + texto. Nunca etiqueta com fundo.
 // loss = perda já consumada (ex.: prazo perdido): rosa, nunca vermelho, e fora do "Precisa de você"
-export type StatusKind = 'mov' | 'parado' | 'off' | 'nosignal' | 'crit' | 'loss';
-export const statusKind = (key: string): StatusKind => (({ mov: 'mov', par: 'parado', des: 'off', sem: 'nosignal' } as Record<string, StatusKind>)[key] || 'off');
-export const STATUS_LABEL: Record<StatusKind, string> ={ mov: 'Em movimento', parado: 'Parado ligado', off: 'Desligado', nosignal: 'Sem sinal', crit: 'Crítico', loss: 'Perda' };
+export type StatusKind = 'mov' | 'parado' | 'off' | 'stop' | 'nosignal' | 'crit' | 'loss';
+export const statusKind = (key: string): StatusKind => (({ mov: 'mov', par: 'parado', des: 'off', pnd: 'stop', sem: 'nosignal' } as Record<string, StatusKind>)[key] || 'off');
+export const STATUS_LABEL: Record<StatusKind, string> ={ mov: 'Em movimento', parado: 'Parado ligado', off: 'Desligado', stop: 'Parado', nosignal: 'Sem sinal', crit: 'Crítico', loss: 'Perda' };
 // Só o símbolo (ponto, anel ou anel tracejado); as cores vêm dos tokens --status-* (styles/base.css)
 export function StatusGlyph({ kind, className = '' }: { kind: StatusKind; className?: string }) {
   const ring = kind === 'off' || kind === 'nosignal';

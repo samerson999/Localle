@@ -33,6 +33,8 @@ export interface UsoDiarioRow {
   /** Dia no fuso pedido, `YYYY-MM-DD`. */
   dia: string;
   dist_m: number;
+  /** Só os blocos até a hora de `agora` no fuso (comparação justa de hoje, ainda em andamento, com os dias anteriores). */
+  dist_ate_agora_m: number;
   minutos_mov: number;
 }
 
@@ -107,8 +109,10 @@ export class MonitoringRepository {
          st_x(p.geom) as longitude, st_y(p.geom) as latitude, p.speed_kmh, e.attributes
        from eventos e
        left join assets a on a.id = e.asset_id and a.client_id = e.client_id
+       -- evento de pacote de status: ts é a hora em que chegou e a posição (repetida) é de antes, em attributes.posicaoEm
        left join posicoes p
-         on p.id = e.posicao_id and p.rastreador_id = e.rastreador_id and p.fix_time = e.ts
+         on p.id = e.posicao_id and p.rastreador_id = e.rastreador_id
+         and p.fix_time = coalesce((e.attributes->>'posicaoEm')::timestamptz, e.ts)
        where e.client_id = $1 and e.ts between $2 and $3 and ($4::uuid is null or e.asset_id = $4)
        order by e.ts desc
        limit 5000`,
@@ -119,9 +123,12 @@ export class MonitoringRepository {
 
   /**
    * Uso por ativo e por dia (fuso `fuso`), de `dias` dias atrás até `agora`, a partir do agregado `uso_5min`
-   * (migration 1794270000000). Distância = trajetória em movimento dentro de cada bloco de 5 min + o trecho entre um bloco
-   * e o seguinte quando o seguinte tem movimento. Minutos em movimento = blocos com velocidade > 5 km/h × 5 (resolução de
-   * 5 minutos). `client_id` é o primeiro filtro; o agregado vem de `posicoes`, já carimbadas com o cliente na ingestão.
+   * (migrations 1794270000000 e 1794310000000). Distância = trajetória de todos os pontos válidos dentro de cada bloco de
+   * 5 min + o trecho entre o fim de um bloco e o início do seguinte — no total, a trajetória ponto a ponto, que na HML
+   * (12/11/2026) ficou a 0,1–0,4% do odômetro do aparelho e do totalDistance do Traccar. O trecho que chega no primeiro
+   * bloco da janela vem do bloco anterior a ela (busca um dia a mais só para o `lag`). Minutos em movimento = blocos com
+   * velocidade > 5 km/h × 5 (resolução de 5 minutos). `client_id` é o primeiro filtro; o agregado vem de `posicoes`, já
+   * carimbadas com o cliente na ingestão.
    */
   async usoDiario(clientId: string, agora: Date, dias: number, fuso: string): Promise<UsoDiarioRow[]> {
     const { rows } = await this.pool.query<UsoDiarioRow>(
@@ -129,14 +136,20 @@ export class MonitoringRepository {
          select (date_trunc('day', $2::timestamptz at time zone $4) - make_interval(days => $3)) at time zone $4 as desde
        ),
        blocos as (
-         select u.asset_id, u.bucket, u.dist_m, u.vel_max, u.p_ini,
-           lag(u.p_fim) over (partition by u.asset_id order by u.bucket) as p_ant
-         from uso_5min u, janela j
-         where u.client_id = $1 and u.bucket >= j.desde and u.bucket <= $2
+         select u.asset_id, u.bucket, u.vel_max,
+           coalesce(u.dist_m, 0) + case when p_ant is not null then st_distance(p_ant::geography, u.p_ini::geography) else 0 end as dist,
+           -- bloco começou até a hora de agora (no fuso), em qualquer dia: hoje até agora × os dias anteriores até a mesma hora
+           (u.bucket at time zone $4)::time <= ($2::timestamptz at time zone $4)::time as ate_agora
+         from (
+           select u.*, lag(u.p_fim) over (partition by u.asset_id order by u.bucket) as p_ant
+           from uso_5min u, janela j
+           where u.client_id = $1 and u.bucket >= j.desde - interval '1 day' and u.bucket <= $2
+         ) u, janela j
+         where u.bucket >= j.desde
        )
        select asset_id, to_char(bucket at time zone $4, 'YYYY-MM-DD') as dia,
-         sum(coalesce(dist_m, 0)
-           + case when vel_max > 2 and p_ant is not null then st_distance(p_ant::geography, p_ini::geography) else 0 end)::float8 as dist_m,
+         sum(dist)::float8 as dist_m,
+         coalesce(sum(dist) filter (where ate_agora), 0)::float8 as dist_ate_agora_m,
          (count(*) filter (where vel_max > 5) * 5)::int as minutos_mov
        from blocos
        group by asset_id, dia

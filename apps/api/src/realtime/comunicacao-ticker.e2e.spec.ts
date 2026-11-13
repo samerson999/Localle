@@ -88,8 +88,8 @@ describe('ComunicacaoTicker (tempo real da comunicação)', () => {
 
     const deA = recebido.get(clientA)!.filter((m) => m.kind === 'comunicacao');
     expect(deA).toEqual([
-      { kind: 'comunicacao', ativos: [{ assetId, comunicacao: 'online', fixTime: null }] },
-      { kind: 'comunicacao', ativos: [{ assetId, comunicacao: 'sem_sinal', fixTime: null }] },
+      { kind: 'comunicacao', ativos: [{ assetId, comunicacao: 'online', fixTime: null, ignicao: null, ignicaoEm: null }] },
+      { kind: 'comunicacao', ativos: [{ assetId, comunicacao: 'sem_sinal', fixTime: null, ignicao: null, ignicaoEm: null }] },
     ]);
     // isolamento: B recebe o cálculo da própria frota (vazia), nunca o ativo de A
     expect(recebido.get(clientB)!.filter((m) => m.kind === 'comunicacao')).toEqual([
@@ -105,7 +105,7 @@ describe('ComunicacaoTicker (tempo real da comunicação)', () => {
     );
     try {
       const msg = await ticker.calcular(clientA, new Date());
-      expect(msg.ativos).toEqual([{ assetId, comunicacao: 'online', fixTime: null }]);
+      expect(msg.ativos).toEqual([{ assetId, comunicacao: 'online', fixTime: null, ignicao: null, ignicaoEm: null }]);
     } finally {
       await pool.query(`delete from client_settings where client_id = $1`, [clientA]);
     }
@@ -137,6 +137,21 @@ describe('ComunicacaoTicker (tempo real da comunicação)', () => {
       expect((await ticker.calcular(clientA, new Date())).ativos[0].comunicacao).toBe('sem_sinal');
     } finally {
       await pool.query('delete from asset_groups where id = any($1)', [grupos]);
+    }
+  });
+
+  // 12/11/2026: pacote sem GPS não vira posição; a ignição dele chega à tela pelo recálculo
+  it('entrega a ignição do último pacote e quando ela chegou', async () => {
+    const em = '2026-11-12T13:00:00.000Z';
+    await pool.query(
+      `update rastreador_comunicacao set ultimos_atributos = '{"ignition": false, "sat": 0}'::jsonb, atributos_vistos_em = $2::jsonb where rastreador_id = $1`,
+      [rastreadorId, JSON.stringify({ ignition: em, sat: em })],
+    );
+    try {
+      const [item] = (await ticker.calcular(clientA, new Date())).ativos;
+      expect(item).toMatchObject({ assetId, ignicao: false, ignicaoEm: em });
+    } finally {
+      await pool.query(`update rastreador_comunicacao set ultimos_atributos = '{}'::jsonb, atributos_vistos_em = '{}'::jsonb where rastreador_id = $1`, [rastreadorId]);
     }
   });
 

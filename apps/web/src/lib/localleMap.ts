@@ -54,11 +54,14 @@ export function toVehicle(row: CurrentRow, prev: any) {
   if (prev && prev.lastUpdate > Date.parse(row.fixTime)) return prev;
   const speed = Math.round(Number(row.speedKmh) || 0);
   return {
-    route: undefined, seg: 0, target: 0, stopLeft: 0, inside: [], heading: 0, odometer: 0, hourmeter: 0,
+    route: undefined, seg: 0, target: 0, stopLeft: 0, inside: [], heading: 0,
     ...prev,
     // telemetria já lida por protocolo na API; null = "não informado" (nunca um valor de exemplo — também
     // sobrescreve o 12,6 V / 0 satélites que versões antigas deixaram salvo no navegador)
     ...telemetriaDoVeiculo(row.telemetria),
+    // a API não traz odômetro/horímetro do aparelho (o km do aparelho é o do painel, odoPainel): null = não informado. O 0
+    // de antes (também salvo no navegador) virava "0 km" na tela e travava a manutenção por km (km.kmDoRastreador)
+    odometer: null, hourmeter: null,
     assetId: assetIdFor(row.assetId), live: true,
     pos: [Number(row.latitude), Number(row.longitude)] as [number, number], speed, moving: speed > 3,
     ignition: row.ignition, // null = o rastreador não informa ignição (a tela diz "não informada")
@@ -100,7 +103,7 @@ export function applyPosicao(v: any, p: RealtimePosicao) {
 
 /** Telemetria da API → campos do veículo que a tela já usa (bateria em V, satélites, sinal 0–5, bloqueio, alimentação externa, odômetro do painel) e quando cada um chegou. */
 export function telemetriaDoVeiculo(t: Telemetria | undefined) {
-  return { battery: t?.tensaoV ?? null, gps: t?.satelites ?? null, gsm: t?.sinalGsm ?? null, blocked: t?.bloqueado ?? null, power: t?.alimentacaoExterna ?? null, odoPainel: t?.odometroPainelKm ?? null, velPainel: t?.velocidadePainelKmh ?? null, telemetriaEm: t?.lidaEm ?? null };
+  return { battery: t?.tensaoV ?? null, gps: t?.satelites ?? null, gsm: t?.sinalGsm ?? null, blocked: t?.bloqueado ?? null, power: t?.alimentacaoExterna ?? null, odoPainel: t?.odometroPainelKm ?? null, velPainel: t?.velocidadePainelKmh ?? null, ignUlt: t?.ignicao ?? null, telemetriaEm: t?.lidaEm ?? null };
 }
 
 /**
@@ -113,12 +116,17 @@ export function velocidadePainelAtual(v: { velPainel?: number | null; lastUpdate
   return v?.velPainel != null && v.lastUpdate != null && Math.abs(em - v.lastUpdate) <= 60_000 ? v.velPainel : null;
 }
 
-/** Item do recálculo periódico do backend (kind 'comunicacao'); `null` = nada muda na tela. */
+/**
+ * Item do recálculo periódico do backend (kind 'comunicacao'); `null` = nada muda na tela. Traz também a ignição do último
+ * pacote (com ou sem GPS), que não chega por posição: o status a usa quando é mais nova que a posição (store.ignicaoAtual).
+ */
 export function applyComunicacao(v: any, item: RealtimeComunicacao['ativos'][number]) {
   if (!v) return null; // sem posição ainda: não há veículo no mapa
   if (item.fixTime !== null && v.lastUpdate > Date.parse(item.fixTime)) return null; // tempo real já trouxe posição mais nova
-  if (v.comunicacao === item.comunicacao) return null;
-  return { ...v, comunicacao: item.comunicacao, noSignal: item.comunicacao === 'sem_sinal' || item.comunicacao === 'sem_gps' };
+  const ign = item.ignicaoEm && item.ignicaoEm !== v.telemetriaEm?.ignicao
+    ? { ignUlt: item.ignicao ?? null, telemetriaEm: { ...v.telemetriaEm, ignicao: item.ignicaoEm } } : null;
+  if (v.comunicacao === item.comunicacao && !ign) return null;
+  return { ...v, ...ign, comunicacao: item.comunicacao, noSignal: item.comunicacao === 'sem_sinal' || item.comunicacao === 'sem_gps' };
 }
 
 /**

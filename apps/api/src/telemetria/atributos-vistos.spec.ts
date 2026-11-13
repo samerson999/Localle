@@ -73,8 +73,16 @@ describe('lerTelemetriaComIdade', () => {
     const t1 = lerTelemetriaComIdade({ vin: 718, power: 14.08, rssi: 28 }, { vin: '2026-11-03T18:37:45.000Z', rssi: '2026-11-04T19:34:48.000Z' },
       { atributoTensao: 'vin', sinalMax: 31, atributoBloqueio: 'out1' });
     expect(t1).toEqual({
-      tensaoV: 0.72, satelites: null, sinalGsm: 5, bloqueado: null, alimentacaoExterna: false, odometroPainelKm: null, velocidadePainelKmh: null,
-      lidaEm: { tensaoV: '2026-11-03T18:37:45.000Z', satelites: null, sinalGsm: '2026-11-04T19:34:48.000Z', bloqueado: null, alimentacaoExterna: '2026-11-03T18:37:45.000Z', odometroPainel: null, velocidadePainel: null },
+      tensaoV: 0.72, satelites: null, sinalGsm: 5, bloqueado: null, alimentacaoExterna: false, odometroPainelKm: null, velocidadePainelKmh: null, ignicao: null,
+      lidaEm: { tensaoV: '2026-11-03T18:37:45.000Z', satelites: null, sinalGsm: '2026-11-04T19:34:48.000Z', bloqueado: null, alimentacaoExterna: '2026-11-03T18:37:45.000Z', odometroPainel: null, velocidadePainel: null, ignicao: null },
     });
+  });
+
+  // 12/11/2026: a ignição do último pacote (com ou sem GPS) vai junto, com a hora em que chegou
+  it('ignição do último pacote, com a data da chave; aparelho sem ignição fica null', () => {
+    const t = lerTelemetriaComIdade({ ignition: false, sat: 0 }, { ignition: '2026-11-12T13:00:00.000Z' });
+    expect(t.ignicao).toBe(false);
+    expect(t.lidaEm?.ignicao).toBe('2026-11-12T13:00:00.000Z');
+    expect(lerTelemetriaComIdade({ ignition: 'sim' }, {}).ignicao).toBeNull();
   });
 });

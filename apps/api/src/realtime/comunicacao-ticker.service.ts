@@ -3,6 +3,7 @@ import type { RealtimeComunicacao } from '@localle/shared/realtime';
 import { comunicacaoDaLinha } from '../monitoring/comunicacao-status';
 import { MonitoringRepository } from '../monitoring/monitoring.repository';
 import { SettingsService } from '../settings/settings.service';
+import { ignicaoDosAtributos } from '../telemetria/leitura';
 import { RealtimeHub } from './realtime.hub';
 
 const TICK_MS = 60_000;
@@ -57,11 +58,18 @@ export class ComunicacaoTicker implements OnModuleInit, OnModuleDestroy {
     ]);
     return {
       kind: 'comunicacao',
-      ativos: rows.map((r) => ({
-        assetId: r.asset_id,
-        comunicacao: comunicacaoDaLinha(r, semSinalH(r.asset_id), agora),
-        fixTime: r.fix_time ? r.fix_time.toISOString() : null,
-      })),
+      ativos: rows.map((r) => {
+        // pacote sem GPS não vira posição nem mensagem de tempo real: a ignição dele chega à tela por aqui
+        const ignicao = ignicaoDosAtributos(r.ultimos_atributos);
+        const em = r.atributos_vistos_em?.ignition;
+        return {
+          assetId: r.asset_id,
+          comunicacao: comunicacaoDaLinha(r, semSinalH(r.asset_id), agora),
+          fixTime: r.fix_time ? r.fix_time.toISOString() : null,
+          ignicao,
+          ignicaoEm: ignicao !== null && typeof em === 'string' ? em : null,
+        };
+      }),
     };
   }
 }
