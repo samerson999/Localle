@@ -194,7 +194,7 @@ function RegisterEvent({ types }: { types: EvType[] }) {
   const [e, setE] = useState({ driverId: s.drivers[0]?.id || '', type: 'excesso_velocidade', value: '' });
   const t = types.find((x) => x.code === e.type);
   // só o que foi lançado à mão pode ser desfeito aqui; evento do rastreador, CAN ou regra é fato apurado
-  const manuais = (s.events || []).filter((x: any) => x.source === 'manual' && /^[0-9a-f-]{36}$/i.test(x.id)).sort((a: any, b: any) => b.ts - a.ts).slice(0, 20);
+  const manuais = (s.events || []).filter((x: any) => x.source === 'manual' && /^[0-9a-f-]{36}$/i.test(x.id)).sort((a: any, b: any) => b.ts - a.ts);
   const excluir = async (x: any, label: string, nome: string) => {
     if (!(await confirmAction({ title: 'Excluir este lançamento?', detail: `${label} de ${nome}, em ${fmtDT(x.ts)}. Os pontos saem do ranking.`, confirmLabel: 'Excluir' }))) return;
     try { await removerEventoRanking(x.id); toast('Lançamento excluído.'); } catch (er: any) { toast('Não foi possível excluir: ' + (er.message || er), { tone: 'crit' }); }

@@ -44,7 +44,7 @@ function Lancamentos() {
   const [open, setOpen] = useState(false);
   const [aid, setAid] = useState('');
   useMobilePageAction({ label: 'Lançar abastecimento', icon: 'mais', onClick: () => setOpen(true) });
-  const list = [...fuelings].filter((f: any) => !aid || f.assetId === aid).sort((a: any, b: any) => b.ts - a.ts).slice(0, 150);
+  const list = [...fuelings].filter((f: any) => !aid || f.assetId === aid).sort((a: any, b: any) => b.ts - a.ts);
   const n = (id: string) => assets.find((a: any) => a.id === id)?.name;
   return (
     <>
@@ -55,7 +55,6 @@ function Lancamentos() {
           const st = nfStatus(f);
           return [<span className="num whitespace-nowrap">{fmtDT(f.ts)}</span>, <AssetName name={n(f.assetId)} />, drivers.find((d: any) => d.id === f.driverId)?.name || '—', <span><Num value={f.odometer} size="body" />{Math.abs(kmDiff(f) ?? 0) > FUEL_PARAMS.tolKm && <span className="block text-caption text-loss-ink num">rastreador {num(f.kmTracker)} km</span>}</span>, <Num value={f.liters} digits={2} size="body" />, <Num value={f.total} prefix="R$" digits={2} size="body" />, <Num value={f.pricePerL} prefix="R$" digits={2} size="body" />, <span className="text-small">{f.station}</span>, <StatusDot kind={NF_DOT[st].kind} label={NF_DOT[st].label} />];
         })} />
-        {list.length > 0 && <p className="text-caption text-ink-2 mt-2">Mostrando os 150 mais recentes.</p>}
       </Card>
       {open && <FuelForm onClose={() => setOpen(false)} />}
     </>
@@ -133,13 +132,11 @@ function Notas() {
   const s = useStoreData();
   const [flt, setFlt] = useState('pendentes');
   const [edit, setEdit] = useState<any>(null);
-  const [more, setMore] = useState(25);
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[2], 'nenhum'));
   const { a } = periodRanges(period);
   const ocrOn = !!s.fuelCfg?.ocr;
   const all = [...s.fuelings].sort((x: any, y: any) => y.ts - x.ts);
   const list = all.filter((f: any) => (flt === 'pendentes' ? nfStatus(f) !== 'conferida' : flt === 'divergentes' ? nfStatus(f) === 'divergente' : true));
-  const shown = list.slice(0, more);
   const rel = useMemo(() => reliability(s, a[0], a[1]), [s.fuelings, JSON.stringify(period)]);
   const nm = (id: string) => s.assets.find((x: any) => x.id === id)?.name || '';
   const withIdx = rel.filter((r) => r.index != null);
@@ -158,16 +155,15 @@ function Notas() {
           <span className="text-caption text-ink-2">{Object.entries(r.byKind).map(([k, v]) => `${DIV_LABEL[k as 'litros']} ${v}`).join(' · ') || '—'}</span>,
           r.last ? <span className="text-caption"><span className="num">{fmtD(r.last.f.ts)}</span> · {r.last.d.map((d: any) => d.detail).join('; ')}</span> : '—'])} />
       </ChartCard>
-      <Card title="Notas fiscais" icon="documento" actions={<Tabs value={flt} onChange={(k) => { setFlt(k); setMore(25); }} tabs={[{ key: 'pendentes', label: 'Sem nota ou divergentes' }, { key: 'divergentes', label: 'Divergentes' }, { key: 'todas', label: 'Todas' }]} />}>
+      <Card title="Notas fiscais" icon="documento" actions={<Tabs value={flt} onChange={setFlt} tabs={[{ key: 'pendentes', label: 'Sem nota ou divergentes' }, { key: 'divergentes', label: 'Divergentes' }, { key: 'todas', label: 'Todas' }]} />}>
         <p className="text-small text-ink-2 mb-3 max-w-[90ch]">Informe a nota pela chave de acesso, enviando o XML ou digitando os dados. A busca automática pela chave na SEFAZ fica preparada para quando o custo da integração for aprovado.</p>
-        <Table minWidth={980} emptyState={<EmptyState illustration="ilu-combustivel" layout="row" title="Nenhum abastecimento nesta lista" detail={flt === 'todas' ? 'Ainda não há abastecimentos lançados.' : 'Todas as notas conferem. Veja a lista completa em Todas.'} />} head={['Data', 'Veículo', 'Motorista', 'Lançado', 'Nota', 'Situação', '']} rows={shown.map((f: any) => {
+        <Table minWidth={980} emptyState={<EmptyState illustration="ilu-combustivel" layout="row" title="Nenhum abastecimento nesta lista" detail={flt === 'todas' ? 'Ainda não há abastecimentos lançados.' : 'Todas as notas conferem. Veja a lista completa em Todas.'} />} head={['Data', 'Veículo', 'Motorista', 'Lançado', 'Nota', 'Situação', '']} rows={list.map((f: any) => {
           const st = nfStatus(f); const d = nfCheck(f);
           return [<span className="num">{fmtD(f.ts)}</span>, <AssetName name={nm(f.assetId)} />, s.drivers.find((x: any) => x.id === f.driverId)?.name || '—',
             <span className="text-small num">{num(f.liters, 2)} L · {brl(f.total)}</span>, f.nf ? <span className="text-small num">{f.nf.liters != null ? `${num(f.nf.liters, 2)} L · ` : ''}{f.nf.total != null ? brl(f.nf.total) : ''}{f.nf.source === 'xml' ? ' · XML' : ''}</span> : <span className="text-ink-3">—</span>,
             <span><StatusDot kind={NF_DOT[st].kind} label={NF_DOT[st].label} />{d.length > 0 && <span className="block text-caption text-ink-2">{d.map((x) => x.detail).join('; ')}</span>}</span>,
             <TextButton onClick={() => setEdit(f)}>{f.nf ? 'Ver nota' : 'Informar nota'}</TextButton>];
         })} />
-        {list.length > more && <div className="mt-3 flex items-center gap-3"><Button variant="secondary" size="sm" onClick={() => setMore(more + 50)}>Mostrar mais</Button><span className="text-caption text-ink-2 num">{more} de {list.length}</span></div>}
       </Card>
       <Card title="Leitura automática da foto (OCR)" icon="camera">
         <div className="flex flex-wrap items-center gap-3"><label className="inline-flex items-center gap-2 text-body font-medium"><Switch checked={ocrOn} aria-label="Ler a foto da nota com OCR" onChange={(v) => s.patch((st: any) => ({ fuelCfg: { ...(st.fuelCfg || {}), ocr: v } }))} />Ler a foto da nota com OCR</label><span className="text-small text-ink-2">Desligado por padrão: a reunião adiou o OCR pelo custo. Quando ligado, usa o Tesseract no navegador, sem custo de API, mas com precisão limitada.</span></div>

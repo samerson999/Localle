@@ -4,7 +4,7 @@
 // "Avisos" (alertas que só informam: lido/não lido) e "Histórico" (todos, com quem encerrou e o desfecho).
 import { marcarAlertasLidos, useCarregando } from '../lib/localleApi';
 import { toast, LoadingBlock, FilterSheet } from '../components/ui';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { auditEntry } from '@localle/shared/audit';
 import { useStore } from '../lib/store';
 import { useNeedsYou, NEED_KINDS, needAge, type NeedItem } from '../lib/needs';
@@ -19,7 +19,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 
 const PRIO: Record<string, string> = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
 const Prio = ({ p }: { p: string }) => <StatusDot kind={priorityKind(p)} label={PRIO[p] || p} />;
-const PAGE = 50;
 type Aba = 'ocorrencias' | 'avisos' | 'historico';
 
 export default function PrecisaDeVoce() {
@@ -103,7 +102,6 @@ function ListaAlertas({ escopo }: { escopo: 'avisos' | 'historico' }) {
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [q, setQ] = useState('');
   const [treat, setTreat] = useState<any>(null);
-  const [more, setMore] = useState(PAGE);
   const name = (id: string) => assets.find((a: any) => a.id === id)?.name || '';
   const doEscopo = useMemo(() => (escopo === 'avisos' ? alerts.filter((a: any) => !isOcorrencia(a)) : alerts), [alerts, escopo]);
   const unread = doEscopo.filter((a: any) => !a.read);
@@ -114,7 +112,6 @@ function ListaAlertas({ escopo }: { escopo: 'avisos' | 'historico' }) {
       (!onlyUnread || !a.read) &&
       (!term || a.title.toLowerCase().includes(term) || name(a.assetId).toLowerCase().includes(term) || (a.detail || '').toLowerCase().includes(term)));
   }, [doEscopo, pr, onlyUnread, q]);
-  useEffect(() => setMore(PAGE), [pr, onlyUnread, q, escopo]); // filtro novo volta para a primeira página
   const lerTodos = () => {
     const ids = new Set(unread.map((a: any) => a.id));
     patch((s: any) => ({ alerts: s.alerts.map((a: any) => (ids.has(a.id) ? { ...a, read: true } : a)), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Alertas recentes', action: `marcou ${ids.size} alertas como lidos em lote`, count: ids.size }) }));
@@ -134,10 +131,10 @@ function ListaAlertas({ escopo }: { escopo: 'avisos' | 'historico' }) {
           {unread.length > 0 && <TextButton onClick={lerTodos}>Marcar todos como lidos</TextButton>}
         </Cluster>
       }>
-      <Table
+      <Table key={escopo}
         head={['Quando', 'Prioridade', 'Alerta', 'Ativo', 'Detalhe', '']}
         emptyState={<EmptyState illustration="ilu-tudo-em-dia" title={escopo === 'avisos' && !doEscopo.length ? 'Nenhum aviso' : 'Nenhum alerta com esses filtros'} />}
-        rows={list.slice(0, more).map((a: any) => {
+        rows={list.map((a: any) => {
           const occ = isOcorrencia(a);
           return [
             <span className="num whitespace-nowrap">{fmtDT(a.ts)}</span>,
@@ -154,7 +151,6 @@ function ListaAlertas({ escopo }: { escopo: 'avisos' | 'historico' }) {
           ];
         })}
       />
-      {list.length > more && <div className="flex justify-center pt-stack"><Button variant="secondary" size="sm" onClick={() => setMore(more + PAGE)}>Mostrar mais {Math.min(PAGE, list.length - more)}</Button></div>}
       <TreatDialog subject={treat?.title || null} detail={treat ? [name(treat.assetId), treat.detail].filter(Boolean).join(' · ') : ''} onClose={() => setTreat(null)} onConfirm={(t) => treat && resolveAlert(treat.id, t)} />
     </Card>
   );

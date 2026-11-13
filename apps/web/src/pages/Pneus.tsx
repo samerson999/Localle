@@ -312,7 +312,6 @@ function Medicoes() {
 function Desgaste({ onOpen }: any) {
   const s = useStoreData();
   const all = useAll();
-  const [more, setMore] = useState(25);
   const asset = (id: string) => s.assets.find((a: any) => a.id === id);
   const mounted = all.filter((x: any) => x.t.status === 'montado' && !/^EST/.test(x.t.position));
   const byRole = wearBy(mounted.map((x: any) => ({ ...x, key: roleOf(asset(x.t.assetId), x.t.position) })));
@@ -337,8 +336,7 @@ function Desgaste({ onOpen }: any) {
         <WearTable rows={byBrand} label="Marca" keyLabel={(k) => k} real={realBrand} />
       </ChartCard>
       <Card title="Por pneu" icon="pneus">
-        <Table minWidth={1100} align={['left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'right', 'right', 'right']} head={['Pneu', 'Marca', 'Onde', 'Vida', 'Sulco', 'Desgaste', 'Km na vida', 'Km até retirar', 'R$/1.000 km (vida)', 'R$/1.000 km (total)', '']} rows={perTire.slice(0, more).map(({ t, st }: any) => [<TireTag t={t} />, `${t.brand} ${t.model}`, t.status === 'montado' ? <span className="text-small inline-flex items-center gap-tight whitespace-nowrap"><AssetName name={aName(s, t.assetId)} /> · {t.position}</span> : <span className="text-small text-ink-2">{TIRE_STATUS[t.status].label}</span>, lifeLabel(st.lifeNo), <Level st={st} />, st.rate ? <span className="num">{num(st.rate, 2)} mm</span> : '—', <Num value={st.kmLife} size="body" />, st.kmLeft != null && t.status === 'montado' ? <Num value={st.kmLeft} size="body" /> : '—', st.lifeCpk ? <Money v={st.lifeCpk * 1000} /> : '—', st.cpk ? <Money v={st.cpk * 1000} /> : '—', <TextButton onClick={() => onOpen(t.id)}>Abrir</TextButton>])} />
-        {perTire.length > more && <div className="mt-3 flex items-center gap-3"><Button variant="ghost" size="sm" onClick={() => setMore(more + 50)}>Mostrar mais</Button><span className="text-caption text-ink-2 num">{more} de {perTire.length}</span></div>}
+        <Table minWidth={1100} align={['left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'right', 'right', 'right']} head={['Pneu', 'Marca', 'Onde', 'Vida', 'Sulco', 'Desgaste', 'Km na vida', 'Km até retirar', 'R$/1.000 km (vida)', 'R$/1.000 km (total)', '']} rows={perTire.map(({ t, st }: any) => [<TireTag t={t} />, `${t.brand} ${t.model}`, t.status === 'montado' ? <span className="text-small inline-flex items-center gap-tight whitespace-nowrap"><AssetName name={aName(s, t.assetId)} /> · {t.position}</span> : <span className="text-small text-ink-2">{TIRE_STATUS[t.status].label}</span>, lifeLabel(st.lifeNo), <Level st={st} />, st.rate ? <span className="num">{num(st.rate, 2)} mm</span> : '—', <Num value={st.kmLife} size="body" />, st.kmLeft != null && t.status === 'montado' ? <Num value={st.kmLeft} size="body" /> : '—', st.lifeCpk ? <Money v={st.lifeCpk * 1000} /> : '—', st.cpk ? <Money v={st.cpk * 1000} /> : '—', <TextButton onClick={() => onOpen(t.id)}>Abrir</TextButton>])} />
       </Card>
     </Stack>
   );
@@ -351,7 +349,6 @@ function Lista({ onOpen }: any) {
   const all = useAll();
   const [st, setSt] = useState('');
   const [q, setQ] = useState('');
-  const [more, setMore] = useState(25);
   const [form, setForm] = useState<any>(null);
   const mark = R.cfg.mark || '';
   const list = all.filter((x: any) => (!st || x.t.status === st) && (!q || (x.t.fireNumber + x.t.brand + x.t.size).toLowerCase().includes(q.toLowerCase())));
@@ -361,12 +358,11 @@ function Lista({ onOpen }: any) {
   useMobilePageAction({ label: 'Cadastrar pneu', icon: 'mais', onClick: novoPneu });
   return (
     <>
-      <Card title={`Pneus (${list.length})`} icon="pneus" actions={<div className="flex gap-2 flex-wrap items-center max-md:w-full"><SearchInput className="w-56 max-md:w-full" placeholder="Número, marca, medida" value={q} onChange={(v) => { setQ(v); setMore(25); }} aria-label="Buscar pneu" /><Button onClick={novoPneu} className="max-md:hidden"><Icon name="mais" size={16} />Cadastrar pneu</Button></div>}>
-        <div className="mb-4 empty:hidden"><FilterSheet count={st ? 1 : 0}><Pills value={st} onChange={(k) => { setSt(k); setMore(25); }} options={[{ key: '', label: 'Todos' }, ...Object.entries(TIRE_STATUS).map(([k, v]) => ({ key: k, label: v.label }))]} /></FilterSheet></div>
+      <Card title={`Pneus (${list.length})`} icon="pneus" actions={<div className="flex gap-2 flex-wrap items-center max-md:w-full"><SearchInput className="w-56 max-md:w-full" placeholder="Número, marca, medida" value={q} onChange={setQ} aria-label="Buscar pneu" /><Button onClick={novoPneu} className="max-md:hidden"><Icon name="mais" size={16} />Cadastrar pneu</Button></div>}>
+        <div className="mb-4 empty:hidden"><FilterSheet count={st ? 1 : 0}><Pills value={st} onChange={setSt} options={[{ key: '', label: 'Todos' }, ...Object.entries(TIRE_STATUS).map(([k, v]) => ({ key: k, label: v.label }))]} /></FilterSheet></div>
         <Table minWidth={1080} align={['left', 'left', 'left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'right']}
           emptyState={<EmptyState illustration="ilu-busca-veiculo" layout="row" title="Nenhum pneu com esses filtros" detail="Troque a situação ou limpe a busca." />}
-          head={['Pneu', 'Marca / modelo', 'Medida', 'Situação', 'Onde', 'Sulco', 'Vida', 'Km rodados', 'Gasto total', 'R$/1.000 km', '']} rows={list.slice(0, more).map(({ t, st: x }: any) => [<TireTag t={t} />, `${t.brand} ${t.model}`, t.size, <StatusDot kind={STATUS_DOT[t.status]} label={TIRE_STATUS[t.status].label} />, t.status === 'montado' ? <span className="text-small inline-flex items-center gap-tight whitespace-nowrap"><AssetName name={aName(s, t.assetId)} /> · {t.position}</span> : <span className="text-small text-ink-2">{t.location || '—'}</span>, <Level st={x} />, <span className="text-small">{lifeLabel(x.lifeNo)}<span className="text-ink-2 num"> · {x.lifeNo}/{t.maxLives}</span></span>, <Num value={x.kmAll} size="body" />, <Money v={x.cost} />, x.cpk ? <Money v={x.cpk * 1000} /> : '—', <TextButton onClick={() => onOpen(t.id)}>Abrir</TextButton>])} />
-        {list.length > more && <div className="mt-3 flex items-center gap-3"><Button variant="ghost" size="sm" onClick={() => setMore(more + 50)}>Mostrar mais</Button><span className="text-caption text-ink-2 num">{more} de {list.length}</span></div>}
+          head={['Pneu', 'Marca / modelo', 'Medida', 'Situação', 'Onde', 'Sulco', 'Vida', 'Km rodados', 'Gasto total', 'R$/1.000 km', '']} rows={list.map(({ t, st: x }: any) => [<TireTag t={t} />, `${t.brand} ${t.model}`, t.size, <StatusDot kind={STATUS_DOT[t.status]} label={TIRE_STATUS[t.status].label} />, t.status === 'montado' ? <span className="text-small inline-flex items-center gap-tight whitespace-nowrap"><AssetName name={aName(s, t.assetId)} /> · {t.position}</span> : <span className="text-small text-ink-2">{t.location || '—'}</span>, <Level st={x} />, <span className="text-small">{lifeLabel(x.lifeNo)}<span className="text-ink-2 num"> · {x.lifeNo}/{t.maxLives}</span></span>, <Num value={x.kmAll} size="body" />, <Money v={x.cost} />, x.cpk ? <Money v={x.cpk * 1000} /> : '—', <TextButton onClick={() => onOpen(t.id)}>Abrir</TextButton>])} />
       </Card>
       <Modal open={!!form} onClose={() => setForm(null)} title="Cadastrar pneu" width="max-w-3xl" footer={<><Button variant="ghost" onClick={() => setForm(null)}>Cancelar</Button><Missing className="mr-auto self-center" items={[!form?.number && 'o número de fogo', !form?.cost && 'o custo', dup && 'um número de fogo que ainda não exista']} /><Button disabled={!form?.number || !form?.cost || dup} onClick={async () => { await R.create({ fire: fire(form.number), brand: form.brand, model: form.model, size: form.size, dot: form.dot, recappable: form.recappable, maxLives: +form.maxLives, cost: +form.cost, supplier: form.supplier, tread: +form.tread, purchasedAt: new Date(form.purchaseDate + 'T12:00').getTime(), location: form.location }); toast(`Pneu ${fire(form.number)} cadastrado no estoque.`); setForm(null); }}>Salvar pneu</Button></>}>
         {form && <>

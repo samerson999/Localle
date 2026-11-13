@@ -140,7 +140,7 @@ function Portaria() {
     if (err) return toast(err, { tone: 'crit' });
     toast(`${k === 'saida' ? 'Saída' : 'Entrada'} de ${asset?.name} registrada.`); setAid('');
   };
-  const log = [...(s.gateLog || [])].sort((p: any, q: any) => q.ts - p.ts).slice(0, 15);
+  const log = [...(s.gateLog || [])].sort((p: any, q: any) => q.ts - p.ts);
   return (
     <Stack gap="grid">
       <Grid split="5/7" wide equal>
@@ -222,7 +222,6 @@ function Externas() {
   const N = useNames();
   const [t, setT] = useState<any>(null);
   const [flt, setFlt] = useState('abertas');
-  const [more, setMore] = useState(25);
   const all = s.trips.filter((x: any) => x.type === 'externo').sort((p: any, q: any) => (q.startedAt || Infinity) - (p.startedAt || Infinity));
   const list = all.filter((x: any) => (flt === 'abertas' ? ['aguardando', 'em_andamento'].includes(x.status) : x.status === flt));
   useMobilePageAction({ label: 'Nova viagem', icon: 'mais', onClick: () => setT({ stops: [], visited: [] }) });
@@ -230,12 +229,11 @@ function Externas() {
     <>
       <Card title="Viagens externas" icon="viagens" actions={<Button onClick={() => setT({ stops: [], visited: [] })} className="max-md:hidden"><Icon name="mais" size={16} />Nova viagem</Button>}>
         <p className="text-small text-ink-2 mb-3 max-w-[90ch]">A viagem começa ao sair da cerca de origem e passa pela carga, pela descarga e pelo destino. O trecho entre carga e descarga conta como "com carga". Ao concluir, o veículo que continua rodando sem viagem é sinalizado ao monitoramento.</p>
-        <div className="mb-4 empty:hidden"><FilterSheet count={flt !== 'abertas' ? 1 : 0}><Pills value={flt} onChange={(k) => { setFlt(k); setMore(25); }} options={[{ key: 'abertas', label: 'Abertas' }, { key: 'concluida', label: 'Concluídas' }, { key: 'cancelada', label: 'Canceladas' }]} /></FilterSheet></div>
-        <Table minWidth={1180} emptyState={<EmptyState illustration="ilu-viagens" layout="row" title="Nenhuma viagem nesta lista" detail="Troque o filtro ou cadastre uma nova viagem." />} head={['Viagem', 'Veículo', 'Carga', 'Etapas', 'Situação', 'Duração', '']} rows={list.slice(0, more).map((x: any) => [
+        <div className="mb-4 empty:hidden"><FilterSheet count={flt !== 'abertas' ? 1 : 0}><Pills value={flt} onChange={setFlt} options={[{ key: 'abertas', label: 'Abertas' }, { key: 'concluida', label: 'Concluídas' }, { key: 'cancelada', label: 'Canceladas' }]} /></FilterSheet></div>
+        <Table minWidth={1180} emptyState={<EmptyState illustration="ilu-viagens" layout="row" title="Nenhuma viagem nesta lista" detail="Troque o filtro ou cadastre uma nova viagem." />} head={['Viagem', 'Veículo', 'Carga', 'Etapas', 'Situação', 'Duração', '']} rows={list.map((x: any) => [
           <span className="font-medium">{x.name || '—'}</span>, <Plate name={N.a(x.assetId)} />, <span className="text-small">{x.cargo || '—'}{x.status === 'em_andamento' && <span className="block text-caption text-ink-2">{isLoaded(x) ? 'com carga' : x.unloadedAt ? 'descarregado' : 'sem carga'}</span>}</span>, <Stepper t={x} />,
           <StatusDot kind={TRIP_DOT[x.status].kind} label={TRIP_DOT[x.status].label} />, x.startedAt ? <span className="num">{hm((x.endedAt || Date.now()) - x.startedAt)}</span> : '—',
           ['aguardando', 'em_andamento'].includes(x.status) ? <TextButton tone="danger" className="whitespace-nowrap" onClick={async () => { if (!(await confirmAction({ title: 'Cancelar esta viagem?', detail: x.status === 'em_andamento' ? 'A viagem está em andamento e fica registrada como cancelada. Para seguir, será preciso criar outra.' : 'A viagem fica registrada como cancelada. Para seguir, será preciso criar outra.', confirmLabel: 'Cancelar viagem', cancelLabel: 'Manter' }))) return; try { await cancelarViagem(x.id); toast('Viagem cancelada.'); } catch (e: any) { toast('Não foi possível cancelar: ' + (e.message || e), { tone: 'crit' }); } }}>Cancelar</TextButton> : null])} />
-        {list.length > more && <div className="mt-3 flex items-center gap-3"><Button variant="ghost" size="sm" onClick={() => setMore(more + 50)}>Mostrar mais</Button><span className="text-caption text-ink-2 num">{more} de {list.length}</span></div>}
       </Card>
       {t && <TripForm t={t} setT={setT} />}
     </>
@@ -296,7 +294,7 @@ function Cumprimento({ m, a, b }: { m: any; a: [number, number]; b: [number, num
   const N = useNames();
   const C = useMemo(() => compliance(s, m, a[0], a[1]), [s.fenceVisits, m, a[0], a[1]]);
   const P = useMemo(() => (b ? compliance(s, m, b[0], b[1]) : null), [s.fenceVisits, m, b?.[0], b?.[1]]);
-  const days = [...C.days].reverse().slice(0, 14);
+  const days = [...C.days].reverse();
   const sentence = C.rate == null ? 'Ainda não há dias planejados no período.' : `${C.onTime} de ${C.total} paradas no horário${C.missed ? `, ${C.missed} não feitas` : ''}${C.late ? `, ${C.late} fora do horário` : ''}.${C.sleepTotal ? ` Dormiu no lugar previsto em ${C.sleepOk} de ${C.sleepTotal} noites.` : ''}`;
   return (
     <ChartCard title={m.name} icon="calendario" period={rangeText(a)} sentence={sentence} aside={<span className="text-small text-ink-2">{C.rate != null ? <><span className="num font-semibold text-ink">{pct(C.rate, 0)}</span> no horário{P?.rate != null && <span className="num"> · antes {pct(P.rate, 0)}</span>}</> : null}</span>} state={C.days.length ? 'ready' : 'empty'}>
@@ -304,7 +302,6 @@ function Cumprimento({ m, a, b }: { m: any; a: [number, number]; b: [number, num
         <span className="num whitespace-nowrap">{WEEKDAYS[d.wd]} {fmtD(d.day).slice(0, 5)}</span>,
         ...d.stops.map((x: any) => <span className="inline-flex flex-col"><StatusDot kind={STOP_DOT[x.status as StopStatus].kind} label={STOP_DOT[x.status as StopStatus].label} />{x.at && <span className="text-caption text-ink-2 num">{fmtT(x.at)}{x.status !== 'no_horario' ? ` (${x.diff > 0 ? '+' : ''}${Math.round(x.diff / 60000)} min)` : ''}</span>}</span>),
         d.sleep ? (d.sleep.ok == null ? <span className="text-ink-3 text-small">—</span> : <StatusDot kind={d.sleep.ok ? 'mov' : 'crit'} label={d.sleep.real ? N.f(d.sleep.real) : 'Sem registro'} />) : <span className="text-ink-3 text-small">—</span>])} />
-      {C.days.length > 14 && <p className="text-caption text-ink-2 mt-2">Mostrando os 14 dias planejados mais recentes; os números consideram o período todo.</p>}
     </ChartCard>
   );
 }

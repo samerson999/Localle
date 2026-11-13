@@ -234,7 +234,7 @@ function BI({ period }: { period: PeriodValue }) {
         </ul>
       </ChartCard>
       <Card title="Quem não lançou" icon="usuario" actions={miss.length ? <Button variant="ghost" size="sm" onClick={() => remind([...new Set(miss.map((m) => m.person))])}>Enviar lembrete para todos</Button> : undefined}>
-        <Table minWidth={680} head={['Pessoa', 'Checklist', 'Não lançados', 'Último previsto', '']} rows={miss.slice(0, 20).map((m) => [<span className="font-medium">{m.person}</span>, m.template, <span className="num">{m.n}</span>, <span className="num">{fmtD(m.last)}</span>,
+        <Table minWidth={680} head={['Pessoa', 'Checklist', 'Não lançados', 'Último previsto', '']} rows={miss.map((m) => [<span className="font-medium">{m.person}</span>, m.template, <span className="num">{m.n}</span>, <span className="num">{fmtD(m.last)}</span>,
           sent[m.person] ? <span className="text-caption text-ink-2 whitespace-nowrap">Lembrete enviado às <span className="num">{fmtDT(sent[m.person]).slice(-5)}</span></span> : <TextButton onClick={() => remind([m.person])}>Enviar lembrete</TextButton>])} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Todos os checklists previstos foram preenchidos" />} align={['left', 'left', 'right', 'left', 'right']} />
         {Object.keys(sent).length > 0 && <p className="text-caption text-ink-2 mt-3">O lembrete fica registrado; o envio por notificação do app do motorista ainda não está disponível.</p>}
         {miss.length > 20 && <p className="text-caption text-ink-2 mt-3">Mostrando 20 de {miss.length} combinações de pessoa e checklist.</p>}
@@ -409,7 +409,7 @@ function Respostas() {
   const [onlyFlag, setOnlyFlag] = useState(false);
   const tpl = (id: string) => R.templates.find((t: any) => t.id === id);
   const flags = (r: any) => (tpl(r.templateId)?.questions || []).filter((q: any) => r.answers?.[q.id]?.flagged ?? isFlagged(q, r.answers?.[q.id]?.value)).length;
-  const list = [...R.responses].filter((r: any) => !onlyFlag || flags(r)).sort((a: any, b: any) => b.finishedAt - a.finishedAt).slice(0, 150);
+  const list = [...R.responses].filter((r: any) => !onlyFlag || flags(r)).sort((a: any, b: any) => b.finishedAt - a.finishedAt);
   const openR = async (r: any) => { setV(r); setPhotos({}); const t = tpl(r.templateId); for (const q of (t?.questions || []).filter((q: any) => q.type === 'foto' || q.requirePhoto)) { const ph = await R.photoOf(r.id, q.id); if (ph) setPhotos((p) => ({ ...p, [q.id]: ph })); } };
   return (
     <>

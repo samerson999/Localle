@@ -156,7 +156,6 @@ function Lista({ onOpen }: { onOpen: (f: any) => void }) {
   const N = useNames();
   const [flt, setFlt] = useState('indicar');
   const [q, setQ] = useState('');
-  const [more, setMore] = useState(25);
   const blank = () => ({ auto: '', assetId: '', driverId: '', ts: '', notifiedAt: toInputD(Date.now()), place: '', code: '', description: '', severity: '', points: 0, value: '', dueDate: toInputD(Date.now() + FINE_PARAMS.dueDays * DAY), status: 'aberta', source: 'manual', org: 'DETRAN-PE' });
   const norm = (x: string) => (x || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '');
   const list = [...s.fines]
@@ -167,12 +166,12 @@ function Lista({ onOpen }: { onOpen: (f: any) => void }) {
   return (
     <Card title="Multas" icon="multas" actions={<Button onClick={() => onOpen(blank())} className="max-md:hidden"><Icon name="mais" size={16} />Lançar multa</Button>}>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <FilterSheet count={flt !== 'indicar' ? 1 : 0}><Pills value={flt} onChange={(k) => { setFlt(k); setMore(25); }} options={[{ key: 'indicar', label: 'Indicar condutor' }, { key: 'perdido', label: 'Prazo perdido' }, { key: 'aberta', label: 'Em aberto' }, { key: 'recurso', label: 'Em recurso' }, { key: 'paga', label: 'Pagas' }, { key: 'todas', label: 'Todas' }]} /></FilterSheet>
+        <FilterSheet count={flt !== 'indicar' ? 1 : 0}><Pills value={flt} onChange={setFlt} options={[{ key: 'indicar', label: 'Indicar condutor' }, { key: 'perdido', label: 'Prazo perdido' }, { key: 'aberta', label: 'Em aberto' }, { key: 'recurso', label: 'Em recurso' }, { key: 'paga', label: 'Pagas' }, { key: 'todas', label: 'Todas' }]} /></FilterSheet>
         <SearchInput className="ml-auto w-full sm:w-72" aria-label="Buscar multa" value={q} onChange={setQ} placeholder="Auto, placa, motorista ou infração" />
       </div>
       <Table minWidth={1120} align={['left', 'left', 'left', 'left', 'right', 'right', 'left', 'left', 'right']}
         emptyState={flt === 'indicar' ? <EmptyState illustration="ilu-tudo-em-dia" title="Nenhuma indicação pendente" detail="Todas as multas com prazo de indicação já têm condutor indicado." /> : <EmptyState illustration="ilu-multas" layout="row" title="Nenhuma multa nesta lista" detail="Troque o filtro ou lance uma multa." />}
-        head={['Infração em', 'Veículo', 'Condutor', 'Infração', 'Pontos', 'Valor (R$)', 'Indicação', 'Situação', '']} rows={list.slice(0, more).map((f: any) => {
+        head={['Infração em', 'Veículo', 'Condutor', 'Infração', 'Pontos', 'Valor (R$)', 'Indicação', 'Situação', '']} rows={list.map((f: any) => {
         const st = indicationState(f);
         return [<span className="num whitespace-nowrap">{fmtDT(f.ts)}</span>, <Plate name={N.a(f.assetId)} />, f.driverId ? N.d(f.driverId) : <span className="text-ink-2">não definido</span>,
           <span className="inline-flex flex-col items-start gap-hair text-small"><span>{f.description}</span><span className="text-ink-2 text-caption inline-flex items-center gap-tight"><IdChip size="sm">{f.code}</IdChip> auto <span className="font-mono">{f.auto}</span></span></span>, <span className="num">{f.points}</span>, <Num value={f.value} digits={2} size="body" />,
@@ -180,7 +179,6 @@ function Lista({ onOpen }: { onOpen: (f: any) => void }) {
           <StatusDot kind={STATUS[f.status].kind} label={STATUS[f.status].label} />,
           <div className="flex gap-3 justify-end">{PENDING.includes(st) && f.driverId && <TextButton className="whitespace-nowrap" onClick={() => indicate(f)}>Indicar</TextButton>}<TextButton onClick={() => onOpen(toForm(f))}>Abrir</TextButton></div>];
       })} />
-      {list.length > more && <div className="mt-3 flex items-center gap-3"><Button variant="ghost" size="sm" onClick={() => setMore(more + 50)}>Mostrar mais</Button><span className="text-caption text-ink-2 num">{more} de {list.length}</span></div>}
     </Card>
   );
 }

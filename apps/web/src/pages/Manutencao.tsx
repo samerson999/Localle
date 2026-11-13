@@ -246,21 +246,21 @@ function OsModal({ init, onClose }: any) {
         <div className="flex-[999_1_560px] min-w-0 flex flex-col gap-6">
           {w.id && (
             <div className="grid md:grid-cols-2 gap-6">
-              <section aria-label="O que aconteceu">
-                <h3 className="text-h3 font-semibold mb-3">O que aconteceu</h3>
+              <section aria-label="O que aconteceu" className="flex flex-col gap-3">
+                <h3 className="text-h3 font-semibold">O que aconteceu</h3>
                 {tl.length ? <Timeline items={tl} /> : <p className="text-small text-ink-2">Ainda sem etapas registradas.</p>}
               </section>
-              <section aria-label="Estimado × realizado">
-                <div className="flex flex-wrap items-baseline gap-2 mb-1"><h3 className="text-h3 font-semibold mr-auto">Estimado × realizado</h3><ChartLegend items={[{ kind: 'real-hatch', label: 'Estimado' }, { kind: 'real', label: 'Realizado' }, { kind: 'loss-hatch', label: 'Excesso' }]} /></div>
+              <section aria-label="Estimado × realizado" className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-2"><h3 className="text-h3 font-semibold mr-auto">Estimado × realizado</h3><ChartLegend items={[{ kind: 'real-hatch', label: 'Estimado' }, { kind: 'real', label: 'Realizado' }, { kind: 'loss-hatch', label: 'Excesso' }]} /></div>
                 {evItems.length ? <EstVsReal items={evItems} format={(v) => brl(v).replace(',00', '')} /> : <p className="text-small text-ink-2 py-3">{winner ? `Orçamento vencedor: ${brl(winner.value)}. Informe o valor estimado e o realizado de cada item abaixo.` : 'Escolha o orçamento vencedor ou informe o valor estimado de cada item.'}</p>}
-                {res.est != null && <p className="text-small text-ink-2 mt-2 num">Total estimado {brl(res.est)}{res.real != null && <> → realizado <span className="text-ink font-medium">{brl(res.real)}</span></>}</p>}
+                {res.est != null && <p className="text-small text-ink-2 num">Total estimado {brl(res.est)}{res.real != null && <> → realizado <span className="text-ink font-medium">{brl(res.real)}</span></>}</p>}
               </section>
             </div>
           )}
 
           {/* checklist de itens e serviços */}
           <section aria-label="Itens e serviços" className="flex flex-col gap-3">
-            <div className="flex items-baseline gap-2"><h3 className="text-h3 font-semibold mr-auto">Itens e serviços</h3>{items.length > 0 && <span className="text-small text-ink-2 num">{doneN} de {items.length} feitos</span>}</div>
+            <div className="flex flex-wrap items-center gap-2"><h3 className="text-h3 font-semibold mr-auto">Itens e serviços</h3>{items.length > 0 && <span className="text-small text-ink-2 num">{doneN} de {items.length} feitos</span>}</div>
             {items.length > 0 && (
               <ul className="flex flex-col border border-line rounded-ctl overflow-hidden">
                 <li aria-hidden="true" className="grid grid-cols-[auto_1fr_7.5rem_7.5rem_auto] gap-3 px-3 py-2 bg-card-2 text-caption text-ink-2 max-md:hidden"><span className="w-[18px]" /><span>Item</span><span>Estimado (R$)</span><span>Realizado (R$)</span><span className="w-8" /></li>
@@ -284,7 +284,7 @@ function OsModal({ init, onClose }: any) {
 
           {/* orçamentos */}
           <section aria-label="Orçamentos" className="flex flex-col gap-3">
-            <div className="flex items-center gap-2"><h3 className="text-h3 font-semibold mr-auto">Orçamentos <span className="text-ink-3 font-normal num">{w.quotes.length}/3</span></h3>{w.quotes.length < 3 && <Button size="sm" variant="ghost" onClick={() => setW({ ...w, quotes: [...w.quotes, { id: uid('q'), supplier: '', value: 0, days: 1, warranty: '', file: '' }], status: w.status === 'aberta' ? 'orcamento' : w.status })}><Icon name="mais" size={16} />Adicionar orçamento</Button>}</div>
+            <div className="flex flex-wrap items-center gap-2"><h3 className="text-h3 font-semibold mr-auto">Orçamentos <span className="text-ink-3 font-normal num">{w.quotes.length}/3</span></h3>{w.quotes.length < 3 && <Button size="sm" variant="ghost" onClick={() => setW({ ...w, quotes: [...w.quotes, { id: uid('q'), supplier: '', value: 0, days: 1, warranty: '', file: '' }], status: w.status === 'aberta' ? 'orcamento' : w.status })}><Icon name="mais" size={16} />Adicionar orçamento</Button>}</div>
             {w.quotes.length > 0 && (
               <div className="grid md:grid-cols-3 gap-field">
                 {w.quotes.map((q: any) => {
@@ -311,7 +311,7 @@ function OsModal({ init, onClose }: any) {
           </section>
 
           {/* evidências e comentários */}
-          <section aria-label="Evidências" className="flex flex-col gap-2">
+          <section aria-label="Evidências" className="flex flex-col gap-3">
             <h3 className="text-h3 font-semibold">Evidências</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {w.evidences.map((e: any) => (
@@ -440,7 +440,7 @@ function Escalonamento() {
       </Card>
       <Card title="Caixa de saída">
         <p className="text-small text-ink-2 mb-4 max-w-[80ch]">Os e-mails ficam nesta fila; o envio pelo provedor de e-mail ainda não está ligado.</p>
-        <Table minWidth={860} empty="Nenhum e-mail gerado ainda." head={['Quando', 'Nível', 'Para', 'Assunto', 'Ativo', 'Situação']} rows={outbox.slice(0, 100).map((o) => [
+        <Table minWidth={860} empty="Nenhum e-mail gerado ainda." head={['Quando', 'Nível', 'Para', 'Assunto', 'Ativo', 'Situação']} rows={outbox.map((o) => [
           <span className="num whitespace-nowrap">{fmtDT(o.ts)}</span>, <StatusDot kind={ESC_DOT[o.level]} label={ESC_LEVELS[o.level]} />,
           <span><span className="font-medium">{o.to}</span><span className="block text-caption text-ink-2">{o.email}</span></span>,
           <span><span>{o.title}</span><span className="block text-caption text-ink-2">{o.detail}</span></span>,

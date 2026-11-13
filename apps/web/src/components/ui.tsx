@@ -1071,7 +1071,9 @@ export function Pills({ options, value, onChange }: { options: { key: string; la
   );
 }
 // Paginação: página atual na cor da revenda. page começa em 0. compact = só vizinhas; total = "Mostrando 1–5 de 48".
-export function Pagination({ page, pages, onChange, total, pageSize, compact = false, className = '' }: { page: number; pages: number; onChange: (p: number) => void; total?: number; pageSize?: number; compact?: boolean; className?: string }) {
+// pageSizes + onPageSize: seletor de linhas por página ao lado do total.
+export function Pagination({ page, pages, onChange, total, pageSize, pageSizes, onPageSize, compact = false, className = '' }: { page: number; pages: number; onChange: (p: number) => void; total?: number; pageSize?: number; pageSizes?: number[]; onPageSize?: (n: number) => void; compact?: boolean; className?: string }) {
+  const mobile = useIsMobile();
   if (pages <= 1 && total == null) return null;
   const win = compact ? 1 : 2;
   const nums: (number | '…')[] = [];
@@ -1080,10 +1082,40 @@ export function Pagination({ page, pages, onChange, total, pageSize, compact = f
     else if (nums[nums.length - 1] !== '…') nums.push('…');
   }
   const n = (v: number) => v.toLocaleString('pt-BR');
+  // celular: com alvos de 44px a fila de números (até 9 + setas ≈ 520px) não cabe nos ~360px e estourava para o lado.
+  // Lá a navegação vira anterior · "Página 3 de 10" · próxima, numa linha própria de ponta a ponta.
+  if (mobile) return (
+    <nav aria-label="Paginação" className={cx('flex flex-col gap-stack', className)}>
+      {(total != null && pageSize) || (pageSize && pageSizes && onPageSize) ? (
+        <div className="flex items-center justify-between gap-3">
+          {total != null && pageSize ? <span className="text-small text-ink-2 num">{n(Math.min(total, page * pageSize + 1))}–{n(Math.min(total, (page + 1) * pageSize))} de {n(total)}</span> : <span />}
+          {pageSize && pageSizes && onPageSize && (
+            <span className="flex items-center gap-2 text-small text-ink-2">
+              <span className="w-[76px]"><Select aria-label="Linhas por página" value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))} options={pageSizes.map((v) => ({ value: String(v), label: String(v) }))} /></span>
+              por página
+            </span>
+          )}
+        </div>
+      ) : null}
+      {pages > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          <IconButton aria-label="Página anterior" size="sm" disabled={page === 0} onClick={() => onChange(page - 1)}><Icon name="voltar" size={18} /></IconButton>
+          <span className="text-small text-ink num" aria-live="polite">Página <b className="font-semibold">{n(page + 1)}</b> de {n(pages)}</span>
+          <IconButton aria-label="Próxima página" size="sm" disabled={page >= pages - 1} onClick={() => onChange(page + 1)}><Icon name="chevron" size={18} /></IconButton>
+        </div>
+      )}
+    </nav>
+  );
   return (
     <nav aria-label="Paginação" className={cx('flex flex-wrap items-center gap-x-4 gap-y-2', className)}>
-      {total != null && pageSize && <span className="text-small text-ink-2 num mr-auto">Mostrando {n(Math.min(total, page * pageSize + 1))}–{n(Math.min(total, (page + 1) * pageSize))} de {n(total)}</span>}
-      <div className="flex items-center gap-1">
+      {total != null && pageSize && <span className="text-small text-ink-2 num">Mostrando {n(Math.min(total, page * pageSize + 1))}–{n(Math.min(total, (page + 1) * pageSize))} de {n(total)}</span>}
+      {pageSize && pageSizes && onPageSize && (
+        <span className="flex items-center gap-2 text-small text-ink-2">
+          <span className="w-[76px]"><Select aria-label="Linhas por página" value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))} options={pageSizes.map((v) => ({ value: String(v), label: String(v) }))} /></span>
+          por página
+        </span>
+      )}
+      <div className={cx('flex items-center gap-1', total != null && 'ml-auto', pages <= 1 && 'hidden')}>
         <IconButton aria-label="Página anterior" size="sm" disabled={page === 0} onClick={() => onChange(page - 1)}><Icon name="voltar" size={18} /></IconButton>
         {nums.map((x, i) => x === '…' ? <span key={'e' + i} className="w-8 text-center text-ink-3">…</span>
           : <button key={x} type="button" aria-current={x === page ? 'page' : undefined} aria-label={`Página ${x + 1}`} onClick={() => onChange(x)}
@@ -1348,20 +1380,27 @@ const CELL_X = 'px-cell first:pl-[max(var(--bleed),var(--cell-x))] last:pr-[max(
 // `card`: versão empilhada para telas estreitas (abaixo de md), no lugar da tabela larga. Sem `card`, uma tabela que não
 // cabe no celular (minWidth > 480) ganha a versão automática (autoCard); `card={false}` mantém a rolagem lateral
 // (matriz em que a leitura cruzada importa).
-// Acima de `pageSize` linhas, pagina e mostra o total. Coluna de cabeçalho vazia ('') = ações, alinhada à direita.
+// Acima de `pageSize` linhas, pagina e mostra o total, com seletor de linhas por página (PAGE_SIZES + o pageSize pedido).
+// Quando a quantidade de linhas muda (busca, filtro), volta para a 1ª página. Coluna de cabeçalho vazia ('') = ações, alinhada à direita.
 // align: alinhamento por coluna (números à direita). selected: linhas marcadas (fundo neutro; o checkbox fica com quem usa).
 // loading: linhas de esqueleto. emptyState: estado vazio rico (ilustração), no lugar do texto `empty`.
 // sort: colunas ordenáveis → valor da linha i nessa coluna (clique no cabeçalho alterna crescente/decrescente; vazio vai
 // para o fim). Os índices de onRow/selected/card continuam sendo os de `rows`.
 // Desenho do Table do HeroUI v3 (variante primary): moldura cinza com o cabeçalho, corpo em branco com cantos
 // arredondados, divisórias curtas entre os títulos de coluna.
-export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, minWidth = 640, onRow, pageSize = 50, card: cardProp, align, selected, loading, dense, sort }: {
+const PAGE_SIZES = [10, 20, 50];
+export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, minWidth = 640, onRow, pageSize: pageSizeProp = 20, card: cardProp, align, selected, loading, dense, sort }: {
   head: React.ReactNode[]; rows: React.ReactNode[][]; empty?: string; emptyState?: React.ReactNode; minWidth?: number; onRow?: (i: number) => void; pageSize?: number;
   card?: ((i: number) => React.ReactNode) | false; align?: ('left' | 'right' | 'center')[]; selected?: (i: number) => boolean; loading?: boolean; dense?: boolean;
   sort?: Record<number, (i: number) => string | number | null | undefined>;
 }) {
   const card = cardProp === false ? undefined : cardProp ?? (minWidth > 480 ? (i: number) => <AutoCard head={head} row={rows[i]} /> : undefined);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(pageSizeProp);
+  const sizes = PAGE_SIZES.includes(pageSizeProp) ? PAGE_SIZES : [...PAGE_SIZES, pageSizeProp].sort((a, b) => a - b);
+  // lista filtrada (outra quantidade de linhas) volta para a 1ª página, no mesmo render
+  const [len, setLen] = useState(rows.length);
+  if (len !== rows.length) { setLen(rows.length); setPage(0); }
   const [by, setBy] = useState<{ col: number; desc: boolean } | null>(null);
   const order = rows.map((_, i) => i);
   const key = by && sort?.[by.col];
@@ -1423,7 +1462,9 @@ export function Table({ head, rows, empty = 'Nada por aqui ainda.', emptyState, 
           </table>
         </div>
       </div>
-      {rows.length > pageSize && <Pagination className="pt-stack px-1" page={pg} pages={pages} onChange={setPage} total={rows.length} pageSize={pageSize} />}
+      {/* sem barra quando cabe em uma página; se a pessoa trocou o tamanho, a barra fica para poder voltar */}
+      {!loading && (rows.length > pageSize || (pageSize !== pageSizeProp && rows.length > sizes[0])) && <Pagination className="pt-stack px-1" page={pg} pages={pages} onChange={setPage} total={rows.length} pageSize={pageSize}
+        pageSizes={sizes} onPageSize={(v) => { setPageSize(v); setPage(0); }} />}
     </div>
   );
 }

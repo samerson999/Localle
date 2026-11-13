@@ -112,8 +112,7 @@ function Painel({ goDocs, period }: { goDocs: () => void; period: PeriodValue })
         )}
       </Card>
       <Card title="Descumprimentos do período" icon="alerta">
-        <Table minWidth={760} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Nenhum descumprimento no período" />} head={['Data', 'Motorista', 'Descumprimento', 'Detalhe']} rows={A.slice(0, 80).map(({ d, x, v }) => [<span className="num">{fmtD(x.day)}</span>, <span className="font-medium">{d.name}</span>, <StatusDot kind="parado" label={v.label} />, <span className="text-small text-ink-2">{v.detail}</span>])} />
-        {A.length > 80 && <p className="text-caption text-ink-2 mt-2 num">Mostrando os 80 mais recentes de {A.length}.</p>}
+        <Table minWidth={760} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Nenhum descumprimento no período" />} head={['Data', 'Motorista', 'Descumprimento', 'Detalhe']} rows={A.map(({ d, x, v }) => [<span className="num">{fmtD(x.day)}</span>, <span className="font-medium">{d.name}</span>, <StatusDot kind="parado" label={v.label} />, <span className="text-small text-ink-2">{v.detail}</span>])} />
       </Card>
     </Stack>
   );
@@ -125,7 +124,7 @@ function Marcacoes() {
   const [type, setType] = useState('inicio_jornada');
   const [ts, setTs] = useState(toInputDT(Date.now()));
   const [src, setSrc] = useState('app');
-  const marks = s.journey.filter((m: any) => m.driverId === d).sort((a: any, b: any) => b.ts - a.ts).slice(0, 80);
+  const marks = s.journey.filter((m: any) => m.driverId === d).sort((a: any, b: any) => b.ts - a.ts);
   if (!s.drivers.length) return <Card title="Registrar marcação" icon="mais"><EmptyState illustration="ilu-jornada" title="Nenhum motorista cadastrado" detail="Cadastre um motorista em Ativos para lançar ou receber marcações de jornada." /></Card>;
   return (
     <Stack gap="grid">
