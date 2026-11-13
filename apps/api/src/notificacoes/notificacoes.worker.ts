@@ -22,6 +22,19 @@ interface AlertaParaPush {
   tipo: string;
   titulo: string;
   prioridade: 'alta' | 'media' | 'baixa';
+  veiculo: string | null;
+  /** "Notificar no celular" do catálogo (Console › Tipos de alerta); null = regra/cerca, fora do catálogo. */
+  notifica_push: boolean | null;
+}
+
+/**
+ * Texto que o aparelho mostra (12/11/2026). No iPhone o título ocupa uma linha só e o sistema ainda põe
+ * "de Localle" embaixo (não há como tirar), então o título é curto — o veículo — e a frase do alerta vai
+ * no corpo, que quebra linha. Nunca o `tipo` cru ("sem_posicao"): o worker manda o texto pronto.
+ */
+export function textoDoPush(a: Pick<AlertaParaPush, 'titulo' | 'prioridade' | 'veiculo'>): { titulo: string; corpo: string } {
+  const quem = a.veiculo?.trim() || 'Alerta da frota';
+  return { titulo: a.prioridade === 'alta' ? `${quem} · Crítico` : quem, corpo: a.titulo };
 }
 
 /**
@@ -105,7 +118,7 @@ export class NotificacoesWorker implements OnModuleInit, OnModuleDestroy {
       alertaId: alerta.id,
       assetId: alerta.asset_id,
       tipo: alerta.tipo,
-      titulo: alerta.titulo,
+      ...textoDoPush(alerta),
       prioridade: alerta.prioridade,
     });
 
@@ -116,7 +129,12 @@ export class NotificacoesWorker implements OnModuleInit, OnModuleDestroy {
 
   private async buscarAlerta(clientId: string, alertaId: string): Promise<AlertaParaPush | null> {
     const { rows } = await this.pool.query<AlertaParaPush>(
-      `select id, asset_id, tipo, titulo, prioridade from alertas where client_id = $1 and id = $2`,
+      `select a.id, a.asset_id, a.tipo, a.titulo, a.prioridade, coalesce(nullif(s.plate, ''), s.identificador) as veiculo,
+              t.notifica_push
+         from alertas a
+         left join assets s on s.id = a.asset_id and s.client_id = a.client_id
+         left join alerta_tipos t on t.chave = a.tipo
+        where a.client_id = $1 and a.id = $2`,
       [clientId, alertaId],
     );
     return rows[0] ?? null;
@@ -138,8 +156,9 @@ export class NotificacoesWorker implements OnModuleInit, OnModuleDestroy {
       if (!(await this.permissions.isAllowed(clientId, u.role, 'monitoramento.ver'))) continue;
       const prefs = await this.preferencias.listar(clientId, u.id);
       const pref = prefs.find((p) => p.tipo === alerta.tipo);
-      // sem posição notifica em todo nível (4 h, 12 h, 24 h) por padrão — decisão de 11/11/2026
-      const ativo = pref ? pref.ativo : alerta.prioridade === 'alta' || alerta.tipo === TIPO_SEM_POSICAO;
+      // sem preferência: o catálogo da plataforma decide; regra/cerca (fora dele) só prioridade alta. Sem posição
+      // notifica em todo nível (4 h, 12 h, 24 h) — decisão de 11/11/2026, hoje semeada no catálogo
+      const ativo = pref ? pref.ativo : alerta.notifica_push ?? (alerta.prioridade === 'alta' || alerta.tipo === TIPO_SEM_POSICAO);
       if (ativo) idsComAcesso.push(u.id);
     }
     return this.aparelhos.listarDoCliente(clientId, idsComAcesso);

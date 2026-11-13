@@ -21,6 +21,27 @@ describe('condicaoAtende', () => {
     expect(condicaoAtende({ field: 'ignicao', op: '=', value: 'Desligada' }, ctx({ ignition: null }))).toBe(false);
   });
 
+  it('estado lido do rastreador: tensão, satélites, sinal e bloqueio pela leitura do modelo; sem leitura é falso', () => {
+    const telemetria = { tensaoV: 11.2, satelites: 3, sinalGsm: 1, bloqueado: true };
+    expect(condicaoAtende({ field: 'tensao', op: '<', value: '11.5' }, ctx({ telemetria }))).toBe(true);
+    expect(condicaoAtende({ field: 'tensao', op: '<', value: '11.5' }, ctx())).toBe(false);
+    expect(condicaoAtende({ field: 'satelites', op: '<', value: '4' }, ctx({ telemetria }))).toBe(true);
+    expect(condicaoAtende({ field: 'sinal_gsm', op: '>', value: '2' }, ctx({ telemetria }))).toBe(false);
+    // leitura do modelo vale sobre o `blocked` cru
+    expect(condicaoAtende({ field: 'bloqueio', op: '=', value: 'Ativo' }, ctx({ telemetria, attributes: { blocked: false } }))).toBe(true);
+  });
+
+  it('atributo cru do Traccar: número, booleano e texto; ausente nunca atende (nem no ≠)', () => {
+    const a = { in1: true, io239: 1, fuel: '42.5', modo: 'eco' };
+    expect(condicaoAtende({ field: 'atributo', attr: 'in1', op: '=', value: 'true' }, ctx({ attributes: a }))).toBe(true);
+    expect(condicaoAtende({ field: 'atributo', attr: 'io239', op: '=', value: '1' }, ctx({ attributes: a }))).toBe(true);
+    expect(condicaoAtende({ field: 'atributo', attr: 'fuel', op: '<', value: '50' }, ctx({ attributes: a }))).toBe(true);
+    expect(condicaoAtende({ field: 'atributo', attr: 'modo', op: '≠', value: 'eco' }, ctx({ attributes: a }))).toBe(false);
+    expect(condicaoAtende({ field: 'atributo', attr: 'modo', op: '>', value: '1' }, ctx({ attributes: a }))).toBe(false);
+    expect(condicaoAtende({ field: 'atributo', attr: 'in2', op: '≠', value: 'true' }, ctx({ attributes: a }))).toBe(false);
+    expect(condicaoAtende({ field: 'atributo', attr: 'constructor', op: '=', value: 'x' }, ctx({ attributes: a }))).toBe(false);
+  });
+
   it('horário e dia no fuso da operação (não em UTC)', () => {
     expect(condicaoAtende({ field: 'horario', op: 'depois de', value: '22:00' }, ctx())).toBe(true);
     expect(condicaoAtende({ field: 'horario', op: 'antes de', value: '22:00' }, ctx())).toBe(false);

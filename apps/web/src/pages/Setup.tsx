@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../lib/store';
-import { setupApi, syncParametros, type SetupHistorico, type SetupParametro } from '../lib/localleApi';
+import { alertaTiposCliente, setupApi, syncParametros, type AlertaTipoDoCliente, type SetupHistorico, type SetupParametro } from '../lib/localleApi';
 import { Badge, Button, Callout, Card, Field, Input, Modal, PageHeader, Pills, SearchInput, Select, Switch, Table, Tabs, TabPanel, TextButton, cx, toast, confirmAction, EmptyState, Skeleton, useUrlTab } from '../components/ui';
 import { Stack } from '../components/primitives';
 import { Icon } from '../components/icons';
@@ -37,7 +37,9 @@ export default function Setup() {
   useEffect(() => { setParams(null); carregar(); }, [groupId]);
 
   const modulos = useMemo(() => [...new Set((params || []).map((p) => p.modulo))].filter((m) => !groupId || (params || []).some((p) => p.modulo === m && p.porGrupo)), [params, groupId]);
-  useEffect(() => { if (modulos.length && !modulos.includes(tab)) setTab(modulos[0]); }, [modulos.join()]);
+  // "Alertas da plataforma" não é parâmetro do registro: só na camada da empresa (vale para a frota toda)
+  const abas = groupId ? modulos : [...modulos, ALERTAS];
+  useEffect(() => { if (modulos.length && !abas.includes(tab)) setTab(abas[0]); }, [abas.join()]);
   const termo = q.trim().toLowerCase();
   const visiveis = (params || []).filter((p) => (termo ? (p.label + ' ' + p.key).toLowerCase().includes(termo) : p.modulo === tab) && (!groupId || p.porGrupo));
 
@@ -56,7 +58,7 @@ export default function Setup() {
     <div>
       <PageHeader title="Setup" subtitle="Padrões e limites de cada parâmetro de operação. A lei é piso: o valor só pode ser mais rigoroso." />
       <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
-        {!termo && <Tabs value={tab} onChange={setTab} tabs={modulos.map((m) => ({ key: m, label: MODULOS[m] || m }))} />}
+        {!termo && <Tabs value={tab} onChange={setTab} tabs={abas.map((m) => ({ key: m, label: m === ALERTAS ? 'Alertas da plataforma' : MODULOS[m] || m }))} />}
         <div className="ml-auto flex flex-wrap items-center gap-tight max-md:ml-0 max-md:w-full">
           <Pills value={camada} onChange={setCamada} options={[{ key: 'empresa', label: 'Empresa' }, ...groups.map((g: any) => ({ key: g.id, label: g.name }))]} />
           <SearchInput className="w-56 max-md:w-full" value={q} onChange={setQ} placeholder="Buscar parâmetro" aria-label="Buscar parâmetro" />
@@ -64,7 +66,8 @@ export default function Setup() {
       </div>
       {groupId && <Callout className="mb-card-head">Camada do grupo: só os parâmetros que aceitam exceção por grupo aparecem. O que não for definido aqui herda da empresa.</Callout>}
       <TabPanel id={termo ? 'busca' : tab}>
-        {erro ? <Card><EmptyState illustration="ilu-erro" title="Não foi possível carregar o Setup" detail={erro} action={<Button onClick={carregar}>Tentar de novo</Button>} /></Card>
+        {!termo && tab === ALERTAS && !groupId ? <AlertasDaPlataforma />
+          : erro ? <Card><EmptyState illustration="ilu-erro" title="Não foi possível carregar o Setup" detail={erro} action={<Button onClick={carregar}>Tentar de novo</Button>} /></Card>
           : !params ? <Card><Stack gap="tight"><Skeleton className="h-10" /><Skeleton className="h-10" /><Skeleton className="h-10" /></Stack></Card>
           : visiveis.length === 0 ? <Card><EmptyState title="Nenhum parâmetro" detail={termo ? 'Nada encontrado com esse termo.' : 'Este módulo não tem parâmetro nesta camada.'} /></Card>
           : <Card>
@@ -83,6 +86,94 @@ export default function Setup() {
       </TabPanel>
       {hist && <Historico p={hist} groupId={groupId} onClose={() => setHist(null)} />}
     </div>
+  );
+}
+
+const ALERTAS = 'alertas-plataforma';
+const PRIO: Record<string, string> = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+const DISPARO: Record<string, string> = { condicao: 'Estado do rastreador', alarme: 'Alarme do rastreador', sistema: 'Plataforma' };
+
+/**
+ * Alertas gerais que a Locale configura no Console (Tipos de alerta). Todos nascem ligados; aqui a operação desliga os
+ * que não quer receber (o evento continua no histórico do rastreador, só não vira alerta). Salva na hora.
+ */
+// o que o alerta padrão mede, em linguagem de gestor (campo da 1ª condição)
+const MEDE: Record<string, { label: string; unidade: string }> = {
+  tensao: { label: 'Tensão da bateria', unidade: 'V' },
+  satelites: { label: 'Satélites do GPS', unidade: '' },
+  sinal_gsm: { label: 'Sinal da rede celular (0 a 5)', unidade: '' },
+  velocidade: { label: 'Velocidade', unidade: 'km/h' },
+  temperatura: { label: 'Temperatura', unidade: '°C' },
+};
+const OP: Record<string, string> = { '<': 'abaixo de', '>': 'acima de' };
+const num = (s: string | null) => (s === null ? '' : String(s).replace('.', ','));
+function regraPadrao(t: AlertaTipoDoCliente) {
+  const m = MEDE[t.campo || ''];
+  const limite = t.limite ?? t.limitePadrao;
+  const dur = t.duracaoMin ?? t.duracaoPadrao;
+  return `${m?.label || t.campo} ${OP[t.operador || ''] || t.operador} ${num(limite)}${m?.unidade ? ` ${m.unidade}` : ''}${dur ? ` por ${dur} min` : ''}`;
+}
+
+function AlertasDaPlataforma() {
+  const [lista, setLista] = useState<AlertaTipoDoCliente[] | null>(null);
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState('');
+  const [ajuste, setAjuste] = useState<null | { t: AlertaTipoDoCliente; limite: string; duracao: string }>(null);
+  const carregar = () => alertaTiposCliente.listar().then((l) => { setLista(l); setErro(''); }).catch((e) => setErro(e.message || String(e)));
+  useEffect(() => { carregar(); }, []);
+  const salvar = async (t: AlertaTipoDoCliente, a: { ligado?: boolean; valor?: number | null; duracaoMin?: number | null }, ok: string) => {
+    setSalvando(t.chave);
+    try {
+      const novo = await alertaTiposCliente.definir(t.chave, a);
+      setLista((cur) => (cur || []).map((x) => (x.chave === t.chave ? novo : x)));
+      toast(ok);
+      return true;
+    } catch (e: any) {
+      toast('Não foi possível salvar: ' + (e.message || e), { tone: 'crit' });
+      return false;
+    } finally {
+      setSalvando('');
+    }
+  };
+  const definir = (t: AlertaTipoDoCliente, ligado: boolean) =>
+    salvar(t, { ligado }, ligado ? `${t.nome}: volta a gerar alerta.` : `${t.nome}: não gera mais alerta para a sua operação.`);
+  const confirmarAjuste = async () => {
+    if (!ajuste) return;
+    const limite = Number(ajuste.limite.replace(',', '.')), duracao = Number(ajuste.duracao);
+    if (!ajuste.limite.trim() || !Number.isFinite(limite)) return toast('Informe o limite.', { tone: 'crit' });
+    if (!Number.isInteger(duracao) || duracao < 0 || duracao > 1440) return toast('Duração de 0 a 1440 minutos.', { tone: 'crit' });
+    if (await salvar(ajuste.t, { valor: limite, duracaoMin: duracao }, `${ajuste.t.nome}: ajustado para a sua operação.`)) setAjuste(null);
+  };
+  const padraoDeNovo = async () => {
+    if (ajuste && (await salvar(ajuste.t, { valor: null, duracaoMin: null }, `${ajuste.t.nome}: voltou ao padrão da plataforma.`))) setAjuste(null);
+  };
+  if (erro) return <Card><EmptyState illustration="ilu-erro" title="Não foi possível carregar os alertas" detail={erro} action={<Button onClick={carregar}>Tentar de novo</Button>} /></Card>;
+  if (!lista) return <Card><Stack gap="tight"><Skeleton className="h-10" /><Skeleton className="h-10" /></Stack></Card>;
+  return (
+    <Card>
+      <p className="text-small text-ink-2 mb-card-head">Alertas oferecidos pela plataforma, ligados por padrão. Desligado, o alerta não aparece para a sua operação nem notifica o celular; o que já foi gerado continua no histórico.</p>
+      <Table minWidth={760} head={['Alerta', 'Quando dispara', 'Prioridade', 'Dispara', '']} align={['left', 'left', 'left', 'left', 'right']} emptyState={<EmptyState title="Nenhum alerta oferecido pela plataforma" />} rows={lista.map((t) => [
+        <span className="font-medium">{t.nome}</span>,
+        t.padrao
+          ? <div className="flex flex-col gap-hair"><span className="text-small">{regraPadrao(t)}</span><span className="text-caption text-ink-2">{t.limite !== null || t.duracaoMin !== null ? 'Ajustado pela empresa' : 'Padrão da plataforma'}</span></div>
+          : <span className="text-small text-ink-2">{DISPARO[t.disparo] || t.disparo}</span>,
+        t.prioridade ? PRIO[t.prioridade] : <span className="text-small text-ink-2">Varia</span>,
+        <div className="flex items-center gap-tight"><Switch aria-label={`${t.nome}: dispara`} checked={t.ligado} disabled={salvando === t.chave} onChange={(v) => definir(t, v)} /><span className="text-small text-ink-2">{t.ligado ? 'Ligado' : 'Desligado'}</span></div>,
+        t.padrao ? <TextButton onClick={() => setAjuste({ t, limite: num(t.limite ?? t.limitePadrao), duracao: String(t.duracaoMin ?? t.duracaoPadrao) })}>Ajustar</TextButton> : '',
+      ])} />
+      <Modal open={!!ajuste} onClose={() => setAjuste(null)} title={ajuste ? `Ajustar · ${ajuste.t.nome}` : ''}
+        footer={<>{ajuste && (ajuste.t.limite !== null || ajuste.t.duracaoMin !== null) && <TextButton className="mr-auto self-center" onClick={padraoDeNovo}>Voltar ao padrão</TextButton>}<Button variant="ghost" onClick={() => setAjuste(null)}>Cancelar</Button><Button loading={!!salvando} onClick={confirmarAjuste}>Salvar</Button></>}>
+        {ajuste && <div className="grid gap-field">
+          <Field label={`Dispara com ${(MEDE[ajuste.t.campo || '']?.label || ajuste.t.campo || '').toLowerCase()} ${OP[ajuste.t.operador || ''] || ajuste.t.operador}${MEDE[ajuste.t.campo || '']?.unidade ? ` (${MEDE[ajuste.t.campo || ''].unidade})` : ''}`} hint={`Padrão da plataforma: ${num(ajuste.t.limitePadrao)}`}>
+            <Input inputMode="decimal" value={ajuste.limite} onChange={(e) => setAjuste({ ...ajuste, limite: e.target.value })} autoFocus />
+          </Field>
+          <Field label="Por pelo menos (minutos)" hint={`Padrão da plataforma: ${ajuste.t.duracaoPadrao} min. Evita alerta por oscilação.`}>
+            <Input type="number" min={0} max={1440} value={ajuste.duracao} onChange={(e) => setAjuste({ ...ajuste, duracao: e.target.value })} />
+          </Field>
+          <p className="text-small text-ink-2">Vale a partir de agora, para a frota toda da sua empresa.</p>
+        </div>}
+      </Modal>
+    </Card>
   );
 }
 

@@ -10,12 +10,19 @@ export type CampoRegra =
   | 'horario'
   | 'dia_semana'
   | 'dentro_cerca'
-  | 'fora_cerca';
+  | 'fora_cerca'
+  // estado lido do rastreador (src/telemetria/leitura.ts, com o mapeamento do modelo): alertas da plataforma
+  | 'tensao'
+  | 'satelites'
+  | 'sinal_gsm'
+  | 'atributo';
 
 export interface Condicao {
   field: CampoRegra;
   op: string;
   value: string;
+  /** Só `atributo`: chave crua do Traccar (ex.: in1, io239, fuel). */
+  attr?: string;
 }
 
 /** Operadores e valores aceitos por campo — o mesmo catálogo de RULE_FIELDS (packages/shared/src/engine.ts). */
@@ -32,7 +39,14 @@ export const CAMPOS: Record<CampoRegra, { ops: string[]; values?: string[]; nume
   dia_semana: { ops: ['='], values: ['Fim de semana', 'Dia útil'] },
   dentro_cerca: { ops: ['='] },
   fora_cerca: { ops: ['='] },
+  tensao: { ops: ['<', '>'], numerico: true },
+  satelites: { ops: ['<', '>'], numerico: true },
+  sinal_gsm: { ops: ['<', '>'], numerico: true },
+  atributo: { ops: ['=', '≠', '>', '<'] },
 };
+
+/** Campos que um alerta da plataforma (Console › Tipos de alerta) pode usar: estado do rastreador, sem cerca do cliente. */
+export const CAMPOS_PLATAFORMA: CampoRegra[] = ['tensao', 'alimentacao', 'bloqueio', 'ignicao', 'velocidade', 'satelites', 'sinal_gsm', 'temperatura', 'porta', 'atributo', 'horario', 'dia_semana'];
 
 export interface ContextoRegra {
   fixTime: Date;
@@ -44,6 +58,23 @@ export interface ContextoRegra {
   attributes: Record<string, unknown>;
   /** Alimentação externa pela leitura da telemetria (src/telemetria/leitura.ts); null = o aparelho não informa. */
   alimentacaoExterna?: boolean | null;
+  /** Leitura do estado com o mapeamento do modelo (tensão, satélites, sinal, bloqueio); ausente = não lido. */
+  telemetria?: { tensaoV: number | null; satelites: number | null; sinalGsm: number | null; bloqueado: boolean | null };
+}
+
+/** `atributo`: número compara como número, booleano como "true"/"false", o resto como texto. Ausente = falso. */
+function atributoAtende(c: Condicao, attributes: Record<string, unknown>): boolean {
+  if (!c.attr || !Object.prototype.hasOwnProperty.call(attributes, c.attr)) return false;
+  const v = attributes[c.attr];
+  if (v === null || v === undefined) return false;
+  if (c.op === '>' || c.op === '<') {
+    const atual = typeof v === 'number' ? v : typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : null;
+    const alvo = Number(c.value);
+    if (atual === null || !Number.isFinite(alvo)) return false;
+    return c.op === '>' ? atual > alvo : atual < alvo;
+  }
+  const igual = typeof v === 'number' && /^-?\d+(\.\d+)?$/.test(c.value) ? v === Number(c.value) : String(v) === c.value;
+  return c.op === '=' ? igual : c.op === '≠' ? !igual : false;
 }
 
 /** Horário e dia são regra da empresa: valem no fuso da operação, não em UTC. */
@@ -82,8 +113,19 @@ export function condicaoAtende(c: Condicao, ctx: ContextoRegra, fuso = FUSO_PADR
       return compara(numero(ctx.attributes.temp1));
     case 'porta':
       return typeof ctx.attributes.door === 'boolean' && (c.value === 'Aberta') === ctx.attributes.door;
-    case 'bloqueio':
-      return typeof ctx.attributes.blocked === 'boolean' && (c.value === 'Ativo') === ctx.attributes.blocked;
+    case 'bloqueio': {
+      // leitura pelo mapeamento do modelo quando houver; senão o `blocked` do Traccar, como antes
+      const b = typeof ctx.telemetria?.bloqueado === 'boolean' ? ctx.telemetria.bloqueado : ctx.attributes.blocked;
+      return typeof b === 'boolean' && (c.value === 'Ativo') === b;
+    }
+    case 'tensao':
+      return compara(ctx.telemetria?.tensaoV ?? null);
+    case 'satelites':
+      return compara(ctx.telemetria?.satelites ?? null);
+    case 'sinal_gsm':
+      return compara(ctx.telemetria?.sinalGsm ?? null);
+    case 'atributo':
+      return atributoAtende(c, ctx.attributes);
     case 'panico':
       return ctx.alarms.includes('sos');
     case 'alimentacao': {

@@ -19,7 +19,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { NotificacaoFilaRepository } from './notificacao-fila.repository';
 import { NotificacaoAparelhosRepository, NotificacaoPreferenciasRepository } from './notificacoes.repository';
-import { NotificacoesWorker } from './notificacoes.worker';
+import { NotificacoesWorker, textoDoPush } from './notificacoes.worker';
 
 /**
  * Fila + worker de push contra o Postgres real; só o envio HTTP (`web-push`) é simulado — é fronteira de
@@ -77,8 +77,8 @@ describe('notificações — fila nasce com o alerta, worker resolve destinatár
     await pool.end();
   });
 
-  const novoAlerta = (clientId: string, assetId: string | null, tipo = 'sos', prioridade: 'alta' | 'media' | 'baixa' = 'alta') =>
-    inserirAlerta(pool, {
+  const novoAlerta = async (clientId: string, assetId: string | null, tipo = 'sos', prioridade: 'alta' | 'media' | 'baixa' = 'alta') =>
+    (await inserirAlerta(pool, {
       clientId,
       assetId,
       eventoId: null,
@@ -88,7 +88,7 @@ describe('notificações — fila nasce com o alerta, worker resolve destinatár
       detalhe: null,
       prioridade,
       ts: new Date(),
-    });
+    }))!;
 
   it('inserirAlerta enfileira a notificação na mesma transação (mesmo pool de teste)', async () => {
     const alerta = await novoAlerta(clientA, assetA);
@@ -108,6 +108,12 @@ describe('notificações — fila nasce com o alerta, worker resolve destinatár
     expect(n).toBeGreaterThan(0);
     expect(enviar).toHaveBeenCalledTimes(1);
     expect(enviar.mock.calls[0][0]).toMatchObject({ endpoint });
+    // texto pronto para o aparelho: título curto (o veículo) e a frase no corpo — nunca o tipo cru
+    expect(JSON.parse(enviar.mock.calls[0][1] as string)).toMatchObject({
+      alertaId: alerta.id,
+      titulo: 'PSH1A23 · Crítico',
+      corpo: 'Teste de push',
+    });
 
     const { rows } = await pool.query('select processado_em from notificacao_fila where alerta_id = $1', [alerta.id]);
     expect(rows[0].processado_em).not.toBeNull();
@@ -163,5 +169,12 @@ describe('notificações — fila nasce com o alerta, worker resolve destinatár
     await aparelhos.remover(clientA, endpoint);
     await pool.query(`delete from role_permission_overrides where client_id = $1 and role = 'operador'`, [clientA]);
     await pool.query('delete from users where id = $1', [userOperadorA]);
+  });
+
+  it('textoDoPush: título curto pelo veículo, "Crítico" só na alta, e um título neutro sem veículo', () => {
+    expect(textoDoPush({ veiculo: 'ABC1D23', prioridade: 'media', titulo: 'Rastreador há mais de 12 h sem enviar posição' }))
+      .toEqual({ titulo: 'ABC1D23', corpo: 'Rastreador há mais de 12 h sem enviar posição' });
+    expect(textoDoPush({ veiculo: 'ABC1D23', prioridade: 'alta', titulo: 'Pânico (SOS) acionado' }).titulo).toBe('ABC1D23 · Crítico');
+    expect(textoDoPush({ veiculo: null, prioridade: 'baixa', titulo: 'x' }).titulo).toBe('Alerta da frota');
   });
 });

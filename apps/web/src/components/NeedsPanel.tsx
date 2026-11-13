@@ -1,5 +1,6 @@
 // "Precisa de você" no topo: prévia rápida em duas abas (ref. central de notificações do Visor, 02/11/2026).
-// Ação necessária = críticos de toda a plataforma (lib/needs); Atualizações = alertas recentes, com lido/não lido.
+// Ocorrências = o que exige tratamento em toda a plataforma (lib/needs; a de veículo abre o detalhe na central);
+// Avisos = alertas que só informam, com lido/não lido.
 // No computador abre como popover preso ao botão do topo; no celular, como folha inferior (Sheet), o padrão do celular.
 // O detalhe completo (filtros por tipo, histórico com busca) fica na página /precisa-de-voce.
 import { marcarAlertasLidos, useCarregando } from '../lib/localleApi';
@@ -10,10 +11,9 @@ import { useStore } from '../lib/store';
 import { useNeedsYou, needIcon, needAge, type NeedItem } from '../lib/needs';
 import { shortDT } from '@localle/shared/utils';
 import { NeedsList, StatusGlyph, priorityKind, AssetName } from './story';
-import { resolveAlert } from '../lib/critical';
-import { TreatDialog, TreatedLine } from './TreatDialog';
+import { isOcorrencia } from '../lib/critical';
 import { Icon } from './icons';
-import { cx, usePresence, Sheet, IconButton, Button, TextButton, List, ListItem, EmptyState, Tabs } from './ui';
+import { cx, usePresence, Sheet, IconButton, TextButton, List, ListItem, EmptyState, Tabs } from './ui';
 import { rectUi, viewportUi } from '../lib/uiZoom';
 import { Link } from 'react-router-dom';
 
@@ -62,15 +62,21 @@ function Body({ onClose, closeRef, sheet }: { onClose: () => void; closeRef?: Re
   const alerts = useStore((s) => s.alerts);
   const assets = useStore((s) => s.assets);
   const patch = useStore((s) => s.patch);
-  const [treat, setTreat] = useState<any>(null);
-  const unread = alerts.filter((a: any) => !a.read).length;
+  // avisos = alertas que só informam; as ocorrências ficam na primeira aba até serem encerradas
+  const avisos = useMemo(() => alerts.filter((a: any) => !isOcorrencia(a)), [alerts]);
+  const unreadIds = avisos.filter((a: any) => !a.read).map((a: any) => a.id as string);
+  const unread = unreadIds.length;
   const carregando = useCarregando('frota', 'manutenção', 'multas', 'motoristas');
   const [tab, setTab] = useState(() => (needs.length || !unread ? 'acao' : 'atual'));
-  const recent = useMemo(() => [...alerts].reverse().slice(0, MAX_ALERTS), [alerts]);
+  const recent = useMemo(() => [...avisos].reverse().slice(0, MAX_ALERTS), [avisos]);
   // mais antigos primeiro: é o que está esperando há mais tempo
   const sorted = useMemo(() => [...needs].sort((a, b) => (a.since ?? Infinity) - (b.since ?? Infinity)), [needs]);
   const name = (id: string) => assets.find((a: any) => a.id === id)?.name || '';
-  const readAll = () => { patch((s: any) => ({ alerts: s.alerts.map((a: any) => ({ ...a, read: true })), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Alertas recentes', action: `marcou ${unread} alertas como lidos em lote`, count: unread }) })); marcarAlertasLidos().catch((e) => toast('Não foi possível marcar como lidos: ' + (e.message || e), { tone: 'crit' })); };
+  const readAll = () => {
+    const ids = new Set(unreadIds);
+    patch((s: any) => ({ alerts: s.alerts.map((a: any) => (ids.has(a.id) ? { ...a, read: true } : a)), ...auditEntry(s, { coll: 'alerts', refId: '', label: 'Avisos', action: `marcou ${unread} avisos como lidos em lote`, count: unread }) }));
+    marcarAlertasLidos(unreadIds.slice(0, 500)).catch((e) => toast('Não foi possível marcar como lidos: ' + (e.message || e), { tone: 'crit' }));
+  };
   return (
     <>
       <header className={cx('flex flex-col gap-stack px-5 pb-3 border-b border-line', sheet ? 'pt-1' : 'pt-5')}>
@@ -79,28 +85,27 @@ function Body({ onClose, closeRef, sheet }: { onClose: () => void; closeRef?: Re
           {tab === 'atual' && unread > 0 && <TextButton onClick={readAll}>Marcar todos como lidos</TextButton>}
           {closeRef && <IconButton ref={closeRef} aria-label="Fechar painel" onClick={onClose}><Icon name="fechar" /></IconButton>}
         </div>
-        <Tabs size="sm" value={tab} onChange={setTab} tabs={[{ key: 'acao', label: 'Ação necessária', count: needs.length }, { key: 'atual', label: 'Atualizações', count: unread || undefined }]} />
+        <Tabs size="sm" value={tab} onChange={setTab} tabs={[{ key: 'acao', label: 'Ocorrências', count: needs.length }, { key: 'atual', label: 'Avisos', count: unread || undefined }]} />
       </header>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-2">
         {tab === 'acao' ? (
           carregando ? <div aria-busy="true" className="flex flex-col gap-stack py-2"><span className="sr-only" role="status">Carregando…</span>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-          : needs.length === 0 ? <EmptyState illustration="ilu-tudo-em-dia" title="Nada pedindo ação agora" detail="Quando algo crítico acontecer na frota, aparece aqui primeiro." />
+          : needs.length === 0 ? <EmptyState illustration="ilu-tudo-em-dia" title="Nenhuma ocorrência aberta" detail="Quando algo pedir ação na frota, aparece aqui primeiro." />
             : <>
               <NeedsList onNavigate={onClose} items={sorted.slice(0, MAX_NEEDS).map((n: NeedItem) => ({ id: n.id, icon: needIcon(n.kind), tone: 'crit', title: n.title, context: [n.detail, needAge(n.since)].filter(Boolean).join(' · '), to: n.to }))} />
               {needs.length > MAX_NEEDS && <p className="text-small text-ink-2 py-2">E mais {needs.length - MAX_NEEDS} na central.</p>}
             </>
         ) : (
-          recent.length === 0 ? <EmptyState icon="ok" title="Nenhum alerta recente" /> : (
+          recent.length === 0 ? <EmptyState icon="ok" title="Nenhum aviso recente" /> : (
             <List>
               {recent.map((a: any) => (
                 <ListItem key={a.id} className="flex flex-col gap-hair py-stack">
                   <div className="flex items-start gap-tight">
                     <span className="ico-line text-body"><StatusGlyph kind={priorityKind(a.priority)} /></span>
                     <span className={cx('text-body leading-snug', a.read ? 'font-normal' : 'font-semibold')}>{a.title}<span className="sr-only"> · prioridade {a.priority}</span></span>
-                    {a.priority === 'alta' && !a.resolvedAt ? <Button size="sm" variant="secondary" onClick={() => setTreat(a)} className="ml-auto shrink-0">Tratar</Button> : !a.read && <span className="ml-auto pl-2 text-caption text-ink-2">novo</span>}
+                    {!a.read && <span className="ml-auto pl-2 text-caption text-ink-2">novo</span>}
                   </div>
                   <AlertLine name={name(a.assetId)} ts={a.ts} detail={a.detail} />
-                  {a.resolvedAt && <TreatedLine className="pl-[18px]" by={a.resolvedBy} at={a.resolvedAt} reason={a.resolvedReason} note={a.resolvedNote} />}
                 </ListItem>
               ))}
             </List>
@@ -108,11 +113,10 @@ function Body({ onClose, closeRef, sheet }: { onClose: () => void; closeRef?: Re
         )}
       </div>
       <footer className="px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] border-t border-line">
-        <Link to={tab === 'acao' ? '/precisa-de-voce' : '/precisa-de-voce?aba=historico'} onClick={onClose} className="flex items-center justify-center gap-tight h-9 rounded-ctl text-small font-medium text-ink-2 hover:text-ink hover:bg-surface-hover">
+        <Link to={tab === 'acao' ? '/precisa-de-voce' : '/precisa-de-voce?aba=avisos'} onClick={onClose} className="flex items-center justify-center gap-tight h-9 rounded-ctl text-small font-medium text-ink-2 hover:text-ink hover:bg-surface-hover">
           Abrir a central de alertas<Icon name="chevron" size={14} />
         </Link>
       </footer>
-      <TreatDialog subject={treat?.title || null} detail={treat ? [name(treat.assetId), treat.detail].filter(Boolean).join(' · ') : ''} onClose={() => setTreat(null)} onConfirm={(t) => treat && resolveAlert(treat.id, t)} />
     </>
   );
 }

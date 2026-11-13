@@ -5,7 +5,7 @@ import { PG_POOL } from '../db/pg-pool.provider';
 import { withTransaction } from '../db/with-transaction';
 import { reenfileirarNotificacao } from '../notificacoes/notificacao-fila.repository';
 import { RealtimeHub } from '../realtime/realtime.hub';
-import { inserirAlerta, toAlerta } from './alertas.repository';
+import { EXIGE_TRATAMENTO_PADRAO, inserirAlerta, toAlerta } from './alertas.repository';
 import { nivelSemPosicao, SEM_POSICAO_MIN_H, TIPO_SEM_POSICAO, tituloSemPosicao } from './sem-posicao';
 
 const TICK_MS = 60_000;
@@ -117,17 +117,20 @@ export class SemPosicaoWorker implements OnModuleInit, OnModuleDestroy {
       }
       // subiu de nível: volta a "não lido" e notifica de novo; outra instância que chegou antes não repete
       const { rows } = await tx.query(
-        `update alertas a set prioridade = $5, titulo = $6, lido_em = null
+        `update alertas a set prioridade = $5, titulo = $6, lido_em = null,
+           exige_tratamento = ${EXIGE_TRATAMENTO_PADRAO('$3', '$5::text')}
          from (select id from alertas where client_id = $1 and asset_id = $2 and tipo = $3 and ts = $4 and tratado_em is null
                  and array_position(array['baixa','media','alta'], prioridade) < array_position(array['baixa','media','alta'], $5::text)
                for update) alvo
          where a.id = alvo.id
-         returning a.id, a.client_id, a.asset_id, a.origem, a.tipo, a.titulo, a.detalhe, a.prioridade, a.ts, a.lido_em,
+         returning a.id, a.client_id, a.asset_id, a.origem, a.tipo, a.titulo, a.detalhe, a.prioridade, a.exige_tratamento, a.ts, a.lido_em,
            a.tratado_em, null::text as tratado_por_email, a.tratamento_motivo, a.tratamento_obs`,
         [c.client_id, c.asset_id, TIPO_SEM_POSICAO, c.ultima_posicao, nivel, tituloSemPosicao(nivel)],
       );
       if (rows.length === 0) return null;
-      await reenfileirarNotificacao(tx, c.client_id, rows[0].id);
+      // "notificar no celular" do catálogo (Console › Tipos de alerta) vale também para a subida de nível
+      const { rows: tipo } = await tx.query<{ notifica_push: boolean }>('select notifica_push from alerta_tipos where chave = $1', [TIPO_SEM_POSICAO]);
+      if (tipo[0]?.notifica_push !== false) await reenfileirarNotificacao(tx, c.client_id, rows[0].id);
       return toAlerta(rows[0]);
     });
     if (!alerta) return;

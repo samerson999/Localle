@@ -1,23 +1,20 @@
 import type { Alerta } from '@localle/shared/realtime';
+import type { Queryable } from '../db/queryable';
 
 /**
- * Quais alarmes do aparelho (catálogo do Traccar, `attributes.alarm`) viram alerta e com que prioridade.
- * Os de comportamento de direção (frenagem/aceleração/curva bruscas) ficam só como evento — são insumo
- * de ranking, não algo que alguém precise tratar um a um; virar alerta lotaria o sino.
+ * Quais alarmes do aparelho (catálogo do Traccar, `attributes.alarm`) viram alerta, com que título, prioridade e se
+ * exigem tratamento: catálogo `alerta_tipos`, mantido pela Locale (Console › Tipos de alerta). Alarme fora do catálogo
+ * ou com `gera_alerta = false` (frenagem/aceleração/curva bruscas, por padrão) fica só como evento — insumo do ranking.
  */
-const ALARMES: Record<string, { titulo: string; prioridade: Alerta['prioridade'] }> = {
-  sos: { titulo: 'Pânico (SOS) acionado', prioridade: 'alta' },
-  powerCut: { titulo: 'Alimentação do rastreador cortada', prioridade: 'alta' },
-  tamper: { titulo: 'Violação do rastreador', prioridade: 'alta' },
-  jamming: { titulo: 'Bloqueador de sinal (jammer) detectado', prioridade: 'alta' },
-  accident: { titulo: 'Possível colisão', prioridade: 'alta' },
-  lowBattery: { titulo: 'Bateria do rastreador baixa', prioridade: 'media' },
-  lowPower: { titulo: 'Tensão de alimentação baixa', prioridade: 'media' },
-  fault: { titulo: 'Falha no rastreador', prioridade: 'media' },
-  gpsAntennaCut: { titulo: 'Antena GPS desconectada', prioridade: 'media' },
-  door: { titulo: 'Porta aberta', prioridade: 'baixa' },
-};
-
-export function alertaDoAlarme(alarme: string): { titulo: string; prioridade: Alerta['prioridade'] } | null {
-  return ALARMES[alarme] ?? null;
+export async function alertaDoAlarme(
+  executor: Queryable,
+  alarme: string,
+): Promise<{ titulo: string; prioridade: Alerta['prioridade']; exigeTratamento?: boolean } | null> {
+  const { rows } = await executor.query<{ nome: string; prioridade: Alerta['prioridade']; exige_tratamento: boolean | null }>(
+    'select nome, prioridade, exige_tratamento from alerta_tipos where chave = $1 and gera_alerta and disparo = \'alarme\'',
+    [alarme],
+  );
+  const t = rows[0];
+  if (!t) return null;
+  return { titulo: t.nome, prioridade: t.prioridade, ...(t.exige_tratamento === null ? {} : { exigeTratamento: t.exige_tratamento }) };
 }

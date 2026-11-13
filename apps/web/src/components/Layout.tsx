@@ -218,12 +218,14 @@ function LayoutBody() {
   // módulo contratado e página não desligada pela revenda (Configurações › Módulos); subitens idem
   const liberada = (to: string) => paginaLiberada(rev.modules, to);
   const allowed = (l: typeof GESTAO) => (fleet ? l.filter((n) => rev.modules[(n as any).mod ?? n.key] && liberada(n.to)).map((n: any) => { const sub = n.sub?.filter((x: any) => liberada(x.to)); return sub ? { ...n, sub: sub.length ? sub : undefined } : n; }) : []);
-  const admin: { key: string; label: string; to: string; icon: IconName }[] = session.role !== 'locale' ? [] : [
-      { key: 'locale', label: 'Visão geral', to: '/locale', icon: 'locale' },
+  // end: a Visão geral (/locale) é a raiz das outras telas do painel; sem ele ficava marcada em todas
+  const admin: { key: string; label: string; to: string; icon: IconName; end?: boolean }[] = session.role !== 'locale' ? [] : [
+      { key: 'locale', label: 'Visão geral', to: '/locale', icon: 'locale', end: true },
       { key: 'locale-contratos', label: 'Contratos', to: '/locale/contratos', icon: 'dinheiro' },
       { key: 'locale-clientes', label: 'Clientes', to: '/locale/clientes', icon: 'revenda' },
       { key: 'locale-faturamento', label: 'Faturamento', to: '/locale/faturamento', icon: 'banco' },
       { key: 'locale-rastreadores', label: 'Rastreadores e chips', to: '/locale/rastreadores', icon: 'sinal' },
+      { key: 'locale-alertas', label: 'Tipos de alerta', to: '/locale/alertas', icon: 'alerta' },
       { key: 'locale-juridico', label: 'Jurídico', to: '/locale/juridico', icon: 'documento' },
       { key: 'locale-saude', label: 'Saúde da plataforma', to: '/locale/saude', icon: 'monitoramento' },
       { key: 'locale-equipe', label: 'Equipe e auditoria', to: '/locale/equipe', icon: 'historico' },
@@ -242,7 +244,7 @@ function LayoutBody() {
 
   // celular: barra inferior flutuante. Três atalhos do dia a dia + "Mais" (o menu inteiro). Quem vê a frota: Início, Mapa e
   // críticos (o contador do "Precisa de você"); sem frota (revenda, Locale), as três primeiras telas.
-  const naRota = (to: string) => loc.pathname === to || loc.pathname.startsWith(to + '/');
+  const naRota = (to: string, end?: boolean) => loc.pathname === to || (!end && loc.pathname.startsWith(to + '/'));
   // item com subitens = cascata: abre sozinha na seção atual, e a seta abre/fecha à mão. Subitens com ?aba= são abas da
   // própria rota do item: o item só pinta (secao) e a pílula vai para o subitem; senão o item é uma tela própria (end).
   const itemMenu = (n: any) => {
@@ -261,13 +263,13 @@ function LayoutBody() {
   };
   const gestao = allowed(GESTAO);
   const atalhos = fleet ? allowed(OPERACAO).slice(0, 2) : mods.slice(0, 3);
-  const noAtalho = atalhos.some((m) => naRota(m.to)) || (fleet && naRota('/precisa-de-voce'));
+  const noAtalho = atalhos.some((m: any) => naRota(m.to, m.end)) || (fleet && naRota('/precisa-de-voce'));
   const dockPill = <>
     {/* dock: rótulo curto quando o nome não cabe nos ~60px do item ("Monitora…") */}
-    {atalhos.slice(0, 2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
+    {atalhos.slice(0, 2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to, m.end)} />)}
     {fleet && <DockItem icon="atencao" label="Críticos" active={naRota('/precisa-de-voce')} onClick={() => setPanel(true)} expanded={panel}
       badge={needs.length > 0 && <Counter n={needs.length} pulse={pulse} className="absolute -top-1.5 left-3" />} />}
-    {atalhos.slice(2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to)} />)}
+    {atalhos.slice(2).map((m: any) => <DockItem key={m.key} to={m.to} icon={m.icon} label={m.curto ?? m.label} active={naRota(m.to, m.end)} />)}
     <DockItem icon="menu" label="Mais" active={!noAtalho} onClick={() => setOpenMobile(true)} expanded={openMobile} />
   </>;
   // botão redondo: só Fechar, com o menu aberto (a pílula se recolhe e o "Mais" some). A busca mora no cabeçalho
@@ -326,7 +328,7 @@ function LayoutBody() {
             )}
             <SidebarGroup title="Operação">{allowed(OPERACAO).map(itemMenu)}</SidebarGroup>
             <SidebarGroup title="Gestão">{allowed(GESTAO).map(itemMenu)}</SidebarGroup>
-            <SidebarGroup title="Administração">{admin.map((n) => <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} />)}</SidebarGroup>
+            <SidebarGroup title="Administração">{admin.map((n) => <SidebarMenuButton key={n.key} to={n.to} icon={n.icon} label={n.label} end={n.end} />)}</SidebarGroup>
           </SidebarMenu>
         </SidebarContent>
         <SidebarFooter>

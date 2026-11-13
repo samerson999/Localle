@@ -4,6 +4,7 @@ import { PG_POOL } from '../db/pg-pool.provider';
 import type { Alerta, Telemetria } from '@localle/shared/realtime';
 import { alertaDoAlarme } from '../alertas/alarmes-aparelho';
 import { inserirAlerta } from '../alertas/alertas.repository';
+import { avaliarAlertasPlataforma } from '../alertas/alertas-plataforma';
 import { detectarCercas } from '../cercas/cerca-detector';
 import { FUSO_PADRAO } from '../regras/avaliar-regra';
 import { avaliarRegras } from '../regras/motor-regras';
@@ -22,6 +23,8 @@ export type IngestResult =
   | {
       status: 'gravada';
       posicaoId: string;
+      /** Pacote de status que repetia a última posição gravada: `posicaoId` é a original, nenhuma linha nova em `posicoes`. */
+      posicaoCopiada: boolean;
       rastreadorId: string;
       clientId: string | null;
       assetId: string | null;
@@ -40,7 +43,7 @@ export interface EventoGravado {
   ts: Date;
   attributes?: Record<string, unknown>;
   /** Decidido pelo backend (ex.: cerca com alerta ligado); ausente = o evento não pede alerta próprio. */
-  alerta?: { titulo: string; prioridade: 'alta' | 'media' | 'baixa' } | null;
+  alerta?: { titulo: string; prioridade: 'alta' | 'media' | 'baixa'; exigeTratamento?: boolean } | null;
 }
 
 /**
@@ -119,31 +122,42 @@ export class PositionsIngestService {
 
       const { clientId, assetId, instalacaoId } = await resolverInstalacaoVigente(client, rastreadorId, position.fixTime);
 
-      const inserted = await client.query<{ id: string }>(
-        `insert into posicoes
-          (rastreador_id, traccar_position_id, client_id, asset_id, fix_time, server_time, valid, geom,
-           speed_kmh, course, altitude, odometer_m, ignition, attributes)
-         values ($1, $2, $3, $4, $5, $6, $7, st_setsrid(st_makepoint($8, $9), 4326), $10, $11, $12, $13, $14, $15)
-         returning id`,
-        [
-          rastreadorId,
-          position.traccarPositionId,
-          clientId,
-          assetId,
-          recebida.fixTime,
-          position.serverTime,
-          recebida.valid,
-          position.longitude,
-          position.latitude,
-          position.speedKmh,
-          position.course,
-          position.altitude,
-          position.odometerM,
-          position.ignition,
-          position.attributes,
-        ],
-      );
-      const posicaoId = inserted.rows[0].id;
+      // Pacote de status/heartbeat sem GPS novo: o Traccar repete nele a última posição (mesma hora e mesmo lugar). O VL100
+      // manda um a cada ~10 s — na HML (12/11/2026) chegaram a 10 mil cópias de uma posição num dia, e o histórico do dia
+      // (limite de 10 mil pontos) perdia o fim do percurso. A cópia não vira linha nova em `posicoes`; os atributos dela
+      // (ignição, sinal, alimentação, alarmes) seguem como qualquer pacote, presos à posição original.
+      const copia = await this.posicaoCopiada(client, rastreadorId, recebida);
+      let posicaoId: string;
+      if (copia) {
+        posicaoId = copia;
+        this.logger.debug(`rastreador_id=${rastreadorId} traccar_position_id=${recebida.traccarPositionId} repete a posição ${copia} (pacote de status): não gravada de novo`);
+      } else {
+        const inserted = await client.query<{ id: string }>(
+          `insert into posicoes
+            (rastreador_id, traccar_position_id, client_id, asset_id, fix_time, server_time, valid, geom,
+             speed_kmh, course, altitude, odometer_m, ignition, attributes)
+           values ($1, $2, $3, $4, $5, $6, $7, st_setsrid(st_makepoint($8, $9), 4326), $10, $11, $12, $13, $14, $15)
+           returning id`,
+          [
+            rastreadorId,
+            position.traccarPositionId,
+            clientId,
+            assetId,
+            recebida.fixTime,
+            position.serverTime,
+            recebida.valid,
+            position.longitude,
+            position.latitude,
+            position.speedKmh,
+            position.course,
+            position.altitude,
+            position.odometerM,
+            position.ignition,
+            position.attributes,
+          ],
+        );
+        posicaoId = inserted.rows[0].id;
+      }
 
       await client.query(
         `update ingest_posicoes_recebidas set posicao_id = $1
@@ -189,8 +203,7 @@ export class PositionsIngestService {
         const pararam = transicoes.filter((t) => t.para === 'nao_recebido' && t.ultimaLeituraEm);
         if (pararam.length) {
           const desde = new Date(Math.min(...pararam.map((t) => t.ultimaLeituraEm!.getTime())));
-          alertasSinais.push(
-            await inserirAlerta(client, {
+          const sinal = await inserirAlerta(client, {
               clientId,
               assetId,
               eventoId: null,
@@ -199,15 +212,15 @@ export class PositionsIngestService {
               titulo: 'Dados do painel pararam de chegar',
               detalhe: `${pararam.map((t) => ROTULO_SINAL[t.sinal]).join(', ')}: sem leitura desde ${desdeTexto(desde)}, com o veículo em movimento`,
               prioridade: 'media',
-              ts: position.fixTime,
-            }),
-          );
+              ts: copia ? position.serverTime : position.fixTime,
+            });
+          if (sinal) alertasSinais.push(sinal);
         }
       }
       const atualizouUltimaPosicao = position.valid
         ? await this.atualizarUltimaPosicao(client, rastreadorId, assetId, clientId, posicaoId, position)
         : false;
-      const eventos: EventoGravado[] = await this.gravarAlarmes(client, rastreadorId, assetId, clientId, posicaoId, position);
+      const eventos: EventoGravado[] = await this.gravarAlarmes(client, rastreadorId, assetId, clientId, posicaoId, position, !!copia);
       // corte pelo estado: muitos aparelhos (o teltonika da HML, por exemplo) não mandam o alarme `powerCut`, e o corte
       // ficaria só no ícone. Só a virada ligada → cortada conta: aparelho que já nasce cortado é bancada, não furto.
       const alimentacaoAntes = lerTelemetria(comunicacao.atributosAntes, mapeamento).alimentacaoExterna;
@@ -216,9 +229,10 @@ export class PositionsIngestService {
         this.logger.warn(
           `rastreador_id=${rastreadorId} asset_id=${assetId ?? '-'} alimentação externa cortada (${pelaTensao ? `tensão ${telemetria.tensaoV} V` : 'charge=false'}) sem alarme powerCut do aparelho`,
         );
-        eventos.push(await this.gravarEvento(client, rastreadorId, assetId, clientId, posicaoId, position, 'powerCut', { detectadoPor: pelaTensao ? 'tensao' : 'charge' }));
+        eventos.push(await this.gravarEvento(client, rastreadorId, assetId, clientId, posicaoId, position, !!copia, 'powerCut', { detectadoPor: pelaTensao ? 'tensao' : 'charge' }));
       }
-      if (position.valid && clientId && assetId) {
+      // cópia da última posição: mesmo lugar, nada entra nem sai de cerca
+      if (position.valid && clientId && assetId && !copia) {
         eventos.push(
           ...(await detectarCercas(client, {
             clientId,
@@ -241,8 +255,7 @@ export class PositionsIngestService {
       if (clientId) {
         for (const e of eventos) {
           if (!e.alerta) continue;
-          alertas.push(
-            await inserirAlerta(client, {
+          const alerta = await inserirAlerta(client, {
               clientId,
               assetId,
               eventoId: e.id,
@@ -252,14 +265,21 @@ export class PositionsIngestService {
               // regra: mesma informação que a simulação mostrava ("placa · velocidade"; a placa o front junta)
               detalhe: e.tipo === 'regra' && position.speedKmh !== null ? `${Math.round(position.speedKmh)} km/h` : null,
               prioridade: e.alerta.prioridade,
+              exigeTratamento: e.alerta.exigeTratamento,
               ts: e.ts,
-            }),
+            });
+          if (alerta) alertas.push(alerta);
+        }
+        // alertas da plataforma por condição sobre o estado (Console › Tipos de alerta): só sobre a posição mais nova
+        if (atualizouUltimaPosicao && assetId) {
+          alertas.push(
+            ...(await avaliarAlertasPlataforma(client, { clientId, assetId, position, attributes: comunicacao.ultimosAtributos ?? {}, telemetria })),
           );
         }
       }
 
       await client.query('commit');
-      return { status: 'gravada', posicaoId, rastreadorId, clientId, assetId, atualizouUltimaPosicao, eventos, alertas, telemetria };
+      return { status: 'gravada', posicaoId, posicaoCopiada: !!copia, rastreadorId, clientId, assetId, atualizouUltimaPosicao, eventos, alertas, telemetria };
     } catch (err) {
       await client.query('rollback');
       throw err;
@@ -325,6 +345,20 @@ export class PositionsIngestService {
     return { ultimosAtributos: rows[0].ultimos_atributos, atributosAntes: a?.ultimos_atributos ?? null, ...acompanhamento };
   }
 
+  /**
+   * Id da última posição gravada do rastreador quando o pacote a repete: mesma hora do aparelho e mesmo ponto. Compara com
+   * `ultima_posicao` (uma linha por rastreador, sem varrer `posicoes`); cópia de posição mais antiga que a última é rara e
+   * fica gravada como antes. Vale com ou sem GPS válido no pacote — o Traccar copia o último lugar nos dois casos.
+   */
+  private async posicaoCopiada(client: PoolClient, rastreadorId: string, p: NormalizedPosition): Promise<string | null> {
+    const { rows } = await client.query<{ posicao_id: string }>(
+      `select posicao_id from ultima_posicao
+        where rastreador_id = $1 and fix_time = $2 and st_equals(geom, st_setsrid(st_makepoint($3, $4), 4326))`,
+      [rastreadorId, p.fixTime, p.longitude, p.latitude],
+    );
+    return rows[0]?.posicao_id ?? null;
+  }
+
   private async atualizarUltimaPosicao(
     client: PoolClient,
     rastreadorId: string,
@@ -360,12 +394,18 @@ export class PositionsIngestService {
     clientId: string | null,
     posicaoId: string,
     position: NormalizedPosition,
+    copia: boolean,
   ): Promise<EventoGravado[]> {
     const eventos: EventoGravado[] = [];
-    for (const alarme of position.alarms) eventos.push(await this.gravarEvento(client, rastreadorId, assetId, clientId, posicaoId, position, alarme));
+    for (const alarme of position.alarms) eventos.push(await this.gravarEvento(client, rastreadorId, assetId, clientId, posicaoId, position, copia, alarme));
     return eventos;
   }
 
+  /**
+   * Hora do evento: a do GPS quando o pacote traz posição nova (inclusive a atrasada, guardada no aparelho); num pacote de
+   * status (`copia`) a posição é a última repetida pelo Traccar, de horas ou dias antes — aí vale a hora em que o pacote
+   * chegou ao Traccar, e `posicaoEm` guarda a hora da posição para o evento achar o ponto no mapa (MonitoringRepository.eventos).
+   */
   private async gravarEvento(
     client: PoolClient,
     rastreadorId: string,
@@ -373,15 +413,19 @@ export class PositionsIngestService {
     clientId: string | null,
     posicaoId: string,
     position: NormalizedPosition,
+    copia: boolean,
     tipo: string,
     extra: Record<string, unknown> = {},
   ): Promise<EventoGravado> {
+    const ts = copia ? position.serverTime : position.fixTime;
     const { rows } = await client.query<{ id: string }>(
       `insert into eventos (rastreador_id, client_id, asset_id, origem, tipo, ts, posicao_id, attributes)
        values ($1, $2, $3, 'aparelho', $4, $5, $6, $7)
        returning id`,
-      [rastreadorId, clientId, assetId, tipo, position.fixTime, posicaoId, { traccarPositionId: position.traccarPositionId, ...extra }],
+      [rastreadorId, clientId, assetId, tipo, ts, posicaoId, {
+        traccarPositionId: position.traccarPositionId, ...(copia ? { posicaoEm: position.fixTime.toISOString() } : {}), ...extra,
+      }],
     );
-    return { id: rows[0].id, tipo, ts: position.fixTime, alerta: alertaDoAlarme(tipo) };
+    return { id: rows[0].id, tipo, ts, alerta: await alertaDoAlarme(client, tipo) };
   }
 }

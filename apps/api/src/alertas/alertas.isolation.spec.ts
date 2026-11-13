@@ -72,7 +72,15 @@ describe('alertas — criação na ingestão, isolamento e tratamento', () => {
     if (r.status !== 'gravada') return;
     expect(r.eventos.map((e) => e.tipo).sort()).toEqual(['hardBraking', 'sos']);
     expect(r.alertas).toHaveLength(1);
-    expect(r.alertas[0]).toMatchObject({ origem: 'aparelho', tipo: 'sos', prioridade: 'alta', assetId: assetA, tratadoEm: null });
+    expect(r.alertas[0]).toMatchObject({ origem: 'aparelho', tipo: 'sos', prioridade: 'alta', assetId: assetA, tratadoEm: null, exigeTratamento: true });
+  });
+
+  it('porta aberta é aviso (não exige tratamento): tratar devolve 400 e o alerta continua sem desfecho', async () => {
+    const r = await ingest.ingest(posicao(['door']));
+    const aviso = r.status === 'gravada' ? r.alertas[0] : null;
+    expect(aviso).toMatchObject({ tipo: 'door', prioridade: 'baixa', exigeTratamento: false });
+    await expect(service.tratar(clientA, userA, aviso!.id, 'Falso positivo', null)).rejects.toMatchObject({ status: 400 });
+    expect((await repo.buscar(clientA, aviso!.id))?.tratadoEm).toBeNull();
   });
 
   it('listagem e "marcar todos como lidos" não alcançam outro cliente; o dono vê e marca', async () => {

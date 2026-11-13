@@ -9,13 +9,13 @@ export function TreatDialog({ subject, detail, onConfirm, onClose }: { subject: 
   useEffect(() => { if (subject) { setReason(''); setNote(''); } }, [subject]);
   const needNote = reason === 'Outro' && !note.trim();
   return (
-    <Modal open={!!subject} onClose={onClose} title="Tratar pendência" width="max-w-lg"
-      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button disabled={!reason || needNote} onClick={() => { onConfirm({ reason, note }); onClose(); }}>Confirmar tratamento</Button></>}>
+    <Modal open={!!subject} onClose={onClose} title="Encerrar ocorrência" width="max-w-lg"
+      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button disabled={!reason || needNote} onClick={() => { onConfirm({ reason, note }); onClose(); }}>Encerrar ocorrência</Button></>}>
       <div>
         <p className="text-h3 font-medium">{subject}</p>
         {detail && <p className="text-small text-ink-2 mt-hair">{detail}</p>}
       </div>
-      <div role="group" aria-label="Motivo">
+      <div role="group" aria-label="Desfecho">
         <Pills value={reason} onChange={setReason} options={TREAT_REASONS.map((r) => ({ key: r, label: r }))} />
       </div>
       <Field label="Observação" hint={reason === 'Outro' ? 'Obrigatória quando o motivo é "Outro".' : 'Opcional.'}>
@@ -32,7 +32,8 @@ export function TreatedLine({ by, at, reason, note, className = '' }: { by: stri
   const day = t.toDateString() === new Date().toDateString() ? '' : `${t.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} `;
   return (
     <p className={cx('text-caption text-ink-2', className)}>
-      Tratado por {by} às <time className="num">{day}{hh}</time>{reason && <> · <span className="text-ink">{reason}</span></>}{note && <> · “{note}”</>}
+      {/* sem quem tratou = a plataforma encerrou porque a condição normalizou (alerta da plataforma por condição) */}
+      {by ? `Tratado por ${by}` : 'Encerrado automaticamente'} às <time className="num">{day}{hh}</time>{reason && <> · <span className="text-ink">{reason}</span></>}{note && <> · “{note}”</>}
     </p>
   );
 }

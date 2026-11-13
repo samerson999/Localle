@@ -20,13 +20,16 @@ const BLOCK_KINDS = ['bloqueio', 'desbloqueio'];
 // Parâmetro do setup do cliente "monitor.bloqueio_pendente_critico" (docs/PLANO-SETUP-ADMIN.md, 3.9). Até o Setup entrar, fica no padrão.
 export const BLOCK_PENDING_IS_CRITICAL = true;
 
+// Ocorrência = alerta que exige tratamento (decidido no backend: catálogo da plataforma ou a regra do cliente); aviso só
+// informa e sai com "lido". Alerta sem o campo (gravado antes da separação) segue a prioridade: alta é ocorrência.
+export const isOcorrencia = (a: any) => (a.requiresTreatment ?? (a.priority === 'alta' && a.title !== 'Rodando sem viagem')) as boolean;
+
 export function criticalMap(s: any): Map<string, CritReason[]> {
   const out = new Map<string, CritReason[]>();
   const add = (aid: string, r: CritReason) => out.set(aid, [...(out.get(aid) || []), r]);
   const groups: Record<string, any> = {};
   for (const a of s.alerts || []) {
-    // "Rodando sem viagem" nunca é crítico, mesmo em dados antigos ou regra mal configurada
-    if (a.priority !== 'alta' || a.resolvedAt || !a.assetId || a.title === 'Rodando sem viagem') continue;
+    if (!isOcorrencia(a) || a.resolvedAt || !a.assetId) continue;
     const k = `${a.assetId}|${a.title}`;
     (groups[k] ||= { aid: a.assetId, title: a.title, ids: [] as string[], since: a.ts, last: a.ts, detail: a.detail }).ids.push(a.id);
     groups[k].since = Math.min(groups[k].since, a.ts);

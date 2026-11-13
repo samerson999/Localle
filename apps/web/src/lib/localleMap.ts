@@ -192,7 +192,7 @@ export function alertaToAlert(a: Alerta, plate?: string) {
   return {
     id: alertIdFor(a.id), ts: Date.parse(a.ts),
     assetId: a.assetId ? assetIdFor(a.assetId) : undefined,
-    title: a.titulo, detail: a.detalhe || plate || '', priority: a.prioridade,
+    title: a.titulo, detail: a.detalhe || plate || '', priority: a.prioridade, requiresTreatment: a.exigeTratamento,
     read: a.lidoEm !== null, source: a.origem === 'aparelho' ? 'rastreador' : a.origem,
     ...(a.tratadoEm ? { resolvedAt: Date.parse(a.tratadoEm), resolvedBy: a.tratadoPor || '', resolvedReason: a.motivo || '', resolvedNote: a.obs || '' } : {}),
   };

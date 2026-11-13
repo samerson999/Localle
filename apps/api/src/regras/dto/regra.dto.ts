@@ -8,6 +8,8 @@ export interface Acoes {
   motorista: boolean;
   bloqueio: boolean;
   ranking: boolean;
+  /** O alerta vira ocorrência ("Precisa de você"), encerrada com desfecho. Não informado: prioridade alta exige. */
+  tratamento: boolean;
 }
 
 export interface RegraInput {
@@ -50,6 +52,7 @@ export function parseRegra(body: unknown): RegraInput {
   }
   const a = (b.acoes ?? {}) as Record<string, unknown>;
   const acoes = Object.fromEntries(ACOES.map((k) => [k, a[k] === true])) as unknown as Acoes;
+  acoes.tratamento = typeof a.tratamento === 'boolean' ? a.tratamento : b.prioridade === 'alta';
   return {
     nome,
     ativa: b.ativa === undefined ? true : b.ativa === true,

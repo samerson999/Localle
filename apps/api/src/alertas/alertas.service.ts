@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Alerta } from '@localle/shared/realtime';
 import type { Pool } from 'pg';
 import { AuditLogRepository } from '../audit/audit-log.repository';
@@ -37,6 +37,7 @@ export class AlertasService {
       const r = await this.repo.tratar(clientId, id, userId, motivo, obs, client);
       if (r === null) throw new NotFoundException('Alerta não encontrado');
       if (r === 'ja_tratado') throw new ConflictException('Este alerta já foi tratado');
+      if (r === 'aviso') throw new BadRequestException('Este alerta é um aviso: não exige tratamento, só marcar como lido');
       await this.audit.record(
         { actorType: 'user', actorId: userId, clientId, action: 'alerta.tratar', target: id, after: { motivo, obs } },
         client,

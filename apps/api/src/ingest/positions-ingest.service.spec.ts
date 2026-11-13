@@ -134,6 +134,66 @@ describe('PositionsIngestService', () => {
     expect(rows[0].n).toBe(1);
   });
 
+  // 12/11/2026, HML: o VL100 manda um pacote de status a cada ~10 s e o Traccar repete nele a última posição (mesma hora e
+  // lugar) — até 10 mil linhas iguais por dia, e o histórico do dia (limite de 10 mil pontos) perdia o fim do percurso.
+  it('pacote de status que repete a última posição não vira linha nova, mas os atributos dele valem', async () => {
+    const rastreadorId = await criarRastreador(1012);
+    const original = await service.ingest(position({ traccarDeviceId: 1012, traccarPositionId: 1, attributes: { ignition: true, sat: 15 } }));
+    expect(original.status === 'gravada' && original.posicaoCopiada).toBe(false);
+
+    // mesma hora e mesmo lugar, chegando depois, com ignição desligada e sinal: com e sem GPS válido no pacote
+    const status = await service.ingest(position({
+      traccarDeviceId: 1012, traccarPositionId: 2, serverTime: new Date('2026-01-01T12:00:30Z'), speedKmh: 0, ignition: false,
+      attributes: { ignition: false, rssi: 3 },
+    }));
+    const semFix = await service.ingest(position({
+      traccarDeviceId: 1012, traccarPositionId: 3, serverTime: new Date('2026-01-01T12:00:40Z'), valid: false, attributes: { rssi: 2 },
+    }));
+    expect(status.status === 'gravada' && status.posicaoCopiada).toBe(true);
+    expect(semFix.status === 'gravada' && semFix.posicaoCopiada).toBe(true);
+    const posicaoOriginal = original.status === 'gravada' ? original.posicaoId : '';
+    expect(status.status === 'gravada' && status.posicaoId).toBe(posicaoOriginal);
+
+    const { rows: n } = await pool.query('select count(*)::int as n from posicoes where rastreador_id = $1', [rastreadorId]);
+    expect(n[0].n).toBe(1);
+    // a reserva da cópia fica resolvida com a posição original (evento do Traccar com esse id acha a posição)
+    const { rows: reservas } = await pool.query('select traccar_position_id, posicao_id from ingest_posicoes_recebidas where rastreador_id = $1 order by 1', [rastreadorId]);
+    expect(reservas.map((r) => r.posicao_id)).toEqual([posicaoOriginal, posicaoOriginal, posicaoOriginal]);
+    // comunicação e atributos seguem o pacote mais novo
+    const { rows: com } = await pool.query('select ultimo_pacote_em, ultimos_atributos from rastreador_comunicacao where rastreador_id = $1', [rastreadorId]);
+    expect(com[0].ultimo_pacote_em.toISOString()).toBe('2026-01-01T12:00:40.000Z');
+    expect(com[0].ultimos_atributos).toMatchObject({ ignition: false, rssi: 2, sat: 15 });
+  });
+
+  // 13/11/2026: o alarme de um pacote de status levava a hora da posição repetida (horas ou dias antes)
+  it('alarme no pacote de status leva a hora em que chegou; na posição nova, a do GPS', async () => {
+    const rastreadorId = await criarRastreador(1014);
+    await service.ingest(position({ traccarDeviceId: 1014, traccarPositionId: 1, alarms: ['vibration'] }));
+    const chegou = new Date('2026-01-01T15:30:00Z'); // 3 h e meia depois da posição repetida
+    const status = await service.ingest(position({ traccarDeviceId: 1014, traccarPositionId: 2, serverTime: chegou, alarms: ['lowBattery'] }));
+    expect(status.status === 'gravada' && status.eventos.map((e) => [e.tipo, e.ts.toISOString()])).toEqual([['lowBattery', chegou.toISOString()]]);
+
+    const { rows } = await pool.query(
+      `select tipo, ts, attributes->>'posicaoEm' as posicao_em from eventos where rastreador_id = $1 order by ts`, [rastreadorId],
+    );
+    expect(rows.map((r) => [r.tipo, r.ts.toISOString(), r.posicao_em])).toEqual([
+      ['vibration', '2026-01-01T12:00:00.000Z', null],
+      ['lowBattery', chegou.toISOString(), '2026-01-01T12:00:00.000Z'],
+    ]);
+  });
+
+  it('posição nova (outra hora ou outro lugar) continua sendo gravada', async () => {
+    const rastreadorId = await criarRastreador(1013);
+    await service.ingest(position({ traccarDeviceId: 1013, traccarPositionId: 1 }));
+    const outraHora = await service.ingest(position({ traccarDeviceId: 1013, traccarPositionId: 2, fixTime: new Date('2026-01-01T12:00:10Z') }));
+    // mesma hora, outro lugar: não é cópia (aparelho que manda dois pontos no mesmo segundo)
+    const outroLugar = await service.ingest(position({ traccarDeviceId: 1013, traccarPositionId: 3, fixTime: new Date('2026-01-01T12:00:10Z'), longitude: -34.87 }));
+    expect(outraHora.status === 'gravada' && outraHora.posicaoCopiada).toBe(false);
+    expect(outroLugar.status === 'gravada' && outroLugar.posicaoCopiada).toBe(false);
+    const { rows } = await pool.query('select count(*)::int as n from posicoes where rastreador_id = $1', [rastreadorId]);
+    expect(rows[0].n).toBe(3);
+  });
+
   it('ultima_posicao só atualiza quando a nova posição é mais recente', async () => {
     const rastreadorId = await criarRastreador(1005);
 
@@ -287,8 +347,8 @@ describe('PositionsIngestService', () => {
     const r = await service.ingest(position({ traccarDeviceId: 1010, traccarPositionId: 3, serverTime: t('00:30'), attributes: { power: 13.3, rssi: 2 } }));
     // cada leitura com a data da sua chave: o bloqueio é o do heartbeat das 12:00
     expect(r.status === 'gravada' && r.telemetria).toEqual({
-      tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false, alimentacaoExterna: true, odometroPainelKm: null, velocidadePainelKmh: null,
-      lidaEm: { tensaoV: t('00:30').toISOString(), satelites: t('00:15').toISOString(), sinalGsm: t('00:30').toISOString(), bloqueado: t('00:00').toISOString(), alimentacaoExterna: t('00:30').toISOString(), odometroPainel: null, velocidadePainel: null },
+      tensaoV: 13.3, satelites: 15, sinalGsm: 2, bloqueado: false, alimentacaoExterna: true, odometroPainelKm: null, velocidadePainelKmh: null, ignicao: null,
+      lidaEm: { tensaoV: t('00:30').toISOString(), satelites: t('00:15').toISOString(), sinalGsm: t('00:30').toISOString(), bloqueado: t('00:00').toISOString(), alimentacaoExterna: t('00:30').toISOString(), odometroPainel: null, velocidadePainel: null, ignicao: null },
     });
 
     // reenvio atrasado (serverTime antigo) não volta o sinal para 4, mas traz a chave nova

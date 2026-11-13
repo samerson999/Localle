@@ -13,6 +13,7 @@ interface AlertaRow {
   titulo: string;
   detalhe: string | null;
   prioridade: Alerta['prioridade'];
+  exige_tratamento: boolean;
   ts: Date;
   lido_em: Date | null;
   tratado_em: Date | null;
@@ -31,10 +32,20 @@ export interface NovoAlerta {
   detalhe: string | null;
   prioridade: Alerta['prioridade'];
   ts: Date;
+  /** Regra do cliente decide no formulário dela; sem isso vale o catálogo `alerta_tipos` e, fora dele, a prioridade. */
+  exigeTratamento?: boolean;
 }
 
+/** Colunas de `alertas` na ordem do `AlertaRow` (sem o e-mail de quem tratou, que vem de `users`). */
+export const COLUNAS_ALERTA = `id, client_id, asset_id, origem, tipo, titulo, detalhe, prioridade, exige_tratamento, ts, lido_em, tratado_em,
+  tratamento_motivo, tratamento_obs`;
+
+/** Se o alerta exige tratamento quando quem cria não decide: catálogo da plataforma e, fora dele, prioridade alta. */
+export const EXIGE_TRATAMENTO_PADRAO = (tipo: string, prioridade: string) =>
+  `coalesce((select t.exige_tratamento from alerta_tipos t where t.chave = ${tipo}), ${prioridade} = 'alta')`;
+
 const SELECT = `
-  select a.id, a.client_id, a.asset_id, a.origem, a.tipo, a.titulo, a.detalhe, a.prioridade, a.ts,
+  select a.id, a.client_id, a.asset_id, a.origem, a.tipo, a.titulo, a.detalhe, a.prioridade, a.exige_tratamento, a.ts,
     a.lido_em, a.tratado_em, u.email as tratado_por_email, a.tratamento_motivo, a.tratamento_obs
   from alertas a left join users u on u.id = a.tratado_por`;
 
@@ -49,6 +60,7 @@ export function toAlerta(r: AlertaRow): Alerta {
     titulo: r.titulo,
     detalhe: r.detalhe,
     prioridade: r.prioridade,
+    exigeTratamento: r.exige_tratamento,
     ts: r.ts.toISOString(),
     lidoEm: iso(r.lido_em),
     tratadoEm: iso(r.tratado_em),
@@ -62,17 +74,24 @@ export function toAlerta(r: AlertaRow): Alerta {
  * Chamada de dentro da transação da ingestão (alarme do aparelho, cerca, regra): o alerta nasce junto com
  * o evento ou não nasce. Função solta (e não método) porque recebe o PoolClient da transação de quem chama.
  */
-export async function inserirAlerta(executor: Queryable, a: NovoAlerta): Promise<Alerta> {
+export async function inserirAlerta(executor: Queryable, a: NovoAlerta): Promise<Alerta | null> {
+  // alerta da plataforma que o cliente desligou no Setup dele: não nasce (o evento continua gravado por quem chamou)
+  const { rows: tipo } = await executor.query<{ ligado: boolean | null; notifica_push: boolean | null }>(
+    `select (select c.ligado from alerta_tipos_cliente c where c.client_id = $1 and c.chave = $2) as ligado,
+            (select t.notifica_push from alerta_tipos t where t.chave = $2) as notifica_push`,
+    [a.clientId, a.tipo],
+  );
+  if (tipo[0]?.ligado === false) return null;
   const { rows } = await executor.query<AlertaRow>(
-    `insert into alertas (client_id, asset_id, evento_id, origem, tipo, titulo, detalhe, prioridade, ts)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     returning id, client_id, asset_id, origem, tipo, titulo, detalhe, prioridade, ts, lido_em, tratado_em,
-       null::text as tratado_por_email, tratamento_motivo, tratamento_obs`,
-    [a.clientId, a.assetId, a.eventoId, a.origem, a.tipo, a.titulo, a.detalhe, a.prioridade, a.ts],
+    `insert into alertas (client_id, asset_id, evento_id, origem, tipo, titulo, detalhe, prioridade, ts, exige_tratamento)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10::boolean, ${EXIGE_TRATAMENTO_PADRAO('$5', '$8')}))
+     returning ${COLUNAS_ALERTA}, null::text as tratado_por_email`,
+    [a.clientId, a.assetId, a.eventoId, a.origem, a.tipo, a.titulo, a.detalhe, a.prioridade, a.ts, a.exigeTratamento ?? null],
   );
   const alerta = toAlerta(rows[0]);
-  // mesma transação do alerta (docs/PLANO-APK-TWA.md § 2): push nunca atrasa nem derruba a gravação do alerta
-  await enfileirarNotificacao(executor, a.clientId, alerta.id);
+  // mesma transação do alerta (docs/PLANO-APK-TWA.md § 2): push nunca atrasa nem derruba a gravação do alerta.
+  // Tipo do catálogo com "notificar no celular" desligado não vai para a fila; regra e cerca seguem a preferência.
+  if (tipo[0]?.notifica_push !== false) await enfileirarNotificacao(executor, a.clientId, alerta.id);
   return alerta;
 }
 
@@ -111,7 +130,10 @@ export class AlertasRepository extends BaseRepository<AlertaRow> {
     return atualizados.map(toAlerta);
   }
 
-  /** `null` se não existe para este cliente; `false` se já estava tratado (não sobrescreve quem tratou). */
+  /**
+   * Encerra a ocorrência. `null` se não existe para este cliente; `ja_tratado` não sobrescreve quem encerrou;
+   * `aviso` = o alerta não exige tratamento (sai com "lido", não com desfecho).
+   */
   async tratar(
     clientId: string,
     id: string,
@@ -119,14 +141,16 @@ export class AlertasRepository extends BaseRepository<AlertaRow> {
     motivo: string,
     obs: string | null,
     executor: Queryable = this.pool,
-  ): Promise<'tratado' | 'ja_tratado' | null> {
+  ): Promise<'tratado' | 'ja_tratado' | 'aviso' | null> {
     const { rowCount } = await executor.query(
       `update alertas set tratado_em = now(), tratado_por = $3, tratamento_motivo = $4, tratamento_obs = $5,
          lido_em = coalesce(lido_em, now())
-       where client_id = $1 and id = $2 and tratado_em is null`,
+       where client_id = $1 and id = $2 and exige_tratamento and tratado_em is null`,
       [clientId, id, userId, motivo, obs],
     );
     if ((rowCount ?? 0) > 0) return 'tratado';
-    return (await this.buscar(clientId, id, executor)) ? 'ja_tratado' : null;
+    const atual = await this.buscar(clientId, id, executor);
+    if (!atual) return null;
+    return atual.exigeTratamento ? 'ja_tratado' : 'aviso';
   }
 }

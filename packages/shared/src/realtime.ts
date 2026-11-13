@@ -76,6 +76,8 @@ export interface Alerta {
   titulo: string;
   detalhe: string | null;
   prioridade: 'alta' | 'media' | 'baixa';
+  /** Ocorrência: fica aberta até alguém encerrar com o desfecho. Sem isso é aviso, que sai com "lido". */
+  exigeTratamento: boolean;
   ts: string;
   lidoEm: string | null;
   tratadoEm: string | null;

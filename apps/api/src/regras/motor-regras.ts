@@ -11,7 +11,7 @@ interface RegraAtiva {
   nome: string;
   prioridade: 'alta' | 'media' | 'baixa';
   condicoes: Condicao[];
-  acoes: { painel?: boolean; ranking?: boolean };
+  acoes: { painel?: boolean; ranking?: boolean; tratamento?: boolean };
 }
 
 /**
@@ -68,7 +68,8 @@ export async function avaliarRegras(
       tipo: 'regra',
       ts: p.position.fixTime,
       attributes,
-      alerta: regra.acoes.painel ? { titulo: regra.nome, prioridade: regra.prioridade } : null,
+      // regra gravada antes da opção existir: segue a prioridade (alta exige tratamento)
+      alerta: regra.acoes.painel ? { titulo: regra.nome, prioridade: regra.prioridade, exigeTratamento: regra.acoes.tratamento ?? regra.prioridade === 'alta' } : null,
     });
   }
   return eventos;

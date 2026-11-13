@@ -27,6 +27,9 @@ const ACTION_LABEL: Record<string, string> = {
   'rastreador.desvincular': 'Desvinculou rastreador do cliente',
   'rastreador.instalar': 'Instalou rastreador',
   'rastreador.desinstalar': 'Desinstalou rastreador',
+  'alerta_tipo.criar': 'Criou tipo de alerta',
+  'alerta_tipo.atualizar': 'Alterou tipo de alerta',
+  'alerta_tipo.excluir': 'Excluiu tipo de alerta',
 };
 const situacao = (m: MembroLocalle) => (m.desativado_em ? { tone: 'red', label: 'Desativado' } : m.pendente ? { tone: 'orange', label: 'Convite pendente' } : { tone: 'green', label: 'Ativo' });
 const actionLabel = (a: string) => ACTION_LABEL[a] || a;

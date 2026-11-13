@@ -134,7 +134,8 @@ async function apiGet<T>(path: string): Promise<T> {
 
 // ---------- resumo de uso da frota (Home do gestor) ----------
 /** Km e minutos em movimento por veículo e por dia (hoje + 7 dias), do agregado `uso_5min` da API. `assetId` já no formato do store. */
-export type ResumoUso = { fuso: string; dias: string[]; uso: { assetId: string; dia: string; km: number; minutosMovimento: number }[] };
+// kmAteAgora: o km do dia só até a hora de agora (comparar hoje com os dias anteriores na mesma hora); ausente em API antiga
+export type ResumoUso = { fuso: string; dias: string[]; uso: { assetId: string; dia: string; km: number; kmAteAgora?: number; minutosMovimento: number }[] };
 const RESUMO_USO_MS = 5 * 60_000; // o agregado rematerializa a cada 10 min; a parte recente vem na hora
 // Última resposta guardada por sessão: voltar ao Início mostra o gráfico na hora (e atualiza por trás), em vez do skeleton
 // até a API responder de novo.
@@ -396,7 +397,41 @@ export interface Entrega { conviteEnviado: boolean; link: string | null }
 export interface MembroLocalle { id: string; email: string; created_at: string; desativado_em: string | null; pendente: boolean }
 export interface MembroEquipe { id: string; email: string; role: 'admin' | 'gestor' | 'operador'; ativo: boolean; pendente: boolean; createdAt: string }
 
+/** Catálogo de tipos de alerta da plataforma (apps/api/src/alertas/alerta-tipos.repository.ts). */
+export interface CondicaoAlerta { field: string; op: string; value: string; attr?: string }
+export interface AlertaTipo {
+  chave: string;
+  /** alarme = o rastreador manda pronto; condicao = a plataforma avalia o estado lido; sistema = rotina da plataforma. */
+  disparo: 'alarme' | 'condicao' | 'sistema';
+  nome: string; prioridade: 'alta' | 'media' | 'baixa' | null;
+  /** null = pela prioridade (alta exige). */
+  exigeTratamento: boolean | null; geraAlerta: boolean; notificaPush: boolean;
+  condicoes: CondicaoAlerta[] | null; duracaoMin: number; encerraSozinho: boolean; repetirMin: number;
+  sistema: boolean;
+  /** Tipo padrão: o que mede é fixo; só limite e duração mudam (e o cliente ajusta no Setup). */
+  padrao: boolean;
+  atualizadoEm: string;
+}
+export type AlertaTipoBody = Partial<Pick<AlertaTipo, 'nome' | 'prioridade' | 'exigeTratamento' | 'geraAlerta' | 'notificaPush' | 'condicoes' | 'duracaoMin' | 'encerraSozinho' | 'repetirMin'>>;
+
+/** Setup do gestor: alertas da plataforma e se disparam para a operação dele (todos ligados por padrão). */
+export interface AlertaTipoDoCliente {
+  chave: string; nome: string; disparo: AlertaTipo['disparo']; prioridade: AlertaTipo['prioridade']; ligado: boolean;
+  /** Só tipo padrão: o que mede, o padrão da plataforma e o ajuste da operação (null = usa o padrão). */
+  padrao: boolean; campo: string | null; operador: string | null; limitePadrao: string | null; duracaoPadrao: number;
+  limite: string | null; duracaoMin: number | null;
+}
+export const alertaTiposCliente = {
+  listar: () => apiGet<AlertaTipoDoCliente[]>('/alerta-tipos'),
+  definir: (chave: string, ajuste: { ligado?: boolean; valor?: number | null; duracaoMin?: number | null }) =>
+    apiSend<AlertaTipoDoCliente>('PUT', `/alerta-tipos/${encodeURIComponent(chave)}`, ajuste),
+};
+
 export const adminApi = {
+  alertaTipos: () => apiGet<AlertaTipo[]>('/superadmin/alerta-tipos'),
+  criarAlertaTipo: (body: AlertaTipoBody & { disparo: 'alarme' | 'condicao'; chave?: string }) => apiSend<AlertaTipo>('POST', '/superadmin/alerta-tipos', body),
+  atualizarAlertaTipo: (chave: string, body: AlertaTipoBody) => apiSend<AlertaTipo>('PATCH', `/superadmin/alerta-tipos/${encodeURIComponent(chave)}`, body),
+  excluirAlertaTipo: (chave: string) => apiSend('DELETE', `/superadmin/alerta-tipos/${encodeURIComponent(chave)}`),
   clients: () => apiGet<AdminClient[]>('/clients'),
   createClient: (body: { name: string; admin?: { email: string } }) => apiSend<{ client: AdminClient; conviteEnviado: boolean; link: string | null }>('POST', '/superadmin/clients', body),
   createInitialAdmin: (clientId: string, body: { email: string }) => apiSend<{ conviteEnviado: boolean; link: string | null }>('POST', `/superadmin/clients/${clientId}/admin-users`, body),

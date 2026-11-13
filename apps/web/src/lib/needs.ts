@@ -6,21 +6,31 @@ import { useMemo } from 'react';
 import { useStoreData } from './store';
 import { planStatus } from '@localle/shared/maint';
 import { tireStats } from '@localle/shared/pneus';
-import { useCriticalMap } from './critical';
+import { useCriticalMap, type CritReason } from './critical';
 import type { IconName } from '../components/icons';
 import { maintNeeds } from '@localle/shared/insights';
 import { indicationState, indicationDue, notifiedEstimated } from '@localle/shared/fines';
 import { docState, docLabel, docWhen, DRIVER_DOC_PARAMS } from '@localle/shared/assetDocs';
 
-export interface NeedItem { id: string; kind: 'os' | 'pneu' | 'veiculo' | 'multa' | 'documento'; title: string; detail?: string; since?: number; to: string }
+export interface NeedItem {
+  id: string; kind: 'os' | 'pneu' | 'veiculo' | 'multa' | 'documento'; title: string; detail?: string; since?: number; to: string;
+  /** Ocorrência de veículo: abre o detalhe na central (encerrar com desfecho), não outra tela. */
+  occ?: { assetId: string; reason: CritReason };
+}
+
+export const occId = (assetId: string, r: CritReason) => `v${assetId}|${r.key}`;
 
 export function useNeedsYou(): NeedItem[] {
   const s = useStoreData(10000); // km e posição contam a cada 10 s; o resto (OS, pneus, multas) na hora
   const crit = useCriticalMap();
-  // veículos críticos (alerta alto sem tratamento, bloqueio pendente): valem com ou sem banco
-  const vehicles = useMemo(() => [...crit.entries()].map(([aid, rs]): NeedItem => {
+  // ocorrências de veículo (alerta que exige tratamento, bloqueio pendente), uma por ativo × tipo: repetições do mesmo
+  // alerta enquanto aberta entram na mesma ocorrência (lib/critical.criticalMap)
+  const vehicles = useMemo(() => [...crit.entries()].flatMap(([aid, rs]) => {
     const name = s.assets.find((a: any) => a.id === aid)?.name || aid;
-    return { id: 'v' + aid, kind: 'veiculo', title: `Veículo crítico · ${name}`, detail: rs.length > 1 ? `${rs[0].title} e mais ${rs.length - 1}` : rs[0].title, since: Math.min(...rs.map((r) => r.since)), to: `/monitoramento?ativo=${aid}` };
+    return rs.map((r): NeedItem => {
+      const id = occId(aid, r);
+      return { id, kind: 'veiculo', title: `${r.title} · ${name}`, detail: r.detail, since: r.since, to: `/precisa-de-voce?ocorrencia=${encodeURIComponent(id)}`, occ: { assetId: aid, reason: r } };
+    });
   }), [crit, s.assets]);
   const rest = useMemo((): NeedItem[] => {
     const out: NeedItem[] = [];
@@ -40,7 +50,7 @@ export function useNeedsYou(): NeedItem[] {
 
 // Tipos de "Precisa de você": rótulo e ícone (mesmos no painel do topo e na central)
 export const NEED_KINDS: { kind: NeedItem['kind']; label: string; icon: IconName }[] = [
-  { kind: 'veiculo', label: 'Veículos', icon: 'alerta' },
+  { kind: 'veiculo', label: 'Ocorrências', icon: 'alerta' },
   { kind: 'os', label: 'Manutenção', icon: 'manutencao' },
   { kind: 'pneu', label: 'Pneus', icon: 'pneus' },
   { kind: 'multa', label: 'Multas', icon: 'multas' },

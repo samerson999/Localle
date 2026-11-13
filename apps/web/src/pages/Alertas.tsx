@@ -1,7 +1,7 @@
 import { ativarPush, estadoPush, marcarAlertasLidos, removerRegra, salvarRegra, useCarregando } from '../lib/localleApi';
 import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
-import { Button, Card, Field, FormGroup, Input, Select, Table, Check, Badge, PageTabs, Modal, TextButton, TabPanel, confirmAction, toast, IconButton, EmptyState, Stack, Cluster, Missing, useUrlTab, FilterSheet } from '../components/ui';
+import { Button, Card, Field, FormGroup, Input, Select, Table, Check, Badge, PageTabs, Modal, TextButton, TabPanel, confirmAction, toast, IconButton, EmptyState, Stack, Cluster, Missing, useUrlTab, useUrlItem, FilterSheet } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { StatusDot, AssetName, IdChip, priorityKind } from '../components/story';
 import { Icon } from '../components/icons';
@@ -10,11 +10,12 @@ import { RULE_FIELDS } from '@localle/shared/engine';
 import { FENCE_TYPES } from '@localle/shared/catalog';
 import { fmtDT } from '@localle/shared/utils';
 import { STATUS_COMANDO, veSintaxeComando } from '../lib/support';
+import { alertIdFor } from '../lib/localleMap';
 
 // prioridade na linguagem de status: alta = crítico, média = atenção, baixa = anel
 const PRIO: Record<string, string> = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
 const Prio = ({ p }: { p: string }) => <StatusDot kind={priorityKind(p)} label={PRIO[p] || p} />;
-const blankRule = () => ({ id: '', name: '', active: true, priority: 'media', groupId: '', conditions: [{ field: 'velocidade', op: '>', value: '80' }], actions: { painel: true, email: false, whatsapp: false, motorista: false, bloqueio: false, ranking: false } });
+const blankRule = () => ({ id: '', name: '', active: true, priority: 'media', groupId: '', conditions: [{ field: 'velocidade', op: '>', value: '80' }], actions: { painel: true, email: false, whatsapp: false, motorista: false, bloqueio: false, ranking: false, tratamento: false } });
 
 export default function Alertas() {
   const [tab, setTab] = useUrlTab('alertas');
@@ -62,11 +63,19 @@ function AlertLog() {
   const assets = useStore((s) => s.assets);
   const [pr, setPr] = useState('');
   const [onlyUnread, setOnlyUnread] = useState(false);
+  // ?alerta=<id da API> vem do toque na notificação do celular (public/sw.js): limpa os filtros, destaca a linha e rola até ela
+  const [foco, setFoco] = useState('');
+  useUrlItem('alerta', (id) => alerts.find((a: any) => a.id === alertIdFor(id)), (a: any) => { setPr(''); setOnlyUnread(false); setFoco(a.id); }, [alerts]);
+  useEffect(() => {
+    if (!foco) return;
+    const el = [...document.querySelectorAll<HTMLElement>('[data-alerta-foco]')].find((x) => x.offsetParent);
+    el?.scrollIntoView({ block: 'center' });
+  }, [foco]);
   const list = [...alerts].reverse().filter((a: any) => (!pr || a.priority === pr) && (!onlyUnread || !a.read));
   const patch = useStore.getState().patch;
   return (
     <Card title={`Alertas (${list.length})`} icon="alerta" actions={<div className="flex gap-stack items-center flex-wrap max-md:w-full max-md:[&>*]:flex-1"><AtivarPushButton /><FilterSheet count={[pr, onlyUnread].filter(Boolean).length}><Select aria-label="Prioridade" className="w-40 max-md:w-full" value={pr} onChange={(e) => setPr(e.target.value)} options={[{ value: '', label: 'Todas prioridades' }, 'alta', 'media', 'baixa']} /><Check label="Só não lidos" checked={onlyUnread} onChange={setOnlyUnread} /></FilterSheet></div>}>
-      <Table head={['Quando', 'Prioridade', 'Alerta', 'Ativo', 'Detalhe', '']} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Nenhum alerta com esses filtros" />} rows={list.map((a: any) => [<span className="num whitespace-nowrap">{fmtDT(a.ts)}</span>, <Prio p={a.priority} />, <span className="font-medium">{a.title}</span>, <AssetName name={assets.find((x: any) => x.id === a.assetId)?.name} />, <span className="text-small text-ink-2">{a.detail}</span>, a.read ? <span className="text-caption text-ink-2">Lido</span> : <TextButton onClick={() => { patch((s: any) => ({ alerts: s.alerts.map((x: any) => (x.id === a.id ? { ...x, read: true } : x)) })); marcarAlertasLidos([a.id]).catch((e) => toast('Não foi possível marcar como lido: ' + (e.message || e), { tone: 'crit' })); }}>Marcar como lido</TextButton>])} />
+      <Table head={['Quando', 'Prioridade', 'Alerta', 'Ativo', 'Detalhe', '']} emptyState={<EmptyState illustration="ilu-tudo-em-dia" title="Nenhum alerta com esses filtros" />} selected={(i) => list[i].id === foco} rows={list.map((a: any) => [<span className="num whitespace-nowrap">{fmtDT(a.ts)}</span>, <Prio p={a.priority} />, <span className="font-medium" data-alerta-foco={a.id === foco || undefined}>{a.title}</span>, <AssetName name={assets.find((x: any) => x.id === a.assetId)?.name} />, <span className="text-small text-ink-2">{a.detail}</span>, a.read ? <span className="text-caption text-ink-2">Lido</span> : <TextButton onClick={() => { patch((s: any) => ({ alerts: s.alerts.map((x: any) => (x.id === a.id ? { ...x, read: true } : x)) })); marcarAlertasLidos([a.id]).catch((e) => toast('Não foi possível marcar como lido: ' + (e.message || e), { tone: 'crit' })); }}>Marcar como lido</TextButton>])} />
     </Card>
   );
 }
@@ -115,6 +124,8 @@ function Rules() {
             <Field label="Aplicar a" hint="Escopo por grupo chega com o cadastro de grupos no servidor."><Select value="" disabled onChange={() => {}} options={[{ value: '', label: 'Todos os veículos' }]} /></Field>
             <Field label="Prioridade"><Select value={r.priority} onChange={(e) => setR({ ...r, priority: e.target.value })} options={['alta', 'media', 'baixa']} /></Field>
           </FormGroup>
+          {/* regra gravada antes da opção existir: a API trata como alta = exige */}
+          <Check label="Exige tratamento: vira ocorrência no “Precisa de você” e só sai quando alguém encerra com o desfecho" checked={r.actions.tratamento ?? r.priority === 'alta'} onChange={(v) => setR({ ...r, actions: { ...r.actions, tratamento: v } })} />
         </Stack>}
       </Modal>
     </>
