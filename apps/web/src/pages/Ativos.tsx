@@ -295,6 +295,7 @@ function AssetForm({ a, setA }: any) {
   // o que impede salvar fica visível no rodapé, com atalho para a aba onde se resolve
   // placa só é exigida de quem roda em via pública; o resto se identifica pelo código interno ou nº de série
   const comPlaca = isV || a.kind === 'implemento';
+  const placaGravada = !!s.assets.find((x: any) => x.id === a.id)?.plate;
   const pend = !a.category ? { aba: 'dados', txt: 'Escolha o tipo do ativo' }
     : comPlaca && !a.plate?.trim() ? { aba: 'dados', txt: 'Informe a placa na aba Dados' }
     : !comPlaca && !a.plate?.trim() && !a.serial?.trim() ? { aba: 'dados', txt: 'Informe o código interno ou nº de série na aba Dados' }
@@ -342,7 +343,8 @@ function AssetForm({ a, setA }: any) {
                 <>
                   <p className="text-small text-ink-2">{a.kind === 'implemento' ? 'Carreta ou implemento: engata em cavalos diferentes, tem pneus próprios e pode ter rastreador próprio.' : 'Ativos que não são veículos são cadastrados manualmente.'}</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-field">
-                    <Field label={a.kind === 'implemento' ? 'Placa' : 'Placa (se tiver)'}><Input mask="placa" className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>
+                    {/* objeto pessoal não tem placa: o campo só aparece se já houver uma gravada, para poder limpar */}
+                    {(a.category !== 'pessoal' || placaGravada) && <Field label={a.kind === 'implemento' ? 'Placa' : 'Placa (se tiver)'}><Input mask="placa" className="font-mono uppercase" value={a.plate} onChange={(e) => set('plate', e.target.value)} /></Field>}
                     {a.kind === 'implemento' && <><Field label="Chassi"><Input className="font-mono uppercase" maxLength={17} value={a.chassi || ''} onChange={(e) => set('chassi', e.target.value.toUpperCase())} /></Field>
                       <Field label="Renavam"><Input className="font-mono" inputMode="numeric" maxLength={11} value={a.renavam || ''} onChange={(e) => set('renavam', e.target.value.replace(/\D/g, ''))} /></Field>
                       <CampoUf a={a} set={set} /></>}
