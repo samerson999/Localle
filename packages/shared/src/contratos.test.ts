@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { apurar, avgActiveVehicles, daysLate, dueDateOf, estimar, validateTerms, type ContractTerms, type DailyMeasurement } from './contratos';
 
-const base: ContractTerms = { billingType: 'por_veiculo_ativo', fixedPrice: 0, included: 0, basePrice: 0, pricePerVehicle: 99, extraPrice: 99, modules: ['monitoramento'], maxUsers: null, historyMonths: 12, dueDay: 10, toleranceDays: 5 };
+const base: ContractTerms = { billingType: 'por_veiculo_ativo', fixedPrice: 0, included: 0, basePrice: 0, pricePerVehicle: 99, extraPrice: 99, modules: ['monitoramento'], blockedPages: [], maxUsers: null, historyMonths: 12, dueDay: 10, toleranceDays: 5 };
 const dias = (ym: string, n: number, qtd: (i: number) => number): DailyMeasurement[] =>
   Array.from({ length: n }, (_, i) => ({ date: `${ym}-${String(i + 1).padStart(2, '0')}`, activeVehicles: qtd(i) }));
 
@@ -54,6 +54,7 @@ describe('estimar / vencimento / atraso', () => {
 describe('validateTerms', () => {
   it('aceita termos válidos', () => {
     expect(validateTerms(base)).toEqual([]);
+    expect(validateTerms({ ...base, blockedPages: ['/monitoramento/replay', '/relatorios/passou-por-aqui'] })).toEqual([]);
   });
 
   it.each([
@@ -63,6 +64,9 @@ describe('validateTerms', () => {
     [{ maxUsers: 0 }],
     [{ modules: ['inexistente'] }],
     [{ modules: ['monitoramento', 'monitoramento'] }],
+    [{ blockedPages: ['relatorios'] }],
+    [{ blockedPages: ['/relatorios', '/relatorios'] }],
+    [{ blockedPages: undefined }],
     [{ included: 1.5 }],
   ])('rejeita %j', (patch) => {
     expect(validateTerms({ ...base, ...(patch as Partial<ContractTerms>) }).length).toBeGreaterThan(0);

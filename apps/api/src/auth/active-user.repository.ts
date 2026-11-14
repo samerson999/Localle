@@ -51,6 +51,19 @@ export class ActiveUserRepository {
     return (rowCount ?? 0) > 0;
   }
 
+  /**
+   * O que o cliente acessa, pela versão vigente (a mais recente) do contrato. Sem contrato (implantação), tudo
+   * liberado — `modules: null` —, como no bloqueio por situação acima (decidido em 14/11/2026).
+   */
+  async acessosDoCliente(clientId: string): Promise<{ modules: string[] | null; blockedPages: string[] }> {
+    const { rows } = await this.pool.query<{ modulos: string[]; paginas_bloqueadas: string[] }>(
+      `select v.modulos, v.paginas_bloqueadas from contrato_versoes v
+        where v.client_id = $1 order by v.criado_em desc, v.id desc limit 1`,
+      [clientId],
+    );
+    return rows[0] ? { modules: rows[0].modulos, blockedPages: rows[0].paginas_bloqueadas } : { modules: null, blockedPages: [] };
+  }
+
   /** Superadmin removido perde o acesso na hora, não só quando o token de 8h expirar. */
   async isSuperadmin(id: string, tokenIat: number): Promise<boolean> {
     const { rowCount } = await this.pool.query(

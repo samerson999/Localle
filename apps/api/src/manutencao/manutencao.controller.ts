@@ -5,6 +5,7 @@ import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { GATILHOS, ManutencaoRepository, type OsInput, type OsRow, type PlanoInput, STATUS_OS, TIPOS_OS } from './manutencao.repository';
 import { ManutencaoService } from './manutencao.service';
+import { Modulo } from '../auth/modulo.guard';
 
 export function parsePlano(body: unknown): PlanoInput {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -63,6 +64,7 @@ function tratarOs(r: OsRow | null | 'ativo_invalido' | 'plano_invalido'): OsRow 
 
 @Controller('manutencao')
 @UseGuards(PermissionsGuard)
+@Modulo('manutencao')
 export class ManutencaoController {
   constructor(
     private readonly repo: ManutencaoRepository,

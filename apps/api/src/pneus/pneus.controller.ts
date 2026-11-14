@@ -7,6 +7,7 @@ import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type MovimentoInput, type PneuInput, PneusRepository, STATUS_PNEU, TIPOS_MOVIMENTO } from './pneus.repository';
 import { PneusService } from './pneus.service';
+import { Modulo } from '../auth/modulo.guard';
 
 export function parsePneu(body: unknown): PneuInput {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -38,6 +39,7 @@ export function parseMovimento(body: unknown): MovimentoInput {
 
 @Controller('pneus')
 @UseGuards(PermissionsGuard)
+@Modulo('pneus')
 export class PneusController {
   constructor(
     private readonly repo: PneusRepository,

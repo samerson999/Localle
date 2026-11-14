@@ -5,6 +5,7 @@ import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type EventoInput, type MatrizInput, ORIGENS_EVENTO, RankingRepository } from './ranking.repository';
 import { RankingService } from './ranking.service';
+import { Modulo } from '../auth/modulo.guard';
 
 export function parseMatriz(codigo: string, body: unknown): MatrizInput {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -42,6 +43,7 @@ export function parseEvento(body: unknown): EventoInput {
 
 @Controller('ranking')
 @UseGuards(PermissionsGuard)
+@Modulo('ranking')
 export class RankingController {
   constructor(
     private readonly repo: RankingRepository,

@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
-import { Button, Card, Field, Input, Table, Badge, Tabs, PageHeader, Pills, cx, TextButton, Switch, TabPanel, EmptyState, toast, confirmAction, Grid, Stack, useUrlTab, ColorSwatchPicker } from '../components/ui';
+import { Button, Card, Field, Input, Table, Tabs, PageHeader, Pills, cx, TextButton, TabPanel, EmptyState, toast, confirmAction, Grid, Stack, useUrlTab, ColorSwatchPicker } from '../components/ui';
 import { Icon } from '../components/icons';
 import { Dropzone } from '../components/Dropzone';
 import SupportAccess from '../components/SupportAccess';
 import { BrandMark } from '../components/Layout';
-import { MODULES } from '@localle/shared/catalog';
-import { PAGINAS_DO_MODULO, PAGINAS_GERAIS, type Pagina } from '../lib/paginas';
 import { brl, fmtDT, monthLabel, num } from '@localle/shared/utils';
 import { invoice, lastMonths, DEFAULT_BILLING, BillingCfg, Link } from '@localle/shared/billing';
 import { KpiTile, ChartCard, Num, IdChip, AssetName, StatusDot } from '../components/story';
@@ -18,12 +16,11 @@ export default function Revenda() {
   if (session?.role !== 'revenda' && session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito ao administrador da rastreadora" detail="Entre com revenda@demo.com para ver este painel." /></Card>;
   return (
     <div>
-      <PageHeader title="Painel da revenda" subtitle="Personalize a plataforma, escolha os módulos que você vende e acompanhe os acessos consumidos" />
-      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'cliente', label: 'Cliente e suporte' }, { key: 'marca', label: 'Identidade visual' }, { key: 'modulos', label: 'Módulos' }, { key: 'licencas', label: 'Licenças e faturamento' }]} /></div>
+      <PageHeader title="Painel da revenda" subtitle="Personalize a plataforma e acompanhe os acessos consumidos" />
+      <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head"><Tabs value={tab} onChange={setTab} tabs={[{ key: 'cliente', label: 'Cliente e suporte' }, { key: 'marca', label: 'Identidade visual' }, { key: 'licencas', label: 'Licenças e faturamento' }]} /></div>
       <TabPanel id={tab}>
         {tab === 'cliente' && <SupportAccess />}
         {tab === 'marca' && <Marca />}
-        {tab === 'modulos' && <Modulos />}
         {tab === 'licencas' && <Licencas />}
       </TabPanel>
     </div>
@@ -70,61 +67,6 @@ function Marca() {
         <p className="text-small text-ink-2 mt-3">Saia (botão "Sair" no menu) para ver a tela de login real com a sua marca.</p>
       </Card>
     </div>
-  );
-}
-
-function Modulos() {
-  const s = useStoreData();
-  const mods = s.revenda.modules;
-  const set = (k: string, v: boolean) => s.patch((st: any) => ({ revenda: { ...st.revenda, modules: { ...st.revenda.modules, [k]: v } } }));
-  // página sem registro = liberada; desligar grava false (lib/paginas.ts)
-  const pagina = (p: Pagina, off = false) => {
-    const on = mods[p.to] !== false;
-    return (
-      <label key={p.to} className={cx('flex items-center gap-3 px-4 py-3 rounded-ctl border border-line', off ? 'opacity-60' : 'cursor-pointer hover:bg-card-2 transition-colors')}>
-        <Switch checked={on && !off} disabled={off} onChange={(v) => set(p.to, v)} aria-label={`Liberar ${p.label}`} />
-        <span className="min-w-0">
-          <span className="block text-body font-medium truncate">{p.label}</span>
-          <span className="block text-caption text-ink-2 font-mono truncate">{p.to}</span>
-        </span>
-      </label>
-    );
-  };
-  return (
-    <Stack gap="grid">
-    <Card title="Módulos liberados para este cliente">
-      <p className="text-small text-ink-2 mb-4">Cada módulo é independente: monte o pacote que você vai vender. Módulos desligados somem do menu do cliente.</p>
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-grid">
-        {MODULES.map((m) => (
-          <label key={m.key} className="flex items-center gap-3 p-4 rounded-ctl cursor-pointer border border-line hover:bg-card-2 transition-colors">
-            <Switch checked={!!mods[m.key]} onChange={(v) => set(m.key, v)} />
-            <span className="text-body font-medium">{m.label}</span>
-            <Badge tone={mods[m.key] ? 'green' : 'gray'} className="ml-auto">{mods[m.key] ? 'Ativo' : 'Desligado'}</Badge>
-          </label>
-        ))}
-      </div>
-      {mods.manutencao && (
-        <div className="flex flex-wrap items-end gap-3 mt-6 pt-5 border-t border-line">
-          <Field label="Meta de disponibilidade da frota (%)" hint="Usada nos indicadores de Manutenção deste cliente."><Input className="w-32" type="number" min={50} max={100} step={0.5} value={Math.round((s.maintGoals?.availability ?? 0.95) * 1000) / 10} onChange={(e) => { const v = +e.target.value; if (v >= 50 && v <= 100) s.patch(() => ({ maintGoals: { ...(s.maintGoals || {}), availability: v / 100 } })); }} /></Field>
-        </div>
-      )}
-    </Card>
-    <Card title="Páginas liberadas para este cliente">
-      <p className="text-small text-ink-2 mb-4">Ligue ou desligue cada página. A página principal de cada módulo segue o módulo acima; páginas desligadas somem do menu e mostram aviso pelo link direto. Minha conta fica sempre liberada.</p>
-      <Stack gap="grid">
-        {Object.entries(PAGINAS_DO_MODULO).map(([mod, lista]) => (
-          <div key={mod}>
-            <p className="text-small font-medium text-ink-2 mb-2">{MODULES.find((m) => m.key === mod)?.label ?? mod}{!mods[mod] && ' · módulo desligado'}</p>
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-grid">{lista.map((p) => pagina(p, !mods[mod] || (p.to.startsWith('/relatorios/') && mods['/relatorios'] === false)))}</div>
-          </div>
-        ))}
-        <div>
-          <p className="text-small font-medium text-ink-2 mb-2">Geral</p>
-          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-grid">{PAGINAS_GERAIS.map((p) => pagina(p))}</div>
-        </div>
-      </Stack>
-    </Card>
-    </Stack>
   );
 }
 

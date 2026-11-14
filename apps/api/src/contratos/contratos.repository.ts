@@ -19,7 +19,7 @@ export interface ContratoRow {
 }
 
 const VERSAO_COLS = `v.id, v.criado_em, v.tipo_cobranca, v.mensalidade_fixa, v.franquia, v.mensalidade_base,
-  v.preco_por_veiculo, v.preco_excedente, v.modulos, v.max_usuarios, v.historico_meses, v.dia_vencimento, v.tolerancia_dias`;
+  v.preco_por_veiculo, v.preco_excedente, v.modulos, v.paginas_bloqueadas, v.max_usuarios, v.historico_meses, v.dia_vencimento, v.tolerancia_dias`;
 
 // numeric do pg chega como string — convertido aqui, num lugar só
 export function toVersion(r: any): ContractVersion {
@@ -33,6 +33,7 @@ export function toVersion(r: any): ContractVersion {
     pricePerVehicle: Number(r.preco_por_veiculo),
     extraPrice: Number(r.preco_excedente),
     modules: r.modulos,
+    blockedPages: r.paginas_bloqueadas,
     maxUsers: r.max_usuarios,
     historyMonths: r.historico_meses,
     dueDay: r.dia_vencimento,
@@ -110,10 +111,10 @@ export class ContratosRepository {
   async insertVersao(contratoId: string, clientId: string, t: ContractTerms, criadoPor: string, executor: Queryable): Promise<void> {
     await executor.query(
       `insert into contrato_versoes (contrato_id, client_id, tipo_cobranca, mensalidade_fixa, franquia, mensalidade_base,
-         preco_por_veiculo, preco_excedente, modulos, max_usuarios, historico_meses, dia_vencimento, tolerancia_dias, criado_por)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+         preco_por_veiculo, preco_excedente, modulos, paginas_bloqueadas, max_usuarios, historico_meses, dia_vencimento, tolerancia_dias, criado_por)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [contratoId, clientId, t.billingType, t.fixedPrice, t.included, t.basePrice, t.pricePerVehicle, t.extraPrice,
-        t.modules, t.maxUsers, t.historyMonths, t.dueDay, t.toleranceDays, criadoPor],
+        t.modules, t.blockedPages, t.maxUsers, t.historyMonths, t.dueDay, t.toleranceDays, criadoPor],
     );
   }
 

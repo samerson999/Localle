@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ActiveUserRepository } from './active-user.repository';
 import { AuthGuard } from './auth.guard';
+import { ModuloGuard } from './modulo.guard';
 import { SuperadminGuard } from './superadmin.guard';
 
 /**
@@ -15,7 +16,7 @@ import { SuperadminGuard } from './superadmin.guard';
  * `forwardRef` em lugar nenhum do grafo de módulos.
  */
 @Module({
-  providers: [AuthGuard, SuperadminGuard, ActiveUserRepository],
-  exports: [AuthGuard, SuperadminGuard, ActiveUserRepository],
+  providers: [AuthGuard, SuperadminGuard, ModuloGuard, ActiveUserRepository],
+  exports: [AuthGuard, SuperadminGuard, ModuloGuard, ActiveUserRepository],
 })
 export class AuthGuardsModule {}

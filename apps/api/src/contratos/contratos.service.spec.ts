@@ -25,7 +25,7 @@ describe('Contratos e faturamento', () => {
   const clientes: string[] = [];
   const rastreadores: string[] = [];
 
-  const termos: ContractTerms = { billingType: 'por_veiculo_ativo', fixedPrice: 0, included: 0, basePrice: 0, pricePerVehicle: 90, extraPrice: 90, modules: ['monitoramento'], maxUsers: null, historyMonths: 12, dueDay: 10, toleranceDays: 5 };
+  const termos: ContractTerms = { billingType: 'por_veiculo_ativo', fixedPrice: 0, included: 0, basePrice: 0, pricePerVehicle: 90, extraPrice: 90, modules: ['monitoramento'], blockedPages: [], maxUsers: null, historyMonths: 12, dueDay: 10, toleranceDays: 5 };
   const input = (t: Partial<ContractTerms> = {}, status: 'ativo' | 'suspenso' = 'ativo') => ({ status, inicioEm: '2026-01-01', fimEm: null, terms: { ...termos, ...t } });
 
   async function novoCliente() {

@@ -34,7 +34,8 @@ export interface ContractTerms {
   basePrice: number; // mensalidade-base cobrindo a franquia
   pricePerVehicle: number; // por veículo ativo, quando não há franquia
   extraPrice: number; // veículo excedente acima da franquia
-  modules: string[]; // chaves de MODULES
+  modules: string[]; // chaves de MODULES — o que o cliente acessa (ModuloGuard na API, menu no front)
+  blockedPages: string[]; // subpáginas desligadas para o cliente (rotas do front, ex. '/monitoramento/replay')
   maxUsers: number | null;
   historyMonths: number;
   dueDay: number; // dia de vencimento (1–28)
@@ -42,7 +43,7 @@ export interface ContractTerms {
 }
 export interface ContractVersion extends ContractTerms { id: string; createdAt: number }
 
-export const COMMERCIAL_FIELDS: (keyof ContractTerms)[] = ['billingType', 'fixedPrice', 'included', 'basePrice', 'pricePerVehicle', 'extraPrice', 'modules', 'maxUsers', 'historyMonths', 'dueDay', 'toleranceDays'];
+export const COMMERCIAL_FIELDS: (keyof ContractTerms)[] = ['billingType', 'fixedPrice', 'included', 'basePrice', 'pricePerVehicle', 'extraPrice', 'modules', 'blockedPages', 'maxUsers', 'historyMonths', 'dueDay', 'toleranceDays'];
 export const changedCommercial = (a: ContractTerms, b: ContractTerms) => COMMERCIAL_FIELDS.some((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));
 
 // Medição diária de veículos ativos (veículo-dia): um veículo conta no dia se teve instalação vigente nele.
@@ -104,5 +105,7 @@ export function validateTerms(t: Partial<ContractTerms>): string[] {
   int('included', 0, 100_000); int('historyMonths', 1, 120); int('dueDay', 1, 28); int('toleranceDays', 0, 90);
   if (t.maxUsers !== null && (typeof t.maxUsers !== 'number' || !Number.isInteger(t.maxUsers) || t.maxUsers < 1 || t.maxUsers > 100_000)) errs.push('"maxUsers" precisa ser inteiro de 1 a 100.000 ou nulo');
   if (!Array.isArray(t.modules) || t.modules.some((m) => !MODULE_KEYS.includes(m)) || new Set(t.modules).size !== t.modules.length) errs.push('"modules" tem módulo inválido ou repetido');
+  const rota = (p: unknown) => typeof p === 'string' && /^\/[a-z0-9\-/]{1,99}$/.test(p);
+  if (!Array.isArray(t.blockedPages) || t.blockedPages.length > 100 || !t.blockedPages.every(rota) || new Set(t.blockedPages).size !== t.blockedPages.length) errs.push('"blockedPages" tem página inválida ou repetida');
   return errs;
 }

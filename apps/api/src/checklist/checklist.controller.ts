@@ -5,6 +5,7 @@ import { booleano, dataOpcional, erro, instante, listaUuids, numeroOpcional, opc
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type Agenda, ChecklistRepository, type ModeloInput, type ModeloRow, type Pergunta, type RespostaInput, type RespostaRow, TIPOS_AGENDA, TIPOS_PERGUNTA } from './checklist.repository';
+import { Modulo } from '../auth/modulo.guard';
 
 function parseAgenda(v: unknown): Agenda {
   const a = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
@@ -100,6 +101,7 @@ export function conferir(modelo: ModeloRow, r: RespostaInput): number {
 
 @Controller('checklist')
 @UseGuards(PermissionsGuard)
+@Modulo('checklist')
 export class ChecklistController {
   constructor(private readonly repo: ChecklistRepository) {}
 

@@ -29,7 +29,7 @@ export default function Relatorios() {
   const hist = useAdminQuery(listarRelatoriosGerados);
   const lista = hist.data || [];
   const tipoDe = (k: TipoRelatorio) => TIPOS.find((t) => t.tipo === k);
-  const modules = useStore((s) => s.revenda.modules); // relatório desligado pela revenda some do hub
+  const modules = useStore((s) => s.revenda.modules); // relatório desligado no contrato do cliente some do hub
   return (
     <div>
       <PageHeader icon="relatorios" title="Relatórios" subtitle="Transforme os dados da sua frota em informações claras e acionáveis" />

@@ -4,6 +4,7 @@ import { booleano, erro, instante, opcao, texto, textoOpcional, uuid, uuidOpcion
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type ErroVinculo, ETAPAS, type MatrizInput, type MatrizRow, type Parada, TIPOS_VIAGEM, type ViagemInput, type ViagemRow, ViagensRepository } from './viagens.repository';
+import { Modulo } from '../auth/modulo.guard';
 
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -66,6 +67,7 @@ function tratar<T extends MatrizRow | ViagemRow>(r: T | null | ErroVinculo, nome
 
 @Controller('viagens')
 @UseGuards(PermissionsGuard)
+@Modulo('viagens')
 export class ViagensController {
   constructor(private readonly repo: ViagensRepository) {}
 

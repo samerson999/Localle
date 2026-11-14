@@ -58,3 +58,47 @@ describe('ActiveUserRepository — tolerância de relógio', () => {
     expect(await repo.isActive(userId, iat)).toBe(true);
   });
 });
+
+/** O contrato é a fonte do que o cliente acessa (14/11/2026): vale a versão mais recente; sem contrato, tudo liberado. */
+describe('ActiveUserRepository — acessos pelo contrato', () => {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const repo = new ActiveUserRepository(pool);
+  let semContrato: string;
+  let comContrato: string;
+  let outro: string;
+
+  const novoCliente = async (nome: string) =>
+    (await pool.query<{ id: string }>('insert into clients (name) values ($1) returning id', [`${nome}-${randomUUID()}`])).rows[0].id;
+  const versao = (contratoId: string, clientId: string, modulos: string[], paginas: string[], criadoEm: string) =>
+    pool.query(
+      `insert into contrato_versoes (contrato_id, client_id, tipo_cobranca, historico_meses, dia_vencimento, modulos, paginas_bloqueadas, criado_por, criado_em)
+       values ($1, $2, 'mensalidade_fixa', 12, 5, $3, $4, $5, $6)`,
+      [contratoId, clientId, modulos, paginas, randomUUID(), criadoEm],
+    );
+  const contrato = async (clientId: string) =>
+    (await pool.query<{ id: string }>("insert into contratos (client_id, status) values ($1, 'ativo') returning id", [clientId])).rows[0].id;
+
+  beforeAll(async () => {
+    semContrato = await novoCliente('acessos-sem-contrato');
+    comContrato = await novoCliente('acessos-com-contrato');
+    outro = await novoCliente('acessos-outro');
+    const k = await contrato(comContrato);
+    await versao(k, comContrato, ['monitoramento', 'ativos', 'multas'], [], '2026-01-01T00:00:00Z');
+    await versao(k, comContrato, ['monitoramento', 'ativos'], ['/monitoramento/replay'], '2026-06-01T00:00:00Z');
+    await versao(await contrato(outro), outro, ['monitoramento', 'pneus'], [], '2026-06-01T00:00:00Z');
+  });
+
+  afterAll(async () => {
+    await pool.query('delete from clients where id = any($1)', [[semContrato, comContrato, outro]]);
+    await pool.end();
+  });
+
+  it('sem contrato: módulos null (tudo liberado)', async () => {
+    expect(await repo.acessosDoCliente(semContrato)).toEqual({ modules: null, blockedPages: [] });
+  });
+
+  it('com contrato: vale a versão mais recente, e só a do próprio cliente', async () => {
+    expect(await repo.acessosDoCliente(comContrato)).toEqual({ modules: ['monitoramento', 'ativos'], blockedPages: ['/monitoramento/replay'] });
+    expect(await repo.acessosDoCliente(outro)).toEqual({ modules: ['monitoramento', 'pneus'], blockedPages: [] });
+  });
+});

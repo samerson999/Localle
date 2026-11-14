@@ -5,6 +5,7 @@ import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type AbastecimentoInput, type AbastecimentoRow, AbastecimentosRepository, type NotaFiscal } from './abastecimentos.repository';
 import { CombustivelService } from './combustivel.service';
+import { Modulo } from '../auth/modulo.guard';
 
 function parseNota(v: unknown): NotaFiscal | null {
   if (v === undefined || v === null) return null;
@@ -49,6 +50,7 @@ function tratar(r: AbastecimentoRow | null | 'ativo_invalido' | 'motorista_inval
 
 @Controller('abastecimentos')
 @UseGuards(PermissionsGuard)
+@Modulo('combustivel')
 export class CombustivelController {
   constructor(
     private readonly repo: AbastecimentosRepository,

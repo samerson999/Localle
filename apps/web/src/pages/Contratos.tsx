@@ -2,12 +2,15 @@
 // franquia e excedente, funcionalidades contratadas, vigência e vencimento — no backend (/superadmin/contratos).
 // Editar valores comerciais grava uma versão nova (o backend decide, pela mesma regra de @localle/shared/contratos);
 // situação e vigência não são versionadas. Suspenso/cancelado corta o acesso dos usuários do cliente na hora.
+// Funcionalidades e páginas liberadas são o que o cliente acessa: a API recusa módulo fora do contrato (ModuloGuard)
+// e o front monta o menu com elas (GET /auth/acessos). Sem contrato, o cliente acessa tudo.
 import { useState } from 'react';
-import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Select, Switch, Callout, toast, EmptyState } from '../components/ui';
+import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Select, Switch, Callout, toast, EmptyState, cx } from '../components/ui';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery, type AdminClient, type AdminContrato, type ContratoBody } from '../lib/localleApi';
 import { brl, fmtD } from '@localle/shared/utils';
 import { Icon, type IconName } from '../components/icons';
+import { PAGINAS_DO_MODULO, PAGINAS_GERAIS, type Pagina } from '../lib/paginas';
 import { MODULES, moduleName, changedCommercial, validateTerms, type ContractTerms, type ContractStatus, type BillingType } from '@localle/shared/contratos';
 
 export const CONTRACT_BADGE: Record<ContractStatus, { tone: string; label: string }> = {
@@ -17,7 +20,7 @@ export const CONTRACT_BADGE: Record<ContractStatus, { tone: string; label: strin
   cancelado: { tone: 'gray', label: 'Cancelado' },
 };
 const BILLING_LABEL: Record<BillingType, string> = { mensalidade_fixa: 'Mensalidade fixa', por_veiculo_ativo: 'Por veículo ativo' };
-const TERMOS_PADRAO: ContractTerms = { billingType: 'por_veiculo_ativo', fixedPrice: 0, included: 0, basePrice: 0, pricePerVehicle: 0, extraPrice: 0, modules: ['monitoramento', 'ativos'], maxUsers: null, historyMonths: 12, dueDay: 10, toleranceDays: 5 };
+const TERMOS_PADRAO: ContractTerms = { billingType: 'por_veiculo_ativo', fixedPrice: 0, included: 0, basePrice: 0, pricePerVehicle: 0, extraPrice: 0, modules: ['monitoramento', 'ativos'], blockedPages: [], maxUsers: null, historyMonths: 12, dueDay: 10, toleranceDays: 5 };
 const dia = (iso: string) => fmtD(Date.parse(`${iso}T12:00:00`));
 
 const mesAtual = () => new Date().toISOString().slice(0, 7);
@@ -86,6 +89,17 @@ function ContractModal({ editing, allContracts, onClose, onDone }: { editing: Ed
   const [busy, setBusy] = useState(false);
 
   const toggleModule = (k: string) => setV((x) => ({ ...x, modules: x.modules.includes(k) ? x.modules.filter((m) => m !== k) : [...x.modules, k] }));
+  const togglePage = (to: string) => setV((x) => ({ ...x, blockedPages: x.blockedPages.includes(to) ? x.blockedPages.filter((p) => p !== to) : [...x.blockedPages, to] }));
+  // relatório individual também depende do hub /relatorios (mesma regra de paginaLiberada)
+  const pagina = (p: Pagina) => {
+    const hubOff = p.to.startsWith('/relatorios/') && v.blockedPages.includes('/relatorios');
+    return (
+      <div key={p.to} className="grid grid-cols-[1fr_auto] items-center gap-3 h-9">
+        <span className={cx('text-small text-ink-2', hubOff && 'opacity-60')}>{p.label}</span>
+        <Switch checked={!hubOff && !v.blockedPages.includes(p.to)} disabled={hubOff} onChange={() => togglePage(p.to)} aria-label={`Liberar ${p.label}`} />
+      </div>
+    );
+  };
   const applyDuplicate = (id: string) => {
     setDupFrom(id);
     const src = allContracts.find((c) => c.id === id);
@@ -160,20 +174,29 @@ function ContractModal({ editing, allContracts, onClose, onDone }: { editing: Ed
         <Field label="Histórico guardado (meses)"><Input type="number" value={v.historyMonths} onChange={num('historyMonths')} /></Field>
       </FormGroup>
 
-      <FormGroup title="Funcionalidades contratadas">
+      <FormGroup title="Funcionalidades contratadas" description="É o que o cliente acessa: módulo desligado some do menu e a API recusa as chamadas dele.">
         <div className="flex flex-col gap-1">
           {MODULES.map((m) => (
-            <div key={m.key} className="grid grid-cols-[1fr_auto] items-center gap-3 h-10">
-              <span className="flex items-center gap-2 text-small"><Icon name={m.icon as IconName} size={18} />{m.name}</span>
-              <Switch checked={v.modules.includes(m.key)} onChange={() => toggleModule(m.key)} aria-label={`Incluir ${moduleName(m.key)} no contrato`} />
+            <div key={m.key}>
+              <div className="grid grid-cols-[1fr_auto] items-center gap-3 h-10">
+                <span className="flex items-center gap-2 text-small"><Icon name={m.icon as IconName} size={18} />{m.name}</span>
+                <Switch checked={v.modules.includes(m.key)} onChange={() => toggleModule(m.key)} aria-label={`Incluir ${moduleName(m.key)} no contrato`} />
+              </div>
+              {v.modules.includes(m.key) && !!PAGINAS_DO_MODULO[m.key]?.length && (
+                <div className="ml-[9px] pl-[17px] border-l border-line mb-1">{PAGINAS_DO_MODULO[m.key].map(pagina)}</div>
+              )}
             </div>
           ))}
         </div>
       </FormGroup>
 
+      <FormGroup title="Páginas gerais" description="Fora dos módulos. Minha conta fica sempre liberada.">
+        <div className="flex flex-col gap-1">{PAGINAS_GERAIS.map(pagina)}</div>
+      </FormGroup>
+
       {errs.length > 0 && <Callout tone="crit">{errs.join(' · ')}</Callout>}
       <p className="text-caption text-ink-2 bg-card-2 border border-line rounded-ctl p-stack">
-        Mudar valores, franquia ou funcionalidades grava uma versão nova. Competências já fechadas preservam os valores usados no cálculo.
+        Mudar valores, franquia, funcionalidades ou páginas grava uma versão nova. Competências já fechadas preservam os valores usados no cálculo.
         {contrato && ` Hoje são ${contrato.versoes === 1 ? 'uma versão única' : `${contrato.versoes} versões`}${bump ? '; salvar cria mais uma.' : '.'}`}
       </p>
     </Modal>

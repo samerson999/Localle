@@ -215,7 +215,7 @@ function LayoutBody() {
 
   // revenda e Locale só veem a frota do cliente em acesso de suporte
   const fleet = canSeeFleet(session);
-  // módulo contratado e página não desligada pela revenda (Configurações › Módulos); subitens idem
+  // módulo contratado e página não desligada no contrato (GET /auth/acessos); subitens idem
   const liberada = (to: string) => paginaLiberada(rev.modules, to);
   const allowed = (l: typeof GESTAO) => (fleet ? l.filter((n) => rev.modules[(n as any).mod ?? n.key] && liberada(n.to)).map((n: any) => { const sub = n.sub?.filter((x: any) => liberada(x.to)); return sub ? { ...n, sub: sub.length ? sub : undefined } : n; }) : []);
   // end: a Visão geral (/locale) é a raiz das outras telas do painel; sem ele ficava marcada em todas

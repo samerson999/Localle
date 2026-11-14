@@ -6,6 +6,7 @@ import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { GRAVIDADES, type MultaInput, type MultaRow, MultasRepository, STATUS_MULTA } from './multas.repository';
 import { MultasService } from './multas.service';
+import { Modulo } from '../auth/modulo.guard';
 
 const DIA = 86_400_000;
 
@@ -49,6 +50,7 @@ function tratar(r: MultaRow | null | 'ativo_invalido' | 'motorista_invalido'): M
 
 @Controller('multas')
 @UseGuards(PermissionsGuard)
+@Modulo('multas')
 export class MultasController {
   constructor(
     private readonly repo: MultasRepository,

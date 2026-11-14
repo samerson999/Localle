@@ -39,6 +39,7 @@ export function parseContrato(body: unknown): ContratoInput {
     pricePerVehicle: t.pricePerVehicle,
     extraPrice: t.extraPrice,
     modules: t.modules,
+    blockedPages: t.blockedPages ?? [], // front anterior a 14/11/2026 não manda
     maxUsers: t.maxUsers ?? null,
     historyMonths: t.historyMonths,
     dueDay: t.dueDay,

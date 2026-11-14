@@ -59,7 +59,7 @@ function Guard({ m, children, portaria }: { m: string; children: JSX.Element; po
   return <Pagina>{children}</Pagina>;
 }
 
-// página desligada pela revenda em Configurações › Módulos (lib/paginas.ts); as rotas não têm parâmetro, então o caminho é a chave
+// página desligada no contrato do cliente (lib/paginas.ts); as rotas não têm parâmetro, então o caminho é a chave
 function Pagina({ children }: { children: JSX.Element }) {
   const { pathname } = useLocation();
   const on = useStore((s) => paginaLiberada(s.revenda.modules, pathname.replace(/\/$/, '') || '/'));

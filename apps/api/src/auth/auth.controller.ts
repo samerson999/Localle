@@ -1,6 +1,7 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
 import { CurrentUserId } from '../clients/current-role.decorator';
+import { ActiveUserRepository } from './active-user.repository';
 import type { RequestAuth } from './auth.guard';
 import { AuthService } from './auth.service';
 import type { LoginDto } from './dto/login.dto';
@@ -30,6 +31,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly senha: SenhaService,
+    private readonly activeUsers: ActiveUserRepository,
   ) {}
 
   @Post('login')
@@ -58,6 +60,16 @@ export class AuthController {
   @Public()
   redefinir(@Param('token') token: string, @Body() body: { password?: unknown }) {
     return this.senha.redefinir(parseToken(token), parseSenha(body?.password, 'password'));
+  }
+
+  /**
+   * Módulos e páginas que o contrato do cliente libera — o front monta menu e rotas com isto. `modules: null` =
+   * sem contrato, tudo liberado. A API aplica os módulos por conta própria (ModuloGuard); isto é só para a tela.
+   */
+  @Get('acessos')
+  acessos(@Req() req: { auth: RequestAuth }) {
+    if (!req.auth.clientId) throw new ForbiddenException('Rota de usuário de cliente');
+    return this.activeUsers.acessosDoCliente(req.auth.clientId);
   }
 
   /** Logado: troca exige a senha atual. */

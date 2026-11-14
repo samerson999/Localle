@@ -7,9 +7,11 @@ import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { JornadaRepository, ORIGENS, TIPOS_MARCACAO } from './jornada.repository';
 import { JornadaService } from './jornada.service';
+import { Modulo } from '../auth/modulo.guard';
 
 @Controller('jornada')
 @UseGuards(PermissionsGuard)
+@Modulo('jornada')
 export class JornadaController {
   constructor(
     private readonly repo: JornadaRepository,

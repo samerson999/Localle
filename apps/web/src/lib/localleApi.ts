@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { CatalogoAtivos } from './catalogoAtivos';
 import { create } from 'zustand';
 import type { Alerta, RealtimeMessage, RealtimePosicao } from '@localle/shared/realtime';
-import type { BillingType, ContractStatus, ContractTerms, ContractVersion } from '@localle/shared/contratos';
+import { MODULES, type BillingType, type ContractStatus, type ContractTerms, type ContractVersion } from '@localle/shared/contratos';
 import type { TipoIdentificador } from '@localle/shared/rastreadorModelos';
 import { inFence } from '@localle/shared/utils';
 import { alertaIdOf, alertaToAlert, alertIdFor, applyComunicacao, applyPosicao, assetIdFor, backendIdOf, cercaToFence, createSseParser, fenceToCercaBody, regraToRule, ruleToRegraBody, eventoToReplay, type EventoApi, type RegraApi, mesclarFrota, type CercaApi, type CurrentRow } from './localleMap';
@@ -774,7 +774,8 @@ export function useLocalleSync() {
     if (!email || role !== 'gestor') { purgeLocalleData(); useLocalle.setState({ prontos: null }); return; }
     const ctrl = new AbortController();
     useLocalle.setState({ prontos: [] });
-    Promise.all([syncFrota(), syncCercas(), syncAlertas(), syncRegras()])
+    // acessos antes dos módulos: módulo fora do contrato nem é pedido
+    Promise.all([syncFrota(), syncCercas(), syncAlertas(), syncRegras(), syncAcessos()])
       .then(() => { marcarPronto('frota'); return syncModulos(); })
       .then(() => runStream(ctrl.signal))
       // a frota falhou e os módulos nem foram pedidos: nada mais vai chegar, então nenhuma tela fica "carregando"; o aviso
@@ -1129,12 +1130,29 @@ export async function cancelarViagem(id: string) { await apiSend('POST', `/viage
 
 /** Carga inicial de todos os módulos depois do login (cada um independente: um erro não derruba os outros). */
 const MODULOS_SYNC = ['motoristas', 'grupos', 'cadastro', 'empresa', 'jornada', 'multas', 'combustível', 'manutenção', 'checklist', 'ranking', 'viagens'];
+// módulo do contrato de cada carga; módulo fora do contrato não é pedido (a API responderia 403)
+const MODULO_DA_CARGA: Record<string, string> = { jornada: 'jornada', multas: 'multas', 'combustível': 'combustivel', 'manutenção': 'manutencao', checklist: 'checklist', ranking: 'ranking', viagens: 'viagens' };
+
+/**
+ * Módulos e páginas do contrato do cliente (GET /auth/acessos) viram o `revenda.modules` que menu e rotas já leem.
+ * Substitui o mapa inteiro: nada do que ficou salvo no navegador (ou de outro cliente) sobrevive. Sem contrato, tudo ligado.
+ */
+export async function syncAcessos() {
+  const a = await apiGet<{ modules: string[] | null; blockedPages: string[] }>('/auth/acessos');
+  const modules: Record<string, boolean> = Object.fromEntries(MODULES.map((m) => [m.key, !a.modules || a.modules.includes(m.key)]));
+  for (const p of a.blockedPages) modules[p] = false;
+  patch((s) => ({ revenda: { ...s.revenda, modules } }));
+}
+
 export async function syncModulos() {
-  const partes: [string, () => Promise<unknown>][] = [
+  const contratado = (nome: string) => !MODULO_DA_CARGA[nome] || !!useStore.getState().revenda.modules[MODULO_DA_CARGA[nome]];
+  const todas: [string, () => Promise<unknown>][] = [
     // operações e listas de marca/modelo antes da ficha: o ativo aponta para elas já com o id da API
     ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['cadastro', () => syncOperacoes().then(syncCatalogoAtivos).then(syncCadastroAtivos)], ['empresa', syncEmpresa], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],
     ['manutenção', syncManutencao], ['checklist', syncChecklist], ['ranking', syncRanking], ['viagens', syncViagens],
   ];
+  const partes = todas.filter(([nome]) => contratado(nome));
+  marcarPronto(...todas.filter(([nome]) => !contratado(nome)).map(([nome]) => nome));
   const r = await Promise.allSettled(partes.map(([nome, f]) => f().finally(() => marcarPronto(nome))));
   const falhas = r.map((x, i) => (x.status === 'rejected' ? { nome: partes[i][0], motivo: mensagemDeErro(x.reason) } : null)).filter((x): x is { nome: string; motivo: string } => !!x);
   // depois dos grupos (a meta de combustível tem camada de grupo)
