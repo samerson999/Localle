@@ -67,7 +67,7 @@ export class RastreadoresController {
     return this.service.atualizar(superadminId, id, parseUpdateRastreador(dto));
   }
 
-  /** Só cadastro errado (nunca transmitiu nem foi de cliente); com histórico, desativar. */
+  /** Cadastro errado: em estoque ou desativado; apaga o histórico junto. Instalado ou com cliente: recusa. */
   @Delete(':id')
   @HttpCode(204)
   async excluir(@CurrentUserId() superadminId: string, @Param('id', ParseUUIDPipe) id: string) {

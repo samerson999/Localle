@@ -75,17 +75,17 @@ export default function Rastreadores() {
     if (!(await confirmAction({ title: 'Desativar rastreador?', detail: `${r.imei} sai do inventário ativo. O IMEI fica livre para recadastro.`, confirmLabel: 'Desativar' }))) return;
     acao(() => adminApi.desativarRastreador(r.id), 'Rastreador desativado.');
   };
-  // de vez, para cadastro errado: o que já transmitiu ou já foi de cliente a API recusa (o histórico precisa dele)
+  // de vez, para cadastro errado: só em estoque ou desativado; o histórico (posições, eventos, instalações) vai junto
   const excluir = async (r: AdminRastreador) => {
     if (!(await confirmAction({ title: 'Excluir rastreador?', tone: 'danger', confirmLabel: 'Excluir',
-      detail: `${r.imei} sai da plataforma e do Traccar de vez${r.sim_card_id ? ', e o chip volta a ficar livre' : ''}. Serve para cadastro errado: rastreador que já transmitiu ou já foi de um cliente só pode ser desativado.` }))) return;
+      detail: `${r.imei} sai da plataforma e do Traccar de vez${r.sim_card_id ? ', e o chip volta a ficar livre' : ''}. O histórico dele vai junto (posições, eventos, instalações e vínculos antigos) e não volta. Para tirar de uso sem apagar nada, use Desativar.` }))) return;
     acao(() => adminApi.excluirRastreador(r.id), 'Rastreador excluído.');
   };
   // ações da linha conforme a situação: no desktop viram links lado a lado; no card do celular, Diagnóstico fica à
   // vista e o resto vai para o menu (até 6 links quebrando em 3 linhas abafavam o próprio rastreador)
   const acoesDe = (r: AdminRastreador): MenuItem[] => {
     const s = situacao(r);
-    if (s === 'desativado') return !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir' as const, danger: true, onClick: () => excluir(r) }] : [];
+    if (s === 'desativado') return [{ label: 'Excluir', icon: 'excluir' as const, danger: true, onClick: () => excluir(r) }];
     return [
       { label: 'Diagnóstico', icon: 'sinal', onClick: () => setDiagnosticando({ r }) },
       r.sim_card_id
@@ -94,7 +94,7 @@ export default function Rastreadores() {
       ...(s === 'instalado' ? [{ label: 'Desinstalar', icon: 'ativos' as const, onClick: () => desinstalar(r) }] : []),
       ...(s === 'vinculado' ? [{ label: 'Desvincular do cliente', icon: 'revenda' as const, danger: true, onClick: () => desvincular(r) }] : []),
       ...(s === 'estoque' ? [{ label: 'Vincular a cliente', icon: 'revenda' as const, onClick: () => setAoCliente(r) }, { label: 'Desativar', icon: 'cadeado' as const, danger: true, onClick: () => desativar(r) }] : []),
-      ...(s === 'estoque' && !r.ultimo_pacote_em ? [{ label: 'Excluir', icon: 'excluir' as const, danger: true, onClick: () => excluir(r) }] : []),
+      ...(s === 'estoque' ? [{ label: 'Excluir', icon: 'excluir' as const, danger: true, onClick: () => excluir(r) }] : []),
     ];
   };
   const excluirModelo = async (m: AdminRastreadorModelo) => {

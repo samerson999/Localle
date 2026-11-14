@@ -631,22 +631,63 @@ describe('RastreadoresService', () => {
         await expect(service.excluir(superadminId, r.id)).rejects.toMatchObject({ status: 404 });
       });
 
-      it('excluir rastreador: recusa quem já transmitiu ou já foi de cliente (desativado também), sem apagar no Traccar', async () => {
+      it('excluir rastreador: recusa instalado ou com cliente, sem apagar no Traccar; desinstalado e desvinculado, exclui', async () => {
         traccar.cfg = cfg;
-        const transmitiu = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
-        const foiDeCliente = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
-        rastreadoresCriados.push(transmitiu.id, foiDeCliente.id);
-        await pool.query('insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em) values ($1, now())', [transmitiu.id]);
-        await service.vincular(superadminId, clientA, foiDeCliente.id);
-        await service.desvincular(superadminId, foiDeCliente.id);
-        await service.desativar(superadminId, foiDeCliente.id);
+        const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+        rastreadoresCriados.push(r.id);
+        await service.vincular(superadminId, clientA, r.id);
+        const instalacao = await service.instalar(sa, clientA, r.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });
         const apagadosAntes = traccar.apagados.length;
 
-        await expect(service.excluir(superadminId, transmitiu.id)).rejects.toThrow(/já transmitiu.*Desativar/);
-        await expect(service.excluir(superadminId, foiDeCliente.id)).rejects.toThrow(/já foi vinculado a um cliente/);
-        expect(await rastreadoresRepo.findById(transmitiu.id)).not.toBeNull();
-        expect(await rastreadoresRepo.findById(foiDeCliente.id)).not.toBeNull();
+        await expect(service.excluir(superadminId, r.id)).rejects.toThrow(/instalação vigente/);
+        await service.desinstalar(sa, instalacao.id);
+        await expect(service.excluir(superadminId, r.id)).rejects.toThrow(/desvincule antes de excluir/);
+        expect(await rastreadoresRepo.findById(r.id)).not.toBeNull();
         expect(traccar.apagados.length).toBe(apagadosAntes);
+
+        await service.desvincular(superadminId, r.id);
+        await service.excluir(superadminId, r.id);
+        expect(await rastreadoresRepo.findById(r.id)).toBeNull();
+        expect(traccar.apagados).toContain(Number(r.traccar_device_id));
+      });
+
+      it('excluir rastreador desativado que já transmitiu e já foi de cliente: apaga o histórico junto e conta na auditoria', async () => {
+        traccar.cfg = cfg;
+        const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloImei, imei: digitos(15) });
+        rastreadoresCriados.push(r.id);
+        await service.vincular(superadminId, clientA, r.id);
+        const assetId = await novoAsset(clientA);
+        const instalacao = await service.instalar(sa, clientA, r.id, { assetId, tecnico: 'teste' });
+        const { rows: [posicao] } = await pool.query<{ id: string }>(
+          `insert into posicoes (rastreador_id, client_id, asset_id, traccar_position_id, fix_time, server_time, valid, geom)
+           values ($1, $2, $3, 1, now(), now(), true, st_setsrid(st_makepoint(-38.5, -3.7), 4326)) returning id`,
+          [r.id, clientA, assetId],
+        );
+        await pool.query('insert into ingest_posicoes_recebidas (rastreador_id, traccar_position_id, posicao_id) values ($1, 1, $2)', [r.id, posicao.id]);
+        await pool.query(
+          `insert into ultima_posicao (rastreador_id, posicao_id, fix_time, geom, speed_kmh, ignition)
+           values ($1, $2, now(), st_setsrid(st_makepoint(-38.5, -3.7), 4326), 0, false)`,
+          [r.id, posicao.id],
+        );
+        await pool.query('insert into rastreador_comunicacao (rastreador_id, ultimo_pacote_em) values ($1, now())', [r.id]);
+        await pool.query(
+          `insert into eventos (rastreador_id, client_id, asset_id, origem, tipo, ts, posicao_id) values ($1, $2, $3, 'aparelho', 'ignitionOn', now(), $4)`,
+          [r.id, clientA, assetId, posicao.id],
+        );
+        await service.desinstalar(sa, instalacao.id);
+        await service.desvincular(superadminId, r.id);
+        await service.desativar(superadminId, r.id);
+
+        await service.excluir(superadminId, r.id);
+        expect(await rastreadoresRepo.findById(r.id)).toBeNull();
+        for (const tabela of ['posicoes', 'eventos', 'ultima_posicao', 'rastreador_comunicacao', 'ingest_posicoes_recebidas', 'instalacoes', 'rastreador_vinculos']) {
+          expect((await pool.query(`select count(*)::int as n from ${tabela} where rastreador_id = $1`, [r.id])).rows[0].n, tabela).toBe(0);
+        }
+        const { rows } = await pool.query("select before from audit_log where action = 'rastreador.excluir' and target = $1", [r.id]);
+        expect(rows[0].before).toMatchObject({
+          imei: r.imei, status: 'desativado',
+          apagados: { posicoes: 1, eventos: 1, ultima_posicao: 1, rastreador_comunicacao: 1, ingest_posicoes_recebidas: 1, instalacoes: 1, rastreador_vinculos: 1 },
+        });
       });
 
       it('excluir modelo: só sem nenhum rastreador, nem desativado; auditado', async () => {

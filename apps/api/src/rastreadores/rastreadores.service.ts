@@ -408,41 +408,46 @@ export class RastreadoresService {
   }
 
   /**
-   * Exclusão de vez, para cadastro errado (IMEI digitado errado, aparelho que nem chegou): só sem histórico — nunca
-   * transmitiu e nunca foi de cliente. Com histórico, o caminho é desativar. Apaga também o device no Traccar, por
-   * último e dentro da transação: Traccar fora do ar desfaz a exclusão (o rastreador continua, nada fica pela metade
-   * do lado da plataforma). O chip vinculado volta a ficar livre.
+   * Exclusão de vez, para cadastro errado: em estoque ou desativado (sem instalação nem vínculo vigentes), com o
+   * histórico junto — posições, eventos, comandos, instalações e vínculos encerrados. O que foi apagado fica contado
+   * na auditoria. Apaga também o device no Traccar, por último e dentro da transação: Traccar fora do ar desfaz a
+   * exclusão (o rastreador continua, nada fica pela metade do lado da plataforma). O chip vinculado volta a ficar livre.
    */
   async excluir(superadminId: string, rastreadorId: string): Promise<void> {
-    await withTransaction(this.pool, async (client) => {
+    const { imei, apagados } = await withTransaction(this.pool, async (client) => {
+      // o lock segura a ingestão (o insert de posição espera pela FK) até a exclusão terminar
       const { rows } = await client.query<RastreadorEntity>('select * from rastreadores where id = $1 for update', [rastreadorId]);
       const r = rows[0];
       if (!r) throw new NotFoundException('Rastreador não encontrado');
-      const { transmitiu, teveCliente } = await this.rastreadores.historicoQueImpedeExcluir(rastreadorId, client);
-      if (transmitiu || teveCliente) {
-        throw new ConflictException(`O rastreador ${r.imei} ${transmitiu ? 'já transmitiu' : 'já foi vinculado a um cliente'}: o histórico precisa dele. Use Desativar.`);
+      if (await this.instalacoes.findAtivaPorRastreador(rastreadorId, client)) {
+        throw new ConflictException('Rastreador tem instalação vigente — desinstale antes de excluir');
+      }
+      if (await this.vinculos.vigentePorRastreador(rastreadorId, client)) {
+        throw new ConflictException('Rastreador está vinculado a um cliente — desvincule antes de excluir');
       }
       const chip = await this.simCards.findByRastreador(rastreadorId, client);
+      let apagados: Record<string, number>;
       try {
-        await this.rastreadores.excluir(rastreadorId, client);
+        apagados = await this.rastreadores.excluirComHistorico(rastreadorId, client);
       } catch (err) {
         // referência nova ao rastreador (tabela criada depois desta regra): recusa em vez de 500
         if (isPgError(err, PG_FOREIGN_KEY_VIOLATION)) {
           this.logger.warn(`Exclusão do rastreador ${rastreadorId} barrada por referência não prevista: ${(err as Error).message}`);
-          throw new ConflictException(`O rastreador ${r.imei} tem histórico na plataforma. Use Desativar.`);
+          throw new ConflictException(`O rastreador ${r.imei} tem histórico que a exclusão ainda não sabe apagar. Use Desativar.`);
         }
         throw err;
       }
       await this.audit.record(
         {
           actorType: 'superadmin', actorId: superadminId, clientId: null, action: 'rastreador.excluir', target: rastreadorId,
-          before: { imei: r.imei, modeloId: r.modelo_id, modelo: r.modelo, traccarDeviceId: r.traccar_device_id, status: r.status, simCardId: chip?.id ?? null },
+          before: { imei: r.imei, modeloId: r.modelo_id, modelo: r.modelo, traccarDeviceId: r.traccar_device_id, status: r.status, simCardId: chip?.id ?? null, apagados },
         },
         client,
       );
       if (r.traccar_device_id) await this.apagarNoTraccar(r.imei, Number(r.traccar_device_id));
+      return { imei: r.imei, apagados };
     });
-    this.logger.log(`Rastreador ${rastreadorId} excluído por ${superadminId}`);
+    this.logger.log(`Rastreador ${rastreadorId} (IMEI ${imei}) excluído por ${superadminId}; histórico apagado: ${JSON.stringify(apagados)}`);
   }
 
   private async apagarNoTraccar(imei: string, deviceId: number): Promise<void> {

@@ -52,23 +52,23 @@ export class RastreadoresRepository {
    * O que impede excluir de vez (cadastro errado): já transmitiu (posição, evento, pacote) ou já foi de algum cliente
    * (vínculo, instalação, comando). Qualquer um desses é histórico que precisa continuar apontando para o rastreador.
    */
-  async historicoQueImpedeExcluir(id: string, executor: Queryable = this.pool): Promise<{ transmitiu: boolean; teveCliente: boolean }> {
-    const { rows } = await executor.query<{ transmitiu: boolean; teve_cliente: boolean }>(
-      `select exists (select 1 from rastreador_comunicacao where rastreador_id = $1)
-                or exists (select 1 from ingest_posicoes_recebidas where rastreador_id = $1)
-                or exists (select 1 from posicoes where rastreador_id = $1)
-                or exists (select 1 from eventos where rastreador_id = $1) as transmitiu,
-              exists (select 1 from rastreador_vinculos where rastreador_id = $1)
-                or exists (select 1 from instalacoes where rastreador_id = $1)
-                or exists (select 1 from comandos where rastreador_id = $1) as teve_cliente`,
-      [id],
-    );
-    return { transmitiu: rows[0].transmitiu, teveCliente: rows[0].teve_cliente };
-  }
-
-  /** Só depois de `historicoQueImpedeExcluir`; o chip vinculado fica livre (`on delete set null`). */
-  async excluir(id: string, executor: Queryable = this.pool): Promise<void> {
+  /**
+   * Exclusão de vez, histórico junto: telemetria, comandos, instalações e vínculos encerrados. Quem chama garante que
+   * não há instalação nem vínculo vigentes. Alertas e ranking guardam `evento_id` sem FK e ficam como estão (são do
+   * cliente). O chip vinculado fica livre (`on delete set null`). Devolve quanto foi apagado, para a auditoria.
+   */
+  async excluirComHistorico(id: string, executor: Queryable): Promise<Record<string, number>> {
+    const apagados: Record<string, number> = {};
+    // ordem: quem referencia antes de quem é referenciado (instalacao_sinais e checkpoints saem em cascata)
+    for (const tabela of [
+      'ingest_eventos_recebidos', 'ingest_posicoes_recebidas', 'eventos', 'ultima_posicao', 'rastreador_comunicacao',
+      'posicoes', 'comandos', 'instalacoes', 'rastreador_vinculos',
+    ]) {
+      const { rowCount } = await executor.query(`delete from ${tabela} where rastreador_id = $1`, [id]);
+      if (rowCount) apagados[tabela] = rowCount;
+    }
     await executor.query('delete from rastreadores where id = $1', [id]);
+    return apagados;
   }
 
   async findById(id: string, executor: Queryable = this.pool): Promise<RastreadorEntity | null> {
