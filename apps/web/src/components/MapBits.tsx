@@ -9,7 +9,7 @@ import { pngIconUrl } from '../lib/pngIcons';
 import { BATTERY_LOW_V } from '@localle/shared/engine';
 import { leituraAntiga } from '../lib/diagnosticoRastreador';
 import type { ComunicacaoStatus } from '@localle/shared/realtime';
-import { StatusDot, Plate, Num } from './story';
+import { StatusDot, Plate, Num, STATUS_LABEL } from './story';
 import { IconButton, cx, Menu, type MenuItem, Tooltip as Dica } from './ui';
 import { Icon, type IconName } from './icons';
 type Glyph = Category | 'reboque';
@@ -298,20 +298,27 @@ export function VehicleListItem({ silhouette, icon, photo, plate, kind, statusLa
       {photo ? <img src={photo} alt={`Foto de ${plate}`} loading="lazy" decoding="async" className="w-14 h-9 rounded-tight object-cover shrink-0 mt-hair" />
         : iconUrl ? <img src={iconUrl} alt="" draggable={false} decoding="async" className="w-14 h-9 object-contain shrink-0 mt-hair" />
         : <AssetSilhouette category={silhouette} className="w-14 h-9 text-ink-3 shrink-0 mt-hair" />}
+      {/* Velocidade na linha da placa e hora na linha da leitura, dentro da coluna de texto: uma coluna fixa à direita
+          espremia o texto na lista estreita do desktop e o status (sem quebra) passava por baixo da hora. */}
       <span className="flex flex-col gap-hair min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"><Plate name={plate} size="md" /><StatusDot kind={kind} label={statusLabel} className="text-caption" /></span>
-        {model && <span className="text-body font-medium text-ink truncate">{model}</span>}
-        {driver && <span className="flex items-center gap-1 text-small text-ink-2 truncate"><Icon name="usuario" size={14} className="text-ink-3 shrink-0" />{driver}</span>}
-        {pos && <span className="flex items-center gap-1 text-small text-ink-2 truncate"><Icon name="centralizar" size={14} className="text-ink-3 shrink-0" /><Address pos={pos} /></span>}
-        {detail && <span className="text-small text-ink-2 truncate">{detail}</span>}
-        {tracker && <TrackerIcons t={tracker} />}
-      </span>
-      <span className="flex flex-col items-end gap-1 shrink-0 pl-2">
-        <span className="flex items-center gap-1">
-          {speed == null ? <span className="text-body text-ink-3">—</span> : <Num value={speed} unit="km/h" size="body" className="font-medium" />}
-          {moving && <Icon name="chevron" size={14} className={cx('-rotate-45', `st-${kind}`)} />}
+        <span className="flex items-center gap-2 min-w-0">
+          <Plate name={plate} size="md" />
+          <span className="ml-auto flex items-center gap-1 shrink-0">
+            {speed == null ? <span className="text-body text-ink-3">—</span> : <Num value={speed} unit="km/h" size="body" className="font-medium" />}
+            {moving && <Icon name="chevron" size={14} className={cx('-rotate-45', `st-${kind}`)} />}
+          </span>
         </span>
-        {time && <span className="flex items-center gap-1 text-caption text-ink-3 num"><Icon name="relogio" size={13} />{time}</span>}
+        <StatusDot kind={kind} label={<span className="truncate">{statusLabel ?? STATUS_LABEL[kind]}</span>} className="text-caption min-w-0 max-w-full" />
+        {model && <span className="text-body font-medium text-ink truncate">{model}</span>}
+        {driver && <span className="flex items-center gap-1 text-small text-ink-2 min-w-0"><Icon name="usuario" size={14} className="text-ink-3 shrink-0" /><span className="truncate">{driver}</span></span>}
+        {pos && <span className="flex items-center gap-1 text-small text-ink-2 min-w-0"><Icon name="centralizar" size={14} className="text-ink-3 shrink-0" /><Address pos={pos} className="truncate" /></span>}
+        {detail && <span className="text-small text-ink-2 truncate">{detail}</span>}
+        {(tracker || time) && (
+          <span className="flex items-center gap-2 min-w-0">
+            {tracker && <TrackerIcons t={tracker} />}
+            {time && <span className="ml-auto flex items-center gap-1 text-caption text-ink-3 num shrink-0 mt-hair"><Icon name="relogio" size={13} />{time}</span>}
+          </span>
+        )}
       </span>
       {menu && menu.length > 0 && <Menu items={menu} label={`Mais opções · ${plate}`} trigger={({ ref, toggle }) => <button ref={ref} type="button" aria-label={`Mais opções · ${plate}`} onClick={(e) => { e.stopPropagation(); toggle(); }} className="shrink-0 w-7 h-7 -mr-1 flex items-center justify-center rounded-tight text-ink-3 hover:text-ink hover:bg-surface-hover"><Icon name="mais-opcoes" size={18} /></button>} />}
     </div>
