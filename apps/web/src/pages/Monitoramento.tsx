@@ -114,11 +114,13 @@ function MonitoramentoMapa() {
   // Botão "Tela cheia" do mapa: expande só o mapa (fixed por cima de tudo + tela cheia do navegador), não a tela.
   // Fullscreen API só no elemento do mapa esconderia os modais e toasts, que vão por portal para o body.
   const [mapaCheio, setMapaCheio] = useState(false);
+  // a lista de veículos vem junto no mapa em tela cheia; o botão "Lista" sobre o mapa esconde e mostra de novo
+  const [listaNoMapa, setListaNoMapa] = useState(true);
   const nativo = useRef(false);
   const pedirNativo = () => { if (document.fullscreenElement) return; const p = document.documentElement.requestFullscreen?.(); if (p) { nativo.current = true; p.catch(() => { nativo.current = false; }); } };
   const sairNativo = () => { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); nativo.current = false; };
   const sairTelaCheia = () => { setFull(false); setMapaCheio(false); sairNativo(); };
-  const entrarMapaCheio = () => { setMapaCheio(true); pedirNativo(); };
+  const entrarMapaCheio = () => { setMapaCheio(true); setListaNoMapa(true); pedirNativo(); };
   const sairMapaCheio = () => { setMapaCheio(false); if (!full) sairNativo(); };
   useScrollLock(full || mapaCheio);
   // Desktop: lista e mapa ocupam a altura livre da janela abaixo do topo deles, sem rolar a página no zoom de 100%
@@ -173,7 +175,7 @@ function MonitoramentoMapa() {
   }, [resumoUso]);
   const kmHoje = kmHojePorAtivo ? contados.reduce((s: number, x: any) => s + (kmHojePorAtivo.get(x.a.id) ?? 0), 0) : null;
   const velMedia = moving.length ? moving.reduce((s: number, x: any) => s + x.v.speed, 0) / moving.length : 0;
-  useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, mobile, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
+  useEffect(() => { const t = setTimeout(() => map?.invalidateSize(), 60); return () => clearTimeout(t); }, [full, mapaCheio, listaNoMapa, mobile, visao.cards, visao.tabela, map]); // o mapa muda de tamanho
   // Esc sai da tela cheia (com o painel do veículo aberto, ele fecha antes: o handler dele marca o evento)
   useEffect(() => {
     if (!full && !mapaCheio) return;
@@ -250,19 +252,21 @@ function MonitoramentoMapa() {
       {!full && !mobile && <FaixaFrota total={contados.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
       <div ref={full ? undefined : linhaRef} style={!full && alturaMapa ? { ['--mon-h' as string]: `${alturaMapa}px` } : undefined}
         className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
-        <Card dense className={full
+        <Card dense className={mapaCheio
+          ? cx('fixed inset-y-0 left-0 w-[360px] z-[1100] !rounded-none !shadow-none border-r border-line', !listaNoMapa && 'hidden')
+          : full
           ? cx('w-[360px] shrink-0 h-full max-md:hidden', !visao.cards && 'hidden')
           : 'flex-[1_1_340px] md:max-w-[420px] min-h-[360px] md:h-[var(--mon-h,calc(100vh/var(--ui-zoom)-128px))] max-md:hidden'}>
           <section aria-label="Veículos" className="flex flex-col gap-stack h-full min-h-0">
-            {!full && <SearchInput value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />}
-            {!full && <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />}
+            {(!full || mapaCheio) && <SearchInput value={q} onChange={setQ} placeholder="Buscar placa, motorista ou modelo" aria-label="Buscar veículo" />}
+            {(!full || mapaCheio) && <Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} />}
             {listaVeiculos}
           </section>
         </Card>
 
         <div className={full ? 'flex-1 min-w-0 flex flex-col gap-stack' : 'contents'}>
         <section ref={mapSectionRef} aria-label="Mapa" className={mapaCheio
-          ? 'fixed inset-0 z-[1100] overflow-hidden bg-canvas'
+          ? cx('fixed inset-y-0 right-0 z-[1100] overflow-hidden bg-canvas', listaNoMapa ? 'left-[360px]' : 'left-0')
           : full
           ? 'flex-1 min-h-[240px] relative rounded-card overflow-hidden border border-line'
           : 'flex-[999_1_480px] min-w-0 relative rounded-card overflow-hidden border border-line min-h-[360px] md:h-[var(--mon-h,calc(100vh/var(--ui-zoom)-128px))]'}>
@@ -277,6 +281,7 @@ function MonitoramentoMapa() {
 
           <div className="absolute top-3 left-3 right-3 z-[400] flex flex-col items-start gap-tight pointer-events-none [&>*]:pointer-events-auto">
           <div className="flex flex-wrap gap-tight">
+            {mapaCheio && <MapButton icon="menu" label="Lista" pressed={listaNoMapa} title={listaNoMapa ? 'Ocultar a lista de veículos' : 'Mostrar a lista de veículos'} onClick={() => setListaNoMapa(!listaNoMapa)} />}
             {!mobile && <MapButton icon="cerca" label="Cercas" pressed={showF} onClick={() => setShowF(!showF)} />}
             <MapButton icon="busca" label="Passou por aqui" title="Quem passou pelo ponto no centro do mapa. Para escolher outro ponto: botão direito no computador, toque longo no celular." onClick={() => { const c = map?.getCenter(); if (c) passAt(c.lat, c.lng, 300); }} />
             {!mobile && <MapButton icon="equipe" label="Agrupar" pressed={grouped} title={grouped ? 'Agrupando veículos próximos' : 'Mostrando todos os veículos'} onClick={() => setGrouped(!grouped)} />}
