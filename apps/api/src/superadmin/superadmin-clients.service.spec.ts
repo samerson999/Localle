@@ -39,6 +39,7 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
   const auth = new AuthService(usersRepo, activeUsers);
   const superadminId = randomUUID();
   const criados: string[] = [];
+  const rastreadoresCriados: string[] = [];
   const env = { ...process.env };
 
   beforeAll(() => {
@@ -52,6 +53,10 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
     process.env = env;
     await pool.query('delete from audit_log where actor_id = $1 or client_id = any($2)', [superadminId, criados]);
     await pool.query('delete from clients where id = any($1)', [criados]);
+    for (const tabela of ['ingest_posicoes_recebidas', 'eventos', 'ultima_posicao', 'rastreador_comunicacao', 'posicoes', 'instalacoes', 'rastreador_vinculos']) {
+      await pool.query(`delete from ${tabela} where rastreador_id = any($1)`, [rastreadoresCriados]);
+    }
+    await pool.query('delete from rastreadores where id = any($1)', [rastreadoresCriados]);
     await pool.end();
   });
 
@@ -185,5 +190,70 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
     const resumo = await clientsRepo.findAllResumo();
     expect(resumo.find((c) => c.id === client.id)).toMatchObject({ usuarios_ativos: 0, convites_pendentes: 1, veiculos: 2, rastreadores_instalados: 0, contrato_status: null });
     expect(resumo.find((c) => c.id === vazio.id)).toMatchObject({ usuarios_ativos: 0, convites_pendentes: 0, veiculos: 0 });
+  });
+
+  describe('excluir cliente', () => {
+    async function rastreadorNoCliente(clientId: string) {
+      const imei = String(Date.now()).padEnd(15, String(Math.floor(Math.random() * 10)));
+      const { rows: [r] } = await pool.query<{ id: string }>('insert into rastreadores (imei) values ($1) returning id', [`${imei.slice(0, 9)}${Math.floor(Math.random() * 1e6)}`.padEnd(15, '0')]);
+      rastreadoresCriados.push(r.id);
+      const { rows: [a] } = await pool.query<{ id: string }>('insert into assets (client_id, plate) values ($1, $2) returning id', [clientId, 'EXC0001']);
+      await pool.query('insert into rastreador_vinculos (rastreador_id, client_id) values ($1, $2)', [r.id, clientId]);
+      await pool.query("insert into instalacoes (rastreador_id, client_id, asset_id, instalado_em, tecnico) values ($1, $2, $3, now() - interval '1 day', 'teste')", [r.id, clientId, a.id]);
+      return { rastreadorId: r.id, assetId: a.id };
+    }
+
+    it('apaga o cliente e tudo dele; rastreador volta ao estoque com a saúde do aparelho; auditado', async () => {
+      const { client, admin } = await service.createClient(superadminId, { name: nome(), admin: { email: email() } });
+      criados.push(client.id);
+      const { rastreadorId, assetId } = await rastreadorNoCliente(client.id);
+      const { rows: [p] } = await pool.query<{ id: string }>(
+        `insert into posicoes (rastreador_id, client_id, asset_id, traccar_position_id, fix_time, server_time, valid, geom)
+         values ($1, $2, $3, 1, now(), now(), true, st_setsrid(st_makepoint(-38.5, -3.7), 4326)) returning id`,
+        [rastreadorId, client.id, assetId],
+      );
+      await pool.query(
+        `insert into ultima_posicao (rastreador_id, client_id, asset_id, posicao_id, fix_time, geom, speed_kmh, ignition)
+         values ($1, $2, $3, $4, now(), st_setsrid(st_makepoint(-38.5, -3.7), 4326), 0, false)`,
+        [rastreadorId, client.id, assetId, p.id],
+      );
+      await pool.query('insert into rastreador_comunicacao (rastreador_id, client_id, asset_id, ultimo_pacote_em) values ($1, $2, $3, now())', [rastreadorId, client.id, assetId]);
+      await pool.query(`insert into eventos (rastreador_id, client_id, asset_id, origem, tipo, ts) values ($1, $2, $3, 'aparelho', 'ignitionOn', now())`, [rastreadorId, client.id, assetId]);
+
+      await service.excluirCliente(superadminId, client.id);
+
+      expect(await clientsRepo.findById(client.id)).toBeNull();
+      expect((await pool.query('select 1 from users where id = $1', [admin!.id])).rows).toEqual([]);
+      for (const tabela of ['assets', 'posicoes', 'eventos', 'ultima_posicao', 'instalacoes', 'rastreador_vinculos']) {
+        expect((await pool.query(`select count(*)::int as n from ${tabela} where client_id = $1`, [client.id])).rows[0].n, tabela).toBe(0);
+      }
+      expect((await pool.query('select 1 from rastreadores where id = $1', [rastreadorId])).rows).toHaveLength(1);
+      expect((await pool.query('select client_id, asset_id, ultimo_pacote_em from rastreador_comunicacao where rastreador_id = $1', [rastreadorId])).rows[0])
+        .toMatchObject({ client_id: null, asset_id: null, ultimo_pacote_em: expect.any(Date) });
+      const { rows } = await pool.query("select client_id, before from audit_log where action = 'client.excluir' and target = $1", [client.id]);
+      expect(rows[0]).toMatchObject({ client_id: null, before: { name: client.name, usuarios: 1, veiculos: 1, rastreadoresInstalados: 1, rastreadoresVinculados: 1, posicoes: 1, eventos: 1 } });
+      await expect(service.excluirCliente(superadminId, client.id)).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('com fatura lançada, recusa e não apaga nada', async () => {
+      const { client } = await service.createClient(superadminId, { name: nome() });
+      criados.push(client.id);
+      const { rastreadorId } = await rastreadorNoCliente(client.id);
+      const contrato = (await pool.query<{ id: string }>("insert into contratos (client_id, status) values ($1, 'ativo') returning id", [client.id])).rows[0].id;
+      const versao = (await pool.query<{ id: string }>(
+        `insert into contrato_versoes (contrato_id, client_id, tipo_cobranca, historico_meses, dia_vencimento, criado_por)
+         values ($1, $2, 'mensalidade_fixa', 12, 10, $3) returning id`,
+        [contrato, client.id, superadminId],
+      )).rows[0].id;
+      await pool.query(
+        `insert into faturas (client_id, competencia, contrato_versao_id, valor_base, valor_excedente, valor_total, vencimento, fechada_por)
+         values ($1, date_trunc('month', current_date), $2, 100, 0, 100, current_date, $3)`,
+        [client.id, versao, superadminId],
+      );
+
+      await expect(service.excluirCliente(superadminId, client.id)).rejects.toThrow(/já tem 1 fatura: o histórico financeiro/);
+      expect(await clientsRepo.findById(client.id)).not.toBeNull();
+      expect((await pool.query('select count(*)::int as n from instalacoes where rastreador_id = $1', [rastreadorId])).rows[0].n).toBe(1);
+    });
   });
 });

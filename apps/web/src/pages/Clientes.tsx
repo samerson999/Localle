@@ -18,6 +18,7 @@ export default function Clientes() {
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<AdminClient | null>(null);
   const [adminFor, setAdminFor] = useState<AdminClient | null>(null);
+  const [excluindo, setExcluindo] = useState<AdminClient | null>(null);
   // sem SMTP o e-mail não sai: a API devolve o link do convite para repassar
   const [link, setLink] = useState<{ email: string; link: string } | null>(null);
   if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com o acesso da Locale para ver o Console da Locale." /></Card>;
@@ -61,6 +62,7 @@ export default function Clientes() {
                       <TextButton onClick={() => setRenaming(c)}>Renomear</TextButton>
                       {c.admin_pendente_id && <TextButton onClick={() => reenviar(c)}>Reenviar convite</TextButton>}
                       {!c.usuarios_ativos && !c.convites_pendentes && <TextButton onClick={() => setAdminFor(c)}>Convidar admin</TextButton>}
+                      <TextButton tone="danger" onClick={() => setExcluindo(c)}>Excluir</TextButton>
                     </CardActions>
                   </div>
                 );
@@ -79,6 +81,7 @@ export default function Clientes() {
                   <TextButton onClick={() => setRenaming(c)}>Renomear</TextButton>
                   {c.admin_pendente_id && <TextButton onClick={() => reenviar(c)}>Reenviar convite</TextButton>}
                   {!c.usuarios_ativos && !c.convites_pendentes && <TextButton onClick={() => setAdminFor(c)}>Convidar admin</TextButton>}
+                  <TextButton tone="danger" onClick={() => setExcluindo(c)}>Excluir</TextButton>
                 </div>,
               ])}
             />
@@ -87,6 +90,7 @@ export default function Clientes() {
       </PageBody>
       {creating && <NewClientModal onClose={() => setCreating(false)} onDone={reload} onLink={setLink} />}
       {renaming && <RenameModal client={renaming} onClose={() => setRenaming(null)} onDone={reload} />}
+      {excluindo && <ExcluirModal client={excluindo} onClose={() => setExcluindo(null)} onDone={reload} />}
       {adminFor && <AdminModal client={adminFor} onClose={() => setAdminFor(null)} onDone={reload} onLink={setLink} />}
       {link && <ConviteLink email={link.email} link={link.link} onClose={() => setLink(null)} />}
     </div>
@@ -153,6 +157,19 @@ function RenameModal({ client, onClose, onDone }: { client: AdminClient; onClose
   return (
     <Modal open onClose={onClose} title={`Renomear · ${client.name}`} width="max-w-md" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!name.trim() || name.trim() === client.name} onClick={submit}>Salvar</Button></>}>
       <Field label="Nome do cliente"><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
+    </Modal>
+  );
+}
+
+// de vez, para cadastro errado ou cliente de teste: pede o nome digitado porque leva a conta inteira junto. Com fatura
+// ou pagamento a API recusa e o motivo aparece no toast.
+function ExcluirModal({ client, onClose, onDone }: { client: AdminClient; onClose: () => void; onDone: () => void }) {
+  const [nome, setNome] = useState('');
+  const { busy, submit } = useSubmit(() => adminApi.excluirCliente(client.id), () => toast(`Cliente ${client.name} excluído.`), onDone, onClose);
+  return (
+    <Modal open onClose={onClose} title={`Excluir · ${client.name}`} width="max-w-md" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button variant="danger" loading={busy} disabled={nome.trim() !== client.name} onClick={submit}>Excluir de vez</Button></>}>
+      <Callout tone="crit">Apaga a conta inteira e não tem volta: usuários, veículos, histórico de posições, alertas, viagens e contrato.{client.rastreadores_instalados === 1 ? ' O rastreador instalado volta para o estoque.' : client.rastreadores_instalados ? ` Os ${num(client.rastreadores_instalados)} rastreadores instalados voltam para o estoque.` : ' Os rastreadores dele voltam para o estoque.'} Cliente com fatura ou pagamento lançado não pode ser excluído.</Callout>
+      <Field label={`Para confirmar, digite o nome do cliente: ${client.name}`}><Input autoFocus autoComplete="off" value={nome} onChange={(e) => setNome(e.target.value)} /></Field>
     </Modal>
   );
 }

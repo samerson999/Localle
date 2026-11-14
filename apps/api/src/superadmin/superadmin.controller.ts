@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { Public } from '../auth/public.decorator';
 import { SuperadminGuard } from '../auth/superadmin.guard';
@@ -58,6 +58,14 @@ export class SuperadminController {
   ) {
     const { user, conviteEnviado, link } = await this.clients.createInitialAdmin(superadminId, clientId, parseConvidado(body));
     return { ...safeUser(user), conviteEnviado, link };
+  }
+
+  /** Cadastro errado ou teste: apaga o cliente e tudo dele; com fatura ou pagamento, 409. Rastreadores voltam ao estoque. */
+  @Delete('clients/:clientId')
+  @UseGuards(SuperadminGuard)
+  @HttpCode(204)
+  async excluirCliente(@CurrentUserId() superadminId: string, @Param('clientId', ParseUUIDPipe) clientId: string) {
+    await this.clients.excluirCliente(superadminId, clientId);
   }
 
   @Post('clients/:clientId/admin-users/:userId/convite')

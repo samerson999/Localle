@@ -457,6 +457,7 @@ export const adminApi = {
   atualizarDespesa: (id: string, body: DespesaBody) => apiSend<Despesa>('PUT', `/superadmin/despesas/${id}`, body),
   excluirDespesa: (id: string) => apiSend('DELETE', `/superadmin/despesas/${id}`),
   renameClient: (id: string, name: string) => apiSend('PATCH', `/clients/${id}`, { name }),
+  excluirCliente: (id: string) => apiSend('DELETE', `/superadmin/clients/${id}`),
   rastreadores: () => apiGet<AdminRastreador[]>('/superadmin/rastreadores'),
   createRastreador: (body: { imei: string } & EscolhaDeModelo) => apiSend<AdminRastreador>('POST', '/superadmin/rastreadores', body),
   transmissao: () => apiGet<TransmissaoRastreador[]>('/superadmin/rastreadores/transmissao'),

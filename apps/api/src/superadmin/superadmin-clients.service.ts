@@ -85,6 +85,47 @@ export class SuperadminClientsService {
     return this.convites.entregar(user.email, client.name, token);
   }
 
+  /**
+   * Exclusão de vez, para cadastro errado ou cliente de teste. Com fatura ou pagamento lançado, recusa: o histórico
+   * financeiro da Localle não pode sumir. Os rastreadores voltam para o estoque (instalações e vínculos saem em
+   * cascata) e a telemetria do cliente é apagada — `posicoes`/`eventos`/`ultima_posicao` não têm FK para `clients`
+   * (hypertables), por isso saem à mão; o resto (frota, usuários, alertas, contrato...) sai em cascata. Quem estiver
+   * logado no cliente cai na próxima requisição (o AuthGuard confere se o usuário existe).
+   */
+  async excluirCliente(superadminId: string, clientId: string): Promise<void> {
+    const { nome, resumo } = await withTransaction(this.pool, async (tx) => {
+      const { rows: [client] } = await tx.query<ClientEntity>('select * from clients where id = $1 for update', [clientId]);
+      if (!client) throw new NotFoundException('Cliente não encontrado');
+      const { rows: [r] } = await tx.query<{ faturas: number; pagamentos: number; usuarios: number; veiculos: number; instalacoes: number; vinculos: number }>(
+        `select (select count(*)::int from faturas where client_id = $1) as faturas,
+                (select count(*)::int from pagamentos where client_id = $1) as pagamentos,
+                (select count(*)::int from users where client_id = $1) as usuarios,
+                (select count(*)::int from assets where client_id = $1) as veiculos,
+                (select count(*)::int from instalacoes where client_id = $1 and desinstalado_em is null) as instalacoes,
+                (select count(*)::int from rastreador_vinculos where client_id = $1 and desvinculado_em is null) as vinculos`,
+        [clientId],
+      );
+      if (r.faturas || r.pagamentos) {
+        const partes = [r.faturas && `${r.faturas} fatura${r.faturas > 1 ? 's' : ''}`, r.pagamentos && `${r.pagamentos} pagamento${r.pagamentos > 1 ? 's' : ''}`].filter(Boolean);
+        throw new ConflictException(`O cliente ${client.name} já tem ${partes.join(' e ')}: o histórico financeiro não pode ser apagado.`);
+      }
+      const { rowCount: posicoes } = await tx.query('delete from posicoes where client_id = $1', [clientId]);
+      const { rowCount: eventos } = await tx.query('delete from eventos where client_id = $1', [clientId]);
+      await tx.query('delete from ultima_posicao where client_id = $1', [clientId]);
+      // a saúde do aparelho continua com o rastreador, que volta ao estoque
+      await tx.query('update rastreador_comunicacao set client_id = null, asset_id = null where client_id = $1', [clientId]);
+      const resumo = { usuarios: r.usuarios, veiculos: r.veiculos, rastreadoresInstalados: r.instalacoes, rastreadoresVinculados: r.vinculos, posicoes, eventos };
+      await tx.query('delete from clients where id = $1', [clientId]);
+      // `client_id` do audit_log é `on delete set null`: o alvo guarda qual cliente foi
+      await this.audit.record(
+        { actorType: 'superadmin', actorId: superadminId, clientId: null, action: 'client.excluir', target: clientId, before: { name: client.name, ...resumo } },
+        tx,
+      );
+      return { nome: client.name, resumo };
+    });
+    this.logger.log(`cliente excluído client_id=${clientId} (${nome}) por superadmin=${superadminId}: ${JSON.stringify(resumo)}`);
+  }
+
   private async insertAdmin(executor: Queryable, superadminId: string, clientId: string, email: string) {
     const user = await this.users.create({ clientId, email, passwordHash: null, role: 'admin' }, executor);
     const token = await this.convites.emitir(executor, { userId: user.id, clientId, criadoPor: superadminId });
