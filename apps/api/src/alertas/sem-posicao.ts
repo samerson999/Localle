@@ -25,3 +25,12 @@ export function tituloSemPosicao(prioridade: Alerta['prioridade']): string {
   const h = prioridade === 'alta' ? 24 : prioridade === 'media' ? 12 : 4;
   return `Rastreador há mais de ${h} h sem enviar posição`;
 }
+
+/**
+ * Backup (rastreador ou tag) sem comunicar (14/11/2026): aviso baixo e único por queda, sem subir de nível — o ativo
+ * segue rastreado pelo principal. Conta do último pacote (não da última posição): tag costuma mandar posição de horas
+ * em horas, mas sem nenhum pacote em 24 h ela provavelmente está sem bateria ou foi arrancada.
+ */
+export const TIPO_BACKUP_SEM_SINAL = 'backup_sem_sinal';
+export const BACKUP_SEM_SINAL_H = 24;
+export const TITULO_BACKUP_SEM_SINAL = `Backup há mais de ${BACKUP_SEM_SINAL_H} h sem comunicar`;

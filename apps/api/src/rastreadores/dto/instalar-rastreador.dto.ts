@@ -1,7 +1,7 @@
 export class InstalarRastreadorDto {
   assetId!: string;
   tecnico!: string;
-  papel?: 'principal' | 'secundario' | 'can';
+  papel?: 'principal' | 'backup' | 'can';
   instaladoEm?: string;
   kmInicial?: string;
   foto?: string;

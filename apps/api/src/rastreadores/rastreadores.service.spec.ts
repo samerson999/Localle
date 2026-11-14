@@ -242,7 +242,7 @@ describe('RastreadoresService', () => {
     await service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });
     await expect(
       service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' }),
-    ).rejects.toThrow(/já tem uma instalação vigente/i);
+    ).rejects.toThrow(/já está instalado em outro ativo/i);
   });
 
   it('sob concorrência real, só uma de duas instalações simultâneas do mesmo rastreador vence', async () => {
@@ -792,5 +792,73 @@ describe('RastreadoresService', () => {
     await service.desvincular(superadminId, instalado.id);
     depois = (await rastreadoresRepo.findAllPainel()).filter((r) => r.id === instalado.id);
     expect(depois[0]).toMatchObject({ vinculo_id: null, client_id: null });
+  });
+
+  // 14/11/2026: principal + backup no mesmo ativo; tag em veículo só como backup
+  describe('principal, backup e tag', () => {
+    let modeloTag: string;
+    beforeAll(async () => {
+      modeloTag = (await modelosRepo.criar({ fabricante: `Teste ${sufixo}`, nome: 'Tag', protocolo: 'gt06', porta: 5023, tipo_identificador: 'outro', tipo_aparelho: 'tag' })).id;
+      modelosCriados.push(modeloTag);
+    });
+    async function tagVinculadaA(clientId: string) {
+      const r = await service.cadastrarRastreador(superadminId, { modeloId: modeloTag, imei: novoImei() });
+      rastreadoresCriados.push(r.id);
+      await service.vincular(superadminId, clientId, r.id);
+      return r;
+    }
+    const objeto = async (clientId: string) =>
+      (await assetsRepo.insert(clientId, { identificador: novaPlaca(), dados: { kind: 'equipamento' } })).id;
+
+    it('veículo: tag não entra como principal, entra como backup ao lado do rastreador', async () => {
+      const assetId = await novoAsset(clientA);
+      const tag = await tagVinculadaA(clientA);
+      await expect(service.instalar(usuarioCliente, clientA, tag.id, { assetId, tecnico: 'T' })).rejects.toThrow(/tag só pode ser instalada como backup/);
+
+      const principal = await vinculadoA(clientA);
+      await service.instalar(usuarioCliente, clientA, principal.id, { assetId, tecnico: 'T' });
+      const backup = await service.instalar(usuarioCliente, clientA, tag.id, { assetId, tecnico: 'T', papel: 'backup' });
+      expect(backup.papel).toBe('backup');
+
+      const outra = await tagVinculadaA(clientA);
+      await expect(service.instalar(usuarioCliente, clientA, outra.id, { assetId, tecnico: 'T', papel: 'backup' })).rejects.toThrow(/já tem um backup/);
+      // trocar deixaria a tag como principal do veículo
+      await expect(service.trocarPrincipal(usuarioCliente, clientA, assetId)).rejects.toThrow(/tag só pode ser backup/);
+    });
+
+    it('objeto: tag pode ser principal', async () => {
+      const assetId = await objeto(clientA);
+      const tag = await tagVinculadaA(clientA);
+      expect((await service.instalar(usuarioCliente, clientA, tag.id, { assetId, tecnico: 'T' })).papel).toBe('principal');
+    });
+
+    it('troca principal e backup preservando o histórico; outro cliente não troca', async () => {
+      const assetId = await novoAsset(clientA);
+      const a = await vinculadoA(clientA);
+      const b = await vinculadoA(clientA);
+      await service.instalar(usuarioCliente, clientA, a.id, { assetId, tecnico: 'Ana', instaladoEm: new Date(Date.now() - 60_000) });
+      await service.instalar(usuarioCliente, clientA, b.id, { assetId, tecnico: 'Bia', papel: 'backup', instaladoEm: new Date(Date.now() - 60_000) });
+
+      await expect(service.trocarPrincipal(usuarioCliente, clientB, assetId)).rejects.toThrow(NotFoundException);
+
+      await service.trocarPrincipal(usuarioCliente, clientA, assetId);
+      const { rows } = await pool.query(
+        'select rastreador_id, papel, tecnico from instalacoes where asset_id = $1 and desinstalado_em is null order by papel desc',
+        [assetId],
+      );
+      expect(rows).toEqual([
+        { rastreador_id: b.id, papel: 'principal', tecnico: 'Bia' },
+        { rastreador_id: a.id, papel: 'backup', tecnico: 'Ana' },
+      ]);
+      const fechadas = await pool.query('select count(*)::int as n from instalacoes where asset_id = $1 and desinstalado_em is not null', [assetId]);
+      expect(fechadas.rows[0].n).toBe(2);
+    });
+
+    it('trocar sem backup responde conflito', async () => {
+      const assetId = await novoAsset(clientA);
+      const a = await vinculadoA(clientA);
+      await service.instalar(usuarioCliente, clientA, a.id, { assetId, tecnico: 'T' });
+      await expect(service.trocarPrincipal(usuarioCliente, clientA, assetId)).rejects.toThrow(/principal e um backup/);
+    });
   });
 });

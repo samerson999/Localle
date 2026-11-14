@@ -17,5 +17,11 @@ export interface RastreadorDoCliente {
   asset_id: string | null;
   asset_plate: string | null;
   instalado_em: Date | null;
+  papel: 'principal' | 'backup' | 'can' | null;
+  tipo_aparelho: 'rastreador' | 'tag';
+  /** Última posição válida desde a instalação vigente (a ficha mostra a do backup, que não vai para o mapa). */
+  posicao_em: Date | null;
+  latitude: number | null;
+  longitude: number | null;
   ultimo_pacote_em: Date | null;
 }

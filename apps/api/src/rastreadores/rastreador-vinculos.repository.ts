@@ -58,14 +58,20 @@ export class RastreadorVinculosRepository extends BaseRepository<RastreadorVincu
   /** Rastreadores vinculados ao cliente agora, com a instalação vigente (se houver) no ativo dele. */
   async doCliente(clientId: string): Promise<RastreadorDoCliente[]> {
     const { rows } = await this.pool.query<RastreadorDoCliente>(
-      `select r.id, r.imei, r.modelo, r.protocolo, v.vinculado_em,
-              i.id as instalacao_id, i.asset_id, a.rotulo as asset_plate, i.instalado_em,
+      `select r.id, r.imei, r.modelo, r.protocolo, v.vinculado_em, coalesce(m.tipo_aparelho, 'rastreador') as tipo_aparelho,
+              i.id as instalacao_id, i.asset_id, a.rotulo as asset_plate, i.instalado_em, i.papel,
+              -- última posição só depois da instalação vigente: a de antes pode ser de outro cliente ou de outro ativo
+              case when up.fix_time >= i.instalado_em then up.fix_time end as posicao_em,
+              case when up.fix_time >= i.instalado_em then st_y(up.geom) end as latitude,
+              case when up.fix_time >= i.instalado_em then st_x(up.geom) end as longitude,
               rc.ultimo_pacote_em
          from rastreador_vinculos v
          join rastreadores r on r.id = v.rastreador_id
          left join instalacoes i on i.rastreador_id = r.id and i.client_id = v.client_id and i.desinstalado_em is null
          left join assets a on a.id = i.asset_id and a.client_id = v.client_id
          left join rastreador_comunicacao rc on rc.rastreador_id = r.id
+         left join rastreador_modelos m on m.id = r.modelo_id
+         left join ultima_posicao up on up.rastreador_id = r.id
         where v.client_id = $1 and v.desvinculado_em is null and r.status <> 'desativado'
         order by r.imei`,
       [clientId],

@@ -12,6 +12,7 @@ import type { Pool } from 'pg';
 import { AssetsRepository } from '../assets/assets.repository';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { PG_POOL } from '../db/pg-pool.provider';
+import type { Queryable } from '../db/queryable';
 import { withTransaction } from '../db/with-transaction';
 import { TraccarClient } from '../ingest/traccar-client';
 import type { InstalacaoEntity } from './instalacao.entity';
@@ -34,6 +35,9 @@ export interface Ator {
   id: string;
 }
 const PG_FK_VIOLATION = '23503';
+
+/** Natureza do ativo vem da ficha (`dados.kind`); sem ela, o front trata como veículo. Todo o resto conta como objeto. */
+const ehVeiculo = (asset: { dados: Record<string, unknown> | null }) => (asset.dados?.kind ?? 'veiculo') === 'veiculo';
 
 
 /**
@@ -137,6 +141,10 @@ export class RastreadoresService {
 
     const asset = await this.assets.findOne(clientId, { id: data.assetId });
     if (!asset) throw new NotFoundException('Ativo não encontrado para este cliente');
+    const papel = data.papel ?? 'principal';
+    if (papel === 'principal' && ehVeiculo(asset) && (await this.ehTag(rastreador.modelo_id))) {
+      throw new BadRequestException('Em veículo, a tag só pode ser instalada como backup');
+    }
 
     try {
       return await withTransaction(this.pool, async (client) => {
@@ -148,7 +156,7 @@ export class RastreadoresService {
           {
             rastreadorId,
             assetId: data.assetId,
-            papel: data.papel,
+            papel,
             instaladoEm: data.instaladoEm ?? new Date(),
             tecnico: data.tecnico,
             kmInicial: data.kmInicial,
@@ -164,7 +172,7 @@ export class RastreadoresService {
             clientId,
             action: 'rastreador.instalar',
             target: rastreadorId,
-            after: { assetId: data.assetId, instalacaoId: instalacao.id },
+            after: { assetId: data.assetId, instalacaoId: instalacao.id, papel },
           },
           client,
         );
@@ -173,11 +181,64 @@ export class RastreadoresService {
     } catch (err) {
       if (isPgError(err, PG_EXCLUSION_VIOLATION)) {
         throw new ConflictException(
-          'Rastreador ou ativo já tem uma instalação vigente nesse papel para o período informado',
+          papel === 'backup'
+            ? 'Este ativo já tem um backup, ou o rastreador já está instalado em outro ativo'
+            : 'Este ativo já tem um rastreador principal, ou o rastreador já está instalado em outro ativo',
         );
       }
       throw err;
     }
+  }
+
+  /**
+   * Troca principal e backup do ativo. Fecha as duas instalações vigentes agora e reabre com os papéis trocados, no
+   * mesmo instante e na mesma transação: o histórico de `instalacoes` continua dizendo quem era o principal em cada
+   * momento (a ingestão resolve o papel pelo instante do dado). O mapa volta com a próxima posição do novo principal.
+   */
+  async trocarPrincipal(ator: Ator, clientId: string, assetId: string): Promise<InstalacaoEntity[]> {
+    const asset = await this.assets.findOne(clientId, { id: assetId });
+    if (!asset) throw new NotFoundException('Ativo não encontrado para este cliente');
+    return withTransaction(this.pool, async (client) => {
+      const { rows: vigentes } = await client.query<InstalacaoEntity & { modelo_id: string | null }>(
+        `select i.*, r.modelo_id from instalacoes i join rastreadores r on r.id = i.rastreador_id
+          where i.client_id = $1 and i.asset_id = $2 and i.desinstalado_em is null and i.papel in ('principal', 'backup')
+          for update of i`,
+        [clientId, assetId],
+      );
+      const principal = vigentes.find((i) => i.papel === 'principal');
+      const backup = vigentes.find((i) => i.papel === 'backup');
+      if (!principal || !backup) throw new ConflictException('O ativo precisa ter um principal e um backup para trocar');
+      if (ehVeiculo(asset) && (await this.ehTag(backup.modelo_id, client))) {
+        throw new BadRequestException('Em veículo, a tag só pode ser backup');
+      }
+      const agora = new Date();
+      for (const i of vigentes) await this.instalacoes.desinstalar(i.id, agora, client);
+      const novas: InstalacaoEntity[] = [];
+      for (const [i, papel] of [[backup, 'principal'], [principal, 'backup']] as const) {
+        novas.push(
+          await this.instalacoes.instalar(
+            clientId,
+            { rastreadorId: i.rastreador_id, assetId, papel, instaladoEm: agora, tecnico: i.tecnico, kmInicial: i.km_inicial, foto: i.foto },
+            client,
+          ),
+        );
+      }
+      await this.audit.record(
+        {
+          actorType: ator.type, actorId: ator.id, clientId, action: 'rastreador.trocar_principal', target: assetId,
+          before: { principal: principal.rastreador_id, backup: backup.rastreador_id },
+          after: { principal: backup.rastreador_id, backup: principal.rastreador_id },
+        },
+        client,
+      );
+      this.logger.log(`asset_id=${assetId} client_id=${clientId} principal trocado: ${principal.rastreador_id} → ${backup.rastreador_id}`);
+      return novas;
+    });
+  }
+
+  private async ehTag(modeloId: string | null, executor?: Queryable): Promise<boolean> {
+    if (!modeloId) return false;
+    return (await this.modelos.findById(modeloId, executor))?.tipo_aparelho === 'tag';
   }
 
   /** `clientId` só quando quem pede é o cliente: instalação de outro cliente responde 404. */

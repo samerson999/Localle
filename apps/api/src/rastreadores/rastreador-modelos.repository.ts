@@ -6,7 +6,7 @@ import type { InstalacaoSinalEntity } from '../telemetria/instalacao-sinais.repo
 import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
 
 export type ModeloDados = Pick<RastreadorModeloEntity, 'fabricante' | 'nome' | 'protocolo' | 'porta' | 'tipo_identificador'> &
-  Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio' | 'origem' | CamposSinais>>;
+  Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio' | 'origem' | 'tipo_aparelho' | CamposSinais>>;
 
 /** Capacidade de CAN e mapeamento dos sinais de motor (migration 1793180000000). */
 type CamposSinais = 'suporte_can' | 'sinais_motor' | 'atributo_rpm' | 'atributo_odometro' | 'atributo_combustivel' | 'atributo_horimetro';
@@ -47,11 +47,12 @@ export class RastreadorModelosRepository {
   async criar(d: ModeloDados, executor: Queryable = this.pool): Promise<RastreadorModeloEntity> {
     const { rows } = await executor.query<RastreadorModeloEntity>(
       `insert into rastreador_modelos (fabricante, nome, protocolo, porta, tipo_identificador, atributo_tensao, sinal_max, atributo_bloqueio, origem,
-                                       suporte_can, sinais_motor, atributo_rpm, atributo_odometro, atributo_combustivel, atributo_horimetro)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) returning *`,
+                                       suporte_can, sinais_motor, atributo_rpm, atributo_odometro, atributo_combustivel, atributo_horimetro, tipo_aparelho)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) returning *`,
       [
         d.fabricante, d.nome, d.protocolo, d.porta, d.tipo_identificador, d.atributo_tensao ?? null, d.sinal_max ?? null, d.atributo_bloqueio ?? null, d.origem ?? 'manual',
         d.suporte_can ?? 'nao_informado', d.sinais_motor ?? [], d.atributo_rpm ?? null, d.atributo_odometro ?? null, d.atributo_combustivel ?? null, d.atributo_horimetro ?? null,
+        d.tipo_aparelho ?? 'rastreador',
       ],
     );
     return rows[0];
@@ -99,7 +100,7 @@ export class RastreadorModelosRepository {
   async atualizar(id: string, d: Partial<ModeloDados & { ativo: boolean }>, executor: Queryable = this.pool): Promise<RastreadorModeloEntity | null> {
     const campos = ([
       'fabricante', 'nome', 'protocolo', 'porta', 'tipo_identificador', 'atributo_tensao', 'sinal_max', 'atributo_bloqueio', 'ativo',
-      'suporte_can', 'sinais_motor', 'atributo_rpm', 'atributo_odometro', 'atributo_combustivel', 'atributo_horimetro',
+      'suporte_can', 'sinais_motor', 'atributo_rpm', 'atributo_odometro', 'atributo_combustivel', 'atributo_horimetro', 'tipo_aparelho',
     ] as const).filter(
       (k) => d[k] !== undefined,
     );

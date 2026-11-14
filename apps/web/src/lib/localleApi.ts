@@ -321,7 +321,7 @@ export interface AdminRastreador {
   modelo_tipo_identificador: TipoIdentificador | null; protocolo_divergente: boolean;
 }
 export interface AdminRastreadorModelo {
-  id: string; fabricante: string; nome: string; protocolo: string; porta: number; tipo_identificador: TipoIdentificador; ativo: boolean; rastreadores: number;
+  id: string; fabricante: string; nome: string; protocolo: string; porta: number; tipo_identificador: TipoIdentificador; tipo_aparelho: 'rastreador' | 'tag'; ativo: boolean; rastreadores: number;
   /** 'catalogo' = mantido pela Localle a partir da lista do Traccar; 'manual' = cadastrado pela tela. */
   origem: 'catalogo' | 'manual';
   /** Mapeamento da telemetria; null = chave padrão do Traccar. */
@@ -334,7 +334,7 @@ export type SuporteCan = 'nativo' | 'com_acessorio' | 'nao' | 'nao_informado';
 export type SinalMotor = 'rpm' | 'odometro' | 'combustivel' | 'horimetro';
 export type StatusSinal = 'recebido' | 'aguardando' | 'nao_recebido' | 'fora_do_esperado';
 export interface ModeloBody {
-  fabricante: string; nome: string; protocolo: string; porta: number; tipoIdentificador: TipoIdentificador;
+  fabricante: string; nome: string; protocolo: string; porta: number; tipoIdentificador: TipoIdentificador; tipoAparelho?: 'rastreador' | 'tag';
   atributoTensao: string | null; sinalMax: number | null; atributoBloqueio: string | null;
   suporteCan?: SuporteCan; sinaisMotor?: SinalMotor[];
   atributoRpm?: string | null; atributoOdometro?: string | null; atributoCombustivel?: string | null; atributoHorimetro?: string | null;
@@ -495,13 +495,24 @@ export const adminApi = {
 export interface MeuRastreador {
   id: string; imei: string; modelo: string | null; protocolo: string | null; vinculado_em: string;
   instalacao_id: string | null; asset_id: string | null; asset_plate: string | null; instalado_em: string | null; ultimo_pacote_em: string | null;
+  /** Papel na instalação vigente: o mapa vem sempre do principal; o backup só comunica. */
+  papel: 'principal' | 'backup' | 'can' | null;
+  /** Tag = aparelho de bateria, de redundância: em veículo só entra como backup. */
+  tipo_aparelho: 'rastreador' | 'tag';
+  /** Última posição válida desde a instalação vigente (null antes da primeira). */
+  posicao_em: string | null; latitude: number | null; longitude: number | null;
 }
 export const meusRastreadores = () => apiGet<MeuRastreador[]>('/rastreadores');
-export async function instalarRastreador(rastreadorId: string, assetId: string, inst: { tecnico: string; kmInicial?: number | null; instaladoEm?: number }) {
+export async function instalarRastreador(rastreadorId: string, assetId: string, inst: { tecnico: string; kmInicial?: number | null; instaladoEm?: number; papel?: 'principal' | 'backup' }) {
   await apiSend('POST', `/rastreadores/${rastreadorId}/instalar`, {
-    assetId: backendIdOf(assetId), tecnico: inst.tecnico, kmInicial: inst.kmInicial ?? undefined,
+    assetId: backendIdOf(assetId), tecnico: inst.tecnico, kmInicial: inst.kmInicial ?? undefined, papel: inst.papel,
     instaladoEm: inst.instaladoEm ? new Date(inst.instaladoEm).toISOString() : undefined,
   });
+  await syncFrota();
+}
+/** Backup vira principal e vice-versa (o mapa passa a vir do outro aparelho). */
+export async function trocarPrincipal(assetId: string) {
+  await apiSend('POST', `/rastreadores/ativos/${backendIdOf(assetId)}/trocar-principal`);
   await syncFrota();
 }
 export async function desinstalarRastreador(instalacaoId: string) {

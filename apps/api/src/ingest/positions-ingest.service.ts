@@ -120,7 +120,14 @@ export class PositionsIngestService {
         return { status: 'deduped' };
       }
 
-      const { clientId, assetId, instalacaoId } = await resolverInstalacaoVigente(client, rastreadorId, position.fixTime);
+      const vigente = await resolverInstalacaoVigente(client, rastreadorId, position.fixTime);
+      const clientId = vigente.clientId;
+      // Backup (14/11/2026): comunica e guarda histórico com o cliente, mas não fala pelo ativo — a posição dele não vai
+      // para o histórico do ativo, não move o mapa e não roda cercas, regras, sinais nem alertas. O vínculo com o ativo
+      // fica só em `rastreador_comunicacao`/`ultima_posicao` (por rastreador), que a ficha lê.
+      const backup = vigente.papel === 'backup';
+      const assetId = backup ? null : vigente.assetId;
+      const instalacaoId = backup ? null : vigente.instalacaoId;
 
       // Pacote de status/heartbeat sem GPS novo: o Traccar repete nele a última posição (mesma hora e mesmo lugar). O VL100
       // manda um a cada ~10 s — na HML (12/11/2026) chegaram a 10 mil cópias de uma posição num dia, e o histórico do dia
@@ -167,7 +174,7 @@ export class PositionsIngestService {
 
       const mapeamento = mapeamentoDaLinha(rastreador.rows[0]);
       const mapeamentoSinais = mapeamentoSinaisDaLinha(rastreador.rows[0]);
-      const comunicacao = await this.atualizarComunicacao(client, rastreadorId, assetId, clientId, position, chavesLidas(mapeamento, mapeamentoSinais));
+      const comunicacao = await this.atualizarComunicacao(client, rastreadorId, vigente.assetId, clientId, position, chavesLidas(mapeamento, mapeamentoSinais));
       const telemetria = lerTelemetriaComIdade(comunicacao.ultimosAtributos, comunicacao.vistosEm, mapeamento);
       // mudança de formato que passaria despercebida (decoder do Traccar, firmware, configuração do aparelho)
       if (comunicacao.novos.length) {
@@ -218,7 +225,7 @@ export class PositionsIngestService {
         }
       }
       const atualizouUltimaPosicao = position.valid
-        ? await this.atualizarUltimaPosicao(client, rastreadorId, assetId, clientId, posicaoId, position)
+        ? await this.atualizarUltimaPosicao(client, rastreadorId, vigente.assetId, clientId, posicaoId, position)
         : false;
       const eventos: EventoGravado[] = await this.gravarAlarmes(client, rastreadorId, assetId, clientId, posicaoId, position, !!copia);
       // corte pelo estado: muitos aparelhos (o teltonika da HML, por exemplo) não mandam o alarme `powerCut`, e o corte
@@ -230,6 +237,35 @@ export class PositionsIngestService {
           `rastreador_id=${rastreadorId} asset_id=${assetId ?? '-'} alimentação externa cortada (${pelaTensao ? `tensão ${telemetria.tensaoV} V` : 'charge=false'}) sem alarme powerCut do aparelho`,
         );
         eventos.push(await this.gravarEvento(client, rastreadorId, assetId, clientId, posicaoId, position, !!copia, 'powerCut', { detectadoPor: pelaTensao ? 'tensao' : 'charge' }));
+      }
+      // Backup: alarme do próprio aparelho (violação, corte de alimentação) vira alerta para o gestor, preso ao ativo
+      // em que ele está; o evento fica fora da linha do tempo do ativo. Cercas, regras e alertas por estado não rodam.
+      if (backup) {
+        const alertasBackup: Alerta[] = [];
+        if (clientId) {
+          for (const e of eventos) {
+            if (!e.alerta) continue;
+            const alerta = await inserirAlerta(client, {
+              clientId,
+              assetId: vigente.assetId,
+              eventoId: e.id,
+              origem: 'aparelho',
+              tipo: e.tipo,
+              titulo: `Backup: ${e.alerta.titulo}`,
+              detalhe: null,
+              prioridade: e.alerta.prioridade,
+              exigeTratamento: e.alerta.exigeTratamento,
+              ts: e.ts,
+            });
+            if (alerta) alertasBackup.push(alerta);
+          }
+        }
+        await client.query('commit');
+        this.logger.debug(`rastreador_id=${rastreadorId} instalacao_id=${vigente.instalacaoId} posição do backup gravada (não move o ativo)`);
+        return {
+          status: 'gravada', posicaoId, posicaoCopiada: !!copia, rastreadorId, clientId, assetId: null,
+          atualizouUltimaPosicao: false, eventos, alertas: alertasBackup, telemetria,
+        };
       }
       // cópia da última posição: mesmo lugar, nada entra nem sai de cerca
       if (position.valid && clientId && assetId && !copia) {

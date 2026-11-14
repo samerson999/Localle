@@ -3,7 +3,7 @@ export interface InstalacaoEntity {
   client_id: string;
   rastreador_id: string;
   asset_id: string;
-  papel: 'principal' | 'secundario' | 'can';
+  papel: 'principal' | 'backup' | 'can';
   instalado_em: Date;
   desinstalado_em: Date | null;
   tecnico: string;

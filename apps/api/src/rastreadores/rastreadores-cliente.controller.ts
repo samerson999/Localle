@@ -39,6 +39,16 @@ export class RastreadoresClienteController {
     return this.service.instalar({ type: 'user', id: userId }, clientId, id, parseInstalar(dto));
   }
 
+  @Post('ativos/:assetId/trocar-principal')
+  @RequirePermission('ativos.editar')
+  trocarPrincipal(
+    @ClientId() clientId: string,
+    @CurrentUserId() userId: string,
+    @Param('assetId', ParseUUIDPipe) assetId: string,
+  ) {
+    return this.service.trocarPrincipal({ type: 'user', id: userId }, clientId, assetId);
+  }
+
   @Post('instalacoes/:instalacaoId/desinstalar')
   @RequirePermission('ativos.editar')
   desinstalar(
@@ -61,8 +71,13 @@ export function parseInstalar(body: unknown) {
     if (!Number.isFinite(km) || km < 0 || km > 99_999_999) throw new BadRequestException('"kmInicial" precisa ser um número de km válido');
     kmInicial = String(km);
   }
+  // o cliente escolhe entre principal e backup; o papel `can` não é exposto aqui
+  if (dto.papel !== undefined && dto.papel !== 'principal' && dto.papel !== 'backup') {
+    throw new BadRequestException('"papel" precisa ser principal ou backup');
+  }
   return {
     assetId: parseUuid('assetId', dto.assetId),
+    papel: dto.papel as 'principal' | 'backup' | undefined,
     tecnico,
     instaladoEm: dto.instaladoEm ? parseDate('instaladoEm', dto.instaladoEm) : undefined,
     kmInicial,

@@ -34,7 +34,10 @@ export class EventsIngestService {
       );
       if (reserva.rowCount === 0) return { status: 'deduped' as const };
 
-      const { clientId, assetId } = await resolverInstalacaoVigente(client, rastreadorId, evento.ts);
+      const vigente = await resolverInstalacaoVigente(client, rastreadorId, evento.ts);
+      const clientId = vigente.clientId;
+      // evento do backup fica com o cliente, mas não entra na linha do tempo do ativo (só o principal fala pelo ativo)
+      const assetId = vigente.papel === 'principal' ? vigente.assetId : null;
       // referência lógica à posição (sem FK, § 4.5): só se ela já foi ingerida; senão fica null
       const posicao = evento.traccarPositionId
         ? await client.query<{ posicao_id: string }>(

@@ -121,6 +121,16 @@ describe('schema de telemetria', () => {
     ).resolves.toBeDefined();
   });
 
+  it('ativo tem um principal e um backup ao mesmo tempo, nunca dois backups', async () => {
+    const [a, b, c] = [await criarRastreador(), await criarRastreador(), await criarRastreador()];
+    rastreadoresCriados.push(a, b, c);
+
+    await instalar(a, { instaladoEm: '2026-01-01T00:00:00Z' });
+    await expect(instalar(b, { papel: 'backup', instaladoEm: '2026-01-02T00:00:00Z' })).resolves.toBeDefined();
+    await expect(instalar(c, { papel: 'backup', instaladoEm: '2026-01-03T00:00:00Z' })).rejects.toThrow(/exclusion constraint/i);
+    await expect(instalar(c, { papel: 'secundario', instaladoEm: '2026-01-03T00:00:00Z' })).rejects.toThrow(/instalacoes_papel_check/);
+  });
+
   it('barra desinstalação igual ou anterior à instalação', async () => {
     const rastreadorId = await criarRastreador();
     rastreadoresCriados.push(rastreadorId);

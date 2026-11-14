@@ -21,6 +21,8 @@ export interface RastreadorModeloEntity {
   atributo_horimetro: string | null;
   /** 'catalogo' = mantido pela Localle (migration 1793160000000); 'manual' = cadastrado pela tela. */
   origem: 'catalogo' | 'manual';
+  /** 'tag' = aparelho de bateria, de redundância (migration 1794360000000): em veículo só entra como backup. */
+  tipo_aparelho: 'rastreador' | 'tag';
   ativo: boolean;
   criado_em: Date;
   atualizado_em: Date;

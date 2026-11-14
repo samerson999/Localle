@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { atualizarIconeAtivo, atualizarIdentificacaoAtivo, criarMarca, criarModelo, renomearNoCatalogo, salvarTipoAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, reativarMotorista, instalarRastreador, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
+import { atualizarIconeAtivo, atualizarIdentificacaoAtivo, criarMarca, criarModelo, renomearNoCatalogo, salvarTipoAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, reativarMotorista, instalarRastreador, trocarPrincipal, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
 import { backendIdOf, nomeDoAtivo } from '../lib/localleMap';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem, FilterSheet, Avatar } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
 import { couplingsOf, currentCoupling, compositionOf, compositionName, compositionError, setComposition, tractorHistory, TRAILER_TYPE, MAX_ITEMS, type TrailerType } from '@localle/shared/couplings';
 import { Num, StatusDot, AssetName, IdChip, KpiTile, type StatusKind } from '../components/story';
 import { Icon } from '../components/icons';
+import { linksGoogle } from './Monitoramento';
 import { Dropzone } from '../components/Dropzone';
 import { CATEGORIES, categoryOf } from '../components/assetArt';
 import { CATALOGO_VAZIO, aplicarTipo, chaveCatalogo, marcaModeloDoAtivo, mesmoNome, nomeDoTipo, parecidos, tipoDoAtivo, tiposDoCliente, type CatalogoAtivos, type OpcaoTipo } from '../lib/catalogoAtivos';
@@ -234,9 +235,15 @@ function AssetForm({ a, setA }: any) {
   // rastreadores que a Localle vinculou a esta conta (API); o cliente só escolhe em qual ativo cada um está
   const [meus, setMeus] = useState<MeuRastreador[] | null>(null);
   const [erroLista, setErroLista] = useState('');
-  useEffect(() => { meusRastreadores().then(setMeus).catch((e: any) => setErroLista(e.message || String(e))); }, []);
-  const instalado = meus?.find((r) => isRealAsset(a) && r.asset_id === backendIdOf(a.id)) || null;
-  const livres = (meus || []).filter((r) => !r.instalacao_id);
+  const recarregarMeus = () => meusRastreadores().then(setMeus).catch((e: any) => setErroLista(e.message || String(e)));
+  useEffect(() => { recarregarMeus(); }, []);
+  const doAtivo = (meus || []).filter((r) => isRealAsset(a) && r.asset_id === backendIdOf(a.id));
+  // o principal é quem alimenta o mapa; o backup só comunica e aparece no bloco próprio
+  const instalado = doAtivo.find((r) => r.papel !== 'backup') || null;
+  const backupInst = doAtivo.find((r) => r.papel === 'backup') || null;
+  // em veículo a tag só entra como backup; em objeto pode ser o principal
+  const livresTodos = (meus || []).filter((r) => !r.instalacao_id);
+  const livres = livresTodos.filter((r) => a.kind !== 'veiculo' || r.tipo_aparelho !== 'tag');
   const [rid, setRid] = useState('');
   const [busy, setBusy] = useState(false);
   const [inst, setInst] = useState({ km: '', photo: '', tech: '', calc: false, date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) });
@@ -425,7 +432,7 @@ function AssetForm({ a, setA }: any) {
               ) : livres.length ? (
                 // busca por qualquer trecho do IMEI (ex.: só os últimos dígitos, que é o que fica legível na etiqueta) ou do modelo; o X limpa = sem rastreador
                 <Field label="Rastreador disponível" hint="Digite qualquer parte do IMEI, como os últimos dígitos, ou o modelo."><SearchSelect aria-label="Rastreador disponível" value={rid} onChange={setRid} placeholder="Sem rastreador · buscar IMEI ou modelo"
-                  emptyLabel="Nenhum rastreador disponível com esse número" options={livres.map((r) => ({ value: r.id, label: r.imei, sub: r.modelo || 'Modelo não informado' }))} /></Field>
+                  emptyLabel="Nenhum rastreador disponível com esse número" options={livres.map((r) => ({ value: r.id, label: r.imei, sub: (r.modelo || 'Modelo não informado') + (r.tipo_aparelho === 'tag' ? ' · Tag' : '') }))} /></Field>
               ) : (
                 <p className="text-small text-ink-2">Nenhum rastreador disponível. Os rastreadores são vinculados à sua conta pela Localle; fale com ela para incluir um.</p>
               )}
@@ -447,6 +454,7 @@ function AssetForm({ a, setA }: any) {
               {instalado && <TextButton tone="danger" className="self-start" onClick={async () => { if (!(await confirmAction({ title: 'Retirar o rastreador?', detail: `O rastreador ${instalado.imei} sai de ${a.name} e fica disponível para outro ativo da sua conta.`, confirmLabel: 'Retirar' }))) return; try { await desinstalarRastreador(instalado.instalacao_id!); unlinkTracker(a.id, 'retirado'); toast('Rastreador retirado; está disponível para outro ativo.'); setA(null); } catch (e: any) { toast('Não foi possível retirar: ' + (e.message || e), { tone: 'crit' }); } }}>Retirar rastreador</TextButton>}
               {a.tracker && <p className="text-caption text-ink-2">Vinculado desde {fmtD(a.tracker.linkedAt)}{a.installation ? ` · instalado por ${a.installation.technician}` : ''}{a.kmCalculated ? ' · km calculado' : a.installation?.initialKm != null ? ` · odômetro inicial ${num(a.installation.initialKm)} km` : ''}</p>}
             </div>
+            {instalado && <BackupRastreador a={a} backup={backupInst} livres={livresTodos} onMudou={() => { recarregarMeus(); }} />}
             {a.id && <TrackerHistory assetId={a.id} />}
         </div>}
         {aba === 'historico' && <div className="flex flex-col gap-grid max-w-2xl">
@@ -572,6 +580,73 @@ function DriverHistory({ assetId }: { assetId: string }) {
 }
 
 // rastreadores que já passaram pelo ativo (vínculos em accessLog, os mesmos usados na cobrança)
+/**
+ * Segundo aparelho do ativo (pedido de 14/11/2026): o backup — rastreador ou tag — continua comunicando, mas o mapa vem
+ * sempre do principal. Instalar e retirar o backup são ações diretas, fora do "Salvar" da ficha (não mexem no km).
+ */
+function BackupRastreador({ a, backup, livres, onMudou }: { a: any; backup: MeuRastreador | null; livres: MeuRastreador[]; onMudou: () => void }) {
+  const [rid, setRid] = useState('');
+  const [tech, setTech] = useState('');
+  const [busy, setBusy] = useState(false);
+  const acao = async (fn: () => Promise<void>, ok: string) => {
+    setBusy(true);
+    try { await fn(); toast(ok); setRid(''); setTech(''); onMudou(); }
+    catch (e: any) { toast('Não foi possível concluir: ' + (e.message || e), { tone: 'crit' }); }
+    finally { setBusy(false); }
+  };
+  // trocar deixaria a tag como principal: em veículo não pode
+  const podeTrocar = !!backup && !(a.kind === 'veiculo' && backup.tipo_aparelho === 'tag');
+  return (
+    <div className="flex flex-col gap-stack border border-line rounded-ctl p-card-sm">
+      <span className="text-small font-semibold">Backup</span>
+      <p className="text-caption text-ink-2">Aparelho de redundância: continua comunicando, mas a posição no mapa vem sempre do principal.</p>
+      {backup ? (
+        <>
+          <div className="flex flex-col gap-hair">
+            <IdChip size="sm">{backup.imei}</IdChip>
+            <span className="text-small">{backup.modelo || 'Modelo não informado'}{backup.tipo_aparelho === 'tag' ? ' · Tag' : ''}</span>
+            <span className="text-caption text-ink-2">Instalado em {fmtD(Date.parse(backup.instalado_em!))} · último sinal {backup.ultimo_pacote_em ? fmtDT(Date.parse(backup.ultimo_pacote_em)) : 'ainda não recebido'}</span>
+          </div>
+          {/* posição do backup: só aqui, nunca no mapa (o mapa é do principal) */}
+          {backup.latitude != null && backup.longitude != null ? (
+            <div className="flex flex-col gap-tight">
+              <span className="text-small">Última posição <span className="num">{backup.latitude.toFixed(6)}, {backup.longitude.toFixed(6)}</span>{backup.posicao_em ? <span className="text-caption text-ink-2"> · {fmtDT(Date.parse(backup.posicao_em))}</span> : null}</span>
+              <div className="grid grid-cols-2 gap-tight">
+                {linksGoogle([backup.latitude, backup.longitude]).map((l) => (
+                  <a key={l.icon} href={l.href} target="_blank" rel="noreferrer" className={cx(buttonClass('secondary', 'sm'), 'min-w-0')}>
+                    <Icon name={l.icon} size={16} className="shrink-0" /><span className="truncate">{l.label}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : <span className="text-caption text-ink-2">Sem posição desde a instalação.</span>}
+          <div className="flex flex-wrap gap-tight">
+            {podeTrocar && <Button variant="secondary" size="sm" disabled={busy} onClick={async () => {
+              if (!(await confirmAction({ title: 'Tornar o backup principal?', detail: `O mapa de ${a.name} passa a vir do aparelho ${backup.imei}, a partir da próxima posição dele. O principal atual vira backup.`, confirmLabel: 'Trocar' }))) return;
+              acao(() => trocarPrincipal(a.id), 'Principal trocado.');
+            }}>Tornar principal</Button>}
+            <TextButton tone="danger" disabled={busy} onClick={async () => {
+              if (!(await confirmAction({ title: 'Retirar o backup?', detail: `O aparelho ${backup.imei} sai de ${a.name} e fica disponível para outro ativo da sua conta.`, confirmLabel: 'Retirar' }))) return;
+              acao(() => desinstalarRastreador(backup.instalacao_id!), 'Backup retirado.');
+            }}>Retirar backup</TextButton>
+          </div>
+        </>
+      ) : livres.length ? (
+        <>
+          <Field label="Aparelho de backup" hint="Rastreador ou tag disponível na sua conta."><SearchSelect aria-label="Aparelho de backup" value={rid} onChange={setRid} placeholder="Sem backup · buscar IMEI ou modelo"
+            emptyLabel="Nenhum aparelho disponível com esse número" options={livres.map((r) => ({ value: r.id, label: r.imei, sub: (r.modelo || 'Modelo não informado') + (r.tipo_aparelho === 'tag' ? ' · Tag' : '') }))} /></Field>
+          {rid && <>
+            <Field label="Técnico responsável"><Input value={tech} onChange={(e) => setTech(e.target.value)} placeholder="Nome do instalador" /></Field>
+            <Button size="sm" className="self-start" disabled={busy || !tech.trim()} onClick={() => acao(() => instalarRastreador(rid, a.id, { tecnico: tech.trim(), papel: 'backup' }), 'Backup instalado.')}>Instalar backup</Button>
+          </>}
+        </>
+      ) : (
+        <p className="text-small text-ink-2">Nenhum aparelho disponível para backup. Os aparelhos são vinculados à sua conta pela Localle.</p>
+      )}
+    </div>
+  );
+}
+
 function TrackerHistory({ assetId }: { assetId: string }) {
   const log = useStore(useShallow((s) => s.accessLog.filter((l: any) => l.assetId === assetId).sort((x: any, y: any) => y.ts - x.ts)));
   if (!log.length) return null;

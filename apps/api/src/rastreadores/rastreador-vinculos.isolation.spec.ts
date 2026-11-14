@@ -39,6 +39,7 @@ describe('RastreadorVinculosRepository — isolamento por client_id', () => {
 
   afterAll(async () => {
     for (const id of rastreadoresCriados) {
+      await pool.query('delete from ultima_posicao where rastreador_id = $1', [id]);
       await pool.query('delete from instalacoes where rastreador_id = $1', [id]);
       await pool.query('delete from rastreador_vinculos where rastreador_id = $1', [id]);
       await pool.query('delete from rastreadores where id = $1', [id]);
@@ -93,5 +94,25 @@ describe('RastreadorVinculosRepository — isolamento por client_id', () => {
     const r = await rastreador();
     await repo.vincular(clientA, r.id);
     await expect(repo.vincular(clientB, r.id)).rejects.toMatchObject({ code: '23P01' });
+  });
+
+  // a ficha mostra a posição do backup; a de antes da instalação pode ser de outro cliente (aparelho reaproveitado)
+  it('doCliente só mostra a última posição registrada depois da instalação vigente', async () => {
+    const r = await rastreador();
+    await repo.vincular(clientA, r.id);
+    const asset = await assets.insert(clientA, { plate: novaPlaca() });
+    await instalacoes.instalar(clientA, { rastreadorId: r.id, assetId: asset.id, instaladoEm: new Date('2026-03-01T12:00:00Z'), tecnico: 'teste' });
+    const gravar = (ts: string) =>
+      pool.query(
+        `insert into ultima_posicao (rastreador_id, posicao_id, fix_time, geom) values ($1, 1, $2, st_setsrid(st_makepoint(-46.6, -23.5), 4326))
+         on conflict (rastreador_id) do update set fix_time = excluded.fix_time`,
+        [r.id, ts],
+      );
+
+    await gravar('2026-03-01T11:00:00Z');
+    expect((await repo.doCliente(clientA)).find((x) => x.id === r.id)).toMatchObject({ posicao_em: null, latitude: null, longitude: null });
+
+    await gravar('2026-03-01T13:00:00Z');
+    expect((await repo.doCliente(clientA)).find((x) => x.id === r.id)).toMatchObject({ latitude: -23.5, longitude: -46.6 });
   });
 });

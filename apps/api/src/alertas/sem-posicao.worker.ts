@@ -6,7 +6,9 @@ import { withTransaction } from '../db/with-transaction';
 import { reenfileirarNotificacao } from '../notificacoes/notificacao-fila.repository';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { EXIGE_TRATAMENTO_PADRAO, inserirAlerta, toAlerta } from './alertas.repository';
-import { nivelSemPosicao, SEM_POSICAO_MIN_H, TIPO_SEM_POSICAO, tituloSemPosicao } from './sem-posicao';
+import {
+  BACKUP_SEM_SINAL_H, nivelSemPosicao, SEM_POSICAO_MIN_H, TIPO_BACKUP_SEM_SINAL, TIPO_SEM_POSICAO, TITULO_BACKUP_SEM_SINAL, tituloSemPosicao,
+} from './sem-posicao';
 
 const TICK_MS = 60_000;
 const RANK: Record<Alerta['prioridade'], number> = { baixa: 1, media: 2, alta: 3 };
@@ -65,6 +67,7 @@ export class SemPosicaoWorker implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`Alerta sem posição não atualizado (client_id ${c.client_id}, asset_id ${c.asset_id}): ${(err as Error).message}`);
         }
       }
+      await this.backupsSemSinal(agora, clientId);
     } finally {
       this.rodando = false;
     }
@@ -89,6 +92,50 @@ export class SemPosicaoWorker implements OnModuleInit, OnModuleDestroy {
       [agora, SEM_POSICAO_MIN_H, TIPO_SEM_POSICAO, clientId],
     );
     return rows;
+  }
+
+  /**
+   * Backup calado há mais de 24 h desde o último pacote (ou desde a instalação, se nunca falou): um aviso baixo por queda,
+   * preso ao ativo. Sem pacote nenhum desde a instalação, a queda é contada da própria instalação.
+   */
+  private async backupsSemSinal(agora: Date, clientId: string | null): Promise<void> {
+    let candidatos: { client_id: string; asset_id: string; rastreador_id: string; desde: Date }[];
+    try {
+      ({ rows: candidatos } = await this.pool.query(
+        `select a.client_id, a.id as asset_id, i.rastreador_id,
+                greatest(i.instalado_em, coalesce(rc.ultimo_pacote_em, i.instalado_em)) as desde
+           from assets a
+           join instalacoes i on i.asset_id = a.id and i.client_id = a.client_id and i.papel = 'backup' and i.desinstalado_em is null
+           left join rastreador_comunicacao rc on rc.rastreador_id = i.rastreador_id
+          where a.status = 'ativo'
+            and ($3::uuid is null or a.client_id = $3)
+            and greatest(i.instalado_em, coalesce(rc.ultimo_pacote_em, i.instalado_em)) <= $1::timestamptz - make_interval(hours => $2)
+            and not exists (select 1 from alertas al where al.asset_id = a.id and al.tipo = $4
+                              and al.ts = greatest(i.instalado_em, coalesce(rc.ultimo_pacote_em, i.instalado_em)))`,
+        [agora, BACKUP_SEM_SINAL_H, clientId, TIPO_BACKUP_SEM_SINAL],
+      ));
+    } catch (err) {
+      this.logger.error(`Backups sem comunicar não verificados: ${(err as Error).message}`);
+      return;
+    }
+    for (const c of candidatos) {
+      try {
+        // índice único por (ativo, queda): outra instância que chegou antes faz este insert falhar, e o aviso já existe
+        const alerta = await withTransaction(this.pool, (tx) =>
+          inserirAlerta(tx, {
+            clientId: c.client_id, assetId: c.asset_id, eventoId: null, origem: 'aparelho', tipo: TIPO_BACKUP_SEM_SINAL,
+            titulo: TITULO_BACKUP_SEM_SINAL, detalhe: null, prioridade: 'baixa', ts: c.desde,
+          }),
+        );
+        if (!alerta) continue;
+        this.logger.log(`Aviso de backup sem comunicar (client_id ${c.client_id}, asset_id ${c.asset_id}, rastreador_id ${c.rastreador_id}, alerta ${alerta.id})`);
+        await this.realtime.publish(c.client_id, { kind: 'alerta', alerta }).catch((err: Error) =>
+          this.logger.warn(`Aviso de backup sem comunicar não publicado (client_id ${c.client_id}, alerta ${alerta.id}): ${err.message}`),
+        );
+      } catch (err) {
+        this.logger.warn(`Aviso de backup sem comunicar não gravado (client_id ${c.client_id}, asset_id ${c.asset_id}): ${(err as Error).message}`);
+      }
+    }
   }
 
   private async avaliar(c: Candidato, agora: Date): Promise<void> {

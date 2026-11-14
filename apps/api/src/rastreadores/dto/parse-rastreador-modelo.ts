@@ -28,6 +28,7 @@ function mapeamento(b: Record<string, unknown>): Partial<ModeloDados> {
   if (b.atributoRpm !== undefined) out.atributo_rpm = atributo(b.atributoRpm, 'atributoRpm');
   if (b.atributoOdometro !== undefined) out.atributo_odometro = atributo(b.atributoOdometro, 'atributoOdometro');
   if (b.atributoCombustivel !== undefined) out.atributo_combustivel = atributo(b.atributoCombustivel, 'atributoCombustivel');
+  if (b.tipoAparelho !== undefined) out.tipo_aparelho = opcao(b.tipoAparelho, 'tipoAparelho', ['rastreador', 'tag'] as const);
   if (b.atributoHorimetro !== undefined) out.atributo_horimetro = atributo(b.atributoHorimetro, 'atributoHorimetro');
   return out;
 }

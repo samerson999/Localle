@@ -370,6 +370,7 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
   const [protocolo, setProtocolo] = useState(modelo?.protocolo || '');
   const [porta, setPorta] = useState(modelo ? String(modelo.porta) : '');
   const [tipo, setTipo] = useState<TipoIdentificador>(modelo?.tipo_identificador || 'imei');
+  const [tipoAparelho, setTipoAparelho] = useState<'rastreador' | 'tag'>(modelo?.tipo_aparelho || 'rastreador');
   const [tensao, setTensao] = useState(modelo?.atributo_tensao || '');
   const [sinalMax, setSinalMax] = useState(modelo?.sinal_max ? String(modelo.sinal_max) : '');
   const [bloqueio, setBloqueio] = useState(modelo?.atributo_bloqueio || '');
@@ -387,7 +388,7 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
   const ok = fabricante.trim() && nome.trim() && /^[a-z0-9]{2,30}$/.test(protocolo) && Number.isInteger(portaN) && portaN >= 1 && portaN <= 65535
     && atributoOk(tensao) && atributoOk(bloqueio) && (sinalN === null || (sinalN >= 1 && sinalN <= 100)) && SINAIS_MOTOR.every((x) => atributoOk(atributosSinal[x]));
   const body = {
-    fabricante: fabricante.trim(), nome: nome.trim(), protocolo, porta: portaN, tipoIdentificador: tipo, atributoTensao: tensao || null, sinalMax: sinalN, atributoBloqueio: bloqueio || null,
+    fabricante: fabricante.trim(), nome: nome.trim(), protocolo, porta: portaN, tipoIdentificador: tipo, tipoAparelho, atributoTensao: tensao || null, sinalMax: sinalN, atributoBloqueio: bloqueio || null,
     suporteCan, sinaisMotor: suporteCan === 'nao' ? [] : sinais,
     atributoRpm: atributosSinal.rpm || null, atributoOdometro: atributosSinal.odometro || null, atributoCombustivel: atributosSinal.combustivel || null, atributoHorimetro: atributosSinal.horimetro || null,
   };
@@ -423,6 +424,9 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
       </FormGroup>
       <Field label="Identificador que o aparelho manda">
         <Select disabled={travado} value={tipo} onChange={(e) => setTipo(e.target.value as TipoIdentificador)} options={TIPOS_IDENTIFICADOR.map((t) => ({ value: t, label: ROTULO_IDENTIFICADOR[t] }))} />
+      </Field>
+      <Field label="Tipo de aparelho" hint="Tag é o aparelho de bateria, de redundância: em veículo só entra como backup; em objeto pode ser o principal.">
+        <Select value={tipoAparelho} onChange={(e) => setTipoAparelho(e.target.value as 'rastreador' | 'tag')} options={[{ value: 'rastreador', label: 'Rastreador' }, { value: 'tag', label: 'Tag' }]} />
       </Field>
       <fieldset className="flex flex-col gap-stack border-t border-line pt-card-head">
         <legend className="text-body font-medium">Telemetria</legend>

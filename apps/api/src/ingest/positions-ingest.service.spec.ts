@@ -411,4 +411,42 @@ describe('PositionsIngestService', () => {
     await service.ingest(position({ traccarDeviceId: 1099, traccarPositionId: 3, protocol: 'suntech' }));
     expect(await protocolo()).toBe('suntech');
   });
+
+  // 14/11/2026: rastreador backup/tag comunica com o cliente, mas não fala pelo ativo
+  it('backup: grava com o cliente, sem ativo no histórico, e não vira a posição do ativo', async () => {
+    const principal = await criarRastreador(1031);
+    const backup = await criarRastreador(1032);
+    await instalar(principal, '2026-01-01T00:00:00Z');
+    await pool.query(
+      `insert into instalacoes (client_id, rastreador_id, asset_id, papel, instalado_em, tecnico)
+       values ($1, $2, $3, 'backup', '2026-01-01T00:00:00Z', 'teste')`,
+      [clientId, backup, assetId],
+    );
+
+    await service.ingest(position({ traccarDeviceId: 1031, traccarPositionId: 1, fixTime: new Date('2026-01-01T12:00:00Z') }));
+    const r = await service.ingest(
+      position({ traccarDeviceId: 1032, traccarPositionId: 1, fixTime: new Date('2026-01-01T13:00:00Z'), longitude: -35, latitude: -9, alarms: ['powerCut'] }),
+    );
+    expect(r).toMatchObject({ status: 'gravada', clientId, assetId: null, atualizouUltimaPosicao: false });
+    // alarme do backup vira alerta do gestor, preso ao ativo, mas o evento fica fora da linha do tempo do ativo
+    if (r.status !== 'gravada') throw new Error('esperava gravada');
+    expect(r.eventos.map((e) => e.tipo)).toEqual(['powerCut']);
+    expect(r.alertas).toHaveLength(1);
+    expect(r.alertas[0].titulo).toMatch(/^Backup: /);
+    const al = await pool.query('select asset_id from alertas where id = $1', [r.alertas[0].id]);
+    expect(al.rows[0].asset_id).toBe(assetId);
+    const ev = await pool.query('select asset_id from eventos where rastreador_id = $1', [backup]);
+    expect(ev.rows).toEqual([{ asset_id: null }]);
+
+    const pos = await pool.query('select client_id, asset_id from posicoes where rastreador_id = $1', [backup]);
+    expect(pos.rows[0]).toEqual({ client_id: clientId, asset_id: null });
+    // a ficha acha a última posição e a comunicação do backup pelo rastreador
+    const up = await pool.query('select asset_id, st_x(geom) as lon from ultima_posicao where rastreador_id = $1', [backup]);
+    expect(up.rows[0]).toEqual({ asset_id: assetId, lon: -35 });
+    const rc = await pool.query('select client_id, asset_id from rastreador_comunicacao where rastreador_id = $1', [backup]);
+    expect(rc.rows[0]).toEqual({ client_id: clientId, asset_id: assetId });
+    // o mapa continua com o principal, mesmo com a posição do backup mais nova
+    const v = await pool.query('select rastreador_id from v_localizacao_atual where asset_id = $1', [assetId]);
+    expect(v.rows).toEqual([{ rastreador_id: principal }]);
+  });
 });
