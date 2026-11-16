@@ -3,8 +3,8 @@ import type { Alerta } from '@localle/shared/realtime';
 /**
  * Alerta de rastreador sem mandar posição (decisão de 11/11/2026): um alerta por queda, que sobe de nível
  * com o tempo — 4 h baixo, 12 h médio, 24 h crítico. Independe do status "Sem sinal" do mapa, que segue o
- * limite do Setup (`monitoramento.sem_sinal_h`). Conta desde a última posição válida, então "fala mas sem
- * GPS" também alerta.
+ * limite do Setup (`monitoramento.sem_sinal_h`). Conta desde o último pacote; com a ignição ligada, desde a última
+ * posição válida, então "fala mas sem GPS" em movimento também alerta (16/11/2026: estacionado congela o fix_time).
  */
 export const TIPO_SEM_POSICAO = 'sem_posicao';
 

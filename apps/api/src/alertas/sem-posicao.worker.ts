@@ -6,11 +6,26 @@ import { withTransaction } from '../db/with-transaction';
 import { reenfileirarNotificacao } from '../notificacoes/notificacao-fila.repository';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { EXIGE_TRATAMENTO_PADRAO, inserirAlerta, toAlerta } from './alertas.repository';
+import { MOTIVO_NORMALIZADO } from './alertas-plataforma';
 import {
   BACKUP_SEM_SINAL_H, nivelSemPosicao, SEM_POSICAO_MIN_H, TIPO_BACKUP_SEM_SINAL, TIPO_SEM_POSICAO, TITULO_BACKUP_SEM_SINAL, tituloSemPosicao,
 } from './sem-posicao';
 
 const TICK_MS = 60_000;
+
+/**
+ * Início da queda de cada ativo ativo com rastreador principal (`cliente` = parâmetro do client_id opcional). Conta do último pacote: veículo
+ * estacionado congela o fix_time (ENTRACK VL100 manda pacote a cada ~12 s com a posição de quando parou — HML, 16/11/2026),
+ * e isso não é rastreador com problema. Com a ignição ligada conta da última posição válida: falando mas sem GPS em
+ * movimento também alerta.
+ */
+const referenciaQueda = (cliente: string) => `
+  select a.client_id, a.id as asset_id, i.instalado_em,
+    case when (rc.ultimos_atributos->>'ignition') = 'true' then rc.ultima_posicao_valida_em else rc.ultimo_pacote_em end as queda
+  from assets a
+  join instalacoes i on i.asset_id = a.id and i.client_id = a.client_id and i.papel = 'principal' and i.desinstalado_em is null
+  join rastreador_comunicacao rc on rc.rastreador_id = i.rastreador_id
+  where a.status = 'ativo' and (${cliente}::uuid is null or a.client_id = ${cliente})`;
 const RANK: Record<Alerta['prioridade'], number> = { baixa: 1, media: 2, alta: 3 };
 
 interface Candidato {
@@ -67,6 +82,7 @@ export class SemPosicaoWorker implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`Alerta sem posição não atualizado (client_id ${c.client_id}, asset_id ${c.asset_id}): ${(err as Error).message}`);
         }
       }
+      await this.encerrarVoltas(clientId);
       await this.backupsSemSinal(agora, clientId);
     } finally {
       this.rodando = false;
@@ -79,19 +95,44 @@ export class SemPosicaoWorker implements OnModuleInit, OnModuleDestroy {
    */
   private async candidatos(agora: Date, clientId: string | null): Promise<Candidato[]> {
     const { rows } = await this.pool.query<Candidato>(
-      `select a.client_id, a.id as asset_id, rc.ultima_posicao_valida_em as ultima_posicao,
-         al.id as alerta_id, al.prioridade, al.tratado_em
-       from assets a
-       join instalacoes i on i.asset_id = a.id and i.client_id = a.client_id and i.papel = 'principal' and i.desinstalado_em is null
-       join rastreador_comunicacao rc on rc.rastreador_id = i.rastreador_id
-       left join alertas al on al.asset_id = a.id and al.tipo = $3 and al.ts = rc.ultima_posicao_valida_em
-       where a.status = 'ativo'
-         and ($4::uuid is null or a.client_id = $4)
-         and rc.ultima_posicao_valida_em >= i.instalado_em
-         and rc.ultima_posicao_valida_em <= $1::timestamptz - make_interval(hours => $2)`,
+      `with ref as (${referenciaQueda('$4')})
+       select r.client_id, r.asset_id, r.queda as ultima_posicao, al.id as alerta_id, al.prioridade, al.tratado_em
+       from ref r
+       left join alertas al on al.asset_id = r.asset_id and al.tipo = $3 and al.ts = r.queda
+       where r.queda >= r.instalado_em
+         and r.queda <= $1::timestamptz - make_interval(hours => $2)`,
       [agora, SEM_POSICAO_MIN_H, TIPO_SEM_POSICAO, clientId],
     );
     return rows;
+  }
+
+  /**
+   * Rastreador voltou (a queda de agora é posterior à do alerta): encerra sozinho o alerta aberto, como os alertas por
+   * condição quando normalizam (alertas-plataforma.ts).
+   */
+  private async encerrarVoltas(clientId: string | null): Promise<void> {
+    let encerrados: { clientId: string; alerta: Alerta }[];
+    try {
+      const { rows } = await this.pool.query(
+        `with ref as (${referenciaQueda('$3')})
+         update alertas al set tratado_em = now(), tratamento_motivo = $2, lido_em = coalesce(al.lido_em, now())
+         from ref r
+         where al.asset_id = r.asset_id and al.client_id = r.client_id and al.tipo = $1 and al.tratado_em is null and r.queda > al.ts
+         returning al.id, al.client_id, al.asset_id, al.origem, al.tipo, al.titulo, al.detalhe, al.prioridade, al.exige_tratamento, al.ts,
+           al.lido_em, al.tratado_em, al.tratamento_motivo, al.tratamento_obs, null::text as tratado_por_email`,
+        [TIPO_SEM_POSICAO, MOTIVO_NORMALIZADO, clientId],
+      );
+      encerrados = rows.map((r) => ({ clientId: r.client_id as string, alerta: toAlerta(r) }));
+    } catch (err) {
+      this.logger.error(`Alertas sem posição não encerrados na volta: ${(err as Error).message}`);
+      return;
+    }
+    for (const { clientId: cid, alerta } of encerrados) {
+      this.logger.log(`Alerta sem posição encerrado na volta (client_id ${cid}, asset_id ${alerta.assetId}, alerta ${alerta.id})`);
+      await this.realtime.publish(cid, { kind: 'alerta', alerta }).catch((err: Error) =>
+        this.logger.warn(`Encerramento de alerta sem posição não publicado (client_id ${cid}, alerta ${alerta.id}): ${err.message}`),
+      );
+    }
   }
 
   /**

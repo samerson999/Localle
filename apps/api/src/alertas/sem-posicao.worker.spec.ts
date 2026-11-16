@@ -41,9 +41,10 @@ describe('SemPosicaoWorker — alerta que sobe de nível', () => {
       `insert into instalacoes (client_id, rastreador_id, asset_id, instalado_em, tecnico) values ($1, $2, $3, '2026-01-01T00:00:00Z', 'teste')`,
       [clientA, rastreadorId, assetId],
     );
-    // fala (pacote recente), mas sem posição válida: "sem GPS" também alerta
+    // fala (pacote recente) com a ignição ligada, mas sem posição válida: "sem GPS" em movimento também alerta
     await pool.query(
-      `insert into rastreador_comunicacao (rastreador_id, asset_id, client_id, ultimo_pacote_em, ultima_posicao_valida_em) values ($1, $2, $3, $4, $5)`,
+      `insert into rastreador_comunicacao (rastreador_id, asset_id, client_id, ultimo_pacote_em, ultima_posicao_valida_em, ultimos_atributos)
+       values ($1, $2, $3, $4, $5, '{"ignition": true}')`,
       [rastreadorId, assetId, clientA, em(30), ultimaPosicao],
     );
   });
@@ -96,6 +97,30 @@ describe('SemPosicaoWorker — alerta que sobe de nível', () => {
     await pool.query(`update alertas set tratado_em = now(), tratamento_motivo = 'teste' where id = $1`, [nova.id]);
     await worker.tick(em(70), clientA);
     expect((await alertas()).find((a) => a.id === nova.id)!.prioridade).toBe('baixa');
+  });
+
+  it('estacionado (ignição desligada) que segue mandando pacote não alerta; calado alerta desde o último pacote', async () => {
+    const pacote = em(200);
+    await pool.query(
+      `update rastreador_comunicacao set ultimos_atributos = '{"ignition": false}', ultima_posicao_valida_em = $2, ultimo_pacote_em = $3
+       where rastreador_id = $1`,
+      [rastreadorId, em(100), pacote],
+    );
+    await worker.tick(new Date(pacote.getTime() + 60_000), clientA);
+    expect((await alertas()).filter((a) => a.ts.getTime() >= em(100).getTime())).toEqual([]);
+
+    await worker.tick(new Date(pacote.getTime() + 4 * 3600_000), clientA);
+    const calado = (await alertas()).filter((a) => a.ts.getTime() >= em(100).getTime());
+    expect(calado).toMatchObject([{ prioridade: 'baixa', ts: pacote }]);
+
+    // voltou a falar: encerra sozinho e avisa o canal do cliente
+    await pool.query('update rastreador_comunicacao set ultimo_pacote_em = $2 where rastreador_id = $1', [rastreadorId, em(206)]);
+    await worker.tick(em(206), clientA);
+    const { rows } = await pool.query('select tratado_em, tratamento_motivo, lido_em from alertas where id = $1', [calado[0].id]);
+    expect(rows[0]).toMatchObject({ tratamento_motivo: 'Normalizado' });
+    expect(rows[0].tratado_em).not.toBeNull();
+    expect(rows[0].lido_em).not.toBeNull();
+    expect(publicados.at(-1)).toMatchObject({ clientId: clientA, msg: { alerta: { id: calado[0].id } } });
   });
 
   it('a volta de outro cliente não toca o ativo de A', async () => {
