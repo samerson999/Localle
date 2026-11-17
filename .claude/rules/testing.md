@@ -16,6 +16,9 @@ teste** — não é atividade "depois". Vitest é o runner em todos os workspace
 - `apps/api/src/telemetria/schema.spec.ts` — integração que testa comportamento do próprio schema
   (constraint, exclusion constraint, view), sem camada de repository porque o módulo ainda não tem uma.
 - `apps/web/src/lib/*.test.ts` — unitário, funções puras (`fenceStats`, `nearbyStats`, `speedStats`).
+- `apps/web/e2e/*.spec.ts` — ponta a ponta com Playwright (`pnpm --filter web e2e`), projetos `desktop` e
+  `mobile`. Sobe Vite próprio na 5180 (não mexe na 5174) e reaproveita a API na 3000; login real com o
+  usuário `e2e@localle.test`, criado no `global-setup`. Exige o banco local no ar.
 
 ## Matriz de validação por tipo de mudança
 
@@ -26,6 +29,7 @@ teste** — não é atividade "depois". Vitest é o runner em todos os workspace
 | Nova migration com constraint/trigger/view | Integração contra Postgres real provando o comportamento, não só que a migration roda |
 | Alteração de endpoint/contrato de API | Teste do controller/repository cobrindo o novo shape; checar consumidor em `apps/web` |
 | Mudança em `AuthGuard`/JWT/login | Caso positivo, caso negativo (token ausente/inválido/expirado), caso de autorização |
+| Mudança de tela/fluxo em `apps/web` | Criar/atualizar spec em `apps/web/e2e/` cobrindo o fluxo tocado e rodar `pnpm --filter web e2e` |
 | Correção de bug | Teste de regressão que falha antes da correção e passa depois |
 | Função pura de `packages/shared` usada por front e API | Teste único em `packages/shared`, não duplicado nos dois apps |
 

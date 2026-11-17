@@ -9,3 +9,5 @@ dev-server.log
 .impeccable
 skills-lock.json
 /planejamento
+playwright-report
+test-results

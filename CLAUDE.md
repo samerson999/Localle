@@ -28,6 +28,7 @@ pnpm dev            # web, na porta do vite.config (não assuma 5173 — ver not
 pnpm dev:api        # api (nest start --watch), lê apps/api/.env
 pnpm typecheck       # -r, todos os workspaces
 pnpm test            # -r, todos os workspaces (vitest)
+pnpm --filter web e2e   # Playwright, ponta a ponta do front (Vite na 5180; exige banco local)
 pnpm --filter api migrate:up    # roda migrations pendentes (node-pg-migrate)
 pnpm --filter api seed:demo-user
 ```
@@ -74,8 +75,10 @@ antigo pode ficar com estilo desatualizado até reiniciar — não reinicie voc�
 1. Ler o código e a doc de domínio relevante antes de implementar (`docs/ARQUITETURA-*.md`, migration mais
    recente da tabela afetada, repository existente).
 2. Implementar a menor mudança coesa que resolve o pedido, seguindo o padrão já presente no módulo.
-3. Testar: criar/atualizar o teste da camada certa (ver `.claude/rules/testing.md`), rodar
-   `pnpm --filter <app> test` do pacote afetado, investigar falha em vez de enfraquecer o teste.
+3. Testar — obrigatório ao fim de **toda** feature, antes de reportar: criar/atualizar o teste da camada
+   certa (ver `.claude/rules/testing.md`) e rodar, de cada pacote afetado, `pnpm --filter <app> typecheck`
+   e `pnpm --filter <app> test`; se tocou `apps/web`, também `pnpm --filter web e2e` (com spec em
+   `apps/web/e2e/` cobrindo o fluxo alterado). Falhou → investigar a causa, não enfraquecer o teste.
 4. Reportar: o que mudou, por que essa solução, quais comandos rodaram e o resultado, o que não pôde ser
    verificado e por quê.
 
