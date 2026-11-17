@@ -36,12 +36,13 @@ export class InstalacoesRepository extends BaseRepository<InstalacaoEntity> {
       tecnico: string;
       kmInicial?: string | null;
       foto?: string | null;
+      leitorMotorista?: boolean;
     },
     executor: Queryable = this.pool,
   ): Promise<InstalacaoEntity> {
     const { rows } = await executor.query<InstalacaoEntity>(
-      `insert into instalacoes (client_id, rastreador_id, asset_id, papel, instalado_em, tecnico, km_inicial, foto)
-       values ($1, $2, $3, $4, $5, $6, $7, $8) returning *`,
+      `insert into instalacoes (client_id, rastreador_id, asset_id, papel, instalado_em, tecnico, km_inicial, foto, leitor_motorista)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`,
       [
         clientId,
         data.rastreadorId,
@@ -51,6 +52,7 @@ export class InstalacoesRepository extends BaseRepository<InstalacaoEntity> {
         data.tecnico,
         data.kmInicial ?? null,
         data.foto ?? null,
+        data.leitorMotorista ?? false,
       ],
     );
     return rows[0];

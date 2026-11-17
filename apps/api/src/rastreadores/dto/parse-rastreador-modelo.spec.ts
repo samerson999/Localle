@@ -24,3 +24,14 @@ describe('parse do modelo — sinais de motor / CAN', () => {
     expect(() => parseAtualizarModelo({ atributoHorimetro: 'hours; drop table' })).toThrow(/atributoHorimetro/);
   });
 });
+
+describe('parse do modelo — chave do motorista (iButton/RFID)', () => {
+  it('aceita a chave do modelo; vazio volta ao driverUniqueId do Traccar; recusa fora do formato', () => {
+    expect(parseCriarModelo({ ...BASE, atributoMotorista: 'rfid' })).toMatchObject({ atributo_motorista: 'rfid' });
+    expect(parseAtualizarModelo({ atributoMotorista: '' })).toEqual({ atributo_motorista: null });
+    expect(parseCriarModelo(BASE)).not.toHaveProperty('atributo_motorista');
+    expect(() => parseAtualizarModelo({ atributoMotorista: 'card id' })).toThrow(/atributoMotorista/);
+    expect(parseAtualizarModelo({ leitorMotorista: true })).toEqual({ leitor_motorista: true });
+    expect(() => parseAtualizarModelo({ leitorMotorista: 'sim' })).toThrow(/leitorMotorista/);
+  });
+});

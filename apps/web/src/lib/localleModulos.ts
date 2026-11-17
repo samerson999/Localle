@@ -19,14 +19,30 @@ export function motoristaToDriver(m: any) {
   return {
     id: m.id, name: m.nome, cnh: m.cnh || '', cnhCat: m.cnh_categoria || '', cnhDue: m.cnh_validade || '', toxDue: m.toxicologico_validade || '',
     phone: m.telefone || '', regime: m.regime, ear: !!m.ear, active: !m.desativado_em, cpf: m.dados?.cpf || '', registration: m.dados?.registration || '',
+    idCode: m.codigo_identificacao || '',
   };
 }
 export function driverToMotoristaBody(d: any) {
   return {
     nome: String(d.name || '').trim(), cnh: d.cnh || null, cnhCategoria: d.cnhCat || null, cnhValidade: d.cnhDue || null, toxicologicoValidade: d.toxDue || null,
-    telefone: d.phone || null, regime: d.regime || 'cargas', ear: !!d.ear,
+    telefone: d.phone || null, regime: d.regime || 'cargas', ear: !!d.ear, codigoIdentificacao: String(d.idCode || '').trim() || null,
     dados: { ...(d.cpf ? { cpf: d.cpf } : {}), ...(d.registration ? { registration: d.registration } : {}) },
   };
+}
+
+/**
+ * Vínculo motorista × veículo da API (`GET /motoristas/vinculos`) no formato de `s.driverLinks` (lib/driverLinks.ts).
+ * `driverId` vazio = cartão lido pelo rastreador que ainda não está cadastrado; `code` guarda o código para a tela mostrar.
+ */
+export function vinculoToLink(v: any) {
+  return {
+    id: v.id, assetId: asset(v.asset_id), driverId: v.motorista_id || '', start: Date.parse(v.inicio), end: v.fim ? Date.parse(v.fim) : null,
+    source: v.origem, code: v.codigo || '', endedBy: v.encerrado_por || null,
+  };
+}
+/** Os vínculos do rastreador vêm só da API; os de escala/app continuam os do navegador até terem API. */
+export function mesclarVinculos(locais: any[] | undefined, daApi: any[]) {
+  return [...(locais || []).filter((l) => l.source !== 'rastreador'), ...daApi.map(vinculoToLink)];
 }
 
 // ---------- grupos de ativos ----------

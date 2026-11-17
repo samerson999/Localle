@@ -326,6 +326,10 @@ export interface AdminRastreadorModelo {
   origem: 'catalogo' | 'manual';
   /** Mapeamento da telemetria; null = chave padrão do Traccar. */
   atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
+  /** Chave do código do motorista (iButton/RFID); null = driverUniqueId do Traccar. */
+  atributo_motorista: string | null;
+  /** Aceita leitor de cartão do motorista (acessório; o leitor instalado é marcado na instalação). */
+  leitor_motorista: boolean;
   /** Dados do painel / CAN: capacidade do modelo, sinais que promete e onde manda cada um (null = chave padrão). */
   suporte_can: SuporteCan; sinais_motor: SinalMotor[];
   atributo_rpm: string | null; atributo_odometro: string | null; atributo_combustivel: string | null; atributo_horimetro: string | null;
@@ -335,7 +339,7 @@ export type SinalMotor = 'rpm' | 'odometro' | 'combustivel' | 'horimetro';
 export type StatusSinal = 'recebido' | 'aguardando' | 'nao_recebido' | 'fora_do_esperado';
 export interface ModeloBody {
   fabricante: string; nome: string; protocolo: string; porta: number; tipoIdentificador: TipoIdentificador; tipoAparelho?: 'rastreador' | 'tag';
-  atributoTensao: string | null; sinalMax: number | null; atributoBloqueio: string | null;
+  atributoTensao: string | null; sinalMax: number | null; atributoBloqueio: string | null; atributoMotorista?: string | null; leitorMotorista?: boolean;
   suporteCan?: SuporteCan; sinaisMotor?: SinalMotor[];
   atributoRpm?: string | null; atributoOdometro?: string | null; atributoCombustivel?: string | null; atributoHorimetro?: string | null;
 }
@@ -370,6 +374,8 @@ export interface DiagnosticoRastreador {
   comandos: string[] | null;
   /** Estado dos sinais do painel na instalação vigente; sinal fora de `sinais` = ainda não verificado. */
   sinaisMotor: SinaisMotorDiagnostico;
+  /** Leitor de cartão do motorista na instalação principal vigente; null = sem instalação. */
+  leitorMotorista: { aceita: boolean; instalado: boolean; ultimaLeituraEm: string | null; diasRodadosSemLeitura: number; situacao: 'nao_se_aplica' | 'ok' | 'sem_leitura' } | null;
 }
 export interface SinaisMotorDiagnostico {
   suporteCan: SuporteCan; esperados: SinalMotor[];
@@ -387,6 +393,8 @@ export interface TransmissaoRastreador {
   protocoloDetectado: string | null; traccarDeviceId: string | null; cliente: string | null; placa: string | null;
   ultimoPacoteEm: string | null; ultimaPosicaoValidaEm: string | null; pacotesUltimaHora: number;
   ultimaPosicao: UltimaPosicao | null; atributos: Record<string, unknown>; atributosEm: string | null; telemetria: TelemetriaLida;
+  /** Leitor de cartão marcado: `sem_leitura` = rodou N dias sem ler cartão (defeito, fiação ou falta de uso); null = sem leitor. */
+  leitorMotorista: { situacao: 'ok' | 'sem_leitura'; diasRodadosSemLeitura: number } | null;
 }
 export interface AtributosRecebidos { imei: string; protocolo: string | null; atributos: Record<string, unknown>; atributos_em: string }
 /**
@@ -500,6 +508,8 @@ export interface MeuRastreador {
   papel: 'principal' | 'backup' | 'can' | null;
   /** Tag = aparelho de bateria, de redundância: em veículo só entra como backup. */
   tipo_aparelho: 'rastreador' | 'tag';
+  /** O modelo aceita leitor de cartão; `leitor_motorista` = leitor marcado na instalação vigente. */
+  modelo_aceita_leitor: boolean; leitor_motorista: boolean;
   /** Última posição válida desde a instalação vigente (null antes da primeira). */
   posicao_em: string | null; latitude: number | null; longitude: number | null;
 }
@@ -515,6 +525,10 @@ export async function instalarRastreador(rastreadorId: string, assetId: string, 
 export async function trocarPrincipal(assetId: string) {
   await apiSend('POST', `/rastreadores/ativos/${backendIdOf(assetId)}/trocar-principal`);
   await syncFrota();
+}
+/** Leitor de cartão do motorista instalado junto: liga o aviso de "rodando sem identificação" do veículo (se o Setup exigir). */
+export async function definirLeitorMotorista(instalacaoId: string, instalado: boolean) {
+  await apiSend('POST', `/rastreadores/instalacoes/${instalacaoId}/leitor-motorista`, { instalado });
 }
 export async function desinstalarRastreador(instalacaoId: string) {
   await apiSend('POST', `/rastreadores/instalacoes/${instalacaoId}/desinstalar`);
@@ -863,9 +877,15 @@ const desde = (dias: number) => `de=${new Date(Date.now() - dias * DIA).toISOStr
 const patch = (fn: (s: any) => any) => useStore.getState().patch(fn);
 
 export async function syncMotoristas() {
-  const [motoristas, assets] = await Promise.all([apiGet<any[]>('/motoristas?incluirInativos=true'), apiGet<any[]>('/assets?incluirInativos=true')]);
+  const [motoristas, assets, vinculos] = await Promise.all([
+    apiGet<any[]>('/motoristas?incluirInativos=true'), apiGet<any[]>('/assets?incluirInativos=true'), apiGet<any[]>('/motoristas/vinculos'),
+  ]);
   const driverOf = new Map(assets.map((a) => [assetIdFor(a.id), a.motorista_id || '']));
+  // motorista atual = o identificado pelo cartão quando há (origem de maior prioridade, PRODUCT.md), senão o do cadastro
+  for (const v of vinculos) if (!v.fim && v.motorista_id && v.origem === 'rastreador') driverOf.set(assetIdFor(v.asset_id), v.motorista_id);
   patch((s) => ({
+    // identificação pelo rastreador (iButton/RFID): histórico da API, últimos 30 dias + os vigentes
+    driverLinks: M.mesclarVinculos(s.driverLinks, vinculos),
     drivers: motoristas.map(M.motoristaToDriver).filter((d) => d.active),
     // desativados ficam fora das telas operacionais; só a lista de motoristas mostra, para reativar
     driversInativos: motoristas.map(M.motoristaToDriver).filter((d) => !d.active),

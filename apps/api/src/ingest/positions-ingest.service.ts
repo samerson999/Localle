@@ -8,6 +8,8 @@ import { avaliarAlertasPlataforma } from '../alertas/alertas-plataforma';
 import { detectarCercas } from '../cercas/cerca-detector';
 import { FUSO_PADRAO } from '../regras/avaliar-regra';
 import { avaliarRegras } from '../regras/motor-regras';
+import { registrarIdentificacao } from '../motoristas/identificacao-motorista';
+import { avaliarSemIdentificacao } from '../motoristas/aviso-sem-identificacao';
 import { atualizarSinaisMotor } from '../telemetria/instalacao-sinais.repository';
 import { acompanharAtributos, chavesLidas, type DatasPorChave } from '../telemetria/atributos-vistos';
 import { lerTelemetria, lerTelemetriaComIdade, mapeamentoDaLinha } from '../telemetria/leitura';
@@ -76,11 +78,11 @@ export class PositionsIngestService {
         id: string; protocolo: string | null; modelo_protocolo: string | null; modelo: string | null;
         atributo_tensao: string | null; sinal_max: number | null; atributo_bloqueio: string | null;
         suporte_can: string | null; sinais_motor: string[] | null; atributo_rpm: string | null; atributo_odometro: string | null;
-        atributo_combustivel: string | null; atributo_horimetro: string | null; modelo_atualizado_em: Date | null;
+        atributo_combustivel: string | null; atributo_horimetro: string | null; atributo_motorista: string | null; leitor_motorista: boolean | null; modelo_atualizado_em: Date | null;
       }>(
         `select r.id, r.protocolo, m.protocolo as modelo_protocolo, r.modelo, m.atributo_tensao, m.sinal_max, m.atributo_bloqueio,
                 m.suporte_can, m.sinais_motor, m.atributo_rpm, m.atributo_odometro, m.atributo_combustivel, m.atributo_horimetro,
-                m.atualizado_em as modelo_atualizado_em
+                m.atributo_motorista, m.leitor_motorista, m.atualizado_em as modelo_atualizado_em
            from rastreadores r left join rastreador_modelos m on m.id = r.modelo_id
           where r.traccar_device_id = $1`,
         [position.traccarDeviceId],
@@ -188,8 +190,48 @@ export class PositionsIngestService {
         );
       }
 
+      // motorista identificado (iButton/RFID/cartão): só o pacote mais novo do rastreador decide o vínculo — o atrasado
+      // (buffer do aparelho, reenvio) abriria ou fecharia vínculo fora de ordem. Backup não fala pelo ativo.
+      const maisNovo = !comunicacao.atributosEmAntes || position.serverTime >= comunicacao.atributosEmAntes;
+      if (clientId && assetId && maisNovo) {
+        const mudancas = await registrarIdentificacao(client, {
+          clientId,
+          assetId,
+          rastreadorId,
+          attributes: position.attributes,
+          ignicao: position.ignition,
+          ts: copia ? position.serverTime : position.fixTime,
+          atributoMotorista: rastreador.rows[0].atributo_motorista,
+        });
+        for (const m of mudancas) {
+          this.logger.log(
+            `rastreador_id=${rastreadorId} asset_id=${m.assetId} motorista ${m.acao === 'abriu' ? 'identificado' : `encerrado (${m.encerradoPor})`}: código ${m.codigo}${m.motoristaId ? ` motorista_id=${m.motoristaId}` : ' (não cadastrado)'}`,
+          );
+        }
+      }
+      // veículo rodando sem cartão (só onde há leitor e o gestor exige): depois da identificação deste mesmo pacote
+      const alertasMotorista: Alerta[] = [];
+      if (clientId && assetId && instalacaoId && maisNovo) {
+        alertasMotorista.push(
+          ...(await avaliarSemIdentificacao(client, {
+            clientId,
+            assetId,
+            instalacaoId,
+            modeloAceitaLeitor: rastreador.rows[0].leitor_motorista === true,
+            ignicao: position.ignition,
+            velocidadeKmh: position.speedKmh,
+            ts: copia ? position.serverTime : position.fixTime,
+          })),
+        );
+        for (const a of alertasMotorista) {
+          this.logger.log(
+            `rastreador_id=${rastreadorId} asset_id=${assetId} aviso de motorista não identificado ${a.tratadoEm ? 'encerrado (cartão lido)' : 'criado'}: alerta ${a.id}`,
+          );
+        }
+      }
+
       // sinais de motor: só instalado (aparelho em bancada não tem CAN) e sempre pelos atributos DESTA posição
-      const alertasSinais: Alerta[] = [];
+      const alertasSinais: Alerta[] = [...alertasMotorista];
       if (clientId && instalacaoId) {
         const transicoes = await atualizarSinaisMotor(client, {
           clientId,
@@ -378,7 +420,7 @@ export class PositionsIngestService {
         JSON.stringify(acompanhamento.vistosEm), JSON.stringify(acompanhamento.ausentesDesde),
       ],
     );
-    return { ultimosAtributos: rows[0].ultimos_atributos, atributosAntes: a?.ultimos_atributos ?? null, ...acompanhamento };
+    return { ultimosAtributos: rows[0].ultimos_atributos, atributosAntes: a?.ultimos_atributos ?? null, atributosEmAntes: a?.atributos_em ?? null, ...acompanhamento };
   }
 
   /**

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, assetKm, useStoreData } from '../lib/store';
-import { atualizarIconeAtivo, atualizarIdentificacaoAtivo, criarMarca, criarModelo, renomearNoCatalogo, salvarTipoAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, reativarMotorista, instalarRastreador, trocarPrincipal, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
+import { atualizarIconeAtivo, atualizarIdentificacaoAtivo, criarMarca, criarModelo, renomearNoCatalogo, salvarTipoAtivo, atualizarSituacaoAtivo, criarAtivo, definirAtivosDoGrupo, definirGruposDoAtivo, definirMotoristaDoAtivo, desativarMotorista, removerOperacao, salvarFichaAtivo, salvarOperacao, desinstalarRastreador, definirLeitorMotorista, reativarMotorista, instalarRastreador, trocarPrincipal, isRealAsset, meusRastreadores, removerGrupo, salvarGrupo, salvarMotorista, syncFrota, type MeuRastreador, useCarregando } from '../lib/localleApi';
 import { backendIdOf, nomeDoAtivo } from '../lib/localleMap';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, Check, Tabs, Modal, PageHeader, AssetThumb, cx, TextButton, InlineInput, TabPanel, toast, FilePick, confirmAction, SearchInput, EmptyState, buttonClass, ChoiceCard, useUrlTab, useUrlItem, FilterSheet, Avatar } from '../components/ui';
 import { useMobilePageAction } from '../components/Layout';
@@ -16,6 +16,7 @@ import { CATALOGO_VAZIO, aplicarTipo, chaveCatalogo, marcaModeloDoAtivo, mesmoNo
 import { PNG_ICON_IDS, PNG_ICON_SUGGESTION, pngIconUrl, pngIconLabel } from '../lib/pngIcons';
 import { SPECS_DB, MODEL_BRAND } from '@localle/shared/catalog';
 import { num, fmtD, fmtDT, isPlate } from '@localle/shared/utils';
+import { normalizarCodigo } from '@localle/shared/cartaoMotorista';
 import { linkTrackerWithInstall } from '../lib/odometer';
 import { downloadAssets, downloadErros, readSheet, planImport, applyImport, escolherNaLinha, type ImportLine, type ImportPlan } from '../lib/assetSheet';
 import { AUDIT_LABEL, fieldLabel, auditEntry } from '@localle/shared/audit';
@@ -436,6 +437,7 @@ function AssetForm({ a, setA }: any) {
               ) : (
                 <p className="text-small text-ink-2">Nenhum rastreador disponível. Os rastreadores são vinculados à sua conta pela Localle; fale com ela para incluir um.</p>
               )}
+              {instalado?.modelo_aceita_leitor && instalado.instalacao_id && <LeitorCartao r={instalado} onMudou={recarregarMeus} />}
               <Check label="Rastreador lê dados CAN (telemetria: RPM, banguela, consumo)" checked={!!a.can} onChange={(v) => set('can', v)} />
               {newLink && (
                 <div className="flex flex-col gap-stack border-t border-line pt-stack">
@@ -564,6 +566,8 @@ function DriverHistory({ assetId }: { assetId: string }) {
   const links = linksOf(s, assetId);
   if (!links.length) return null;
   const name = (id: string) => s.drivers.find((d: any) => d.id === id)?.name || 'Motorista excluído';
+  // cartão lido antes do cadastro: o vínculo ainda não aponta o motorista, mas o código já tem dono
+  const doCartao = (code: string) => s.drivers.find((d: any) => normalizarCodigo(d.idCode) === code);
   const eff = effectiveLink(links, Date.now());
   const open = driverConflicts(s, assetId).filter((c) => !c.acked);
   return (
@@ -571,11 +575,28 @@ function DriverHistory({ assetId }: { assetId: string }) {
       <span className="text-small font-semibold">Histórico de motoristas</span>
       {open.length > 0 && <p className="text-caption"><StatusDot kind="parado" label={`${open.length} ${open.length === 1 ? 'conflito' : 'conflitos'} de origem para conferir`} /><span className="block text-ink-2 mt-hair">Confira na aba Motoristas.</span></p>}
       <ul className="flex flex-col gap-2">{links.slice(0, 8).map((l: any) => (
-        <li key={l.id} className="text-caption"><span className="font-medium text-small">{name(l.driverId)}</span>{eff?.id === l.id && <span className="text-caption text-ink-2"> · vale agora</span>}<span className="block text-ink-2">{fmtD(l.start)} → {l.end ? fmtD(l.end) : 'atual'} · {LINK_SOURCE[l.source] || l.source}</span></li>
+        <li key={l.id} className="text-caption"><span className="font-medium text-small">{l.driverId ? name(l.driverId) : doCartao(l.code)?.name || `Cartão ${l.code} (sem cadastro)`}</span>{eff?.id === l.id && <span className="text-caption text-ink-2"> · vale agora</span>}<span className="block text-ink-2">{fmtD(l.start)} → {l.end ? fmtD(l.end) : 'atual'} · {LINK_SOURCE[l.source] || l.source}</span></li>
       ))}</ul>
       <p className="text-caption text-ink-2">Prioridade entre origens: {DRIVER_PARAMS.sourcePriority.map((x) => LINK_SOURCE[x]).join(' > ')}.</p>
       <p className="text-caption text-ink-2">Trocar o motorista não muda eventos, viagens e abastecimentos já gravados.</p>
     </div>
+  );
+}
+
+/**
+ * Leitor de cartão do motorista instalado junto ao principal (decisão de 17/11/2026): só aparece quando o modelo aceita.
+ * Marcado, o veículo entra no aviso de "rodando sem identificação" quando o Setup exige. Ação direta, fora do "Salvar".
+ */
+function LeitorCartao({ r, onMudou }: { r: MeuRastreador; onMudou: () => void }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Check label="Leitor de cartão do motorista instalado" description="Com ele, o veículo mostra quem está dirigindo e pode avisar quando roda sem cartão." checked={r.leitor_motorista} disabled={busy}
+      onChange={async (v) => {
+        setBusy(true);
+        try { await definirLeitorMotorista(r.instalacao_id!, v); toast(v ? "Leitor de cartão marcado." : "Leitor de cartão desmarcado."); onMudou(); }
+        catch (e: any) { toast("Não foi possível salvar: " + (e.message || e), { tone: "crit" }); }
+        finally { setBusy(false); }
+      }} />
   );
 }
 
@@ -1044,6 +1065,27 @@ function Operacoes() {
   );
 }
 
+// cartões lidos pelo rastreador que não batem com nenhum motorista: o gestor cadastra a partir do código lido
+function CartoesSemMotorista({ onCadastrar }: { onCadastrar: (code: string) => void }) {
+  const links = useStore((s) => s.driverLinks || []);
+  const drivers = useStore((s) => s.drivers);
+  const assets = useStore((s) => s.assets);
+  const porCodigo = new Map<string, any>();
+  // cadastrado depois da leitura: o vínculo só é ligado no próximo pacote, mas o cartão já tem dono e sai daqui
+  const cadastrados = new Set(drivers.map((d: any) => normalizarCodigo(d.idCode)).filter(Boolean));
+  for (const l of links) if (l.source === 'rastreador' && !l.driverId && l.code && !cadastrados.has(l.code) && (!porCodigo.has(l.code) || porCodigo.get(l.code).start < l.start)) porCodigo.set(l.code, l);
+  const lista = [...porCodigo.values()].sort((a, b) => b.start - a.start);
+  if (!lista.length) return null;
+  return (
+    <Card title="Cartões lidos sem motorista" icon="atencao" className="mb-grid">
+      <p className="text-small text-ink-2 mb-card-head">O rastreador leu estes cartões, mas nenhum motorista ativo tem o código. Cadastre para o veículo mostrar quem está dirigindo.</p>
+      <Table dense minWidth={560} head={['Cartão', 'Veículo', 'Última leitura', '']} align={['left', 'left', 'left', 'right']}
+        rows={lista.map((l) => [<IdChip size="sm">{l.code}</IdChip>, <AssetName name={assets.find((a: any) => a.id === l.assetId)?.name} />, <time className="num text-caption">{fmtDT(l.start)}{l.end ? '' : ' · agora'}</time>,
+          <TextButton onClick={() => onCadastrar(l.code)}>Cadastrar motorista</TextButton>])} />
+    </Card>
+  );
+}
+
 function Drivers() {
   const drivers = useStore((s) => s.drivers);
   const inativos = useStore((s) => s.driversInativos || []);
@@ -1054,6 +1096,7 @@ function Drivers() {
   return (
     <>
       <DriverConflicts />
+      <CartoesSemMotorista onCadastrar={(code) => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas', idCode: code })} />
       <Card title="Motoristas" icon="usuario" actions={<Button onClick={() => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' })} className="max-md:hidden"><Icon name="mais" size={16} />Novo motorista</Button>}>
         <Table head={['Nome', 'CNH', 'Categoria', 'Validade da CNH', 'Exame toxicológico', 'Telefone', 'Veículo atual', '']} rows={drivers.map((x: any) => [<span className="flex items-center gap-3"><Avatar name={x.name} size="sm" /><span className="font-medium">{x.name}</span></span>, <span className="num">{x.cnh}</span>, x.cnhCat, x.cnhDue ? <DocStatus d={{ due: x.cnhDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>, /^[CDE]/.test(x.cnhCat) ? (x.toxDue ? <DocStatus d={{ due: x.toxDue }} p={DRIVER_DOC_PARAMS} /> : <span className="text-ink-3">—</span>) : <span className="text-ink-3">não exigido</span>, <span className="num">{x.phone}</span>, <AssetName name={assets.find((a: any) => a.driverId === x.id)?.name} />, <div className="flex gap-3"><TextButton onClick={() => setD({ ...x })}>Editar</TextButton><TextButton tone="danger" onClick={async () => { if (await confirmAction({ title: `Desativar o motorista ${x.name}?`, detail: 'Ele sai das telas e seletores. Viagens, marcações e eventos antigos continuam com o nome dele, e dá para reativar depois.' })) { try { await desativarMotorista(x.id); toast(`Motorista ${x.name} desativado.`); } catch (e: any) { toast('Não foi possível desativar: ' + (e.message || e), { tone: 'crit' }); } } }}>Desativar</TextButton></div>])} />
       </Card>
@@ -1071,6 +1114,7 @@ function Drivers() {
           <Field label="Telefone"><Input mask="telefone" value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} /></Field>
           <Field label="CPF"><Input mask="cpf" value={d.cpf || ''} onChange={(e) => setD({ ...d, cpf: e.target.value })} /></Field>
           <Field label="Matrícula"><Input value={d.registration || ''} onChange={(e) => setD({ ...d, registration: e.target.value })} /></Field>
+          <Field label="Cartão do motorista" hint="iButton, RFID ou cartão, como o rastreador lê. Com ele, o veículo passa a mostrar quem está dirigindo."><Input value={d.idCode || ''} onChange={(e) => setD({ ...d, idCode: e.target.value })} placeholder="Ex.: 2844255995" /></Field>
           <Field label="Atividade (Lei 13.103)"><Select value={d.regime} onChange={(e) => setD({ ...d, regime: e.target.value })} options={[{ value: 'cargas', label: 'Transporte de cargas' }, { value: 'passageiros', label: 'Transporte de passageiros' }]} /></Field>
           <div className="sm:col-span-2"><Check label="CNH com EAR (exerce atividade remunerada): limite de 40 pontos, qualquer que seja a gravidade" checked={!!d.ear} onChange={(v) => setD({ ...d, ear: v })} /></div>
         </div>}

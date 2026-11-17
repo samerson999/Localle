@@ -5,4 +5,5 @@ export class InstalarRastreadorDto {
   instaladoEm?: string;
   kmInicial?: string;
   foto?: string;
+  leitorMotorista?: boolean;
 }

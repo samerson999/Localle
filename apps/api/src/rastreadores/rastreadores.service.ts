@@ -134,6 +134,7 @@ export class RastreadoresService {
       instaladoEm?: Date;
       kmInicial?: string;
       foto?: string;
+      leitorMotorista?: boolean;
     },
   ): Promise<InstalacaoEntity> {
     const rastreador = await this.rastreadores.findById(rastreadorId);
@@ -161,6 +162,7 @@ export class RastreadoresService {
             tecnico: data.tecnico,
             kmInicial: data.kmInicial,
             foto: data.foto,
+            leitorMotorista: data.leitorMotorista,
           },
           client,
         );
@@ -218,7 +220,7 @@ export class RastreadoresService {
         novas.push(
           await this.instalacoes.instalar(
             clientId,
-            { rastreadorId: i.rastreador_id, assetId, papel, instaladoEm: agora, tecnico: i.tecnico, kmInicial: i.km_inicial, foto: i.foto },
+            { rastreadorId: i.rastreador_id, assetId, papel, instaladoEm: agora, tecnico: i.tecnico, kmInicial: i.km_inicial, foto: i.foto, leitorMotorista: i.leitor_motorista },
             client,
           ),
         );
@@ -261,6 +263,32 @@ export class RastreadoresService {
         },
         client,
       );
+      return instalacao;
+    });
+  }
+
+  /**
+   * Marca se o leitor de cartão do motorista está instalado junto (acessório, decisão de 17/11/2026): é o que faz o
+   * aviso de "rodando sem identificação" valer para o veículo. Só instalação vigente do próprio cliente.
+   */
+  async definirLeitorMotorista(ator: Ator, clientId: string, instalacaoId: string, instalado: boolean): Promise<InstalacaoEntity> {
+    return withTransaction(this.pool, async (client) => {
+      const { rows } = await client.query<InstalacaoEntity>(
+        `update instalacoes set leitor_motorista = $3
+          where client_id = $1 and id = $2 and desinstalado_em is null
+          returning *`,
+        [clientId, instalacaoId, instalado],
+      );
+      const instalacao = rows[0];
+      if (!instalacao) throw new NotFoundException('Instalação vigente não encontrada');
+      await this.audit.record(
+        {
+          actorType: ator.type, actorId: ator.id, clientId, action: 'rastreador.leitor_motorista', target: instalacao.rastreador_id,
+          after: { instalacaoId, leitorMotorista: instalado },
+        },
+        client,
+      );
+      this.logger.log(`instalacao_id=${instalacaoId} client_id=${clientId} leitor de cartão ${instalado ? 'marcado' : 'desmarcado'}`);
       return instalacao;
     });
   }

@@ -12,6 +12,8 @@ export interface MotoristaRow {
   cnh_validade: string | null;
   toxicologico_validade: string | null;
   telefone: string | null;
+  /** Código do cartão/iButton/RFID como digitado; a busca usa `codigo_identificacao_norm` (migration 1794390000000). */
+  codigo_identificacao: string | null;
   regime: Regime;
   ear: boolean;
   desativado_em: Date | null;
@@ -27,6 +29,7 @@ export interface MotoristaInput {
   cnhValidade: string | null;
   toxicologicoValidade: string | null;
   telefone: string | null;
+  codigoIdentificacao: string | null;
   regime: Regime;
   ear: boolean;
   dados: Record<string, string | number>;
@@ -76,6 +79,7 @@ export class MotoristasRepository extends BaseRepository<MotoristaRow> {
       cnh_validade: m.cnhValidade,
       toxicologico_validade: m.toxicologicoValidade,
       telefone: m.telefone,
+      codigo_identificacao: m.codigoIdentificacao,
       regime: m.regime,
       ear: m.ear,
       dados: JSON.stringify(m.dados),

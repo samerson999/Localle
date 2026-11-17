@@ -19,6 +19,9 @@ export interface RastreadorDoCliente {
   instalado_em: Date | null;
   papel: 'principal' | 'backup' | 'can' | null;
   tipo_aparelho: 'rastreador' | 'tag';
+  /** O modelo aceita leitor de cartão do motorista; `leitor_motorista` = leitor marcado na instalação vigente. */
+  modelo_aceita_leitor: boolean;
+  leitor_motorista: boolean;
   /** Última posição válida desde a instalação vigente (a ficha mostra a do backup, que não vai para o mapa). */
   posicao_em: Date | null;
   latitude: number | null;

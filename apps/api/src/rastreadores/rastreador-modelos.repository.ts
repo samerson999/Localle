@@ -3,13 +3,27 @@ import type { Pool } from 'pg';
 import { PG_POOL } from '../db/pg-pool.provider';
 import type { Queryable } from '../db/queryable';
 import type { InstalacaoSinalEntity } from '../telemetria/instalacao-sinais.repository';
+import { FUSO_PADRAO } from '../regras/avaliar-regra';
 import type { RastreadorModeloEntity } from './rastreador-modelo.entity';
 
 export type ModeloDados = Pick<RastreadorModeloEntity, 'fabricante' | 'nome' | 'protocolo' | 'porta' | 'tipo_identificador'> &
-  Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio' | 'origem' | 'tipo_aparelho' | CamposSinais>>;
+  Partial<Pick<RastreadorModeloEntity, 'atributo_tensao' | 'sinal_max' | 'atributo_bloqueio' | 'atributo_motorista' | 'leitor_motorista' | 'origem' | 'tipo_aparelho' | CamposSinais>>;
 
 /** Capacidade de CAN e mapeamento dos sinais de motor (migration 1793180000000). */
 type CamposSinais = 'suporte_can' | 'sinais_motor' | 'atributo_rpm' | 'atributo_odometro' | 'atributo_combustivel' | 'atributo_horimetro';
+
+/**
+ * Leitor de cartão da instalação `i` (principal vigente): última leitura desde a instalação e dias em que o veículo
+ * RODOU depois dela (deslocamento no `uso_5min`, no fuso `$fuso`) — veículo parado não conta contra o leitor.
+ */
+const LEITOR_MOTORISTA = (fuso: string) => `
+  (select max(v.inicio) from motorista_vinculos v
+    where v.rastreador_id = i.rastreador_id and v.client_id = i.client_id and v.inicio >= i.instalado_em) as ultima_leitura_em,
+  (select count(distinct (u.bucket at time zone ${fuso})::date)::int from uso_5min u
+    where u.client_id = i.client_id and u.asset_id = i.asset_id and u.dist_m > 0
+      and (u.bucket at time zone ${fuso})::date > (coalesce((select max(v.inicio) from motorista_vinculos v
+            where v.rastreador_id = i.rastreador_id and v.client_id = i.client_id and v.inicio >= i.instalado_em), i.instalado_em)
+            at time zone ${fuso})::date) as dias_rodados_sem_leitura`;
 
 /** `ultima_posicao` (alias `up`), só posição válida: lat/lon saem do ponto PostGIS. */
 const COLUNAS_ULTIMA_POSICAO = `up.fix_time as posicao_em, st_y(up.geom) as latitude, st_x(up.geom) as longitude,
@@ -47,12 +61,12 @@ export class RastreadorModelosRepository {
   async criar(d: ModeloDados, executor: Queryable = this.pool): Promise<RastreadorModeloEntity> {
     const { rows } = await executor.query<RastreadorModeloEntity>(
       `insert into rastreador_modelos (fabricante, nome, protocolo, porta, tipo_identificador, atributo_tensao, sinal_max, atributo_bloqueio, origem,
-                                       suporte_can, sinais_motor, atributo_rpm, atributo_odometro, atributo_combustivel, atributo_horimetro, tipo_aparelho)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) returning *`,
+                                       suporte_can, sinais_motor, atributo_rpm, atributo_odometro, atributo_combustivel, atributo_horimetro, tipo_aparelho, atributo_motorista, leitor_motorista)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) returning *`,
       [
         d.fabricante, d.nome, d.protocolo, d.porta, d.tipo_identificador, d.atributo_tensao ?? null, d.sinal_max ?? null, d.atributo_bloqueio ?? null, d.origem ?? 'manual',
         d.suporte_can ?? 'nao_informado', d.sinais_motor ?? [], d.atributo_rpm ?? null, d.atributo_odometro ?? null, d.atributo_combustivel ?? null, d.atributo_horimetro ?? null,
-        d.tipo_aparelho ?? 'rastreador',
+        d.tipo_aparelho ?? 'rastreador', d.atributo_motorista ?? null, d.leitor_motorista ?? false,
       ],
     );
     return rows[0];
@@ -100,7 +114,7 @@ export class RastreadorModelosRepository {
   async atualizar(id: string, d: Partial<ModeloDados & { ativo: boolean }>, executor: Queryable = this.pool): Promise<RastreadorModeloEntity | null> {
     const campos = ([
       'fabricante', 'nome', 'protocolo', 'porta', 'tipo_identificador', 'atributo_tensao', 'sinal_max', 'atributo_bloqueio', 'ativo',
-      'suporte_can', 'sinais_motor', 'atributo_rpm', 'atributo_odometro', 'atributo_combustivel', 'atributo_horimetro', 'tipo_aparelho',
+      'suporte_can', 'sinais_motor', 'atributo_rpm', 'atributo_odometro', 'atributo_combustivel', 'atributo_horimetro', 'tipo_aparelho', 'atributo_motorista', 'leitor_motorista',
     ] as const).filter(
       (k) => d[k] !== undefined,
     );
@@ -161,6 +175,26 @@ export class RastreadorModelosRepository {
   }
 
   /**
+   * Leitor de cartão do motorista na instalação principal vigente: se o modelo aceita, se o técnico marcou o leitor, a
+   * última leitura de cartão desde a instalação e quantos dias o veículo RODOU depois dela (dias com deslocamento no
+   * `uso_5min`, no fuso da operação) — veículo parado não conta contra o leitor. Base do aviso de diagnóstico "leitor sem
+   * leitura" (decisão de 17/11/2026), só para a Locale/rastreadora.
+   */
+  async leitorMotoristaDoRastreador(rastreadorId: string) {
+    const { rows } = await this.pool.query<{
+      aceita: boolean; instalado: boolean; instalado_em: Date; ultima_leitura_em: Date | null; dias_rodados_sem_leitura: number;
+    }>(
+      `select coalesce(m.leitor_motorista, false) as aceita, i.leitor_motorista as instalado, i.instalado_em, ${LEITOR_MOTORISTA('$2')}
+         from instalacoes i
+         join rastreadores r on r.id = i.rastreador_id
+         left join rastreador_modelos m on m.id = r.modelo_id
+        where i.rastreador_id = $1 and i.papel = 'principal' and i.desinstalado_em is null`,
+      [rastreadorId, FUSO_PADRAO],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
    * O que cada rastreador não desativado está transmitindo (aba Transmissão do Console): comunicação, última posição
    * válida, últimos atributos e quantos pacotes chegaram na última hora. Cruza clientes de propósito — rota só de
    * superadmin. A contagem usa `server_time` (quando o Traccar recebeu), não `fix_time`: pacote antigo descarregado
@@ -170,6 +204,7 @@ export class RastreadorModelosRepository {
     const { rows } = await this.pool.query<EstadoRastreadorRow & {
       modelo_fabricante: string | null; modelo_nome: string | null; modelo_protocolo: string | null; modelo_porta: number | null;
       client_name: string | null; asset_plate: string | null; ultima_posicao_valida_em: Date | null; pacotes_1h: number;
+      leitor_aplica: boolean; dias_rodados_sem_leitura: number | null;
     }>(
       `select r.id, r.imei, r.status, r.protocolo, r.traccar_device_id, r.modelo_id,
               rc.ultimo_pacote_em, rc.ultima_posicao_valida_em, rc.ultimos_atributos, rc.atributos_em, rc.atributos_vistos_em,
@@ -179,7 +214,9 @@ export class RastreadorModelosRepository {
               ${COLUNAS_ULTIMA_POSICAO},
               coalesce((select count(*)::int from posicoes p
                          where p.rastreador_id = r.id and p.fix_time > now() - interval '2 days'
-                           and p.server_time > now() - interval '1 hour'), 0) as pacotes_1h
+                           and p.server_time > now() - interval '1 hour'), 0) as pacotes_1h,
+              (i.papel = 'principal' and m.leitor_motorista and i.leitor_motorista) is true as leitor_aplica,
+              ld.dias_rodados_sem_leitura
          from rastreadores r
          left join rastreador_comunicacao rc on rc.rastreador_id = r.id
          left join rastreador_modelos m on m.id = r.modelo_id
@@ -188,8 +225,11 @@ export class RastreadorModelosRepository {
          left join clients c on c.id = v.client_id
          left join instalacoes i on i.rastreador_id = r.id and i.desinstalado_em is null
          left join assets a on a.id = i.asset_id
+         -- só calcula onde o leitor vale (o where barra a varredura do uso_5min nas demais linhas)
+         left join lateral (select ${LEITOR_MOTORISTA('$1')} where i.papel = 'principal' and m.leitor_motorista and i.leitor_motorista) ld on true
         where r.status <> 'desativado'
         order by rc.ultimo_pacote_em desc nulls last, r.criado_em desc`,
+      [FUSO_PADRAO],
     );
     return rows;
   }

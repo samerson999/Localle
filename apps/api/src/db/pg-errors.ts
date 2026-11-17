@@ -17,6 +17,7 @@ export const UNIQUE = {
   ativoTipoChave: 'ativo_tipos_client_id_chave_key',
   ativoTipoPadrao: 'ativo_tipos_client_id_padrao_key',
   motoristaCnh: 'motoristas_cnh_uidx',
+  motoristaCodigo: 'motoristas_codigo_identificacao_uidx',
   marcacaoJornada: 'jornada_marcacoes_motorista_id_ts_tipo_key',
   multaAutoOrgao: 'multas_client_id_auto_orgao_key',
   pneuNumeroFogo: 'pneus_client_id_numero_fogo_key',

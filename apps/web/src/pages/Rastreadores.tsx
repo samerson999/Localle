@@ -7,7 +7,7 @@ import { Card, PageHeader, PageBody, Section, Grid, Table, Badge, Button, Select
 import { KpiTile } from '../components/story';
 import { Icon } from '../components/icons';
 import { useStore } from '../lib/store';
-import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar, type SinaisMotorDiagnostico, type SinalMotor, type SituacaoProtocolo, type SuporteCan, type TransmissaoRastreador, type PreviaModelo, type EscolhaDeModelo } from '../lib/localleApi';
+import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar, type SinaisMotorDiagnostico, type DiagnosticoRastreador, type SinalMotor, type SituacaoProtocolo, type SuporteCan, type TransmissaoRastreador, type PreviaModelo, type EscolhaDeModelo } from '../lib/localleApi';
 import { fmtD, fmtDT } from '@localle/shared/utils';
 import { coordenadas, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, leituraAntiga, PAROU_H, ROTULO_SINAL, ROTULO_SUPORTE_CAN, SINAIS_MOTOR, semFixDeGps, situacaoTransmissao, sugerirMapeamento, TRANSMITINDO_MIN, type SituacaoTransmissao, type Tom } from '../lib/diagnosticoRastreador';
 import { nomeDoModelo, normalizarIdentificador, ROTULO_IDENTIFICADOR, TIPOS_IDENTIFICADOR, validarIdentificador, type TipoIdentificador } from '@localle/shared/rastreadorModelos';
@@ -374,6 +374,8 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
   const [tensao, setTensao] = useState(modelo?.atributo_tensao || '');
   const [sinalMax, setSinalMax] = useState(modelo?.sinal_max ? String(modelo.sinal_max) : '');
   const [bloqueio, setBloqueio] = useState(modelo?.atributo_bloqueio || '');
+  const [motorista, setMotorista] = useState(modelo?.atributo_motorista || '');
+  const [aceitaLeitor, setAceitaLeitor] = useState(!!modelo?.leitor_motorista);
   const [suporteCan, setSuporteCan] = useState<SuporteCan>(modelo?.suporte_can || 'nao_informado');
   const [sinais, setSinais] = useState<SinalMotor[]>(modelo?.sinais_motor || []);
   const [atributosSinal, setAtributosSinal] = useState<Record<SinalMotor, string>>({
@@ -386,9 +388,9 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
   const atributoOk = (v: string) => !v || /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(v);
   const sinalN = sinalMax ? Number(sinalMax) : null;
   const ok = fabricante.trim() && nome.trim() && /^[a-z0-9]{2,30}$/.test(protocolo) && Number.isInteger(portaN) && portaN >= 1 && portaN <= 65535
-    && atributoOk(tensao) && atributoOk(bloqueio) && (sinalN === null || (sinalN >= 1 && sinalN <= 100)) && SINAIS_MOTOR.every((x) => atributoOk(atributosSinal[x]));
+    && atributoOk(tensao) && atributoOk(bloqueio) && atributoOk(motorista) && (sinalN === null || (sinalN >= 1 && sinalN <= 100)) && SINAIS_MOTOR.every((x) => atributoOk(atributosSinal[x]));
   const body = {
-    fabricante: fabricante.trim(), nome: nome.trim(), protocolo, porta: portaN, tipoIdentificador: tipo, tipoAparelho, atributoTensao: tensao || null, sinalMax: sinalN, atributoBloqueio: bloqueio || null,
+    fabricante: fabricante.trim(), nome: nome.trim(), protocolo, porta: portaN, tipoIdentificador: tipo, tipoAparelho, atributoTensao: tensao || null, sinalMax: sinalN, atributoBloqueio: bloqueio || null, atributoMotorista: motorista || null, leitorMotorista: aceitaLeitor,
     suporteCan, sinaisMotor: suporteCan === 'nao' ? [] : sinais,
     atributoRpm: atributosSinal.rpm || null, atributoOdometro: atributosSinal.odometro || null, atributoCombustivel: atributosSinal.combustivel || null, atributoHorimetro: atributosSinal.horimetro || null,
   };
@@ -435,7 +437,9 @@ function ModeloModal({ modelo, conhecidos, onClose, onDone }: { modelo: AdminRas
           <Field label="Atributo da tensão externa" hint="Ex.: adc1, vin. Em mV é convertido sozinho."><Input value={tensao} invalid={!atributoOk(tensao)} onChange={(e) => setTensao(e.target.value.trim())} placeholder="power" spellCheck={false} /></Field>
           <Field label="Sinal: valor máximo" hint="Ex.: 4, 31 (CSQ)."><Input inputMode="numeric" value={sinalMax} onChange={(e) => setSinalMax(e.target.value.replace(/\D/g, ''))} placeholder="5" /></Field>
           <Field label="Atributo do bloqueio" hint="Ex.: out1. Só se o aparelho informar."><Input value={bloqueio} invalid={!atributoOk(bloqueio)} onChange={(e) => setBloqueio(e.target.value.trim())} placeholder="blocked" spellCheck={false} /></Field>
+          <Field label="Atributo do cartão do motorista" hint="iButton/RFID. Só se o aparelho não usar o padrão."><Input value={motorista} invalid={!atributoOk(motorista)} onChange={(e) => setMotorista(e.target.value.trim())} placeholder="driverUniqueId" spellCheck={false} /></Field>
         </FormGroup>
+        <Check label="Aceita leitor de cartão do motorista" description="iButton ou RFID. O leitor instalado de fato é marcado em cada instalação, na ficha do veículo." checked={aceitaLeitor} onChange={setAceitaLeitor} />
         {modelo && <AtributosRecebidosLista modeloId={modelo.id} atual={{ atributo_tensao: tensao || null, sinal_max: sinalN, atributo_bloqueio: bloqueio || null }}
           onUsar={(campo, valor) => (campo === 'atributoTensao' ? setTensao(valor) : campo === 'sinalMax' ? setSinalMax(valor) : setBloqueio(valor))} />}
       </fieldset>
@@ -559,6 +563,7 @@ function DiagnosticoModal({ rastreador, recemCadastrado, modelo, onClose, onEdit
         </ol>
       )}
       {data && <SinaisPainel s={data.sinaisMotor} />}
+      {data?.leitorMotorista && <LeitorMotoristaPainel l={data.leitorMotorista} />}
       {data && data.atributosEm && <DadosRecebidos d={data} />}
       {data && (protocoloErrado || (telemetriaIncompleta && modelo)) && (
         <div className="flex flex-wrap gap-3 border-t border-line pt-card-head">
@@ -567,6 +572,23 @@ function DiagnosticoModal({ rastreador, recemCadastrado, modelo, onClose, onEdit
         </div>
       )}
     </Modal>
+  );
+}
+
+// Leitor de cartão do motorista (decisão de 17/11/2026): marcado e sem leitura há dias rodados = defeito, fiação ou falta de uso.
+function LeitorMotoristaPainel({ l }: { l: NonNullable<DiagnosticoRastreador["leitorMotorista"]> }) {
+  if (!l.aceita) return null;
+  const texto = !l.instalado
+    ? "O modelo aceita leitor, mas a instalação não tem o leitor marcado: o aviso de motorista não identificado não vale para este veículo."
+    : l.situacao === "sem_leitura"
+      ? `O veículo rodou ${l.diasRodadosSemLeitura} dias sem nenhuma leitura de cartão${l.ultimaLeituraEm ? ` (última em ${fmtDT(Date.parse(l.ultimaLeituraEm))})` : " desde a instalação"}. Confira o leitor e a fiação.`
+      : l.ultimaLeituraEm ? `Última leitura em ${fmtDT(Date.parse(l.ultimaLeituraEm))}.` : "Nenhuma leitura ainda; o veículo ainda não rodou dias suficientes para cobrar.";
+  const tom: Tom = !l.instalado ? "info" : l.situacao === "sem_leitura" ? "warn" : "ok";
+  return (
+    <section className="flex flex-col gap-tight border-t border-line pt-card-head">
+      <p className="text-small font-medium">Leitor de cartão do motorista</p>
+      <p className="flex gap-3 text-small"><span aria-hidden className={`mt-[calc((var(--lh-small)*1em-0.5rem)/2)] h-2 w-2 shrink-0 rounded-full ${TOM_COR[tom]}`} /><span className="text-ink-2">{texto}</span></p>
+    </section>
   );
 }
 
@@ -678,6 +700,7 @@ function TransmissaoAba({ onDiagnostico }: { onDiagnostico: (r: Acompanhado) => 
                     {t.ultimoPacoteEm && <span className="num"> · há {haQuanto(t.ultimoPacoteEm, agora)}, {t.pacotesUltimaHora} na última hora</span>}</span>
                   {t.protocoloDetectado && t.modeloProtocolo && t.protocoloDetectado !== t.modeloProtocolo && <span className="text-caption text-crit-ink">chegou como {t.protocoloDetectado}</span>}
                   {!t.traccarDeviceId && <span className="text-caption text-warn-ink">sem device no Traccar</span>}
+                  {t.leitorMotorista?.situacao === "sem_leitura" && <span className="text-caption text-warn-ink">leitor de cartão sem leitura há {t.leitorMotorista.diasRodadosSemLeitura} dias rodados</span>}
                   {p && <span className="text-caption text-ink-2"><span className="num">{coordenadas(p)}</span>{p.velocidadeKmh !== null && ` · ${Math.round(p.velocidadeKmh)} km/h`}{p.ignicao !== null && ` · ignição ${p.ignicao ? 'ligada' : 'desligada'}`}</span>}
                   {!p && sit !== 'nunca' && <span className="text-caption text-warn-ink">sem posição com GPS</span>}
                   {semGps && p && <span className="text-caption text-warn-ink">sem GPS há {haQuanto(p.em, agora)}</span>}
@@ -689,7 +712,8 @@ function TransmissaoAba({ onDiagnostico }: { onDiagnostico: (r: Acompanhado) => 
               <span className="font-mono text-small">{t.imei}
                 <span className="block font-sans text-caption text-ink-2">{t.modelo || 'sem modelo'}{t.modeloProtocolo ? ` · ${t.modeloProtocolo} ${t.modeloPorta}` : ''}</span>
                 {t.protocoloDetectado && t.modeloProtocolo && t.protocoloDetectado !== t.modeloProtocolo && <span className="block font-sans text-caption text-crit-ink">chegou como {t.protocoloDetectado}</span>}
-                {!t.traccarDeviceId && <span className="block font-sans text-caption text-warn-ink">sem device no Traccar</span>}</span>,
+                {!t.traccarDeviceId && <span className="block font-sans text-caption text-warn-ink">sem device no Traccar</span>}
+                {t.leitorMotorista?.situacao === "sem_leitura" && <span className="block font-sans text-caption text-warn-ink">leitor de cartão sem leitura há {t.leitorMotorista.diasRodadosSemLeitura} dias rodados</span>}</span>,
               t.cliente ? <span>{t.cliente}<span className="block text-caption text-ink-2">{t.placa || 'sem ativo'}</span></span> : <span className="text-ink-3">Em estoque</span>,
               <span><Badge tone={SIT_TRANSMISSAO[sit].tone}>{SIT_TRANSMISSAO[sit].label}</Badge>
                 {t.ultimoPacoteEm && <span className="block text-caption text-ink-2 num">há {haQuanto(t.ultimoPacoteEm, agora)} · {t.pacotesUltimaHora} na última hora</span>}</span>,

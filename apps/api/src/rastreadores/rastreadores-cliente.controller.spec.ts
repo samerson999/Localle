@@ -6,7 +6,7 @@ describe('parseInstalar (POST /rastreadores/:id/instalar)', () => {
   const assetId = randomUUID();
 
   it('aceita o mínimo (ativo + técnico) e normaliza km e data', () => {
-    expect(parseInstalar({ assetId, tecnico: '  João  ' })).toEqual({ assetId, tecnico: 'João', instaladoEm: undefined, kmInicial: undefined });
+    expect(parseInstalar({ assetId, tecnico: '  João  ' })).toEqual({ assetId, tecnico: 'João', instaladoEm: undefined, kmInicial: undefined, leitorMotorista: false });
     const r = parseInstalar({ assetId, tecnico: 'João', kmInicial: '12345.5', instaladoEm: '2026-10-28T10:00:00Z' });
     expect(r.kmInicial).toBe('12345.5');
     expect(r.instaladoEm?.toISOString()).toBe('2026-10-28T10:00:00.000Z');
@@ -20,5 +20,10 @@ describe('parseInstalar (POST /rastreadores/:id/instalar)', () => {
     expect(() => parseInstalar({ assetId, tecnico: 'João', kmInicial: 'abc' })).toThrow(/kmInicial/);
     expect(() => parseInstalar({ assetId, tecnico: 'João', kmInicial: -1 })).toThrow(/kmInicial/);
     expect(() => parseInstalar(null)).toThrow();
+  });
+
+  it('leitor de cartão: só true marca; valor que não é booleano é recusado', () => {
+    expect(parseInstalar({ assetId, tecnico: 'João', leitorMotorista: true }).leitorMotorista).toBe(true);
+    expect(() => parseInstalar({ assetId, tecnico: 'João', leitorMotorista: 'sim' })).toThrow(/leitorMotorista/);
   });
 });

@@ -277,6 +277,38 @@ describe('RastreadoresService', () => {
     expect(desinstalada.desinstalado_em).not.toBeNull();
   });
 
+  it('leitor de cartão: instala marcado, cliente marca/desmarca e audita; outro cliente 404; desinstalada 404', async () => {
+    const rastreador = await vinculadoA(clientA);
+    const instalacao = await service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste', leitorMotorista: true });
+    expect(instalacao.leitor_motorista).toBe(true);
+
+    await expect(service.definirLeitorMotorista(usuarioCliente, clientB, instalacao.id, false)).rejects.toThrow(/não encontrada/);
+    expect((await instalacoesRepo.findAtivaPorRastreador(rastreador.id))?.leitor_motorista).toBe(true);
+
+    expect((await service.definirLeitorMotorista(usuarioCliente, clientA, instalacao.id, false)).leitor_motorista).toBe(false);
+    const { rows } = await pool.query(
+      "select client_id, after from audit_log where action = 'rastreador.leitor_motorista' and target = $1",
+      [rastreador.id],
+    );
+    expect(rows).toEqual([{ client_id: clientA, after: { instalacaoId: instalacao.id, leitorMotorista: false } }]);
+
+    await service.desinstalar(usuarioCliente, instalacao.id, clientA);
+    await expect(service.definirLeitorMotorista(usuarioCliente, clientA, instalacao.id, true)).rejects.toThrow(/não encontrada/);
+  });
+
+  it('trocar principal e backup leva o leitor de cartão junto com cada aparelho', async () => {
+    const principal = await vinculadoA(clientA);
+    const backup = await vinculadoA(clientA);
+    const assetId = await novoAsset(clientA);
+    await service.instalar(usuarioCliente, clientA, principal.id, { assetId, tecnico: 'teste', leitorMotorista: true });
+    await service.instalar(usuarioCliente, clientA, backup.id, { assetId, tecnico: 'teste', papel: 'backup' });
+    const novas = await service.trocarPrincipal(usuarioCliente, clientA, assetId);
+    expect(novas.map((i) => [i.rastreador_id, i.papel, i.leitor_motorista])).toEqual([
+      [backup.id, 'principal', false],
+      [principal.id, 'backup', true],
+    ]);
+  });
+
   it('não desvincula rastreador instalado; desinstalado, desvincula e o cliente não instala mais', async () => {
     const rastreador = await vinculadoA(clientA);
     const instalacao = await service.instalar(usuarioCliente, clientA, rastreador.id, { assetId: await novoAsset(clientA), tecnico: 'teste' });

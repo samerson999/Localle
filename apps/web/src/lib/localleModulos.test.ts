@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   abastecimentoToFueling, ativoDaApi, driverToMotoristaBody, fichaDoAtivo, temFicha, eventToEventoRankingBody, fineToMultaBody, fuelingToAbastecimentoBody, groupIdsByAsset, grupoToGroup,
   marcacaoToMark, markToMarcacaoBody, matrizToMatrix, matrixToMatrizBody, modeloToTemplate, motoristaToDriver, multaToFine, osToWorkOrder, planoToPlan, planToPlanoBody,
-  responseToRespostaBody, respostaToResponse, tiposToRankCfg, tripToViagemBody, viagemToTrip, workOrderToOsBody,
+  responseToRespostaBody, respostaToResponse, tiposToRankCfg, tripToViagemBody, viagemToTrip, workOrderToOsBody, mesclarVinculos,
 } from './localleModulos';
 
 const U = '11111111-1111-4111-8111-111111111111';
@@ -11,7 +11,7 @@ describe('motoristas e grupos', () => {
   it('motorista API ↔ driver do store (campos da tela, extras em dados)', () => {
     const d = motoristaToDriver({ id: 'm1', nome: 'Ana', cnh: '04512378901', cnh_categoria: 'E', cnh_validade: '2027-05-01', toxicologico_validade: null, telefone: null, regime: 'cargas', ear: true, desativado_em: null, dados: { cpf: '000' } });
     expect(d).toMatchObject({ id: 'm1', name: 'Ana', cnhCat: 'E', cnhDue: '2027-05-01', toxDue: '', phone: '', ear: true, active: true, cpf: '000' });
-    expect(driverToMotoristaBody({ ...d, registration: 'R1' })).toEqual({ nome: 'Ana', cnh: '04512378901', cnhCategoria: 'E', cnhValidade: '2027-05-01', toxicologicoValidade: null, telefone: null, regime: 'cargas', ear: true, dados: { cpf: '000', registration: 'R1' } });
+    expect(driverToMotoristaBody({ ...d, registration: 'R1' })).toEqual({ nome: 'Ana', cnh: '04512378901', cnhCategoria: 'E', cnhValidade: '2027-05-01', toxicologicoValidade: null, telefone: null, regime: 'cargas', ear: true, codigoIdentificacao: null, dados: { cpf: '000', registration: 'R1' } });
   });
   it('grupo traz os ativos com prefixo lc_; groupIdsByAsset inverte o vínculo', () => {
     const g = grupoToGroup({ id: 'g1', name: 'Pesados', assetIds: [U] });
@@ -126,5 +126,24 @@ describe('ficha do ativo (assets.dados)', () => {
   it('temFicha só para cadastro além da placa', () => {
     expect(temFicha({ plate: 'ABC1D23', name: 'ABC1D23', kind: 'veiculo', specs: {} })).toBe(false);
     expect(temFicha({ plate: 'ABC1D23', name: 'Caminhão 08' })).toBe(true);
+  });
+});
+
+describe('identificação do motorista pelo rastreador', () => {
+  it('código do cartão vai e volta; vazio vira null', () => {
+    expect(motoristaToDriver({ id: 'm1', nome: 'Ana', regime: 'cargas', codigo_identificacao: '2844255995', dados: {} }).idCode).toBe('2844255995');
+    expect(driverToMotoristaBody({ name: 'Ana', idCode: ' 2844255995 ' }).codigoIdentificacao).toBe('2844255995');
+    expect(driverToMotoristaBody({ name: 'Ana', idCode: '' }).codigoIdentificacao).toBeNull();
+  });
+
+  it('vínculos do rastreador vêm só da API; escala/app locais ficam', () => {
+    const locais = [
+      { id: 'l1', assetId: 'a1', driverId: 'd1', start: 1, end: null, source: 'escala' },
+      { id: 'l2', assetId: 'a1', driverId: 'd9', start: 1, end: null, source: 'rastreador' },
+    ];
+    const daApi = [{ id: 'v1', asset_id: U, motorista_id: null, origem: 'rastreador', codigo: '2837467883', inicio: '2026-11-17T13:55:00Z', fim: null, encerrado_por: null }];
+    const r = mesclarVinculos(locais, daApi);
+    expect(r.map((l) => l.id)).toEqual(['l1', 'v1']);
+    expect(r[1]).toMatchObject({ driverId: '', code: '2837467883', source: 'rastreador', start: Date.parse('2026-11-17T13:55:00Z'), end: null });
   });
 });

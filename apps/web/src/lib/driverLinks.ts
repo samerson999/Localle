@@ -25,7 +25,8 @@ const activeAt = (l: any, ts: number) => l.start <= ts && (!l.end || l.end > ts)
 export const linksOf = (s: any, assetId: string) => allLinks(s).filter((l) => l.assetId === assetId).sort((a, b) => b.start - a.start);
 
 // vínculo que vale num instante: entre os vigentes, o da origem de maior prioridade
-export const effectiveLink = (links: any[], ts: number) => links.filter((l) => activeAt(l, ts)).sort((a, b) => rank(a.source) - rank(b.source) || b.start - a.start)[0];
+// cartão lido e ainda não cadastrado (driverId vazio) fica no histórico, mas não aponta motorista nem gera conflito
+export const effectiveLink = (links: any[], ts: number) => links.filter((l) => l.driverId && activeAt(l, ts)).sort((a, b) => rank(a.source) - rank(b.source) || b.start - a.start)[0];
 export const driverAt = (s: any, assetId: string, ts: number) => effectiveLink(linksOf(s, assetId), ts)?.driverId || '';
 
 export type DriverConflict = { key: string; assetId: string; from: number; to: number | null; win: any; lose: any; acked?: any };
@@ -37,7 +38,7 @@ export function driverConflicts(s: any, assetId?: string): DriverConflict[] {
   by.forEach((ls, aid) => {
     for (let i = 0; i < ls.length; i++) for (let j = i + 1; j < ls.length; j++) {
       const a = ls[i], b = ls[j];
-      if (a.source === b.source || a.driverId === b.driverId) continue;
+      if (a.source === b.source || a.driverId === b.driverId || !a.driverId || !b.driverId) continue;
       const from = Math.max(a.start, b.start), to = a.end && b.end ? Math.min(a.end, b.end) : a.end || b.end || null;
       if (to != null && to <= from) continue;
       const [win, lose] = rank(a.source) <= rank(b.source) ? [a, b] : [b, a];

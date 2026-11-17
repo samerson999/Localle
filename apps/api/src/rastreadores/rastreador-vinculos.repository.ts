@@ -59,6 +59,7 @@ export class RastreadorVinculosRepository extends BaseRepository<RastreadorVincu
   async doCliente(clientId: string): Promise<RastreadorDoCliente[]> {
     const { rows } = await this.pool.query<RastreadorDoCliente>(
       `select r.id, r.imei, r.modelo, r.protocolo, v.vinculado_em, coalesce(m.tipo_aparelho, 'rastreador') as tipo_aparelho,
+              coalesce(m.leitor_motorista, false) as modelo_aceita_leitor, coalesce(i.leitor_motorista, false) as leitor_motorista,
               i.id as instalacao_id, i.asset_id, a.rotulo as asset_plate, i.instalado_em, i.papel,
               -- última posição só depois da instalação vigente: a de antes pode ser de outro cliente ou de outro ativo
               case when up.fix_time >= i.instalado_em then up.fix_time end as posicao_em,

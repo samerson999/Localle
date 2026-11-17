@@ -9,4 +9,6 @@ export interface InstalacaoEntity {
   tecnico: string;
   km_inicial: string | null;
   foto: string | null;
+  /** Leitor de cartão do motorista instalado junto (migration 1794400000000); só conta se o modelo aceita. */
+  leitor_motorista: boolean;
 }

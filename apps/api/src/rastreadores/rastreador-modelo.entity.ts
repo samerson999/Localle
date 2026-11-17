@@ -12,6 +12,10 @@ export interface RastreadorModeloEntity {
   atributo_tensao: string | null;
   sinal_max: number | null;
   atributo_bloqueio: string | null;
+  /** Chave do código do motorista (iButton/RFID); null = `driverUniqueId` (src/motoristas/identificacao-motorista.ts). */
+  atributo_motorista: string | null;
+  /** Aceita leitor de cartão do motorista (acessório); o leitor instalado é marcado na instalação (migration 1794400000000). */
+  leitor_motorista: boolean;
   /** Sinais de motor / CAN (src/telemetria/sinais-motor.ts): capacidade do modelo e onde manda cada sinal. */
   suporte_can: SuporteCan;
   sinais_motor: SinalMotor[];

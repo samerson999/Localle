@@ -151,6 +151,9 @@ const LISTA: SettingDefinition[] = [
   def('documentos.critico_dias', { modulo: 'ativos', label: 'Documento crítico (dias antes do vencimento)', default: 7, min: 0, max: 60 }),
   def('motoristas.cnh_atencao_dias', { modulo: 'motoristas', label: 'CNH/toxicológico em atenção (dias antes)', default: 30, min: 1, max: 120 }),
   def('motoristas.cnh_critico_dias', { modulo: 'motoristas', label: 'CNH/toxicológico crítico (dias antes)', default: 7, min: 0, max: 60 }),
+  // identificação pelo cartão (17/11/2026): só avisa em veículo com leitor (modelo aceita + leitor instalado)
+  bool('motoristas.exigir_identificacao', 'motoristas', 'Exigir identificação do motorista pelo cartão (avisa veículo rodando sem)', false),
+  def('motoristas.tolerancia_sem_identificacao_min', { modulo: 'motoristas', label: 'Tempo andando sem cartão antes do aviso (min)', default: 5, min: 1, max: 60, aplicacao: 'agora' }),
   opt('motoristas.origem_prioridade', 'motoristas', 'Origem do motorista que prevalece', ['rastreador>app>escala', 'app>rastreador>escala', 'escala>rastreador>app'], 'rastreador>app>escala'),
 ];
 

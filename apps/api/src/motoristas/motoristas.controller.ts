@@ -5,6 +5,8 @@ import { booleano, cpfOpcional, dataOpcional, dicionario, opcao, telefoneOpciona
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { SettingsService } from '../settings/settings.service';
+import { normalizarCodigo } from '@localle/shared/cartaoMotorista';
+import { MotoristaVinculosRepository } from './motorista-vinculos.repository';
 import { type MotoristaInput, type MotoristaRow, MotoristasRepository, type Regime } from './motoristas.repository';
 
 const CATEGORIAS = ['A', 'B', 'C', 'D', 'E', 'AB', 'AC', 'AD', 'AE'] as const;
@@ -15,6 +17,11 @@ export function parseMotorista(body: unknown): MotoristaInput {
   const b = (body ?? {}) as Record<string, unknown>;
   const cnh = textoOpcional(b.cnh, 'cnh', 20);
   if (cnh && !/^\d{9,11}$/.test(cnh)) throw new BadRequestException('"cnh" precisa ter de 9 a 11 dígitos');
+  // código do cartão/iButton/RFID como o aparelho lê (decimal ou hex, com ou sem separadores); guarda como digitado
+  const codigoIdentificacao = textoOpcional(b.codigoIdentificacao, 'codigoIdentificacao', 40);
+  if (codigoIdentificacao && !normalizarCodigo(codigoIdentificacao)) {
+    throw new BadRequestException('"codigoIdentificacao" precisa ter letras ou números além de zeros');
+  }
   const dados = dicionario(b.dados, 'dados');
   if (dados.cpf !== undefined && !cpfOpcional(dados.cpf, 'dados.cpf')) delete dados.cpf;
   return {
@@ -24,6 +31,7 @@ export function parseMotorista(body: unknown): MotoristaInput {
     cnhValidade: dataOpcional(b.cnhValidade, 'cnhValidade'),
     toxicologicoValidade: dataOpcional(b.toxicologicoValidade, 'toxicologicoValidade'),
     telefone: telefoneOpcional(b.telefone, 'telefone'),
+    codigoIdentificacao,
     regime: opcao(b.regime, 'regime', REGIMES, 'cargas'),
     ear: booleano(b.ear, 'ear'),
     dados,
@@ -46,6 +54,7 @@ export function estadoVencimento(validade: string | null, atencaoDias: number, c
 export class MotoristasController {
   constructor(
     private readonly repo: MotoristasRepository,
+    private readonly vinculos: MotoristaVinculosRepository,
     private readonly settings: SettingsService,
   ) {}
 
@@ -75,6 +84,18 @@ export class MotoristasController {
       .filter((x) => x.cnh.estado !== 'ok' || (x.toxicologico && x.toxicologico.estado !== 'ok'));
   }
 
+  /**
+   * Histórico motorista × veículo (abertos + os que começaram nos últimos `dias`, padrão 30). `motorista_id` null =
+   * código lido pelo rastreador e ainda não cadastrado: a tela mostra o código para o gestor cadastrar.
+   */
+  @Get('vinculos')
+  @RequirePermission('ativos.ver')
+  vinculosRecentes(@ClientId() clientId: string, @Query('dias') dias?: string) {
+    const n = dias === undefined ? 30 : Number(dias);
+    if (!Number.isInteger(n) || n < 1 || n > 366) throw new BadRequestException('"dias" precisa ser um inteiro de 1 a 366');
+    return this.vinculos.listar(clientId, new Date(Date.now() - n * 86_400_000));
+  }
+
   @Get(':id')
   @RequirePermission('ativos.ver')
   async buscar(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string) {
@@ -90,6 +111,7 @@ export class MotoristasController {
       return await this.repo.criar(clientId, parseMotorista(body));
     } catch (err) {
       if (violouUnique(err, UNIQUE.motoristaCnh)) throw new ConflictException('Já existe um motorista ativo com essa CNH');
+      if (violouUnique(err, UNIQUE.motoristaCodigo)) throw new ConflictException('Esse código de cartão já está em outro motorista ativo');
       throw err;
     }
   }
@@ -102,6 +124,7 @@ export class MotoristasController {
       m = await this.repo.atualizar(clientId, id, parseMotorista(body));
     } catch (err) {
       if (violouUnique(err, UNIQUE.motoristaCnh)) throw new ConflictException('Já existe um motorista ativo com essa CNH');
+      if (violouUnique(err, UNIQUE.motoristaCodigo)) throw new ConflictException('Esse código de cartão já está em outro motorista ativo');
       throw err;
     }
     if (!m) throw new NotFoundException('Motorista não encontrado');
@@ -119,7 +142,15 @@ export class MotoristasController {
   @Post(':id/reativar')
   @RequirePermission('motoristas.editar')
   async reativar(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string) {
-    const m = await this.repo.setDesativado(clientId, id, false);
+    let m: MotoristaRow | null;
+    try {
+      m = await this.repo.setDesativado(clientId, id, false);
+    } catch (err) {
+      // enquanto esteve desativado, a CNH ou o cartão podem ter ido para outro motorista
+      if (violouUnique(err, UNIQUE.motoristaCnh)) throw new ConflictException('Já existe um motorista ativo com essa CNH');
+      if (violouUnique(err, UNIQUE.motoristaCodigo)) throw new ConflictException('Esse código de cartão já está em outro motorista ativo');
+      throw err;
+    }
     if (!m) throw new NotFoundException('Motorista não encontrado');
     return m;
   }

@@ -48,6 +48,25 @@ export interface DiagnosticoRastreador {
   comandos: string[] | null;
   /** Sinais de motor / CAN: o que o modelo promete e o estado de cada sinal na instalação vigente. */
   sinaisMotor: SinaisMotorDiagnostico;
+  /** Leitor de cartão do motorista (decisão de 17/11/2026); null = sem instalação principal vigente. */
+  leitorMotorista: LeitorMotoristaDiagnostico | null;
+}
+
+/** Dias rodados sem nenhuma leitura de cartão para o leitor contar como "sem leitura" (defeito, fiação, sem uso). */
+export const LEITOR_SEM_LEITURA_DIAS = 3;
+
+export interface LeitorMotoristaDiagnostico {
+  aceita: boolean;
+  instalado: boolean;
+  ultimaLeituraEm: Date | null;
+  diasRodadosSemLeitura: number;
+  /** `nao_se_aplica`: o modelo não aceita ou o leitor não foi marcado; `sem_leitura`: rodou N dias sem ler cartão. */
+  situacao: 'nao_se_aplica' | 'ok' | 'sem_leitura';
+}
+
+export function situacaoLeitor(l: { aceita: boolean; instalado: boolean; dias_rodados_sem_leitura: number }): LeitorMotoristaDiagnostico['situacao'] {
+  if (!l.aceita || !l.instalado) return 'nao_se_aplica';
+  return l.dias_rodados_sem_leitura >= LEITOR_SEM_LEITURA_DIAS ? 'sem_leitura' : 'ok';
 }
 
 export interface SinaisMotorDiagnostico {
@@ -93,6 +112,8 @@ export interface TransmissaoRastreador {
   /** Quando cada atributo chegou pela última vez (ISO): valor antigo continua em `atributos`, com a idade aqui. */
   atributosVistosEm: Record<string, string>;
   telemetria: Telemetria;
+  /** Leitor de cartão marcado e sem leitura há N dias rodados (aviso de diagnóstico); null = leitor não se aplica. */
+  leitorMotorista: { situacao: 'ok' | 'sem_leitura'; diasRodadosSemLeitura: number } | null;
 }
 
 const ultimaPosicaoDaLinha = (r: EstadoRastreadorRow): UltimaPosicao | null =>
@@ -158,7 +179,13 @@ export class RastreadorModelosService {
     const r = await this.repo.estadoDoRastreador(rastreadorId);
     if (!r) throw new NotFoundException('Rastreador não encontrado');
     const ficha = r.modelo_id ? await this.fichaTraccar(r.modelo_id) : null;
-    const [modelo, sinais] = await Promise.all([r.modelo_id ? this.repo.findById(r.modelo_id) : null, this.repo.sinaisDaInstalacaoVigente(rastreadorId)]);
+    const [modelo, sinais, leitor] = await Promise.all([
+      r.modelo_id ? this.repo.findById(r.modelo_id) : null, this.repo.sinaisDaInstalacaoVigente(rastreadorId), this.repo.leitorMotoristaDoRastreador(rastreadorId),
+    ]);
+    const leitorMotorista: LeitorMotoristaDiagnostico | null = leitor && {
+      aceita: leitor.aceita, instalado: leitor.instalado, ultimaLeituraEm: leitor.ultima_leitura_em,
+      diasRodadosSemLeitura: leitor.dias_rodados_sem_leitura, situacao: situacaoLeitor(leitor),
+    };
     const config = this.traccar.config();
     // ficha com erro = Traccar fora: não insiste nas outras consultas
     const consultar = !!config && !!r.traccar_device_id && !ficha?.traccar.erro;
@@ -192,6 +219,7 @@ export class RastreadorModelosService {
       ultimaPosicao: ultimaPosicaoDaLinha(r),
       ficha,
       comandos,
+      leitorMotorista,
       sinaisMotor: {
         suporteCan: modelo?.suporte_can ?? 'nao_informado',
         esperados: modelo?.sinais_motor ?? [],
@@ -230,6 +258,9 @@ export class RastreadorModelosService {
       atributosEm: r.atributos_em,
       atributosVistosEm: r.atributos_vistos_em ?? {},
       telemetria: lerTelemetriaComIdade(r.ultimos_atributos, r.atributos_vistos_em, mapeamentoDaLinha(r)),
+      leitorMotorista: r.leitor_aplica
+        ? { situacao: situacaoLeitor({ aceita: true, instalado: true, dias_rodados_sem_leitura: r.dias_rodados_sem_leitura ?? 0 }) as 'ok' | 'sem_leitura', diasRodadosSemLeitura: r.dias_rodados_sem_leitura ?? 0 }
+        : null,
     }));
   }
 

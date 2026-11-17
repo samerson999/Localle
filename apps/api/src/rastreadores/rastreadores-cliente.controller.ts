@@ -49,6 +49,20 @@ export class RastreadoresClienteController {
     return this.service.trocarPrincipal({ type: 'user', id: userId }, clientId, assetId);
   }
 
+  /** Leitor de cartão do motorista instalado junto (liga o aviso de "rodando sem identificação" para o veículo). */
+  @Post('instalacoes/:instalacaoId/leitor-motorista')
+  @RequirePermission('ativos.editar')
+  leitorMotorista(
+    @ClientId() clientId: string,
+    @CurrentUserId() userId: string,
+    @Param('instalacaoId', ParseUUIDPipe) instalacaoId: string,
+    @Body() body: unknown,
+  ) {
+    const instalado = (body as { instalado?: unknown } | null)?.instalado;
+    if (typeof instalado !== 'boolean') throw new BadRequestException('"instalado" precisa ser true ou false');
+    return this.service.definirLeitorMotorista({ type: 'user', id: userId }, clientId, instalacaoId, instalado);
+  }
+
   @Post('instalacoes/:instalacaoId/desinstalar')
   @RequirePermission('ativos.editar')
   desinstalar(
@@ -72,6 +86,7 @@ export function parseInstalar(body: unknown) {
     kmInicial = String(km);
   }
   // o cliente escolhe entre principal e backup; o papel `can` não é exposto aqui
+  if (dto.leitorMotorista !== undefined && typeof dto.leitorMotorista !== 'boolean') throw new BadRequestException('"leitorMotorista" precisa ser true ou false');
   if (dto.papel !== undefined && dto.papel !== 'principal' && dto.papel !== 'backup') {
     throw new BadRequestException('"papel" precisa ser principal ou backup');
   }
@@ -81,5 +96,6 @@ export function parseInstalar(body: unknown) {
     tecnico,
     instaladoEm: dto.instaladoEm ? parseDate('instaladoEm', dto.instaladoEm) : undefined,
     kmInicial,
+    leitorMotorista: dto.leitorMotorista === true,
   };
 }

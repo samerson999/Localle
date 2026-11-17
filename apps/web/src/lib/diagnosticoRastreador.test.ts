@@ -12,6 +12,7 @@ const base: DiagnosticoRastreador = {
   ficha: { traccar: { configurado: true, versao: '6.17.0', erro: null }, protocolo: { ativo: true, porta: 5259, transporte: 'ALL' }, comandos: null },
   comandos: ['engineStop', 'engineResume', 'custom'],
   sinaisMotor: { suporteCan: 'nao_informado', esperados: [], sinais: [] },
+  leitorMotorista: null,
 };
 const tom = (d: DiagnosticoRastreador, m = modelo) => Object.fromEntries(itensDoDiagnostico(d, m, agora).map((i) => [i.etapa, i.tom]));
 

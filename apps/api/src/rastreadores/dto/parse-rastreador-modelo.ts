@@ -23,6 +23,8 @@ function mapeamento(b: Record<string, unknown>): Partial<ModeloDados> {
   if (b.atributoTensao !== undefined) out.atributo_tensao = atributo(b.atributoTensao, 'atributoTensao');
   if (b.sinalMax !== undefined) out.sinal_max = numeroOpcional(b.sinalMax, 'sinalMax', 1, 100, true);
   if (b.atributoBloqueio !== undefined) out.atributo_bloqueio = atributo(b.atributoBloqueio, 'atributoBloqueio');
+  if (b.atributoMotorista !== undefined) out.atributo_motorista = atributo(b.atributoMotorista, 'atributoMotorista');
+  if (b.leitorMotorista !== undefined) out.leitor_motorista = booleano(b.leitorMotorista, 'leitorMotorista');
   if (b.suporteCan !== undefined) out.suporte_can = opcao(b.suporteCan, 'suporteCan', SUPORTES_CAN);
   if (b.sinaisMotor !== undefined) out.sinais_motor = sinaisMotor(b.sinaisMotor);
   if (b.atributoRpm !== undefined) out.atributo_rpm = atributo(b.atributoRpm, 'atributoRpm');
