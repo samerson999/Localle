@@ -1,5 +1,6 @@
 // Checklist do rastreador (Console › Rastreadores › Diagnóstico) e sugestões de mapeamento da telemetria, a partir do
 // que a API devolve em /superadmin/rastreadores/:id/diagnostico. Só leitura: nada aqui é aplicado sem o admin confirmar.
+import { normalizarCodigo } from '@localle/shared/cartaoMotorista';
 import type { DiagnosticoRastreador, SinaisMotorDiagnostico, SinalMotor, SuporteCan } from './localleApi';
 
 export type Tom = 'ok' | 'warn' | 'crit' | 'info';
@@ -210,4 +211,19 @@ export function itensDosSinaisMotor(s: SinaisMotorDiagnostico, agora = Date.now(
     }
     return { etapa, tom: 'crit', texto: `${x.motivo}. ${dicaNaoRecebido(s.suporteCan, !!x.ultimaLeituraEm)}${ultimo ? ` Última leitura: ${ultimo}.` : ''}` };
   });
+}
+
+/**
+ * Último cartão do motorista (iButton/RFID) que o aparelho mandou, na chave padrão do Traccar (`driverUniqueId`) ou na
+ * que o modelo indicar — a mesma leitura da ingestão. `atributos` guarda o último valor de cada chave, então o cartão
+ * continua aqui depois que o motorista sai: a tela mostra a hora em que chegou. Zero/vazio = nenhum cartão.
+ */
+export function ultimoCartao(
+  atributos: Record<string, unknown>,
+  vistosEm: Record<string, string>,
+  atributoMotorista?: string | null,
+): { codigo: string; chave: string; em: string | null } | null {
+  const chave = atributoMotorista || 'driverUniqueId';
+  const codigo = normalizarCodigo(atributos[chave]);
+  return codigo ? { codigo, chave, em: vistosEm[chave] ?? null } : null;
 }

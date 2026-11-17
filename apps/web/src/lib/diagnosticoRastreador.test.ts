@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firmwareDe, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, leituraAntiga, semFixDeGps, situacaoTransmissao, sugerirMapeamento, valorDoSinal } from './diagnosticoRastreador';
+import { firmwareDe, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, leituraAntiga, semFixDeGps, situacaoTransmissao, sugerirMapeamento, ultimoCartao, valorDoSinal } from './diagnosticoRastreador';
 import type { DiagnosticoRastreador, SinaisMotorDiagnostico } from './localleApi';
 
 const agora = Date.parse('2026-11-04T12:00:00Z');
@@ -177,5 +177,18 @@ describe('idade das leituras', () => {
     expect(item.texto).toMatch(/^Valor antigo: tensão \(lido há 17 h\), estado de bloqueio \(lido há 17 h\)\. O aparelho continua mandando pacotes/);
     // tudo recente: segue ok
     expect(tom({ ...base, telemetria: { ...base.telemetria, lidaEm: { tensaoV: '2026-11-04T11:55:00Z', satelites: null, sinalGsm: '2026-11-04T11:55:00Z', bloqueado: null } } }).Telemetria).toBe('ok');
+  });
+});
+
+describe('último cartão do motorista no diagnóstico', () => {
+  it('lê driverUniqueId (J-R10 da HML) com a hora em que chegou; zero ou ausente = nenhum', () => {
+    const vistos = { driverUniqueId: '2026-11-17T19:08:00Z' };
+    expect(ultimoCartao({ driverUniqueId: '2771143129', operator: '0' }, vistos)).toEqual({ codigo: '2771143129', chave: 'driverUniqueId', em: '2026-11-17T19:08:00Z' });
+    expect(ultimoCartao({ driverUniqueId: '0' }, vistos)).toBeNull();
+    expect(ultimoCartao({ ignition: true }, {})).toBeNull();
+  });
+
+  it('usa a chave do modelo quando configurada', () => {
+    expect(ultimoCartao({ driverUniqueId: '1', rfid: '00a1b2' }, {}, 'rfid')).toEqual({ codigo: 'A1B2', chave: 'rfid', em: null });
   });
 });

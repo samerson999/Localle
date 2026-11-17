@@ -9,7 +9,7 @@ import { Icon } from '../components/icons';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery, type AdminRastreador, type AdminRastreadorModelo, type AdminSimCard, type FichaTraccar, type SinaisMotorDiagnostico, type DiagnosticoRastreador, type SinalMotor, type SituacaoProtocolo, type SuporteCan, type TransmissaoRastreador, type PreviaModelo, type EscolhaDeModelo } from '../lib/localleApi';
 import { fmtD, fmtDT } from '@localle/shared/utils';
-import { coordenadas, haQuanto, itensDoDiagnostico, itensDosSinaisMotor, leituraAntiga, PAROU_H, ROTULO_SINAL, ROTULO_SUPORTE_CAN, SINAIS_MOTOR, semFixDeGps, situacaoTransmissao, sugerirMapeamento, TRANSMITINDO_MIN, type SituacaoTransmissao, type Tom } from '../lib/diagnosticoRastreador';
+import { coordenadas, haQuanto, ultimoCartao, itensDoDiagnostico, itensDosSinaisMotor, leituraAntiga, PAROU_H, ROTULO_SINAL, ROTULO_SUPORTE_CAN, SINAIS_MOTOR, semFixDeGps, situacaoTransmissao, sugerirMapeamento, TRANSMITINDO_MIN, type SituacaoTransmissao, type Tom } from '../lib/diagnosticoRastreador';
 import { nomeDoModelo, normalizarIdentificador, ROTULO_IDENTIFICADOR, TIPOS_IDENTIFICADOR, validarIdentificador, type TipoIdentificador } from '@localle/shared/rastreadorModelos';
 
 // Modelos: a fonte é a lista de aparelhos do Traccar (migration 1793170000000, ~2.200 modelos com protocolo e porta);
@@ -563,7 +563,7 @@ function DiagnosticoModal({ rastreador, recemCadastrado, modelo, onClose, onEdit
         </ol>
       )}
       {data && <SinaisPainel s={data.sinaisMotor} />}
-      {data?.leitorMotorista && <LeitorMotoristaPainel l={data.leitorMotorista} />}
+      {data && <LeitorMotoristaPainel l={data.leitorMotorista} cartao={ultimoCartao(data.atributos, data.atributosVistosEm, modelo?.atributo_motorista)} />}
       {data && data.atributosEm && <DadosRecebidos d={data} />}
       {data && (protocoloErrado || (telemetriaIncompleta && modelo)) && (
         <div className="flex flex-wrap gap-3 border-t border-line pt-card-head">
@@ -575,19 +575,29 @@ function DiagnosticoModal({ rastreador, recemCadastrado, modelo, onClose, onEdit
   );
 }
 
-// Leitor de cartão do motorista (decisão de 17/11/2026): marcado e sem leitura há dias rodados = defeito, fiação ou falta de uso.
-function LeitorMotoristaPainel({ l }: { l: NonNullable<DiagnosticoRastreador["leitorMotorista"]> }) {
-  if (!l.aceita) return null;
-  const texto = !l.instalado
-    ? "O modelo aceita leitor, mas a instalação não tem o leitor marcado: o aviso de motorista não identificado não vale para este veículo."
-    : l.situacao === "sem_leitura"
-      ? `O veículo rodou ${l.diasRodadosSemLeitura} dias sem nenhuma leitura de cartão${l.ultimaLeituraEm ? ` (última em ${fmtDT(Date.parse(l.ultimaLeituraEm))})` : " desde a instalação"}. Confira o leitor e a fiação.`
-      : l.ultimaLeituraEm ? `Última leitura em ${fmtDT(Date.parse(l.ultimaLeituraEm))}.` : "Nenhuma leitura ainda; o veículo ainda não rodou dias suficientes para cobrar.";
-  const tom: Tom = !l.instalado ? "info" : l.situacao === "sem_leitura" ? "warn" : "ok";
+// Leitor de cartão do motorista (decisão de 17/11/2026): o último cartão que o aparelho mandou, em português, e — com
+// o modelo marcado como "aceita leitor" — a situação do leitor (marcado e sem leitura há dias rodados = defeito ou fiação).
+function LeitorMotoristaPainel({ l, cartao }: { l: DiagnosticoRastreador["leitorMotorista"]; cartao: ReturnType<typeof ultimoCartao> }) {
+  const itens: { tom: Tom; texto: string }[] = [];
+  if (cartao) itens.push({ tom: "ok", texto: `Último cartão lido: ${cartao.codigo}${cartao.em ? `, em ${fmtDT(Date.parse(cartao.em))}` : ""}. O aparelho está mandando o cartão do motorista.` });
+  if (l?.aceita) {
+    itens.push(!l.instalado
+      ? { tom: "info", texto: "A instalação não tem o leitor marcado: o aviso de motorista não identificado não vale para este veículo." }
+      : l.situacao === "sem_leitura"
+        ? { tom: "warn", texto: `O veículo rodou ${l.diasRodadosSemLeitura} dias sem nenhuma leitura de cartão${l.ultimaLeituraEm ? ` (última em ${fmtDT(Date.parse(l.ultimaLeituraEm))})` : " desde a instalação"}. Confira o leitor e a fiação.` }
+        : { tom: "ok", texto: l.ultimaLeituraEm ? `Leitor em uso: última identificação em ${fmtDT(Date.parse(l.ultimaLeituraEm))}.` : "Nenhuma leitura ainda; o veículo ainda não rodou dias suficientes para cobrar." });
+  } else if (cartao) {
+    itens.push({ tom: "info", texto: "O modelo não está marcado como \"aceita leitor\": a identificação funciona, mas o aviso de veículo rodando sem cartão não vale. Marque no catálogo." });
+  }
+  if (!itens.length) return null;
   return (
     <section className="flex flex-col gap-tight border-t border-line pt-card-head">
-      <p className="text-small font-medium">Leitor de cartão do motorista</p>
-      <p className="flex gap-3 text-small"><span aria-hidden className={`mt-[calc((var(--lh-small)*1em-0.5rem)/2)] h-2 w-2 shrink-0 rounded-full ${TOM_COR[tom]}`} /><span className="text-ink-2">{texto}</span></p>
+      <p className="text-small font-medium">Cartão do motorista</p>
+      <ol className="flex flex-col gap-stack">
+        {itens.map((i) => (
+          <li key={i.texto} className="flex gap-3 text-small"><span aria-hidden className={`mt-[calc((var(--lh-small)*1em-0.5rem)/2)] h-2 w-2 shrink-0 rounded-full ${TOM_COR[i.tom]}`} /><span className="text-ink-2">{i.texto}</span></li>
+        ))}
+      </ol>
     </section>
   );
 }
