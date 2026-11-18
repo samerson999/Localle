@@ -10,6 +10,8 @@ import { MOTIVO_NORMALIZADO } from './alertas-plataforma';
 import {
   BACKUP_SEM_SINAL_H, nivelSemPosicao, SEM_POSICAO_MIN_H, TIPO_BACKUP_SEM_SINAL, TIPO_SEM_POSICAO, TITULO_BACKUP_SEM_SINAL, tituloSemPosicao,
 } from './sem-posicao';
+import { PARADO_ALERTA_H, PARADO_COMUNICANDO_H, TIPO_VEICULO_PARADO, tituloVeiculoParado } from './veiculo-parado';
+import { getDefinition } from '../settings/setting-definitions';
 
 const TICK_MS = 60_000;
 
@@ -25,6 +27,18 @@ const referenciaQueda = (cliente: string) => `
   from assets a
   join instalacoes i on i.asset_id = a.id and i.client_id = a.client_id and i.papel = 'principal' and i.desinstalado_em is null
   join rastreador_comunicacao rc on rc.rastreador_id = i.rastreador_id
+  where a.status = 'ativo' and (${cliente}::uuid is null or a.client_id = ${cliente})`;
+/**
+ * Início da parada de cada ativo ativo com rastreador principal: última posição andando, nunca antes da instalação
+ * vigente (movimento de antes é do ativo anterior). `ultimo_pacote_em` vem junto para separar parado de calado.
+ */
+const referenciaParada = (cliente: string) => `
+  select a.client_id, a.id as asset_id, rc.ultimo_pacote_em,
+    greatest(i.instalado_em, coalesce(up.movimento_em, i.instalado_em)) as parado_desde
+  from assets a
+  join instalacoes i on i.asset_id = a.id and i.client_id = a.client_id and i.papel = 'principal' and i.desinstalado_em is null
+  join rastreador_comunicacao rc on rc.rastreador_id = i.rastreador_id
+  left join ultima_posicao up on up.rastreador_id = i.rastreador_id
   where a.status = 'ativo' and (${cliente}::uuid is null or a.client_id = ${cliente})`;
 const RANK: Record<Alerta['prioridade'], number> = { baixa: 1, media: 2, alta: 3 };
 
@@ -84,6 +98,8 @@ export class SemPosicaoWorker implements OnModuleInit, OnModuleDestroy {
       }
       await this.encerrarVoltas(clientId);
       await this.backupsSemSinal(agora, clientId);
+      await this.encerrarParadosQueAndaram(clientId);
+      await this.veiculosParados(agora, clientId);
     } finally {
       this.rodando = false;
     }
@@ -176,6 +192,76 @@ export class SemPosicaoWorker implements OnModuleInit, OnModuleDestroy {
       } catch (err) {
         this.logger.warn(`Aviso de backup sem comunicar não gravado (client_id ${c.client_id}, asset_id ${c.asset_id}): ${(err as Error).message}`);
       }
+    }
+  }
+
+  /**
+   * Veículo comunicando (pacote nas últimas 4 h) e sem se mover há mais que o limite do Setup do cliente: um aviso baixo
+   * por parada (veiculo-parado.ts). O limite é lido por cliente na própria consulta (varre todos de uma vez).
+   */
+  private async veiculosParados(agora: Date, clientId: string | null): Promise<void> {
+    let candidatos: { client_id: string; asset_id: string; parado_desde: Date; limite_h: number }[];
+    try {
+      ({ rows: candidatos } = await this.pool.query(
+        `with ref as (${referenciaParada('$3')}),
+         lim as (
+           select r.*, coalesce((select (cs.value #>> '{}')::float8 from client_settings cs where cs.client_id = r.client_id and cs.key = $5), $6)::float8 as limite_h
+           from ref r
+           where r.ultimo_pacote_em >= $1::timestamptz - make_interval(hours => $2)
+         )
+         select l.client_id, l.asset_id, l.parado_desde, l.limite_h
+           from lim l
+          where l.parado_desde <= $1::timestamptz - make_interval(secs => l.limite_h * 3600)
+            and not exists (select 1 from alertas al where al.asset_id = l.asset_id and al.tipo = $4 and al.ts = l.parado_desde)`,
+        [agora, PARADO_COMUNICANDO_H, clientId, TIPO_VEICULO_PARADO, PARADO_ALERTA_H, Number(getDefinition(PARADO_ALERTA_H)!.default)],
+      ));
+    } catch (err) {
+      this.logger.error(`Veículos parados não verificados: ${(err as Error).message}`);
+      return;
+    }
+    for (const c of candidatos) {
+      try {
+        // índice único por (ativo, início da parada): outra instância que chegou antes faz este insert falhar
+        const alerta = await withTransaction(this.pool, (tx) =>
+          inserirAlerta(tx, {
+            clientId: c.client_id, assetId: c.asset_id, eventoId: null, origem: 'aparelho', tipo: TIPO_VEICULO_PARADO,
+            titulo: tituloVeiculoParado(c.limite_h), detalhe: null, prioridade: 'baixa', ts: c.parado_desde,
+          }),
+        );
+        if (!alerta) continue;
+        this.logger.log(`Aviso de veículo parado (client_id ${c.client_id}, asset_id ${c.asset_id}, desde ${c.parado_desde.toISOString()}, alerta ${alerta.id})`);
+        await this.realtime.publish(c.client_id, { kind: 'alerta', alerta }).catch((err: Error) =>
+          this.logger.warn(`Aviso de veículo parado não publicado (client_id ${c.client_id}, alerta ${alerta.id}): ${err.message}`),
+        );
+      } catch (err) {
+        this.logger.warn(`Aviso de veículo parado não gravado (client_id ${c.client_id}, asset_id ${c.asset_id}): ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /** Veículo voltou a andar (a parada de agora começa depois da do aviso): o aviso aberto fecha sozinho. */
+  private async encerrarParadosQueAndaram(clientId: string | null): Promise<void> {
+    let encerrados: { clientId: string; alerta: Alerta }[];
+    try {
+      const { rows } = await this.pool.query(
+        `with ref as (${referenciaParada('$3')})
+         update alertas al set tratado_em = now(), tratamento_motivo = $2, lido_em = coalesce(al.lido_em, now())
+         from ref r
+         where al.asset_id = r.asset_id and al.client_id = r.client_id and al.tipo = $1 and al.tratado_em is null and r.parado_desde > al.ts
+         returning al.id, al.client_id, al.asset_id, al.origem, al.tipo, al.titulo, al.detalhe, al.prioridade, al.exige_tratamento, al.ts,
+           al.lido_em, al.tratado_em, al.tratamento_motivo, al.tratamento_obs, null::text as tratado_por_email`,
+        [TIPO_VEICULO_PARADO, MOTIVO_NORMALIZADO, clientId],
+      );
+      encerrados = rows.map((r) => ({ clientId: r.client_id as string, alerta: toAlerta(r) }));
+    } catch (err) {
+      this.logger.error(`Avisos de veículo parado não encerrados: ${(err as Error).message}`);
+      return;
+    }
+    for (const { clientId: cid, alerta } of encerrados) {
+      this.logger.log(`Aviso de veículo parado encerrado: voltou a andar (client_id ${cid}, asset_id ${alerta.assetId}, alerta ${alerta.id})`);
+      await this.realtime.publish(cid, { kind: 'alerta', alerta }).catch((err: Error) =>
+        this.logger.warn(`Encerramento de aviso de veículo parado não publicado (client_id ${cid}, alerta ${alerta.id}): ${err.message}`),
+      );
     }
   }
 

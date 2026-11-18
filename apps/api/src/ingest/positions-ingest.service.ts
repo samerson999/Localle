@@ -450,12 +450,14 @@ export class PositionsIngestService {
     position: NormalizedPosition,
   ): Promise<boolean> {
     const { rowCount } = await client.query(
-      `insert into ultima_posicao (rastreador_id, asset_id, client_id, posicao_id, fix_time, geom, speed_kmh, ignition)
-       values ($1, $2, $3, $4, $5, st_setsrid(st_makepoint($6, $7), 4326), $8, $9)
+      // movimento_em: última posição andando (> 5 km/h), para o aviso de veículo parado (veiculo-parado.ts)
+      `insert into ultima_posicao (rastreador_id, asset_id, client_id, posicao_id, fix_time, geom, speed_kmh, ignition, movimento_em)
+       values ($1, $2, $3, $4, $5, st_setsrid(st_makepoint($6, $7), 4326), $8, $9, case when $8::numeric > 5 then $5::timestamptz end)
        on conflict (rastreador_id) do update set
          asset_id = excluded.asset_id, client_id = excluded.client_id,
          posicao_id = excluded.posicao_id, fix_time = excluded.fix_time,
          geom = excluded.geom, speed_kmh = excluded.speed_kmh, ignition = excluded.ignition,
+         movimento_em = coalesce(excluded.movimento_em, ultima_posicao.movimento_em),
          atualizado_em = now()
        where excluded.fix_time > ultima_posicao.fix_time`,
       [rastreadorId, assetId, clientId, posicaoId, position.fixTime, position.longitude, position.latitude, position.speedKmh, position.ignition],

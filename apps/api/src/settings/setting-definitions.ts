@@ -46,6 +46,8 @@ const LISTA: SettingDefinition[] = [
   def('monitoramento.parada_min_duracao_min', { modulo: 'monitoramento', label: 'Duração mínima parado para contar como parada (min)', default: 5, min: 1, max: 60 }),
   def('monitoramento.sem_sinal_h', { modulo: 'monitoramento', label: 'Tempo sem comunicação para alertar "sem sinal" (h)', default: 48, min: 0.5, max: 72, porGrupo: true }),
   def('monitoramento.bateria_baixa_v', { modulo: 'monitoramento', label: 'Tensão de bateria considerada baixa (V)', default: 11.5, min: 9, max: 26, porGrupo: true }),
+  // aviso de veículo parado (sem se mover, comunicando) há X horas — 18/11/2026, veiculo-parado.ts
+  def('monitoramento.parado_alerta_h', { modulo: 'monitoramento', label: 'Tempo parado (sem se mover) para avisar "veículo parado" (h)', default: 48, min: 1, max: 720, aplicacao: 'agora' }),
   bool('monitoramento.bloqueio_pendente_critico', 'monitoramento', 'Bloqueio pendente entra como crítico no "Precisa de você"', true),
   // cliente que contrata só monitoramento: a tela abre direto na visão em tela cheia (sprint 28/10/2026, melhoria 1)
   bool('monitoramento.abrir_tela_cheia', 'monitoramento', 'Abrir o Monitoramento em tela cheia (cliente só de monitoramento)', false),
