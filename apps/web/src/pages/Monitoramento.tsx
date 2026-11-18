@@ -299,6 +299,15 @@ function MonitoramentoMapa() {
                   if (r && sec) setStyleMenu(styleMenu ? null : { x: r.left - sec.left, y: r.bottom - sec.top + 6 });
                 }} />
             </span>
+            {/* mapa em tela cheia: os três status do dia a dia na mesma fileira dos filtros, no formato dos botões.
+                Clicar filtra lista e mapa, como os cards da faixa. */}
+            {mapaCheio && (
+              <div role="group" aria-label="Status da frota no mapa" className="flex flex-wrap gap-tight">
+                {STATUS_FROTA.filter((s) => s.k === 'mov' || s.k === 'par' || s.k === 'des').map((s) => (
+                  <StatusPill key={s.k} s={s} count={counts[s.k]} active={st === s.k} onClick={() => setSt(st === s.k ? 'todos' : s.k)} />
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <MapControls items={[
@@ -402,6 +411,20 @@ function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[
         <Num value={count} size="kpi" count />
         <span className="num text-small text-ink-3">{pct}%</span>
       </div>
+    </button>
+    </Tooltip>
+  );
+}
+
+// Status no mapa em tela cheia: a mesma pílula dos botões do mapa (MapBits.MapButton), com a contagem no lugar do ponto
+function StatusPill({ s, count, active, onClick }: { s: typeof STATUS_FROTA[number]; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <Tooltip content={active ? 'Mostrar todos na lista e no mapa' : `Filtrar lista e mapa: ${s.label.toLowerCase()}`}>
+    <button type="button" aria-pressed={active} onClick={onClick}
+      className={cx('h-9 [@media(pointer:coarse)]:h-ctl-sm px-stack rounded-btn bg-card border shadow-float flex items-center gap-stack transition-colors hover:bg-card-2',
+        active ? 'border-brand-fill ring-1 ring-inset ring-brand-fill' : 'border-line')}>
+      <StatusDot kind={s.kind} label={s.label} className="font-medium" />
+      <Num value={count} count className="text-small font-semibold" />
     </button>
     </Tooltip>
   );
