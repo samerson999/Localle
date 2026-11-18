@@ -22,24 +22,19 @@ import { useStore, useAgora, vehicleStatus, type StatusFrota } from '../lib/stor
 import { useResumoUso } from '../lib/localleApi';
 import { Icon, type IconName } from '../components/icons';
 import { StatusGlyph, type StatusKind } from '../components/story';
-import { Ring, LineChart } from '../components/charts';
-import { Button, Card, CardHeader, EmptyState, PageHeader, Progress, Select, Skeleton, Table, Tooltip, cx, FilterSheet } from '../components/ui';
+import { LineChart } from '../components/charts';
+import { Button, Card, CardHeader, EmptyState, PageHeader, Progress, Select, Skeleton, Table, cx, FilterSheet } from '../components/ui';
 import { shortDT, num } from '@localle/shared/utils';
 import { paraUi, rectUi, viewportUi } from '../lib/uiZoom';
 import { useCountUp, reducedMotion } from '../lib/motion';
 
 const KM_USADO = 1; // rodou pelo menos isso no dia = veículo usado
-const RECENTE_MS = 30 * 60_000; // "dados recentes": posição dos últimos 30 minutos
 
-// "Parado" = rastreador que não informa ignição (12/11/2026): só aparece quando há veículo nele
+// só os três estados que o usuário final entende (18/11/2026)
 const ESTADOS: { k: StatusFrota; label: string; kind: StatusKind; cor: string; glifo?: string }[] = [
   { k: 'mov', label: 'Em movimento', kind: 'mov', cor: 'var(--status-mov)' },
   { k: 'par', label: 'Parado ligado', kind: 'parado', cor: 'var(--status-parado)' },
   { k: 'des', label: 'Ignição desligada', kind: 'off', cor: 'var(--status-off)' },
-  { k: 'pnd', label: 'Parado', kind: 'stop', cor: 'color-mix(in srgb, var(--status-off) 55%, transparent)' }, // mais claro que o de ignição desligada, ao lado dele na barra
-  // vermelho só neste gráfico (13/11/2026): sem sinal é rastreador calado além do limite do Setup, pede ação. No mapa o
-  // vermelho continua sendo do Crítico
-  { k: 'sem', label: 'Sem sinal', kind: 'nosignal', cor: 'var(--status-crit)', glifo: '!text-[color:var(--status-crit)]' },
 ];
 
 type ItemFrota = { a: any; v: any; k: StatusFrota };
@@ -53,7 +48,6 @@ const diaCurto = (dia: string) => dataUtc(dia).toLocaleDateString('pt-BR', { wee
 const diaMes = (dia: string) => dataUtc(dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 const diaLongo = (dia: string) => dataUtc(dia).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 const horas = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${String(min % 60).padStart(2, '0')}` : ''}`);
-const haQuanto = (t: number) => { const m = Math.round((Date.now() - t) / 60_000); return m < 1 ? 'agora' : m < 60 ? `há ${m} min` : `há ${horas(m)}`; };
 
 export default function Inicio() {
   const todos = useStore(useShallow((s) => s.assets.filter((a: any) => a.tracker)));
@@ -85,7 +79,6 @@ export default function Inicio() {
   const hoje = dias[dias.length - 1];
   const usadosNo = (d: string, ids?: Set<string>) => [...(uso.get(d)?.entries() ?? [])].filter(([id, x]) => x.km >= KM_USADO && (!ids || ids.has(id))).length;
   const util = dias.map((d) => pct(usadosNo(d), total));
-  const ultima = Math.max(0, ...frota.filter((x) => x.v).map((x) => x.v.lastUpdate));
   // hoje × média dos 7 dias anteriores ATÉ A MESMA HORA (o cartão de utilização e o de leitura usam a mesma conta). Com os
   // dias inteiros, o dia de hoje (ainda em andamento) ficava "abaixo da semana" toda manhã. O gráfico segue com os dias
   // inteiros. API antiga, sem o km até agora: sem comparação (null), em vez de uma conta enganosa.
@@ -103,7 +96,7 @@ export default function Inicio() {
     </div>
   );
 
-  const gruposComFrota = groups.filter((g: any) => todos.some((a: any) => a.groupIds?.includes(g.id)));
+  const gruposComFrota = groups.filter((g: any) => g.id !== 'g_api' && todos.some((a: any) => a.groupIds?.includes(g.id)));
   const mostraGrupos = gruposComFrota.length > 0 && !grupo;
 
   return (
@@ -121,9 +114,8 @@ export default function Inicio() {
         <Resumo className="lg:col-span-7" frota={frota} total={total} compacto={compacto}
           filtro={<FilterSheet count={grupo ? 1 : 0}>{gruposComFrota.length > 0 && <div className="w-[200px] max-md:w-full"><Select aria-label="Grupo" value={grupo} onChange={(e) => setGrupo(e.target.value)}
             options={[{ value: '', label: 'Toda a frota' }, ...gruposComFrota.map((g: any) => ({ value: g.id, label: g.name }))]} /></div>}</FilterSheet>} />
-        <div className={cx('lg:col-span-5 grid lg:grid-rows-[auto_minmax(0,1fr)] min-h-0', compacto ? 'gap-3' : 'gap-grid')}>
+        <div className={cx('lg:col-span-5 grid min-h-0', compacto ? 'gap-3' : 'gap-grid')}>
           <Atividade carregando={carregando} uso={hoje ? uso.get(hoje) : undefined} total={total} viagens={viagensOn ? viagensDoDia(trips, hoje, assets) : null} />
-          <Conectividade frota={frota} total={total} ultima={ultima} compacto={compacto} />
         </div>
         <Utilizacao className="lg:col-span-12" compacto={compacto} carregando={carregando} dias={dias} util={util} usados={dias.map((d) => usadosNo(d))}
           km={dias.map((d) => soma(uso.get(d), 'km'))} total={total} media={media} delta={delta} />
@@ -209,9 +201,11 @@ function Variacao({ delta }: { delta: number }) {
 
 // 1) Resumo da frota: total grande, barra por estado (vão de 2 px entre trechos) e cada estado com número e %.
 function Resumo({ className, frota, total, compacto, filtro }: { className: string; frota: ItemFrota[]; total: number; compacto?: boolean; filtro?: React.ReactNode }) {
-  const conta = (k: string) => frota.filter((x) => x.k === k).length;
-  const estados = ESTADOS.filter((e) => e.k !== 'pnd' || conta('pnd') > 0);
-  const recentes = frota.filter((x) => x.v && Date.now() - x.v.lastUpdate < RECENTE_MS).length;
+  // só os três estados que o usuário entende (18/11): parado sem ignição conhecida e sem atualização contam como
+  // ignição desligada — o detalhe de comunicação fica no Monitoramento/diagnóstico
+  const grupo = (k: string) => (k === 'mov' || k === 'par' ? k : 'des');
+  const conta = (k: string) => frota.filter((x) => grupo(x.k) === k).length;
+  const estados = ESTADOS;
   return (
     <Card className={className} dense={compacto} title="Resumo da frota" icon="tendencia" actions={filtro}>
       <div className={cx('flex flex-col justify-between h-full', compacto ? 'gap-3' : 'gap-6')}>
@@ -220,15 +214,12 @@ function Resumo({ className, frota, total, compacto, filtro }: { className: stri
             <Numero tamanho="xl"><Conta v={total} /></Numero>
             <span className="text-h2 text-ink-2 pb-1">{total === 1 ? 'veículo' : 'veículos'} rastreados</span>
           </div>
-          <span className={cx('self-start inline-flex items-center gap-1.5 px-3 rounded-pill bg-card-2 text-small text-ink-2', compacto ? 'h-7' : 'h-8')}>
-            <span className="num font-semibold text-ink"><Conta v={pct(recentes, total)} f={fmt1} />%</span> com posição nos últimos 30 min
-          </span>
         </div>
         <div className={cx('flex flex-col', compacto ? 'gap-3' : 'gap-5')}>
           <div role="img" aria-label={estados.map((e) => `${e.label}: ${conta(e.k)}`).join(', ')} className="flex h-2.5 gap-[2px] rounded-pill overflow-hidden bg-track">
             {estados.map((e, i) => conta(e.k) > 0 && <span key={e.k} className="grow-x" style={{ flexGrow: conta(e.k), background: e.cor, ['--i' as any]: i * 2 }} />)}
           </div>
-          <ul className={cx('grid grid-cols-2 gap-x-4', estados.length > 4 ? 'sm:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-4', compacto ? 'gap-y-2' : 'gap-y-5')}>
+          <ul className={cx('grid grid-cols-3 gap-x-4', compacto ? 'gap-y-2' : 'gap-y-5')}>
             {estados.map((e) => (
               <li key={e.k} className="flex flex-col gap-1.5 min-w-0">
                 <span className="flex items-center gap-tight text-small text-ink-2 truncate"><StatusGlyph kind={e.kind} className={e.glifo} />{e.label}</span>
@@ -253,49 +244,18 @@ function Atividade({ carregando, uso, total, viagens }: { carregando: boolean; u
       : { icone: 'ativos', valor: <Conta v={rodaram} />, rot: `de ${total} rodaram`, espera: carregando },
   ];
   return (
-    <Card dense title="Atividade de hoje" icon="viagens">
-      <div className="grid grid-cols-3 divide-x divide-line">
+    // no desktop o cartão ocupa a altura da coluna ao lado do Resumo: os três números seguem lado a lado, centrados na altura
+    <Card dense title="Atividade de hoje" icon="viagens" className="h-full">
+      <div className="h-full grid grid-cols-3 lg:items-center divide-x divide-line">
         {itens.map((x) => (
-          <div key={x.icone} className="flex items-start gap-tight min-w-0 px-3 sm:px-4 first:pl-0 last:pr-0">
+          <div key={x.icone} className="flex items-start gap-tight min-w-0 px-3 sm:px-4 first:pl-0 last:pr-0 lg:py-2">
             <Icon name={x.icone} size={22} className="mt-0.5 shrink-0 text-ink-2 max-sm:hidden" />
-            <div className="min-w-0 flex flex-col gap-1">
-              {x.espera ? <Skeleton className="h-6 w-20" /> : <Numero className="truncate">{x.valor}</Numero>}
+            <div className="min-w-0 flex flex-col gap-1 lg:gap-2">
+              {x.espera ? <Skeleton className="h-6 w-20" /> : <Numero className="truncate lg:!text-[length:calc(32px*var(--fit,1))]">{x.valor}</Numero>}
               <span className="text-small text-ink-2 max-sm:leading-snug max-sm:line-clamp-2 sm:truncate">{x.rot}</span>
             </div>
           </div>
         ))}
-      </div>
-    </Card>
-  );
-}
-
-// 4) Conectividade: % transmitindo, anel e a separação entre "sem comunicação" (rastreador calado além do limite do cliente)
-// e os demais casos — diferente de veículo parado, que segue mandando posição.
-function Conectividade({ frota, total, ultima, compacto }: { frota: ItemFrota[]; total: number; ultima: number; compacto?: boolean }) {
-  const transmitindo = frota.filter((x) => x.v && !x.v.noSignal).length;
-  const linhas: { label: string; n: number; kind: StatusKind; dica?: string }[] = [
-    { label: 'Transmitindo', n: transmitindo, kind: 'mov' },
-    { label: 'Sem comunicação', n: frota.filter((x) => x.v?.noSignal && x.v?.comunicacao !== 'sem_gps').length, kind: 'nosignal', dica: 'O rastreador parou de enviar dados — não é o mesmo que veículo parado.' },
-    { label: 'Sem GPS', n: frota.filter((x) => x.v?.comunicacao === 'sem_gps').length, kind: 'parado', dica: 'Envia dados, mas sem posição válida.' },
-    { label: 'Aguardando 1ª posição', n: frota.filter((x) => !x.v).length, kind: 'off', dica: 'Rastreador instalado que ainda não mandou posição.' },
-  ];
-  const visiveis = linhas.filter((l) => l.n > 0 || l.label === 'Transmitindo' || l.label === 'Sem comunicação');
-  const p = pct(transmitindo, total);
-  return (
-    <Card dense title="Conectividade dos rastreadores" icon="sinal"
-      subtitle={compacto ? undefined : ultima ? `Última posição ${shortDT(ultima)} (${haQuanto(ultima)})` : 'Nenhuma posição recebida ainda'}>
-      <div className={cx('grid grid-cols-[auto_1fr] sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.1fr)] items-center gap-x-6', compacto ? 'gap-y-2' : 'gap-y-4')}>
-        <div className="max-sm:col-span-2 flex flex-col gap-1.5">
-          <Numero tamanho="lg"><Conta v={p} f={fmt1} />%</Numero>
-          <span className="text-small text-ink-2">{transmitindo} de {total} transmitindo</span>
-        </div>
-        <Ring value={p / 100} size={compacto ? 64 : 84} thickness={compacto ? 8 : 10} label="Rastreadores transmitindo" />
-        <ul className={cx('flex flex-col min-w-0', compacto ? 'gap-1' : 'gap-2.5')}>
-          {visiveis.map((l) => {
-            const linha = <li key={l.label} className="flex items-center gap-2.5 text-body"><StatusGlyph kind={l.kind} /><span className="flex-1 min-w-0 truncate">{l.label}</span><span className="num font-semibold">{l.n}</span></li>;
-            return l.dica ? <Tooltip key={l.label} content={l.dica}>{linha}</Tooltip> : linha;
-          })}
-        </ul>
       </div>
     </Card>
   );
