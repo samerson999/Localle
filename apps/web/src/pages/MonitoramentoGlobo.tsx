@@ -23,6 +23,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, useAgora, vehicleStatus } from '../lib/store';
+import { rotuloMotorista } from '../lib/driverLinks';
 import { useCriticalMap } from '../lib/critical';
 import { PALETA, useTema, type Kind, type Modo, type Paleta } from '../lib/aparencia';
 import { cx, useScrollLock, Sheet, type SheetDetent } from '../components/ui';
@@ -72,6 +73,8 @@ export default function MonitoramentoGlobo() {
   const assets = useStore(useShallow((s) => s.assets.filter((a: any) => a.tracker)));
   const vehicles = useStore((s) => s.vehicles);
   const drivers = useStore((s) => s.drivers);
+  const driverLinks = useStore((s) => s.driverLinks);
+  const leitorCartao = useStore((s) => s.leitorCartao);
   const crit = useCriticalMap();
   const { modo, setModo, tema } = useTema();
   const P = PALETA[tema];
@@ -88,11 +91,11 @@ export default function MonitoramentoGlobo() {
   const itens: Item[] = useMemo(() => assets.map((a: any) => {
     const v = vehicles[a.id], s = vehicleStatus(v, agora);
     return {
-      id: a.id, plate: a.name, model: [a.brand, a.model].filter(Boolean).join(' '), driver: drivers.find((d: any) => d.id === a.driverId)?.name || 'Sem motorista',
+      id: a.id, plate: a.name, model: [a.brand, a.model].filter(Boolean).join(' '), driver: rotuloMotorista({ drivers, driverLinks, leitorCartao }, a),
       pos: v?.pos, key: s.key, kind: crit.has(a.id) ? 'crit' : KIND_DE[s.key] || 'off', label: crit.has(a.id) ? 'Crítico' : s.label, speed: v && s.key !== 'sem' && !s.semPosicao ? Math.round(v.speed || 0) : null, ts: v?.lastUpdate,
       blocked: !!v?.blocked, asset: a,
     };
-  }), [assets, vehicles, drivers, crit, agora]);
+  }), [assets, vehicles, drivers, driverLinks, leitorCartao, crit, agora]);
   // os contadores contam o veículo aberto no cartão ou, sem ele, o recorte da busca; o filtro de status não entra, senão
   // tocar num contador zerava os outros
   const buscados = useMemo(() => itens.filter((i) => !q || (i.plate + i.model + i.driver).toLowerCase().includes(q.toLowerCase())), [itens, q]);

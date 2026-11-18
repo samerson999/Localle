@@ -114,6 +114,48 @@ describe('identificação do motorista — ingestão e isolamento', () => {
     ]);
   });
 
+  it('liga e passa o cartão, desliga, religa com o mesmo cartão, depois com um sem cadastro; a ingestão devolve cada mudança', async () => {
+    const v = await veiculo(clientA);
+    const carla = await motoristas.criar(clientA, parseMotorista({ nome: 'Carla', codigoIdentificacao: '880011' }));
+    const mudancas = async (min: number, attrs: Record<string, unknown>, ignicao: boolean) => {
+      const r = await ingest.ingest(posicao(v.deviceId, min, attrs, ignicao));
+      return r.status === 'gravada' ? r.motoristas.map((m) => ({ acao: m.acao, motoristaId: m.motoristaId, codigo: m.codigo, ts: m.ts, encerradoPor: m.encerradoPor })) : null;
+    };
+
+    expect(await mudancas(0, { driverUniqueId: '880011' }, true)).toEqual([{ acao: 'abriu', motoristaId: carla.id, codigo: '880011', ts: em(0), encerradoPor: undefined }]);
+    expect(await mudancas(5, { driverUniqueId: '880011' }, false)).toEqual([
+      { acao: 'encerrou', motoristaId: carla.id, codigo: '880011', ts: em(5), encerradoPor: 'ignicao_desligada' },
+    ]);
+    expect(await mudancas(6, { driverUniqueId: '0' }, false)).toEqual([]); // desligado: nada aberto, nada muda
+    expect(await mudancas(10, { driverUniqueId: '880011' }, true)).toEqual([{ acao: 'abriu', motoristaId: carla.id, codigo: '880011', ts: em(10), encerradoPor: undefined }]);
+    expect(await mudancas(15, { driverUniqueId: '880011' }, false)).toHaveLength(1);
+    expect(await mudancas(20, { driverUniqueId: '990022' }, true)).toEqual([{ acao: 'abriu', motoristaId: null, codigo: '990022', ts: em(20), encerradoPor: undefined }]);
+
+    const linhas = await doAtivo(clientA, v.assetId);
+    expect(linhas.map((l) => [l.motorista_id, l.codigo, l.encerrado_por])).toEqual([
+      [carla.id, '880011', 'ignicao_desligada'], [carla.id, '880011', 'ignicao_desligada'], [null, '990022', null],
+    ]);
+  });
+
+  it('cartão cadastrado com o vínculo aberto devolve o mesmo vínculo, agora com o motorista', async () => {
+    const v = await veiculo(clientA);
+    const r1 = await ingest.ingest(posicao(v.deviceId, 0, { driverUniqueId: '660033' }));
+    const dani = await motoristas.criar(clientA, parseMotorista({ nome: 'Dani', codigoIdentificacao: '660033' }));
+    const r2 = await ingest.ingest(posicao(v.deviceId, 1, { driverUniqueId: '660033' }));
+    if (r1.status !== 'gravada' || r2.status !== 'gravada') throw new Error('posição não gravada');
+    expect(r2.motoristas).toEqual([{ ...r1.motoristas[0], motoristaId: dani.id }]);
+  });
+
+  it('ativos com leitor: só a instalação principal vigente marcada, e só do próprio cliente', async () => {
+    const comLeitor = await veiculo(clientA);
+    const semLeitor = await veiculo(clientA);
+    await pool.query('update instalacoes set leitor_motorista = true where rastreador_id = $1', [comLeitor.rastreadorId]);
+    const ativosA = await vinculos.ativosComLeitor(clientA);
+    expect(ativosA).toContain(comLeitor.assetId);
+    expect(ativosA).not.toContain(semLeitor.assetId);
+    expect(await vinculos.ativosComLeitor(clientB)).not.toContain(comLeitor.assetId);
+  });
+
   it('troca de cartão encerra o anterior; código cadastrado depois liga o vínculo aberto; aparelho sem ignição usa só o código', async () => {
     const v = await veiculo(clientA);
     await ingest.ingest(posicao(v.deviceId, 0, { driverUniqueId: '00000000A1B2C3D4' }, null));

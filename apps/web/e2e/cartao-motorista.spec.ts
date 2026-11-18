@@ -8,12 +8,12 @@ import { E2E_EMAIL, E2E_SENHA } from './usuario';
 // lido) são semeados direto no banco local por apps/api/scripts/e2e-cartao-motorista.mjs — o cartão lido só nasce
 // da ingestão, que não tem tela.
 
-interface Dados { assetId: string; codigo: string; instalacaoId: string }
+interface Dados { assetId: string; codigo: string; placa: string; instalacaoId: string }
 
 // login + carga da frota (60 ativos do Cliente Demo) com os dois projetos em paralelo passa dos 5 s padrão do expect
 const CARGA = { timeout: 30_000 };
 
-const script = (acao: 'preparar' | 'limpar', tag: string) =>
+const script = (acao: 'preparar' | 'desligar' | 'limpar', tag: string) =>
   execFileSync(process.execPath, ['scripts/e2e-cartao-motorista.mjs', acao, tag], { cwd: '../api', encoding: 'utf8' });
 
 async function entrar(page: Page) {
@@ -80,5 +80,21 @@ test.describe('cartão do motorista', () => {
     await page.goto('/#/setup?aba=motoristas');
     await expect(page.getByText('Exigir identificação do motorista pelo cartão (avisa veículo rodando sem)').filter({ visible: true }).first()).toBeVisible(CARGA);
     await expect(page.getByText('Tempo andando sem cartão antes do aviso (min)').filter({ visible: true }).first()).toBeVisible();
+  });
+
+  // regra de 18/11/2026: cartão sem cadastro aparece como tal; ignição desligada = "Sem motorista" (nunca o fixo da ficha)
+  test('Monitoramento: "Cartão não cadastrado" com o cartão lido e "Sem motorista" depois de desligar', async ({ page }) => {
+    const veiculo = async () => {
+      await page.goto('/#/monitoramento');
+      await page.getByPlaceholder('Buscar placa, motorista ou modelo').filter({ visible: true }).first().fill(dados.placa, CARGA);
+    };
+    await veiculo();
+    await expect(page.getByText(/Cartão não cadastrado/).filter({ visible: true }).first()).toBeVisible(CARGA);
+
+    script('desligar', tag);
+    await page.reload();
+    await veiculo();
+    await expect(page.getByText(/Sem motorista/).filter({ visible: true }).first()).toBeVisible(CARGA);
+    await expect(page.getByText(/Cartão não cadastrado/).filter({ visible: true })).toHaveCount(0);
   });
 });

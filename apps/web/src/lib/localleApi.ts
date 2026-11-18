@@ -9,6 +9,7 @@ import { alertaIdOf, alertaToAlert, alertIdFor, applyComunicacao, applyPosicao, 
 import { useStore } from './store';
 import { estadoSemCliente } from './estadoInicial';
 import * as M from './localleModulos';
+import { motoristaDoAtivo } from './driverLinks';
 import { LIVE_GROUP } from './rastreioApi';
 import { erroHttp, fetchOuErro, mensagemDeErro, MSG_SESSAO } from './apiErro';
 
@@ -684,6 +685,13 @@ function applyMessage(m: RealtimeMessage) {
     // alerta novo ou atualizado (lido/tratado por outro usuário): quem cria e decide é o backend
     if (m.kind === 'alerta') return { alerts: upsertAlertas(s, [m.alerta]) };
     if (m.kind === 'comando_status') return aplicarComandoStatus(s, m.comando);
+    // cartão do motorista lido ou encerrado (ignição desligada, troca, cartão zerado): o nome no mapa muda na hora
+    if (m.kind === 'motorista') {
+      const driverLinks = M.aplicarVinculoTempoReal(s.driverLinks || [], m);
+      const id = assetIdFor(m.assetId);
+      const novo = { ...s, driverLinks };
+      return { driverLinks, assets: s.assets.map((a: any) => (a.id === id ? { ...a, driverId: motoristaDoAtivo(novo, id, a.driverId || '') } : a)) };
+    }
     return {}; // evento cru: já está persistido; o que precisava de alerta chega como kind 'alerta'
   });
 }
@@ -877,20 +885,24 @@ const desde = (dias: number) => `de=${new Date(Date.now() - dias * DIA).toISOStr
 const patch = (fn: (s: any) => any) => useStore.getState().patch(fn);
 
 export async function syncMotoristas() {
-  const [motoristas, assets, vinculos] = await Promise.all([
+  const [motoristas, assets, vinculos, leitores] = await Promise.all([
     apiGet<any[]>('/motoristas?incluirInativos=true'), apiGet<any[]>('/assets?incluirInativos=true'), apiGet<any[]>('/motoristas/vinculos'),
+    apiGet<string[]>('/motoristas/leitores'),
   ]);
-  const driverOf = new Map(assets.map((a) => [assetIdFor(a.id), a.motorista_id || '']));
-  // motorista atual = o identificado pelo cartão quando há (origem de maior prioridade, PRODUCT.md), senão o do cadastro
-  for (const v of vinculos) if (!v.fim && v.motorista_id && v.origem === 'rastreador') driverOf.set(assetIdFor(v.asset_id), v.motorista_id);
-  patch((s) => ({
+  const fixo = new Map(assets.map((a) => [assetIdFor(a.id), a.motorista_id || '']));
+  patch((s) => {
     // identificação pelo rastreador (iButton/RFID): histórico da API, últimos 30 dias + os vigentes
-    driverLinks: M.mesclarVinculos(s.driverLinks, vinculos),
-    drivers: motoristas.map(M.motoristaToDriver).filter((d) => d.active),
-    // desativados ficam fora das telas operacionais; só a lista de motoristas mostra, para reativar
-    driversInativos: motoristas.map(M.motoristaToDriver).filter((d) => !d.active),
-    assets: s.assets.map((a: any) => (driverOf.has(a.id) ? { ...a, driverId: driverOf.get(a.id) } : a)),
-  }));
+    const novo = { ...s, driverLinks: M.mesclarVinculos(s.driverLinks, vinculos), leitorCartao: leitores.map(assetIdFor) };
+    return {
+      driverLinks: novo.driverLinks,
+      leitorCartao: novo.leitorCartao,
+      drivers: motoristas.map(M.motoristaToDriver).filter((d) => d.active),
+      // desativados ficam fora das telas operacionais; só a lista de motoristas mostra, para reativar
+      driversInativos: motoristas.map(M.motoristaToDriver).filter((d) => !d.active),
+      // motorista atual = o do cartão no veículo com leitor (sem cartão, nenhum), o da ficha nos demais
+      assets: s.assets.map((a: any) => (fixo.has(a.id) ? { ...a, driverId: motoristaDoAtivo(novo, a.id, fixo.get(a.id)!) } : a)),
+    };
+  });
 }
 export async function salvarMotorista(d: any) {
   const salvo = await apiSend<any>(d.id ? 'PATCH' : 'POST', d.id ? `/motoristas/${d.id}` : '/motoristas', M.driverToMotoristaBody(d));

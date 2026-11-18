@@ -38,4 +38,14 @@ export class MotoristaVinculosRepository extends BaseRepository<MotoristaVinculo
     );
     return rows;
   }
+
+  /** Ids dos ativos com leitor de cartão marcado na instalação principal vigente. */
+  async ativosComLeitor(clientId: string): Promise<string[]> {
+    const { rows } = await this.pool.query<{ asset_id: string }>(
+      `select distinct asset_id from instalacoes
+        where client_id = $1 and desinstalado_em is null and papel = 'principal' and leitor_motorista`,
+      [clientId],
+    );
+    return rows.map((r) => r.asset_id);
+  }
 }

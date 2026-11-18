@@ -44,6 +44,17 @@ export function vinculoToLink(v: any) {
 export function mesclarVinculos(locais: any[] | undefined, daApi: any[]) {
   return [...(locais || []).filter((l) => l.source !== 'rastreador'), ...daApi.map(vinculoToLink)];
 }
+/**
+ * Vínculo do cartão aberto ou encerrado pela ingestão (tempo real, kind `motorista`) aplicado ao histórico do store.
+ * `abriu` com um id já conhecido é o cartão cadastrado com o vínculo aberto: troca só o motorista. `encerrou` de um
+ * vínculo que a tela não carregou não tem o que fechar.
+ */
+export function aplicarVinculoTempoReal(links: any[], m: { acao: 'abriu' | 'encerrou'; vinculoId: string; assetId: string; motoristaId: string | null; codigo: string; ts: string; encerradoPor?: string }) {
+  const atual = links.find((l) => l.id === m.vinculoId);
+  if (m.acao === 'encerrou') return atual ? links.map((l) => (l.id === m.vinculoId ? { ...l, end: Date.parse(m.ts), endedBy: m.encerradoPor || null } : l)) : links;
+  const link = { ...(atual || { id: m.vinculoId, assetId: asset(m.assetId), start: Date.parse(m.ts), end: null, source: 'rastreador', endedBy: null }), driverId: m.motoristaId || '', code: m.codigo };
+  return atual ? links.map((l) => (l.id === m.vinculoId ? link : l)) : [...links, link];
+}
 
 // ---------- grupos de ativos ----------
 export function grupoToGroup(g: any) {

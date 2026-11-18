@@ -8,7 +8,7 @@ import { avaliarAlertasPlataforma } from '../alertas/alertas-plataforma';
 import { detectarCercas } from '../cercas/cerca-detector';
 import { FUSO_PADRAO } from '../regras/avaliar-regra';
 import { avaliarRegras } from '../regras/motor-regras';
-import { registrarIdentificacao } from '../motoristas/identificacao-motorista';
+import { registrarIdentificacao, type MudancaVinculo } from '../motoristas/identificacao-motorista';
 import { avaliarSemIdentificacao } from '../motoristas/aviso-sem-identificacao';
 import { atualizarSinaisMotor } from '../telemetria/instalacao-sinais.repository';
 import { acompanharAtributos, chavesLidas, type DatasPorChave } from '../telemetria/atributos-vistos';
@@ -35,6 +35,8 @@ export type IngestResult =
       eventos: EventoGravado[];
       /** Alertas criados nesta transação (para o worker publicar em tempo real). */
       alertas: Alerta[];
+      /** Vínculos motorista × veículo (cartão) abertos ou encerrados nesta transação, para publicar em tempo real. */
+      motoristas: MudancaVinculo[];
       /** Lida dos últimos atributos conhecidos do rastreador (não só desta posição), com o mapeamento do modelo. */
       telemetria: Telemetria;
     };
@@ -193,6 +195,7 @@ export class PositionsIngestService {
       // motorista identificado (iButton/RFID/cartão): só o pacote mais novo do rastreador decide o vínculo — o atrasado
       // (buffer do aparelho, reenvio) abriria ou fecharia vínculo fora de ordem. Backup não fala pelo ativo.
       const maisNovo = !comunicacao.atributosEmAntes || position.serverTime >= comunicacao.atributosEmAntes;
+      const motoristas: MudancaVinculo[] = [];
       if (clientId && assetId && maisNovo) {
         const mudancas = await registrarIdentificacao(client, {
           clientId,
@@ -203,6 +206,7 @@ export class PositionsIngestService {
           ts: copia ? position.serverTime : position.fixTime,
           atributoMotorista: rastreador.rows[0].atributo_motorista,
         });
+        motoristas.push(...mudancas);
         for (const m of mudancas) {
           this.logger.log(
             `rastreador_id=${rastreadorId} asset_id=${m.assetId} motorista ${m.acao === 'abriu' ? 'identificado' : `encerrado (${m.encerradoPor})`}: código ${m.codigo}${m.motoristaId ? ` motorista_id=${m.motoristaId}` : ' (não cadastrado)'}`,
@@ -306,7 +310,7 @@ export class PositionsIngestService {
         this.logger.debug(`rastreador_id=${rastreadorId} instalacao_id=${vigente.instalacaoId} posição do backup gravada (não move o ativo)`);
         return {
           status: 'gravada', posicaoId, posicaoCopiada: !!copia, rastreadorId, clientId, assetId: null,
-          atualizouUltimaPosicao: false, eventos, alertas: alertasBackup, telemetria,
+          atualizouUltimaPosicao: false, eventos, alertas: alertasBackup, motoristas: [], telemetria,
         };
       }
       // cópia da última posição: mesmo lugar, nada entra nem sai de cerca
@@ -357,7 +361,7 @@ export class PositionsIngestService {
       }
 
       await client.query('commit');
-      return { status: 'gravada', posicaoId, posicaoCopiada: !!copia, rastreadorId, clientId, assetId, atualizouUltimaPosicao, eventos, alertas, telemetria };
+      return { status: 'gravada', posicaoId, posicaoCopiada: !!copia, rastreadorId, clientId, assetId, atualizouUltimaPosicao, eventos, alertas, motoristas, telemetria };
     } catch (err) {
       await client.query('rollback');
       throw err;

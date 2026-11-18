@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   abastecimentoToFueling, ativoDaApi, driverToMotoristaBody, fichaDoAtivo, temFicha, eventToEventoRankingBody, fineToMultaBody, fuelingToAbastecimentoBody, groupIdsByAsset, grupoToGroup,
   marcacaoToMark, markToMarcacaoBody, matrizToMatrix, matrixToMatrizBody, modeloToTemplate, motoristaToDriver, multaToFine, osToWorkOrder, planoToPlan, planToPlanoBody,
-  responseToRespostaBody, respostaToResponse, tiposToRankCfg, tripToViagemBody, viagemToTrip, workOrderToOsBody, mesclarVinculos,
+  responseToRespostaBody, respostaToResponse, tiposToRankCfg, tripToViagemBody, viagemToTrip, workOrderToOsBody, mesclarVinculos, aplicarVinculoTempoReal,
 } from './localleModulos';
 
 const U = '11111111-1111-4111-8111-111111111111';
@@ -145,5 +145,16 @@ describe('identificação do motorista pelo rastreador', () => {
     const r = mesclarVinculos(locais, daApi);
     expect(r.map((l) => l.id)).toEqual(['l1', 'v1']);
     expect(r[1]).toMatchObject({ driverId: '', code: '2837467883', source: 'rastreador', start: Date.parse('2026-11-17T13:55:00Z'), end: null });
+  });
+  it('vínculo do cartão em tempo real: abre, liga ao motorista cadastrado depois e encerra pelo id', () => {
+    const msg = { vinculoId: 'v9', assetId: U, codigo: '880011', ts: '2026-11-18T10:00:00Z' };
+    const aberto = aplicarVinculoTempoReal([{ id: 'l1', source: 'escala' }], { ...msg, acao: 'abriu', motoristaId: null });
+    expect(aberto[1]).toEqual({ id: 'v9', assetId: `lc_${U}`, driverId: '', code: '880011', start: Date.parse(msg.ts), end: null, source: 'rastreador', endedBy: null });
+    const ligado = aplicarVinculoTempoReal(aberto, { ...msg, acao: 'abriu', motoristaId: 'm1' });
+    expect(ligado).toHaveLength(2);
+    expect(ligado[1]).toMatchObject({ driverId: 'm1', start: Date.parse(msg.ts), end: null });
+    const fechado = aplicarVinculoTempoReal(ligado, { ...msg, acao: 'encerrou', motoristaId: 'm1', ts: '2026-11-18T11:00:00Z', encerradoPor: 'ignicao_desligada' });
+    expect(fechado[1]).toMatchObject({ end: Date.parse('2026-11-18T11:00:00Z'), endedBy: 'ignicao_desligada' });
+    expect(aplicarVinculoTempoReal(ligado, { ...msg, vinculoId: 'outro', acao: 'encerrou', motoristaId: null })).toBe(ligado);
   });
 });

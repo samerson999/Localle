@@ -30,7 +30,7 @@ export function estadoInicial() {
     journey: [], campaigns: [], accessLog: [], rankCfg: { types: {}, custom: [], limit: 100, limitPeriod: 'mes' },
     fuelGoals: { company: { kml: 0, budget: 0 }, operations: {}, groups: {} }, fuelCfg: { ocr: false }, eventWeights: {}, ruleHits: {},
     couplings: [], tires: [], tireCfg: { ...DEFAULT_TIRE_CFG }, odometerReadings: [], maintRecipients: DEFAULT_RECIPIENTS.map((r) => ({ ...r })),
-    escLog: {}, outbox: [], platform: { demoBilling: { ...DEFAULT_BILLING }, clients: [], contracts: [] }, driverLinks: [], trackerStock: [],
+    escLog: {}, outbox: [], platform: { demoBilling: { ...DEFAULT_BILLING }, clients: [], contracts: [] }, driverLinks: [], leitorCartao: [], trackerStock: [],
   };
 }
 

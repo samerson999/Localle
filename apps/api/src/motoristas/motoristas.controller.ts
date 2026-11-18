@@ -96,6 +96,16 @@ export class MotoristasController {
     return this.vinculos.listar(clientId, new Date(Date.now() - n * 86_400_000));
   }
 
+  /**
+   * Ativos com leitor de cartão marcado na instalação principal vigente: neles quem diz o motorista é o cartão — sem
+   * cartão lido a tela mostra "Sem motorista", não o motorista fixo da ficha (decisão de 18/11/2026).
+   */
+  @Get('leitores')
+  @RequirePermission('ativos.ver')
+  ativosComLeitor(@ClientId() clientId: string) {
+    return this.vinculos.ativosComLeitor(clientId);
+  }
+
   @Get(':id')
   @RequirePermission('ativos.ver')
   async buscar(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string) {

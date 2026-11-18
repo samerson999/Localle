@@ -2,6 +2,7 @@
 // ("Cliente Demo", o mesmo do seed-demo-user). Só banco local.
 //
 //   node scripts/e2e-cartao-motorista.mjs preparar <tag>  → imprime { assetId, codigo, instalacaoId } em JSON
+//   node scripts/e2e-cartao-motorista.mjs desligar <tag>  → encerra o cartão como a ingestão faz na ignição desligada
 //   node scripts/e2e-cartao-motorista.mjs limpar <tag>
 //
 // `preparar`: veículo com rastreador de modelo que aceita leitor, instalado sem o leitor marcado, e um cartão lido pelo
@@ -11,8 +12,8 @@ import { randomInt } from 'node:crypto';
 import pg from 'pg';
 
 const [, , acao, tag] = process.argv;
-if (!['preparar', 'limpar'].includes(acao) || !/^[a-z0-9]{6,16}$/.test(tag ?? '')) {
-  console.error('uso: e2e-cartao-motorista.mjs preparar|limpar <tag de 6 a 16 letras/números minúsculos>');
+if (!['preparar', 'desligar', 'limpar'].includes(acao) || !/^[a-z0-9]{6,16}$/.test(tag ?? '')) {
+  console.error('uso: e2e-cartao-motorista.mjs preparar|desligar|limpar <tag de 6 a 16 letras/números minúsculos>');
   process.exit(2);
 }
 // localhost pode resolver para ::1 no Windows e o Postgres do Docker escuta no IPv4
@@ -46,7 +47,13 @@ try {
        values ($1, $2, null, 'rastreador', $3, $4, now() - interval '10 minutes')`,
       [cliente.id, asset.id, codigo, rastreador.id],
     );
-    console.log(JSON.stringify({ assetId: asset.id, codigo, instalacaoId: instalacao.id }));
+    console.log(JSON.stringify({ assetId: asset.id, codigo, placa, instalacaoId: instalacao.id }));
+  } else if (acao === 'desligar') {
+    await pool.query(
+      `update motorista_vinculos set fim = now(), encerrado_por = 'ignicao_desligada'
+        where client_id = $1 and codigo = $2 and origem = 'rastreador' and fim is null`,
+      [cliente.id, codigo],
+    );
   } else {
     const { rows: rs } = await pool.query(
       'select r.id from rastreadores r join rastreador_modelos m on m.id = r.modelo_id where m.fabricante = $1',

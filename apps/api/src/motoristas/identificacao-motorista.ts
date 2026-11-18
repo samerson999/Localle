@@ -27,7 +27,10 @@ export type EncerradoPor = 'troca' | 'sem_codigo' | 'ignicao_desligada';
 
 export interface MudancaVinculo {
   acao: 'abriu' | 'encerrou';
+  vinculoId: string;
   assetId: string;
+  /** Início do vínculo que abriu, ou fim do que encerrou. */
+  ts: Date;
   codigo: string;
   motoristaId: string | null;
   encerradoPor?: EncerradoPor;
@@ -72,7 +75,7 @@ export async function registrarIdentificacao(
   const mudancas: MudancaVinculo[] = [];
   const encerrar = async (v: { id: string; codigo: string; motorista_id: string | null }, assetId: string, por: EncerradoPor) => {
     await executor.query('update motorista_vinculos set fim = $2, encerrado_por = $3 where id = $1 and client_id = $4', [v.id, ctx.ts, por, ctx.clientId]);
-    mudancas.push({ acao: 'encerrou', assetId, codigo: v.codigo, motoristaId: v.motorista_id, encerradoPor: por });
+    mudancas.push({ acao: 'encerrou', vinculoId: v.id, assetId, ts: ctx.ts, codigo: v.codigo, motoristaId: v.motorista_id, encerradoPor: por });
   };
 
   if (desligou || leitura.tipo === 'sem_codigo') {
@@ -86,6 +89,7 @@ export async function registrarIdentificacao(
     // cadastrado depois de lido: liga o vínculo aberto ao motorista
     if (!aberto.motorista_id && motoristaId) {
       await executor.query('update motorista_vinculos set motorista_id = $2 where id = $1 and client_id = $3', [aberto.id, motoristaId, ctx.clientId]);
+      mudancas.push({ acao: 'abriu', vinculoId: aberto.id, assetId: ctx.assetId, ts: aberto.inicio, codigo: aberto.codigo, motoristaId });
     }
     return mudancas;
   }
@@ -98,12 +102,12 @@ export async function registrarIdentificacao(
     );
     for (const o of outros.rows) await encerrar(o, o.asset_id, 'troca');
   }
-  await executor.query(
+  const novo = await executor.query<{ id: string }>(
     `insert into motorista_vinculos (client_id, asset_id, motorista_id, origem, codigo, rastreador_id, inicio)
-     values ($1, $2, $3, 'rastreador', $4, $5, $6)`,
+     values ($1, $2, $3, 'rastreador', $4, $5, $6) returning id`,
     [ctx.clientId, ctx.assetId, motoristaId, leitura.codigo, ctx.rastreadorId, ctx.ts],
   );
-  mudancas.push({ acao: 'abriu', assetId: ctx.assetId, codigo: leitura.codigo, motoristaId });
+  mudancas.push({ acao: 'abriu', vinculoId: novo.rows[0].id, assetId: ctx.assetId, ts: ctx.ts, codigo: leitura.codigo, motoristaId });
   return mudancas;
 }
 

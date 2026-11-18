@@ -48,7 +48,7 @@ describe('tempo real (Redis pub/sub + SSE stream)', () => {
   });
 
   afterAll(async () => {
-    for (const t of ['eventos', 'rastreador_comunicacao', 'ultima_posicao', 'posicoes', 'ingest_posicoes_recebidas', 'instalacoes']) {
+    for (const t of ['motorista_vinculos', 'eventos', 'rastreador_comunicacao', 'ultima_posicao', 'posicoes', 'ingest_posicoes_recebidas', 'instalacoes']) {
       await pool.query(`delete from ${t} where rastreador_id = $1`, [rastreadorId]);
     }
     await pool.query('delete from rastreadores where id = $1', [rastreadorId]);
@@ -124,5 +124,31 @@ describe('tempo real (Redis pub/sub + SSE stream)', () => {
 
     expect(received[0]).toEqual({ kind: 'snapshot', posicoes: [] });
     expect(received.slice(1)).toEqual([{ kind: 'evento', id: 'marcador', assetId: null, tipo: 'teste', ts: expect.any(String) }]);
+  });
+
+  it('cartão do motorista lido: o vínculo aberto chega ao cliente dono logo depois da posição', async () => {
+    const received: RealtimeMessage[] = [];
+    let resolveSnapshot!: () => void;
+    const snapshotReady = new Promise<void>((r) => (resolveSnapshot = r));
+    const done = new Promise<void>((resolve) => {
+      const sub = stream.open(clientA, null).subscribe((m) => {
+        received.push(m);
+        if (m.kind === 'snapshot') resolveSnapshot();
+        if (m.kind === 'motorista') {
+          sub.unsubscribe();
+          resolve();
+        }
+      });
+    });
+    await snapshotReady;
+    await worker.processar({
+      id: 2, deviceId, fixTime: '2026-01-01T13:00:00.000Z', serverTime: '2026-01-01T13:00:01.000Z', valid: true,
+      latitude: -8.05, longitude: -34.88, speed: 0, attributes: { ignition: true, driverUniqueId: '4455' },
+    }, 'teste-rt');
+    await done;
+
+    expect(received.find((m) => m.kind === 'motorista')).toEqual({
+      kind: 'motorista', acao: 'abriu', vinculoId: expect.any(String), assetId, motoristaId: null, codigo: '4455', ts: '2026-01-01T13:00:00.000Z',
+    });
   });
 });

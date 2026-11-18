@@ -71,6 +71,18 @@ export class ProcessadorPosicao {
       for (const alerta of result.alertas) {
         await this.realtime.publish(result.clientId, { kind: 'alerta', alerta });
       }
+      for (const m of result.motoristas) {
+        await this.realtime.publish(result.clientId, {
+          kind: 'motorista',
+          acao: m.acao,
+          vinculoId: m.vinculoId,
+          assetId: m.assetId,
+          motoristaId: m.motoristaId,
+          codigo: m.codigo,
+          ts: m.ts.toISOString(),
+          ...(m.encerradoPor ? { encerradoPor: m.encerradoPor } : {}),
+        });
+      }
     } catch (err) {
       this.logger.warn(
         `Tempo real não publicado (${ref}, posicao_id ${result.posicaoId}, client_id ${result.clientId}): ${(err as Error).message}`,

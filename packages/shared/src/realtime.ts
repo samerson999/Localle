@@ -143,4 +143,20 @@ export interface RealtimeComunicacao {
   ativos: { assetId: string; comunicacao: ComunicacaoStatus; fixTime: string | null; ignicao?: boolean | null; ignicaoEm?: string | null }[];
 }
 
-export type RealtimeMessage = RealtimePosicao | RealtimeEvento | RealtimeSnapshot | RealtimeAlerta | RealtimeComandoStatus | RealtimeComunicacao;
+/**
+ * Vínculo motorista × veículo pelo cartão (iButton/RFID) que abriu ou encerrou na ingestão — o mesmo registro de
+ * GET /motoristas/vinculos. `motoristaId` null = cartão lido sem cadastro. `ts` = início do que abriu, fim do que encerrou.
+ * `abriu` também chega de novo, com o mesmo `vinculoId`, quando o cartão é cadastrado com o vínculo aberto.
+ */
+export interface RealtimeMotorista {
+  kind: 'motorista';
+  acao: 'abriu' | 'encerrou';
+  vinculoId: string;
+  assetId: string;
+  motoristaId: string | null;
+  codigo: string;
+  ts: string;
+  encerradoPor?: 'troca' | 'sem_codigo' | 'ignicao_desligada';
+}
+
+export type RealtimeMessage = RealtimePosicao | RealtimeEvento | RealtimeSnapshot | RealtimeAlerta | RealtimeComandoStatus | RealtimeComunicacao | RealtimeMotorista;

@@ -29,6 +29,23 @@ export const linksOf = (s: any, assetId: string) => allLinks(s).filter((l) => l.
 export const effectiveLink = (links: any[], ts: number) => links.filter((l) => l.driverId && activeAt(l, ts)).sort((a, b) => rank(a.source) - rank(b.source) || b.start - a.start)[0];
 export const driverAt = (s: any, assetId: string, ts: number) => effectiveLink(linksOf(s, assetId), ts)?.driverId || '';
 
+// Cartão do motorista (decisão de 18/11/2026): no veículo com leitor, quem diz o motorista é o cartão. Sem cartão
+// lido, "Sem motorista" — nunca o motorista fixo da ficha; cartão lido sem cadastro, "Cartão não cadastrado".
+// Vale como "com leitor" o leitor marcado na instalação (s.leitorCartao, da API) ou o cartão já lido no período
+// carregado — o aparelho pode ler antes de o técnico marcar.
+export const cartaoAberto = (s: any, assetId: string) => allLinks(s).find((l) => l.assetId === assetId && l.source === 'rastreador' && !l.end);
+export const identificaPorCartao = (s: any, assetId: string) =>
+  (s.leitorCartao || []).includes(assetId) || allLinks(s).some((l) => l.assetId === assetId && l.source === 'rastreador');
+/** Motorista efetivo do ativo (asset.driverId): o do cartão aberto no veículo com leitor; nos demais, o fixo da ficha. */
+export const motoristaDoAtivo = (s: any, assetId: string, fixo: string) => (identificaPorCartao(s, assetId) ? cartaoAberto(s, assetId)?.driverId || '' : fixo);
+/** Nome para as telas de monitoramento. */
+export function rotuloMotorista(s: any, asset: { id: string; driverId?: string }) {
+  const d = asset.driverId && s.drivers.find((x: any) => x.id === asset.driverId);
+  if (d) return d.name as string;
+  if (identificaPorCartao(s, asset.id) && cartaoAberto(s, asset.id)?.code) return 'Cartão não cadastrado';
+  return 'Sem motorista';
+}
+
 export type DriverConflict = { key: string; assetId: string; from: number; to: number | null; win: any; lose: any; acked?: any };
 // pares de vínculos de origens diferentes, com motoristas diferentes, que se sobrepõem no mesmo veículo
 export function driverConflicts(s: any, assetId?: string): DriverConflict[] {

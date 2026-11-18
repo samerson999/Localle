@@ -5,6 +5,7 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, useMap, useMapEvents, Circle } from 'react-leaflet';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
+import { rotuloMotorista } from '../lib/driverLinks';
 import { useStore, useAgora, vehicleStatus, contarStatusFrota, ignicaoAtual, assetKm, type StatusFrota } from '../lib/store';
 import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, confirmAction, List, ListItem, DescList, DescRow, TextButton, Field, Input, SearchInput, Select, SearchSelect, Modal, Table, Textarea, Tabs, FilePick, Card, Panel, Callout, FloatingPanel, ContextMenu, ChoiceCard, EmptyState, ErrorState, buttonClass, PageBody, Stack, Grid, cx, AssetThumb, IconButton, Tooltip } from '../components/ui';
 import { MonitorHeader } from '../components/MonitorTabs';
@@ -70,6 +71,8 @@ function MonitoramentoMapa() {
   const vehicles = useStore((s) => s.vehicles);
   const groups = useStore((s) => s.groups);
   const drivers = useStore((s) => s.drivers);
+  const driverLinks = useStore((s) => s.driverLinks);
+  const leitorCartao = useStore((s) => s.leitorCartao);
   const fences = useStore((s) => s.fences);
   const crit = useCriticalMap();
   const agora = useAgora(); // o status vence com o tempo (posição recente): re-renderiza mesmo sem posição nova
@@ -138,11 +141,11 @@ function MonitoramentoMapa() {
   useEffect(() => { const id = sp.get('ativo'); if (id) setSel(id); }, [sp]); // busca (⌘K) pode trocar o veículo sem remontar a tela
 
   const list = [
-    ...assets.map((a: any) => { const v = vehicles[a.id]; return { a, v, s: vehicleStatus(v, agora), k: kindOf(a.id, v), d: drivers.find((d: any) => d.id === a.driverId) }; }),
+    ...assets.map((a: any) => { const v = vehicles[a.id]; return { a, v, s: vehicleStatus(v, agora), k: kindOf(a.id, v), d: drivers.find((d: any) => d.id === a.driverId), m: rotuloMotorista({ drivers, driverLinks, leitorCartao }, a) }; }),
   ];
   const [limit, setLimit] = useState(BATCH);
   useEffect(() => setLimit(BATCH), [q, st, grp]);
-  const recorte = list.filter((x: any) => (!grp || x.a.groupIds?.includes(grp)) && (!q || (x.a.name + x.a.plate + (x.d?.name || '') + x.a.model).toLowerCase().includes(q.toLowerCase())));
+  const recorte = list.filter((x: any) => (!grp || x.a.groupIds?.includes(grp)) && (!q || (x.a.name + x.a.plate + x.m + x.a.model).toLowerCase().includes(q.toLowerCase())));
   const shown = recorte.filter((x: any) => st === 'todos' || x.s.key === st);
   const cur = list.find((x: any) => x.a.id === sel);
   // os KPIs contam o veículo aberto no painel ou, sem ele, o recorte da busca e do grupo; o filtro de status não entra,
@@ -195,10 +198,10 @@ function MonitoramentoMapa() {
 
   const listaVeiculos = (
     <ul className="flex-1 min-h-0 overflow-y-auto -mx-2 pb-16" aria-label={`${shown.length} veículos`}>
-      {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, s, k, d }: any) => (
+      {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, s, k, m }: any) => (
         <li key={a.id}>
           <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
-            model={[a.brand, a.model].filter(Boolean).join(' ')} driver={d?.name || 'Sem motorista'} pos={v?.pos}
+            model={[a.brand, a.model].filter(Boolean).join(' ')} driver={m} pos={v?.pos}
             tracker={v ? { ignition: ignicaoAtual(v), gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
             speed={v && s.key !== 'sem' && !s.semPosicao ? Math.round(v.speed) : null} time={v ? shortDT(v.lastUpdate) : ''}
             menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
@@ -353,11 +356,11 @@ function MonitoramentoMapa() {
               head={['Veículo', 'Status', 'Velocidade', 'Ignição', 'Motorista', 'Atualizado', 'Endereço']}
               onRow={(i) => pick(shown[i].a.id)} selected={(i) => shown[i]?.a.id === sel}
               emptyState={<EmptyState icon="busca" layout="row" title="Nenhum veículo com esses filtros" action={<Button variant="dark" size="sm" onClick={clearFilters}>Limpar filtros</Button>} />}
-              rows={shown.map(({ a, v, s, k, d }: any) => [
+              rows={shown.map(({ a, v, s, k, d, m }: any) => [
                 <AssetName name={a.name} />, <StatusDot kind={k} label={k === 'crit' ? STATUS_LABEL.crit : s.label} />,
                 <span className="num">{v && s.key !== 'sem' && !s.semPosicao ? `${Math.round(v.speed)} km/h` : '—'}</span>,
                 v ? (ignicaoAtual(v) == null ? <span className="text-ink-2">Não informada</span> : ignicaoAtual(v) ? <span className="text-ok">Ligada</span> : <span className="text-ink-2">Desligada</span>) : '—',
-                d?.name || <span className="text-ink-2">Sem motorista</span>,
+                d ? m : <span className="text-ink-2">{m}</span>,
                 v ? <time className="num">{shortDT(v.lastUpdate)}</time> : '—',
                 v?.pos ? <Address pos={v.pos} className="text-small" /> : '—',
               ])} />
@@ -428,7 +431,7 @@ const Idade = ({ em }: { em: string | null | undefined }) => { const a = leitura
 // kmToday: do resumo de uso da API (null = ainda não chegou ou falhou → "—"); a soma do histórico do navegador só via os
 // pontos desde que a página abriu e mostrava bem menos que o real.
 function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }: any) {
-  const { a, v, s, k, d } = x;
+  const { a, v, s, k, m } = x;
   const odo = useStore((st) => assetKm(st, a.id));
   const fences = useStore((st) => st.fences.filter((f: any) => v?.inside?.includes(f.id)));
   const setPhoto = (data: string) => { useStore.getState().upsert('assets', { id: a.id, photo: data }); toast('Foto do veículo atualizada.'); };
@@ -476,7 +479,7 @@ function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }:
           <Plate name={a.name} size="lg" className="mb-hair self-start" />
           {a.plate && a.apelido && <p className="text-small font-medium truncate">{a.apelido}</p>}
           <p className="text-small text-ink-2 truncate">{a.brand} {a.model} <span className="text-ink-2 num">{String(a.year || '').slice(0, 4)}</span></p>
-          <p className="text-small text-ink-2 truncate">{d?.name || 'Sem motorista'}</p>
+          <p className="text-small text-ink-2 truncate">{m}</p>
           {mobile && <FilePick accept="image/*" onFile={(data) => setPhoto(data)} className="self-start text-small font-medium link-brand"><span className="inline-flex items-center gap-icon"><Icon name="camera" size={16} />{a.photo ? 'Trocar foto' : 'Enviar foto'}</span></FilePick>}
         </div>
       </div>
