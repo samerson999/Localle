@@ -137,6 +137,9 @@ function MonitoramentoMapa() {
     return () => document.removeEventListener('fullscreenchange', f);
   }, []);
   // cliente só de monitoramento (Setup: monitoramento.abrir_tela_cheia) já abre em tela cheia
+  // card "Comunicação atrasada": o limite é o do Setup (monitoramento.sem_sinal_h), o mesmo que o backend usa no status
+  const [semSinalH, setSemSinalH] = useState<number | null>(null);
+  useEffect(() => { lerParametro('monitoramento.sem_sinal_h').then((v) => { const n = Number(v); if (n > 0) setSemSinalH(n); }).catch(() => { /* sem o parâmetro, rótulo sem horas */ }); }, []);
   useEffect(() => { lerParametro('monitoramento.abrir_tela_cheia').then((v) => { if (Number(v) === 1) setFull(true); }).catch(() => { /* sem o parâmetro, abre normal */ }); }, []);
   useEffect(() => { const id = sp.get('ativo'); if (id) setSel(id); }, [sp]); // busca (⌘K) pode trocar o veículo sem remontar a tela
 
@@ -252,7 +255,7 @@ function MonitoramentoMapa() {
           <Button variant="secondary" size="sm" className="max-md:order-1 max-md:w-ctl max-md:h-ctl max-md:!px-0" onClick={sairTelaCheia} title="Sair da tela cheia (Esc)" aria-label="Sair da tela cheia"><Icon name="tela-cheia" size={16} className="max-md:hidden" /><Icon name="fechar" size={20} className="md:hidden" /><span className="max-md:hidden">Sair da tela cheia</span></Button>
         </div>
       )}
-      {!full && !mobile && <FaixaFrota total={contados.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
+      {!full && !mobile && <FaixaFrota semSinalH={semSinalH} total={contados.length} counts={counts} st={st} onStatus={(k) => setSt(st === k ? 'todos' : k)} kmHoje={kmHoje} velMedia={velMedia} emMovimento={moving.length} />}
       <div ref={full ? undefined : linhaRef} style={!full && alturaMapa ? { ['--mon-h' as string]: `${alturaMapa}px` } : undefined}
         className={full ? 'flex-1 min-h-0 flex gap-stack' : 'flex flex-wrap items-start gap-grid'}>
         <Card dense className={mapaCheio
@@ -385,7 +388,7 @@ const STATUS_FROTA: { k: StatusFrota; kind: StatusKind; label: string }[] = [
   { k: 'par', kind: 'parado', label: 'Parado ligado' },
   { k: 'des', kind: 'off', label: 'Ignição desligada' },
   { k: 'pnd', kind: 'stop', label: 'Parado' },
-  { k: 'sem', kind: 'nosignal', label: 'Sem sinal' },
+  { k: 'sem', kind: 'nosignal', label: 'Comunicação atrasada' },
 ];
 
 function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[number]; count: number; pct: number; active: boolean; onClick: () => void }) {
@@ -404,12 +407,13 @@ function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[
   );
 }
 
-function FaixaFrota({ total, counts, st, onStatus, kmHoje, velMedia, emMovimento }: {
-  total: number; counts: Record<StatusFrota, number>; st: string; onStatus: (k: string) => void;
+function FaixaFrota({ semSinalH, total, counts, st, onStatus, kmHoje, velMedia, emMovimento }: {
+  semSinalH: number | null; total: number; counts: Record<StatusFrota, number>; st: string; onStatus: (k: string) => void;
   kmHoje: number | null; velMedia: number; emMovimento: number;
 }) {
   const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
-  const status = STATUS_FROTA.filter((s) => s.k !== 'pnd' || counts.pnd > 0 || st === 'pnd');
+  const status = STATUS_FROTA.filter((s) => s.k !== 'pnd' || counts.pnd > 0 || st === 'pnd')
+    .map((s) => (s.k === 'sem' && semSinalH ? { ...s, label: `${s.label} +${num(semSinalH, 0)}h` } : s));
   return (
     <section aria-label="KPIs da frota" className={cx('grid grid-cols-2 sm:grid-cols-3 gap-grid', status.length > 4 ? 'lg:grid-cols-8' : 'lg:grid-cols-7')}>
       <KpiTile label="Frota" value={total} digits={0} sub="rastreados" />
