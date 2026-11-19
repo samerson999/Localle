@@ -11,7 +11,7 @@ import { Button, Badge, usePresence, useIsMobile, Menu, useScrollLock, toast, co
 import { MonitorHeader } from '../components/MonitorTabs';
 import { glyphOf, silhouetteOf } from '../components/assetArt';
 import { GlideMarker, ClusteredVehicles, Address, FenceShapes, MapButton, MapControls, VehicleListItem, MAP_STYLES, type MapStyleKey } from '../components/MapBits';
-import { Num, Plate, AssetName, StatusDot, StatusLine, statusKind, STATUS_LABEL, KpiTile, type StatusKind } from '../components/story';
+import { Num, Plate, AssetName, StatusDot, StatusLine, statusKind, STATUS_LABEL, KpiTile, KpiLabel, type StatusKind } from '../components/story';
 import { Icon } from '../components/icons';
 import { tv } from '../lib/tokens';
 import { useCriticalMap, resolveReasons, recentTreatments, type CritReason } from '../lib/critical';
@@ -406,8 +406,8 @@ function StatusKpi({ s, count, pct, active, onClick }: { s: typeof STATUS_FROTA[
     <button type="button" aria-pressed={active} onClick={onClick}
       className={cx('text-left bg-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size] border transition-colors',
         active ? 'border-brand-fill ring-1 ring-inset ring-brand-fill' : 'border-transparent shadow-card hover:bg-card-2')}>
-      <StatusDot kind={s.kind} label={s.label} />
-      <div className="flex items-baseline gap-tight mt-kpi-title">
+      <KpiLabel status={s.kind} className="text-small text-ink">{s.label}</KpiLabel>
+      <div className="flex flex-wrap items-baseline gap-x-tight gap-y-hair min-w-0 mt-kpi-title">
         <Num value={count} size="kpi" count />
         <span className="num text-small text-ink-3">{pct}%</span>
       </div>

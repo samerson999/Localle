@@ -487,6 +487,17 @@ export function PeriodButton({ label, compare, children }: { label: string; comp
 // Rótulo → número 12; número → contexto 8. O número é o único protagonista do cartão.
 // O status (quando houver) é um ponto ao lado do rótulo, nunca a cor do número.
 // inset = tile compacto com borda, dentro de outro card (ex.: indicadores na barra de filtros do Replay)
+// Rótulo de card de KPI: quebra linha dentro do card em vez de vazar ou cortar ("Comunicação atrasada +72h" em card
+// estreito); o símbolo de status fica alinhado à primeira linha.
+export function KpiLabel({ status, glyphClassName, className = '', children }: { status?: StatusKind; glyphClassName?: string; className?: string; children: React.ReactNode }) {
+  return (
+    <span className={cx('flex items-start gap-tight min-w-0 leading-snug', className)}>
+      {status && <span className="ico-line"><StatusGlyph kind={status} className={glyphClassName} /></span>}
+      <span className="min-w-0 [overflow-wrap:anywhere]">{children}</span>
+    </span>
+  );
+}
+
 export function KpiTile({ label, value, unit, digits = 0, delta, sub, status, display, variant = 'default' }: {
   label: string; value?: number | null; unit?: string; digits?: number; display?: React.ReactNode;
   delta?: { value: number | null; unit?: string; digits?: number; good?: 'up' | 'down' }; sub?: React.ReactNode; status?: StatusKind;
@@ -495,7 +506,7 @@ export function KpiTile({ label, value, unit, digits = 0, delta, sub, status, di
   const inset = variant === 'inset';
   return (
     <div className={cx('bg-card rounded-card flex flex-col min-w-0 [container-type:inline-size]', inset ? 'border border-line px-3 py-2' : 'shadow-card p-card-sm')}>
-      <span className={cx(inset ? 'text-caption' : 'text-small', 'text-ink-2 flex items-start gap-tight')}>{status && <span className="ico-line"><StatusGlyph kind={status} /></span>}<span className="min-w-0 truncate">{label}</span></span>
+      <KpiLabel status={status} className={cx(inset ? 'text-caption' : 'text-small', 'text-ink-2')}>{label}</KpiLabel>
       <div className={cx('flex flex-wrap items-baseline gap-x-tight gap-y-hair min-w-0', inset ? 'mt-tight' : 'mt-kpi-title')}>
         {display ?? <Num value={value} unit={unit} digits={digits} size={inset ? 'lg' : 'kpi'} count />}
         {delta && <DeltaChip {...delta} />}

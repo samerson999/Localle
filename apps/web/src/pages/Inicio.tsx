@@ -21,7 +21,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore, useAgora, vehicleStatus, type StatusFrota } from '../lib/store';
 import { useResumoUso } from '../lib/localleApi';
 import { Icon, type IconName } from '../components/icons';
-import { StatusGlyph, type StatusKind } from '../components/story';
+import { KpiLabel, type StatusKind } from '../components/story';
 import { LineChart } from '../components/charts';
 import { Button, Card, CardHeader, EmptyState, PageHeader, Progress, Select, Skeleton, Table, cx, FilterSheet } from '../components/ui';
 import { shortDT, num } from '@localle/shared/utils';
@@ -222,7 +222,7 @@ function Resumo({ className, frota, total, compacto, filtro }: { className: stri
           <ul className={cx('grid grid-cols-3 gap-x-4', compacto ? 'gap-y-2' : 'gap-y-5')}>
             {estados.map((e) => (
               <li key={e.k} className="flex flex-col gap-1.5 min-w-0">
-                <span className="flex items-center gap-tight text-small text-ink-2 truncate"><StatusGlyph kind={e.kind} className={e.glifo} />{e.label}</span>
+                <KpiLabel status={e.kind} glyphClassName={e.glifo} className="text-small text-ink-2">{e.label}</KpiLabel>
                 <span className="flex items-baseline gap-1.5"><Numero><Conta v={conta(e.k)} /></Numero><span className="num text-small text-ink-2">({fmt1(pct(conta(e.k), total))}%)</span></span>
               </li>
             ))}
@@ -252,7 +252,7 @@ function Atividade({ carregando, uso, total, viagens }: { carregando: boolean; u
             <Icon name={x.icone} size={22} className="mt-0.5 shrink-0 text-ink-2 max-sm:hidden" />
             <div className="min-w-0 flex flex-col gap-1 lg:gap-2">
               {x.espera ? <Skeleton className="h-6 w-20" /> : <Numero className="truncate lg:!text-[length:calc(32px*var(--fit,1))]">{x.valor}</Numero>}
-              <span className="text-small text-ink-2 max-sm:leading-snug max-sm:line-clamp-2 sm:truncate">{x.rot}</span>
+              <span className="text-small text-ink-2 leading-snug [overflow-wrap:anywhere]">{x.rot}</span>
             </div>
           </div>
         ))}

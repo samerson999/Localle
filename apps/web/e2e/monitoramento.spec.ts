@@ -14,6 +14,15 @@ test('card de comunicação atrasada mostra o limite do Setup', async ({ page, i
   const faixa = page.getByRole('region', { name: 'KPIs da frota' });
   await expect(faixa.getByText(/^Comunicação atrasada \+\d+h$/)).toBeVisible();
   await expect(faixa.getByText('Sem sinal', { exact: true })).toHaveCount(0);
+
+  // tela estreita (8 cards em ~1100px): o rótulo quebra linha dentro do card em vez de vazar para o vizinho
+  await page.setViewportSize({ width: 1100, height: 800 });
+  const card = faixa.getByRole('button').filter({ hasText: 'Comunicação atrasada' });
+  const caixa = await card.boundingBox();
+  const rotulo = await card.getByText(/^Comunicação atrasada/).boundingBox();
+  expect(caixa && rotulo).toBeTruthy();
+  expect(rotulo!.x + rotulo!.width).toBeLessThanOrEqual(caixa!.x + caixa!.width);
+  expect(await card.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
 
 // mapa em tela cheia: desligado, parado ligado e em movimento sobre o mapa, clicáveis como os da faixa

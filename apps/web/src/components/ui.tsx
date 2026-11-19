@@ -1366,7 +1366,7 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
   const dot = tone === 'red' ? 'bg-crit' : tone === 'orange' ? 'bg-warn' : '';
   return (
     <div className="bg-card shadow-card rounded-card p-card-sm flex flex-col min-w-0 [container-type:inline-size]">
-      <span className="text-small text-ink-2 flex items-center gap-tight">{dot && <span aria-hidden="true" className={cx('w-2 h-2 rounded-pill shrink-0', dot)} />}{label}</span>
+      <span className="text-small text-ink-2 leading-snug flex items-start gap-tight min-w-0">{dot && <span className="ico-line"><span aria-hidden="true" className={cx('w-2 h-2 rounded-pill shrink-0', dot)} /></span>}<span className="min-w-0 [overflow-wrap:anywhere]">{label}</span></span>
       <span className="mt-kpi-title text-kpi !text-[clamp(28px,11cqi,var(--fs-kpi))] font-semibold break-words num text-ink">{typeof value === 'number' || typeof value === 'string' ? <CountText value={value} /> : value}</span>
       {hint && <span className="mt-kpi-meta text-caption text-ink-2">{hint}</span>}
     </div>
