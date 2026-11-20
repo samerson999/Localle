@@ -1,9 +1,8 @@
 import { Controller, Logger, MessageEvent, Query, Sse, UseGuards } from '@nestjs/common';
 import { filter, from, interval, map, merge, Observable, share, switchMap, takeUntil } from 'rxjs';
 import { ActiveUserRepository } from '../auth/active-user.repository';
-import type { Role } from '../auth/jwt';
 import { ClientId } from '../clients/client-id.decorator';
-import { CurrentRole, CurrentSessionStart, CurrentUserId } from '../clients/current-role.decorator';
+import { CurrentSessionStart, CurrentUserId } from '../clients/current-role.decorator';
 import { parseDate } from '../common/parse-date';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -38,7 +37,6 @@ export class RealtimeController {
   open(
     @ClientId() clientId: string,
     @CurrentUserId() userId: string,
-    @CurrentRole() role: Role,
     @CurrentSessionStart() sessionStart: number,
     @Query('since') since?: string,
   ): Observable<MessageEvent> {
@@ -46,7 +44,7 @@ export class RealtimeController {
     // mantém a conexão viva atrás de proxy (Coolify/Traefik corta conexão ociosa)
     const heartbeat = interval(HEARTBEAT_MS).pipe(share());
     const revogado = heartbeat.pipe(
-      switchMap(() => from(this.aindaAutorizado(clientId, userId, role, sessionStart))),
+      switchMap(() => from(this.aindaAutorizado(clientId, userId, sessionStart))),
       filter((autorizado) => !autorizado),
     );
     return merge(
@@ -55,9 +53,9 @@ export class RealtimeController {
     ).pipe(takeUntil(revogado));
   }
 
-  private async aindaAutorizado(clientId: string, userId: string, role: Role, sessionStart: number): Promise<boolean> {
+  private async aindaAutorizado(clientId: string, userId: string, sessionStart: number): Promise<boolean> {
     try {
-      return (await this.activeUsers.isActive(userId, sessionStart)) && (await this.permissions.isAllowed(clientId, role, PERMISSAO));
+      return (await this.activeUsers.isActive(userId, sessionStart)) && (await this.permissions.isAllowedForUser(clientId, userId, PERMISSAO));
     } catch (err) {
       // falha transitória do banco não derruba o stream; a próxima volta confere de novo
       this.logger.warn(`Não foi possível reconferir acesso do stream (user ${userId}): ${(err as Error).message}`);

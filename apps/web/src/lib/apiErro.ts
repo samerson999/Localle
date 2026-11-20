@@ -13,6 +13,8 @@ export function erroHttp(status: number, data?: unknown): Error {
   // (proxy, API reiniciando) seguem com a genérica
   if (status === 503 && texto && !/service unavailable/i.test(texto)) return new Error(texto);
   if (status >= 500) return new Error(MSG_SERVIDOR);
+  // recusa do PermissionsGuard (perfil sem a permissão): frase para a pessoa, não a chave técnica
+  if (status === 403 && /perfil de acesso não tem a permissão/i.test(texto)) return new Error('Seu perfil de acesso não permite esta ação. Peça ao administrador da sua empresa para liberar.');
   if (texto && !/internal server error/i.test(texto)) return new Error(texto);
   if (status === 403) return new Error('Seu acesso não permite esta ação');
   if (status === 404) return new Error('Registro não encontrado. Pode ter sido removido por outro usuário.');

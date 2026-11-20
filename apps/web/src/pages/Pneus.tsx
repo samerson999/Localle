@@ -355,7 +355,7 @@ function Lista({ onOpen }: any) {
   const fire = (n: string) => (mark ? `${mark}-${n}` : n).toUpperCase();
   const dup = form?.number && R.tires.some((t: any) => t.fireNumber === fire(form.number));
   const novoPneu = () => setForm({ number: '', brand: '', model: '', size: '295/80 R22.5', dot: '', recappable: true, maxLives: R.cfg.maxLives ?? 3, cost: '', purchaseDate: toInputD(Date.now()), supplier: '', tread: 18, location: 'Almoxarifado Matriz' });
-  useMobilePageAction({ label: 'Cadastrar pneu', icon: 'mais', onClick: novoPneu });
+  useMobilePageAction({ label: 'Cadastrar pneu', icon: 'mais', permissao: 'pneus.editar', onClick: novoPneu });
   return (
     <>
       <Card title={`Pneus (${list.length})`} icon="pneus" actions={<div className="flex gap-2 flex-wrap items-center max-md:w-full"><SearchInput className="w-56 max-md:w-full" placeholder="Número, marca, medida" value={q} onChange={setQ} aria-label="Buscar pneu" /><Button onClick={novoPneu} className="max-md:hidden"><Icon name="mais" size={16} />Cadastrar pneu</Button></div>}>

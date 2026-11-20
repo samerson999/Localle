@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
+import { rotaPermitida } from './lib/permissoes';
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import { Toaster, EmptyState, Skeleton } from './components/ui';
@@ -38,7 +39,6 @@ const Clientes = lazy(() => import('./pages/Clientes'));
 const Faturamento = lazy(() => import('./pages/Faturamento'));
 const Equipe = lazy(() => import('./pages/Equipe'));
 const MinhaConta = lazy(() => import('./pages/MinhaConta'));
-const EquipeCliente = lazy(() => import('./pages/EquipeCliente'));
 const Saude = lazy(() => import('./pages/Saude'));
 const Despesas = lazy(() => import('./pages/Despesas'));
 const Juridico = lazy(() => import('./pages/Juridico'));
@@ -56,14 +56,18 @@ function Guard({ m, children, portaria }: { m: string; children: JSX.Element; po
   // revenda e Locale só entram na operação do cliente pelo acesso de suporte
   if (session && !canSeeFleet(session) && !(portaria && session.role === 'portaria')) return <NoAccess title="A operação da frota é do cliente" detail="Para vê-la, use o acesso de suporte no seu painel. Cada acesso fica registrado com quem, quando e o motivo." />;
   if (!on) return <NoAccess title="Este módulo não está contratado" detail="Fale com a sua central de rastreamento para incluir o módulo no seu plano." />;
-  return <Pagina>{children}</Pagina>;
+  return <Pagina mod={m}>{children}</Pagina>;
 }
 
 // página desligada no contrato do cliente (lib/paginas.ts); as rotas não têm parâmetro, então o caminho é a chave
-function Pagina({ children }: { children: JSX.Element }) {
+// e tela fora do perfil de acesso da pessoa (lib/permissoes.ts; a API também recusa)
+function Pagina({ children, mod }: { children: JSX.Element; mod?: string }) {
   const { pathname } = useLocation();
-  const on = useStore((s) => paginaLiberada(s.revenda.modules, pathname.replace(/\/$/, '') || '/'));
-  return on ? children : <NoAccess title="Esta página não está liberada" detail="Fale com a sua central de rastreamento para liberar a página no seu plano." />;
+  const rota = pathname.replace(/\/$/, '') || '/';
+  const on = useStore((s) => paginaLiberada(s.revenda.modules, rota));
+  const permitida = useStore((s) => rotaPermitida(s.permissoes, rota, mod));
+  if (!on) return <NoAccess title="Esta página não está liberada" detail="Fale com a sua central de rastreamento para liberar a página no seu plano." />;
+  return permitida ? children : <NoAccess title="Seu perfil não tem acesso a esta tela" detail="Peça ao administrador da sua empresa para liberar no Setup, em Equipe e acessos." />;
 }
 
 // sem acesso: ilustração de página (cadeado sobre pasta), nunca na cor da revenda
@@ -130,7 +134,8 @@ export default function App() {
           <Route path="/pneus" element={<Guard m="pneus"><Pneus /></Guard>} />
           <Route path="/setup" element={<Pagina><Setup /></Pagina>} />
           <Route path="/conta" element={<MinhaConta />} />
-          <Route path="/equipe" element={<RoleOnly roles={['gestor']}><Pagina><EquipeCliente /></Pagina></RoleOnly>} />
+          {/* Equipe e acessos mora no Setup (20/11/2026); o endereço antigo leva até lá */}
+          <Route path="/equipe" element={<Navigate to="/setup?aba=equipe" replace />} />
           <Route path="/locale" element={<Locale />} />
           <Route path="/locale/contratos" element={<RoleOnly roles={['locale']}><Contratos /></RoleOnly>} />
           <Route path="/locale/clientes" element={<RoleOnly roles={['locale']}><Clientes /></RoleOnly>} />

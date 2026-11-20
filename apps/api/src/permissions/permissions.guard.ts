@@ -40,9 +40,9 @@ export class PermissionsGuard implements CanActivate {
       );
     }
 
-    const allowed = await this.permissions.isAllowed(auth.clientId, auth.role, key);
+    const allowed = await this.permissions.isAllowedForUser(auth.clientId, auth.userId, key);
     if (!allowed) {
-      throw new ForbiddenException(`Seu papel ("${auth.role}") não tem a permissão "${key}"`);
+      throw new ForbiddenException(`Seu perfil de acesso não tem a permissão "${key}"`);
     }
     return true;
   }

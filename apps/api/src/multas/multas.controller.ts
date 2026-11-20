@@ -58,6 +58,7 @@ export class MultasController {
   ) {}
 
   @Get()
+  @RequirePermission('multas.ver')
   listar(@ClientId() clientId: string, @Query('de') de?: string, @Query('ate') ate?: string, @Query('motoristaId') motoristaId?: string) {
     const [inicio, fim] = periodo(de, ate, 365, 5 * 366);
     return this.repo.listar(clientId, inicio, fim, uuidOpcional(motoristaId, 'motoristaId'));
@@ -65,17 +66,20 @@ export class MultasController {
 
   /** Indicações de condutor em aberto com o estado do prazo (entrada do "Precisa de você"). */
   @Get('indicacoes')
+  @RequirePermission('multas.ver')
   indicacoes(@ClientId() clientId: string) {
     return this.service.indicacoesPendentes(clientId);
   }
 
   /** Pontos nos últimos 12 meses × limite legal/do Setup por motorista. */
   @Get('cnh-risco')
+  @RequirePermission('multas.ver')
   cnhRisco(@ClientId() clientId: string) {
     return this.service.riscoCnh(clientId);
   }
 
   @Get(':id')
+  @RequirePermission('multas.ver')
   async buscar(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string) {
     return tratar(await this.repo.buscar(clientId, id));
   }

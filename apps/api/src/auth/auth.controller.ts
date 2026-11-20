@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
 import { CurrentUserId } from '../clients/current-role.decorator';
+import { PermissionsService } from '../permissions/permissions.service';
 import { ActiveUserRepository } from './active-user.repository';
 import type { RequestAuth } from './auth.guard';
 import { AuthService } from './auth.service';
@@ -32,6 +33,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly senha: SenhaService,
     private readonly activeUsers: ActiveUserRepository,
+    private readonly permissions: PermissionsService,
   ) {}
 
   @Post('login')
@@ -67,9 +69,14 @@ export class AuthController {
    * sem contrato, tudo liberado. A API aplica os módulos por conta própria (ModuloGuard); isto é só para a tela.
    */
   @Get('acessos')
-  acessos(@Req() req: { auth: RequestAuth }) {
+  async acessos(@Req() req: { auth: RequestAuth }) {
     if (!req.auth.clientId) throw new ForbiddenException('Rota de usuário de cliente');
-    return this.activeUsers.acessosDoCliente(req.auth.clientId);
+    const [contrato, permissoes] = await Promise.all([
+      this.activeUsers.acessosDoCliente(req.auth.clientId),
+      this.permissions.permissoesDoUsuario(req.auth.clientId, req.auth.userId),
+    ]);
+    // permissões do perfil de quem está logado: o front esconde tela e botão; a API continua decidindo (PermissionsGuard)
+    return { ...contrato, permissoes };
   }
 
   /** Logado: troca exige a senha atual. */

@@ -106,6 +106,7 @@ export class ChecklistController {
   constructor(private readonly repo: ChecklistRepository) {}
 
   @Get('modelos')
+  @RequirePermission('checklist.ver')
   listarModelos(@ClientId() clientId: string) {
     return this.repo.listarModelos(clientId);
   }
@@ -132,6 +133,7 @@ export class ChecklistController {
   }
 
   @Get('respostas')
+  @RequirePermission('checklist.ver')
   listarRespostas(@ClientId() clientId: string, @Query('de') de?: string, @Query('ate') ate?: string, @Query('modeloId') modeloId?: string) {
     const [inicio, fim] = periodo(de, ate, 30, 366);
     return this.repo.listarRespostas(clientId, inicio, fim, uuidOpcional(modeloId, 'modeloId'));

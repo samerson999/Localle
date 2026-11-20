@@ -72,6 +72,7 @@ export class ViagensController {
   constructor(private readonly repo: ViagensRepository) {}
 
   @Get('matrizes')
+  @RequirePermission('viagens.ver')
   listarMatrizes(@ClientId() clientId: string) {
     return this.repo.listarMatrizes(clientId);
   }
@@ -96,11 +97,13 @@ export class ViagensController {
   }
 
   @Get()
+  @RequirePermission('viagens.ver')
   listar(@ClientId() clientId: string, @Query('assetId') assetId?: string, @Query('abertas') abertas?: string) {
     return this.repo.listarViagens(clientId, uuidOpcional(assetId, 'assetId'), abertas === 'true');
   }
 
   @Get(':id')
+  @RequirePermission('viagens.ver')
   async buscar(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string) {
     return tratar(await this.repo.buscarViagem(clientId, id), 'Viagem');
   }

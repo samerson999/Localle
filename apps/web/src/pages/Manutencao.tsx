@@ -1,4 +1,5 @@
 import { RetiredToggle } from '../components/RetiredToggle';
+import { usePode } from '../lib/permissoes';
 import { opAssets } from '../lib/assetLifecycle';
 import { auditEntry } from '@localle/shared/audit';
 import { useEffect, useMemo, useState } from 'react';
@@ -48,7 +49,8 @@ function ManutencaoLocal() {
   }, [carregando]);
   const isBI = BI_TABS.includes(tab);
   const openWos = s.workOrders.filter((w: any) => !['concluida', 'cancelada'].includes(w.status) && w.shopInAt).map((w: any) => ({ asset: s.assets.find((a: any) => a.id === w.assetId)?.name, title: w.title, since: w.shopInAt }));
-  useMobilePageAction({ label: 'Nova OS', icon: 'mais', onClick: () => setOs({ isNew: true }) });
+  const podeEditar = usePode('manutencao.editar');
+  useMobilePageAction({ label: 'Nova OS', icon: 'mais', permissao: 'manutencao.editar', onClick: () => setOs({ isNew: true }) });
   return (
     <div>
       <PageHeader icon="manutencao" title={tab === 'geral' ? 'Manutenção' : TABS.find((t) => t.key === tab)?.label ?? 'Manutenção'} subtitle="Disponibilidade da frota, preventivas, ordens de serviço e custos" />
@@ -56,7 +58,7 @@ function ManutencaoLocal() {
         <RetiredToggle />
         {/* no desktop as abas estão na barra lateral, em cascata */}
         <div className="md:hidden"><Tabs value={tab} onChange={setTab} tabs={TABS} /></div>
-        <Button className="ml-auto max-md:hidden" onClick={() => setOs({ isNew: true })}><Icon name="mais" size={18} />Nova OS</Button>
+        {podeEditar && <Button className="ml-auto max-md:hidden" onClick={() => setOs({ isNew: true })}><Icon name="mais" size={18} />Nova OS</Button>}
         {(tab === 'dono' || tab === 'gestor') && <FilterSheet count={grp ? 1 : 0}><div className="w-44"><Select aria-label="Grupo" value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Frota inteira' }, ...s.groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></div></FilterSheet>}
         {isBI && <PeriodCompare value={period} onChange={setPeriod} />}
       </div>

@@ -72,12 +72,14 @@ export class ManutencaoController {
   ) {}
 
   @Get('planos')
+  @RequirePermission('manutencao.ver')
   listarPlanos(@ClientId() clientId: string) {
     return this.repo.listarPlanos(clientId);
   }
 
   /** Status plano × ativo (em dia / próxima / vencida / OS aberta, com nível crítico). */
   @Get('status')
+  @RequirePermission('manutencao.ver')
   status(@ClientId() clientId: string) {
     return this.service.statusGeral(clientId);
   }
@@ -104,11 +106,13 @@ export class ManutencaoController {
   }
 
   @Get('os')
+  @RequirePermission('manutencao.ver')
   listarOs(@ClientId() clientId: string, @Query('assetId') assetId?: string, @Query('abertas') abertas?: string) {
     return this.repo.listarOs(clientId, uuidOpcional(assetId, 'assetId'), abertas === 'true');
   }
 
   @Get('os/:id')
+  @RequirePermission('manutencao.ver')
   async buscarOs(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string) {
     return tratarOs(await this.repo.buscarOs(clientId, id));
   }

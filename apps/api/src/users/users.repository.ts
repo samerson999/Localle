@@ -57,13 +57,22 @@ export class UsersRepository {
   }
 
   async create(
-    data: { clientId: string; email: string; passwordHash: string | null; role: Role },
+    data: { clientId: string; email: string; passwordHash: string | null; role: Role; perfilId?: string | null },
     executor: Queryable = this.pool,
   ): Promise<UserEntity> {
     const { rows } = await executor.query<UserEntity>(
-      'insert into users (client_id, email, password_hash, role) values ($1, $2, $3, $4) returning *',
-      [data.clientId, data.email, data.passwordHash, data.role],
+      'insert into users (client_id, email, password_hash, role, perfil_id) values ($1, $2, $3, $4, $5) returning *',
+      [data.clientId, data.email, data.passwordHash, data.role, data.perfilId ?? null],
     );
     return rows[0];
+  }
+
+  /** Papel e perfil andam juntos: o papel é o papel-base do perfil (FK composta barra perfil de outro cliente). */
+  async setPerfil(clientId: string, id: string, role: Role, perfilId: string | null, executor: Queryable = this.pool): Promise<UserEntity | null> {
+    const { rows } = await executor.query<UserEntity>(
+      'update users set role = $3, perfil_id = $4, updated_at = now() where client_id = $1 and id = $2 returning *',
+      [clientId, id, role, perfilId],
+    );
+    return rows[0] ?? null;
   }
 }

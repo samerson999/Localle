@@ -5,11 +5,13 @@ import { AuditLogRepository } from '../audit/audit-log.repository';
 import { PG_POOL } from '../db/pg-pool.provider';
 import { withTransaction } from '../db/with-transaction';
 import { getPermissionDefinition, listPermissionDefinitions } from './permission-definitions';
+import { PerfisRepository } from './perfis.repository';
 import { PermissionsRepository } from './permissions.repository';
 
 export interface ResolvedPermission {
   key: string;
   label: string;
+  tela: string;
   role: Role;
   allowed: boolean;
   origin: 'cliente' | 'padrao';
@@ -23,6 +25,7 @@ const EDITABLE_ROLES: Role[] = ['gestor', 'operador'];
 export class PermissionsService {
   constructor(
     private readonly repo: PermissionsRepository,
+    private readonly perfis: PerfisRepository,
     private readonly audit: AuditLogRepository,
     @Inject(PG_POOL) private readonly pool: Pool,
   ) {}
@@ -40,6 +43,38 @@ export class PermissionsService {
     return override ?? def.defaultByRole[role];
   }
 
+  /**
+   * Autorização de uma requisição pelo usuário, não pelo papel do token: papel e perfil vêm do banco, então trocar o
+   * perfil de alguém vale na próxima requisição, sem derrubar a sessão. Com perfil próprio, vale o que o perfil
+   * gravou; o que ele não gravou (permissão nova no catálogo) segue o padrão do papel-base. Travada pela plataforma
+   * (`editableByClient: false`) nunca lê override — nem de perfil.
+   */
+  async isAllowedForUser(clientId: string, userId: string, key: string): Promise<boolean> {
+    const def = getPermissionDefinition(key);
+    if (!def) return false;
+    const acesso = await this.perfis.acessoDoUsuario(clientId, userId);
+    if (!acesso) return false;
+    if (acesso.role === 'admin' || !def.editableByClient) return def.defaultByRole[acesso.role];
+    if (acesso.perfil_id) {
+      const gravadas = await this.perfis.permissoes(clientId, acesso.perfil_id);
+      return gravadas[key] ?? def.defaultByRole[acesso.role];
+    }
+    return this.isAllowed(clientId, acesso.role, key);
+  }
+
+  /** Chaves liberadas para o usuário (o front esconde tela e botão com isso; quem decide continua sendo a API). */
+  async permissoesDoUsuario(clientId: string, userId: string): Promise<string[]> {
+    const acesso = await this.perfis.acessoDoUsuario(clientId, userId);
+    if (!acesso) return [];
+    const gravadas =
+      acesso.role === 'admin' ? {}
+      : acesso.perfil_id ? await this.perfis.permissoes(clientId, acesso.perfil_id)
+      : (await this.repo.findAllOverrides(clientId))[acesso.role];
+    return listPermissionDefinitions()
+      .filter((def) => (acesso.role !== 'admin' && def.editableByClient ? gravadas[def.key] ?? def.defaultByRole[acesso.role] : def.defaultByRole[acesso.role]))
+      .map((def) => def.key);
+  }
+
   async resolveAll(clientId: string): Promise<ResolvedPermission[]> {
     const overrides = await this.repo.findAllOverrides(clientId);
     const out: ResolvedPermission[] = [];
@@ -49,6 +84,7 @@ export class PermissionsService {
         out.push({
           key: def.key,
           label: def.label,
+          tela: def.tela,
           role,
           allowed: override ?? def.defaultByRole[role],
           origin: override === undefined ? 'padrao' : 'cliente',
@@ -96,7 +132,7 @@ export class PermissionsService {
       );
     });
 
-    return { key: def.key, label: def.label, role, allowed, origin: 'cliente', editableByClient: true };
+    return { key: def.key, label: def.label, tela: def.tela, role, allowed, origin: 'cliente', editableByClient: true };
   }
 
   async restoreDefault(clientId: string, role: Role, key: string, actingUserId: string): Promise<ResolvedPermission> {
@@ -130,6 +166,7 @@ export class PermissionsService {
     return {
       key: def.key,
       label: def.label,
+      tela: def.tela,
       role,
       allowed: def.defaultByRole[role],
       origin: 'padrao',

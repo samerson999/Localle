@@ -15,6 +15,7 @@ vi.mock('web-push', async (importOriginal) => {
 import * as webpush from 'web-push';
 import { inserirAlerta } from '../alertas/alertas.repository';
 import { PermissionsRepository } from '../permissions/permissions.repository';
+import { PerfisRepository } from '../permissions/perfis.repository';
 import { PermissionsService } from '../permissions/permissions.service';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { NotificacaoFilaRepository } from './notificacao-fila.repository';
@@ -32,7 +33,7 @@ describe('notificações — fila nasce com o alerta, worker resolve destinatár
   const aparelhos = new NotificacaoAparelhosRepository(pool);
   const preferencias = new NotificacaoPreferenciasRepository(pool);
   const permissionsRepo = new PermissionsRepository(pool);
-  const permissions = new PermissionsService(permissionsRepo, new AuditLogRepository(pool), pool);
+  const permissions = new PermissionsService(permissionsRepo, new PerfisRepository(pool), new AuditLogRepository(pool), pool);
   const worker = new NotificacoesWorker(pool, fila, aparelhos, preferencias, permissions);
 
   const keys = webpush.generateVAPIDKeys();

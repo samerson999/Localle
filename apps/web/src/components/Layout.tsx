@@ -1,4 +1,5 @@
 import { Suspense, createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { pode, rotaPermitida } from '../lib/permissoes';
 import { NavLink, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { useNeedsYou } from '../lib/needs';
@@ -93,10 +94,13 @@ function AvisoBackend() {
 // chama useMobilePageAction — nas telas sem ação de criação clara, a barra fica só com o título. Registro por
 // contexto (não prop) porque a barra vive no Layout, acima do Outlet; useRef guarda o onClick sempre atualizado
 // sem reabrir o registro a cada render da página (só label/icon mudam o registro).
-type MobileAction = { label: string; icon?: IconName; onClick: () => void };
+// `permissao`: sem ela no perfil de acesso (lib/permissoes.ts), a ação nem aparece
+type MobileAction = { label: string; icon?: IconName; onClick: () => void; permissao?: string };
 const MobileActionCtx = createContext<{ action: MobileAction | null; set: (a: MobileAction | null) => void } | null>(null);
-export function useMobilePageAction(action: MobileAction | null) {
+export function useMobilePageAction(acao: MobileAction | null) {
   const ctx = useContext(MobileActionCtx);
+  const permitida = useStore((s) => !acao?.permissao || pode(s.permissoes, acao.permissao));
+  const action = permitida ? acao : null;
   const ref = useRef(action); ref.current = action;
   useEffect(() => {
     if (!ctx || !action) return;
@@ -216,8 +220,10 @@ function LayoutBody() {
   // revenda e Locale só veem a frota do cliente em acesso de suporte
   const fleet = canSeeFleet(session);
   // módulo contratado e página não desligada no contrato (GET /auth/acessos); subitens idem
-  const liberada = (to: string) => paginaLiberada(rev.modules, to);
-  const allowed = (l: typeof GESTAO) => (fleet ? l.filter((n) => rev.modules[(n as any).mod ?? n.key] && liberada(n.to)).map((n: any) => { const sub = n.sub?.filter((x: any) => liberada(x.to)); return sub ? { ...n, sub: sub.length ? sub : undefined } : n; }) : []);
+  // e, pelo perfil de acesso da pessoa, só as telas que ela pode ver (lib/permissoes.ts)
+  const permissoes = useStore((s) => s.permissoes);
+  const liberada = (to: string, mod?: string) => paginaLiberada(rev.modules, to) && rotaPermitida(permissoes, to, mod);
+  const allowed = (l: typeof GESTAO) => (fleet ? l.filter((n) => rev.modules[(n as any).mod ?? n.key] && liberada(n.to, (n as any).mod ?? n.key)).map((n: any) => { const sub = n.sub?.filter((x: any) => liberada(x.to)); return sub ? { ...n, sub: sub.length ? sub : undefined } : n; }) : []);
   // end: a Visão geral (/locale) é a raiz das outras telas do painel; sem ele ficava marcada em todas
   const admin: { key: string; label: string; to: string; icon: IconName; end?: boolean }[] = session.role !== 'locale' ? [] : [
       { key: 'locale', label: 'Visão geral', to: '/locale', icon: 'locale', end: true },
@@ -233,7 +239,7 @@ function LayoutBody() {
   ];
   const canConfig = session.role === 'revenda' || session.role === 'locale';
   // Setup (parâmetros de operação, docs/PLANO-SETUP-ADMIN.md): quem vê a frota configura a própria empresa; a API decide quem pode alterar
-  const mods = [...allowed(OPERACAO).flatMap((n: any) => [n, ...(n.sub || [])]), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }, { key: 'equipe', label: 'Equipe', to: '/equipe', icon: 'equipe' }].filter((n) => liberada(n.to)) : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'marca' }] : [])];
+  const mods = [...allowed(OPERACAO).flatMap((n: any) => [n, ...(n.sub || [])]), ...allowed(GESTAO), ...(fleet ? [{ key: 'setup', label: 'Setup', to: '/setup', icon: 'config' }].filter((n) => liberada(n.to)) : []), ...admin, ...(canConfig ? [{ key: 'revenda', label: 'Configurações da revenda', to: '/revenda', icon: 'marca' }] : [])];
   // celular: a barra superior diz em que tela se está (o título da página é discreto e o logo já mostra a revenda)
   const atual = mods.filter((m) => loc.pathname === m.to || loc.pathname.startsWith(m.to + '/')).sort((a, b) => b.to.length - a.to.length)[0]
     ?? (loc.pathname.startsWith('/precisa-de-voce') ? { label: 'Precisa de você' } : null);

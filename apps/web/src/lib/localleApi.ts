@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { rotaPermitida } from './permissoes';
 import type { CatalogoAtivos } from './catalogoAtivos';
 import { create } from 'zustand';
 import type { Alerta, RealtimeMessage, RealtimePosicao } from '@localle/shared/realtime';
@@ -410,7 +411,7 @@ export interface AdminAuditEntry { id: string; actor_type: 'user' | 'superadmin'
 /** Resultado de um convite: sem SMTP, `link` volta para quem convidou repassar. */
 export interface Entrega { conviteEnviado: boolean; link: string | null }
 export interface MembroLocalle { id: string; email: string; created_at: string; desativado_em: string | null; pendente: boolean }
-export interface MembroEquipe { id: string; email: string; role: 'admin' | 'gestor' | 'operador'; ativo: boolean; pendente: boolean; createdAt: string }
+export interface MembroEquipe { id: string; email: string; role: 'admin' | 'gestor' | 'operador'; perfilId: string | null; ativo: boolean; pendente: boolean; createdAt: string }
 
 /** Catálogo de tipos de alerta da plataforma (apps/api/src/alertas/alerta-tipos.repository.ts). */
 export interface CondicaoAlerta { field: string; op: string; value: string; attr?: string }
@@ -598,16 +599,30 @@ export async function aceitarConviteLocalle(token: string, password: string): Pr
 /** Equipe do próprio cliente (admin): convite por e-mail para Gestor/Operador. */
 export const equipeApi = {
   listar: () => apiGet<MembroEquipe[]>('/users'),
-  convidar: (email: string, role: 'gestor' | 'operador') => apiSend<MembroEquipe & Entrega>('POST', '/users', { email, role }),
+  /** `perfil`: 'gestor', 'operador' ou o id de um perfil próprio. */
+  convidar: (email: string, perfil: string) => apiSend<MembroEquipe & Entrega>('POST', '/users', { email, perfil }),
+  definirPerfil: (id: string, perfil: string) => apiSend<MembroEquipe>('PUT', `/users/${id}/perfil`, { perfil }),
   reenviarConvite: (id: string) => apiSend<Entrega>('POST', `/users/${id}/convite`),
   desativar: (id: string) => apiSend<MembroEquipe>('POST', `/users/${id}/desativar`),
   reativar: (id: string) => apiSend<MembroEquipe>('POST', `/users/${id}/reativar`),
   permissoes: () => apiGet<PermissaoPapel[]>('/permissions'),
   definirPermissao: (role: PermissaoPapel['role'], key: string, allowed: boolean) => apiSend<PermissaoPapel>('PUT', `/permissions/${role}/${key}`, { allowed }),
   restaurarPermissao: (role: PermissaoPapel['role'], key: string) => apiSend<PermissaoPapel>('DELETE', `/permissions/${role}/${key}`),
+  perfis: () => apiGet<PerfilAcesso[]>('/permissions/perfis'),
+  /** `copiarDe`: 'gestor', 'operador' ou o id de outro perfil — o novo nasce com o que vale hoje para ele. */
+  criarPerfil: (nome: string, descricao: string, copiarDe: string) => apiSend<PerfilAcesso>('POST', '/permissions/perfis', { nome, descricao, copiarDe }),
+  renomearPerfil: (id: string, nome: string, descricao: string) => apiSend<PerfilAcesso>('PATCH', `/permissions/perfis/${id}`, { nome, descricao }),
+  excluirPerfil: (id: string) => apiSend<void>('DELETE', `/permissions/perfis/${id}`),
+  definirDoPerfil: (id: string, key: string, allowed: boolean) => apiSend<PerfilAcesso>('PUT', `/permissions/perfis/${id}/${key}`, { allowed }),
+  padraoDoPerfil: (id: string, key: string) => apiSend<PerfilAcesso>('DELETE', `/permissions/perfis/${id}/${key}`),
 };
+/** Perfil próprio do cliente (além de Gestor e Operador); `origin: 'perfil'` = marcada no perfil, `padrao` = segue o papel-base. */
+export interface PerfilAcesso {
+  id: string; nome: string; descricao: string | null; baseRole: 'gestor' | 'operador'; usuarios: number;
+  permissoes: { key: string; allowed: boolean; origin: 'perfil' | 'padrao'; editableByClient: boolean }[];
+}
 /** Uma linha por (permissão, papel); `origin: 'cliente'` = alterada pela empresa, `editableByClient: false` = travada pela Localle. */
-export interface PermissaoPapel { key: string; label: string; role: 'admin' | 'gestor' | 'operador'; allowed: boolean; origin: 'cliente' | 'padrao'; editableByClient: boolean }
+export interface PermissaoPapel { key: string; label: string; tela: string; role: 'admin' | 'gestor' | 'operador'; allowed: boolean; origin: 'cliente' | 'padrao'; editableByClient: boolean }
 
 /** Ativo novo nasce na API (é nele que o rastreador é instalado); devolve o id do store (lc_…). */
 /** Ativo sem placa (linha amarela, equipamento) entra pelo identificador (código interno ou nº de série). */
@@ -808,7 +823,7 @@ export function useLocalleSync() {
     // sessão persistida no navegador sem token (aba nova, token expirado): volta para o login
     if (email && !getToken()) { useStore.getState().patch(() => ({ session: null })); return; }
     // só usuário de cliente tem frota; superadmin não tem client_id
-    if (!email || role !== 'gestor') { purgeLocalleData(); useLocalle.setState({ prontos: null }); return; }
+    if (!email || role !== 'gestor') { purgeLocalleData(); useStore.getState().patch(() => ({ permissoes: null })); useLocalle.setState({ prontos: null }); return; }
     const ctrl = new AbortController();
     useLocalle.setState({ prontos: [] });
     // acessos antes dos módulos: módulo fora do contrato nem é pedido
@@ -1211,14 +1226,16 @@ const MODULO_DA_CARGA: Record<string, string> = { jornada: 'jornada', multas: 'm
  * Substitui o mapa inteiro: nada do que ficou salvo no navegador (ou de outro cliente) sobrevive. Sem contrato, tudo ligado.
  */
 export async function syncAcessos() {
-  const a = await apiGet<{ modules: string[] | null; blockedPages: string[] }>('/auth/acessos');
+  const a = await apiGet<{ modules: string[] | null; blockedPages: string[]; permissoes?: string[] }>('/auth/acessos');
   const modules: Record<string, boolean> = Object.fromEntries(MODULES.map((m) => [m.key, !a.modules || a.modules.includes(m.key)]));
   for (const p of a.blockedPages) modules[p] = false;
-  patch((s) => ({ revenda: { ...s.revenda, modules } }));
+  patch((s) => ({ revenda: { ...s.revenda, modules }, permissoes: a.permissoes ?? null }));
 }
 
 export async function syncModulos() {
-  const contratado = (nome: string) => !MODULO_DA_CARGA[nome] || !!useStore.getState().revenda.modules[MODULO_DA_CARGA[nome]];
+  // fora do contrato ou sem a permissão de ver no perfil: não é pedido (a API responderia 403)
+  const { revenda, permissoes } = useStore.getState();
+  const contratado = (nome: string) => !MODULO_DA_CARGA[nome] || (!!revenda.modules[MODULO_DA_CARGA[nome]] && rotaPermitida(permissoes, '', MODULO_DA_CARGA[nome]));
   const todas: [string, () => Promise<unknown>][] = [
     // operações e listas de marca/modelo antes da ficha: o ativo aponta para elas já com o id da API
     ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['cadastro', () => syncOperacoes().then(syncCatalogoAtivos).then(syncCadastroAtivos)], ['empresa', syncEmpresa], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],

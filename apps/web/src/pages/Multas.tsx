@@ -1,4 +1,5 @@
 import { RetiredToggle } from '../components/RetiredToggle';
+import { usePode } from '../lib/permissoes';
 import { opAssets } from '../lib/assetLifecycle';
 import { useMemo, useState } from 'react';
 import { useStore, useStoreData } from '../lib/store';
@@ -162,9 +163,10 @@ function Lista({ onOpen }: { onOpen: (f: any) => void }) {
     .filter((f: any) => (flt === 'indicar' ? PENDING.includes(indicationState(f)) : flt === 'perdido' ? indicationState(f) === 'vencida' : flt === 'todas' || f.status === flt))
     .filter((f: any) => !q || [f.auto, N.a(f.assetId), N.d(f.driverId), f.description, f.code].some((x) => norm(x).includes(norm(q))))
     .sort((p: any, r: any) => (flt === 'indicar' ? indicationDue(p) - indicationDue(r) : r.ts - p.ts));
-  useMobilePageAction({ label: 'Lançar multa', icon: 'mais', onClick: () => onOpen(blank()) });
+  const podeEditar = usePode('multas.editar');
+  useMobilePageAction({ label: 'Lançar multa', icon: 'mais', permissao: 'multas.editar', onClick: () => onOpen(blank()) });
   return (
-    <Card title="Multas" icon="multas" actions={<Button onClick={() => onOpen(blank())} className="max-md:hidden"><Icon name="mais" size={16} />Lançar multa</Button>}>
+    <Card title="Multas" icon="multas" actions={podeEditar && <Button onClick={() => onOpen(blank())} className="max-md:hidden"><Icon name="mais" size={16} />Lançar multa</Button>}>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <FilterSheet count={flt !== 'indicar' ? 1 : 0}><Pills value={flt} onChange={setFlt} options={[{ key: 'indicar', label: 'Indicar condutor' }, { key: 'perdido', label: 'Prazo perdido' }, { key: 'aberta', label: 'Em aberto' }, { key: 'recurso', label: 'Em recurso' }, { key: 'paga', label: 'Pagas' }, { key: 'todas', label: 'Todas' }]} /></FilterSheet>
         <SearchInput className="ml-auto w-full sm:w-72" aria-label="Buscar multa" value={q} onChange={setQ} placeholder="Auto, placa, motorista ou infração" />

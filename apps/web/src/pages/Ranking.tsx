@@ -225,7 +225,7 @@ function Campanhas() {
   const all = [...s.events, ...journeyEvents(s)];
   const cats = Object.keys(EVENT_CATEGORIES).filter((c) => !FUTURE_CATEGORIES.includes(c));
   const novaCampanha = () => setC({ name: '', from: toInputD(Date.now()), to: toInputD(Date.now() + 30 * DAY), eventTypes: ['excesso_velocidade'], maxPerVehicle: 0, prize: '', groupId: '' });
-  useMobilePageAction({ label: 'Nova campanha', icon: 'mais', onClick: novaCampanha });
+  useMobilePageAction({ label: 'Nova campanha', icon: 'mais', permissao: 'ranking.editar', onClick: novaCampanha });
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 mb-4">

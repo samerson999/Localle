@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { usePode } from '../lib/permissoes';
 import { rectUi } from '../lib/uiZoom';
 import { useAlturaLivre } from '../lib/alturaLivre';
 import L from 'leaflet';
@@ -87,6 +88,13 @@ function MonitoramentoMapa() {
   // comando direto no veículo (sprint 28/10/2026, melhoria 2): abre o envio já com veículo e comando escolhidos; a senha
   // continua obrigatória no modal
   const comandar = (assetId: string, defId?: string) => setCmd({ target: 'veiculo', assetId, defId });
+  // bloqueio e demais comandos só aparecem para o perfil que pode (a API também recusa)
+  const podeBloquear = usePode('comandos.bloquear');
+  const podeComandos = usePode('comandos.enviar');
+  const menuComandos = (assetId: string) => [
+    ...(podeBloquear ? [{ icon: 'cadeado' as const, label: 'Bloquear', danger: true, onClick: () => comandar(assetId, 'c_bloq') }, { icon: 'cadeado' as const, label: 'Desbloquear', onClick: () => comandar(assetId, 'c_desb') }] : []),
+    ...(podeComandos ? [{ icon: 'comando' as const, label: 'Outros comandos', onClick: () => comandar(assetId) }] : []),
+  ];
   const [vctx, setVctx] = useState<null | { x: number; y: number; id: string }>(null);
   // Esc fecha o painel do veículo, a menos que haja um diálogo aberto por cima (ele fecha primeiro)
   useEffect(() => {
@@ -207,8 +215,7 @@ function MonitoramentoMapa() {
             model={[a.brand, a.model].filter(Boolean).join(' ')} driver={m} pos={v?.pos}
             tracker={v ? { ignition: ignicaoAtual(v), gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
             speed={v && s.key !== 'sem' && !s.semPosicao ? Math.round(v.speed) : null} time={v ? shortDT(v.lastUpdate) : ''}
-            menu={[{ icon: 'cadeado', label: 'Bloquear', danger: true, onClick: () => comandar(a.id, 'c_bloq') }, { icon: 'cadeado', label: 'Desbloquear', onClick: () => comandar(a.id, 'c_desb') },
-              { icon: 'comando', label: 'Outros comandos', onClick: () => comandar(a.id) }, { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
+            menu={[...menuComandos(a.id), { icon: 'rota', label: 'Percurso', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) }]} />
         </li>
       ))}
       {shown.length > limit && <MoreOnScroll onMore={() => setLimit((l) => l + BATCH)} />}
@@ -351,9 +358,7 @@ function MonitoramentoMapa() {
             return (
               <ContextMenu x={Math.max(8, Math.min(vctx.x, (mapSectionRef.current?.clientWidth ?? 600) - 264))} y={Math.max(8, Math.min(vctx.y, (mapSectionRef.current?.clientHeight ?? 600) - 220))} onClose={() => setVctx(null)}
                 header={<span className="font-medium">{va.a.name}</span>} items={[
-                  { label: 'Bloquear', icon: 'cadeado', danger: true, onClick: () => comandar(va.a.id, 'c_bloq') },
-                  { label: 'Desbloquear', icon: 'cadeado', onClick: () => comandar(va.a.id, 'c_desb') },
-                  { label: 'Outros comandos…', icon: 'comando', onClick: () => comandar(va.a.id) },
+                  ...menuComandos(va.a.id),
                   { label: 'Ver detalhes', icon: 'ativos', onClick: () => setSel(va.a.id) },
                   { label: 'Percurso', icon: 'rota', to: `/monitoramento/replay?a=${va.a.id}` },
                 ]} />
@@ -468,7 +473,9 @@ function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }:
   const velPainel = velocidadePainelAtual(v);
   const mobile = useIsMobile();
   const nav = useNavigate();
-  const bloqueio = v?.blocked
+  const podeBloquear = usePode('comandos.bloquear');
+  const podeComandos = usePode('comandos.enviar');
+  const bloqueio = !podeBloquear ? null : v?.blocked
     ? <Button size={mobile ? 'md' : 'sm'} className={cx(mobile && 'flex-1')} onClick={() => onCmd('c_desb')}><Icon name="cadeado" size={16} />Desbloquear</Button>
     : <Button variant="danger" size={mobile ? 'md' : 'sm'} className={cx(mobile && 'flex-1')} onClick={() => onCmd('c_bloq')}><Icon name="cadeado" size={16} />Bloquear</Button>;
   return (
@@ -477,7 +484,7 @@ function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }:
       // celular: só o que se faz na rua cabe na linha (comandos e bloqueio); o resto vai para o menu e a foto para o corpo.
       // Seis botões quebravam em três linhas e o painel ficava sem espaço para o próprio conteúdo.
       footer={mobile ? <>
-        <Button variant="secondary" className="flex-1" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>
+        {podeComandos && <Button variant="secondary" className="flex-1" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>}
         {bloqueio}
         <Menu label="Mais ações do veículo" items={[
           { label: 'Percurso', icon: 'rota', onClick: () => nav(`/monitoramento/replay?a=${a.id}`) },
@@ -492,7 +499,7 @@ function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }:
         </span>
         <IconButton aria-label="Compartilhar localização" size="sm" onClick={onShare}><Icon name="compartilhar" size={16} /></IconButton>
         <div className="ml-auto flex items-center gap-tight">
-          <Button variant="secondary" size="sm" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>
+          {podeComandos && <Button variant="secondary" size="sm" onClick={() => onCmd()}><Icon name="comando" size={16} />Comandos</Button>}
           {bloqueio}
         </div>
       </>}>

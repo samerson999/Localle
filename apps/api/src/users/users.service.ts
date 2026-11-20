@@ -34,7 +34,7 @@ export class UsersService {
    * nunca conhece a senha. `clientId` vem de `@ClientId()` (JWT), nunca do corpo. Usuário + convite +
    * auditoria na mesma transação; o e-mail sai depois do commit.
    */
-  async convidarMembro(clientId: string, actingAdminId: string, data: { email: string; role: 'gestor' | 'operador' }) {
+  async convidarMembro(clientId: string, actingAdminId: string, data: { email: string; role: 'gestor' | 'operador'; perfilId?: string | null }) {
     if (!CREATABLE_ROLES.includes(data.role)) {
       throw new BadRequestException('Papel inválido — só "gestor" ou "operador" podem ser convidados por aqui');
     }
@@ -43,10 +43,10 @@ export class UsersService {
     let criado: { user: UserEntity; token: string };
     try {
       criado = await withTransaction(this.pool, async (client) => {
-        const user = await this.repo.create({ clientId, email: data.email, passwordHash: null, role: data.role }, client);
+        const user = await this.repo.create({ clientId, email: data.email, passwordHash: null, role: data.role, perfilId: data.perfilId }, client);
         const token = await this.convites.emitir(client, { userId: user.id, clientId, criadoPor: actingAdminId });
         await this.audit.record(
-          { actorType: 'user', actorId: actingAdminId, clientId, action: 'user.create', target: user.id, after: { email: user.email, role: user.role } },
+          { actorType: 'user', actorId: actingAdminId, clientId, action: 'user.create', target: user.id, after: { email: user.email, role: user.role, perfilId: user.perfil_id } },
           client,
         );
         return { user, token };
@@ -102,5 +102,34 @@ export class UsersService {
       );
       return atualizado;
     });
+  }
+
+  /**
+   * Troca o perfil de alguém da equipe. Mesma política de `setAtivo`: nunca o próprio (ficaria sem admin) nem um
+   * Admin (isso é da Locale). Vale na próxima requisição da pessoa — a autorização lê papel e perfil do banco.
+   */
+  async definirPerfil(clientId: string, actingAdminId: string, userId: string, perfil: { role: 'gestor' | 'operador'; perfilId: string | null }) {
+    if (userId === actingAdminId) throw new BadRequestException('Você não pode alterar o próprio acesso');
+    const atualizado = await withTransaction(this.pool, async (client) => {
+      const alvo = await this.repo.findOneByClient(clientId, userId, client);
+      if (!alvo) throw new NotFoundException('Usuário não encontrado');
+      if (alvo.role === 'admin') throw new ForbiddenException('O perfil do admin só é alterado pela Locale');
+      const novo = (await this.repo.setPerfil(clientId, userId, perfil.role, perfil.perfilId, client))!;
+      await this.audit.record(
+        {
+          actorType: 'user',
+          actorId: actingAdminId,
+          clientId,
+          action: 'user.perfil',
+          target: userId,
+          before: { role: alvo.role, perfilId: alvo.perfil_id },
+          after: { role: novo.role, perfilId: novo.perfil_id },
+        },
+        client,
+      );
+      return novo;
+    });
+    this.logger.log(`perfil alterado user_id=${userId} client_id=${clientId} perfil=${perfil.perfilId ?? perfil.role} por user_id=${actingAdminId}`);
+    return atualizado;
   }
 }

@@ -49,16 +49,19 @@ export class PneusController {
   ) {}
 
   @Get()
+  @RequirePermission('pneus.ver')
   listar(@ClientId() clientId: string, @Query('status') status?: string, @Query('assetId') assetId?: string) {
     return this.service.listarComNivel(clientId, status ? opcao(status, 'status', STATUS_PNEU) : null, uuidOpcional(assetId, 'assetId'));
   }
 
   @Get('movimentos')
+  @RequirePermission('pneus.ver')
   todosMovimentos(@ClientId() clientId: string) {
     return this.repo.todosMovimentos(clientId);
   }
 
   @Get(':id/movimentos')
+  @RequirePermission('pneus.ver')
   async movimentos(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string) {
     if (!(await this.repo.buscar(clientId, id))) throw new NotFoundException('Pneu não encontrado');
     return this.repo.movimentos(clientId, id);

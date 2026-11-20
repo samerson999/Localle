@@ -7,6 +7,7 @@ export interface UserEntity {
   password_hash: string | null;
   email_confirmado_em: Date | null;
   role: Role;
+  perfil_id: string | null;
   desativado_em: Date | null;
   created_at: Date;
   updated_at: Date;

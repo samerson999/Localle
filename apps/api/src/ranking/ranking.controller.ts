@@ -51,12 +51,14 @@ export class RankingController {
   ) {}
 
   @Get()
+  @RequirePermission('ranking.ver')
   calcular(@ClientId() clientId: string, @Query('de') de?: string, @Query('ate') ate?: string) {
     const [inicio, fim] = periodo(de, ate, 30, SEM_LIMITE);
     return this.service.calcular(clientId, inicio, fim);
   }
 
   @Get('matriz')
+  @RequirePermission('ranking.ver')
   matriz(@ClientId() clientId: string) {
     return this.service.tipos(clientId);
   }
@@ -75,6 +77,7 @@ export class RankingController {
   }
 
   @Get('eventos')
+  @RequirePermission('ranking.ver')
   eventos(@ClientId() clientId: string, @Query('de') de?: string, @Query('ate') ate?: string) {
     const [inicio, fim] = periodo(de, ate, 30, SEM_LIMITE);
     return this.repo.eventos(clientId, inicio, fim);

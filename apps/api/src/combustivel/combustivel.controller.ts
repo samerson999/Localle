@@ -58,6 +58,7 @@ export class CombustivelController {
   ) {}
 
   @Get()
+  @RequirePermission('combustivel.ver')
   listar(@ClientId() clientId: string, @Query('de') de?: string, @Query('ate') ate?: string, @Query('assetId') assetId?: string) {
     const [inicio, fim] = periodo(de, ate, 90, SEM_LIMITE);
     return this.service.listar(clientId, inicio, fim, uuidOpcional(assetId, 'assetId'));

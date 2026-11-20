@@ -4,13 +4,14 @@ import { Pool } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { PermissionsRepository } from './permissions.repository';
+import { PerfisRepository } from './perfis.repository';
 import { PermissionsService } from './permissions.service';
 
 describe('PermissionsService — resolução, isolamento, proteção contra escalonamento, auditoria', () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const repo = new PermissionsRepository(pool);
   const audit = new AuditLogRepository(pool);
-  const service = new PermissionsService(repo, audit, pool);
+  const service = new PermissionsService(repo, new PerfisRepository(pool), audit, pool);
 
   let clientA: string;
   let clientB: string;
@@ -141,7 +142,7 @@ describe('PermissionsService — resolução, isolamento, proteção contra esca
     quebrado.record = async () => {
       throw new Error('falha simulada na escrita de auditoria');
     };
-    const servicoComAuditoriaQuebrada = new PermissionsService(repo, quebrado, pool);
+    const servicoComAuditoriaQuebrada = new PermissionsService(repo, new PerfisRepository(pool), quebrado, pool);
 
     await expect(
       servicoComAuditoriaQuebrada.set(clientA, 'operador', 'ativos.editar', true, adminUserIdA),

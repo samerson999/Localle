@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { usePode } from '../lib/permissoes';
 import { useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, assetKm, useStoreData } from '../lib/store';
@@ -36,13 +37,14 @@ export default function Ativos() {
   const assets = useStore((s) => s.assets);
   useUrlItem('ativo', (id) => assets.find((x: any) => x.id === id), (a: any) => { setTab('ativos'); setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) }))); }, [assets]);
   const tabs = <Tabs value={tab} onChange={setTab} tabs={[{ key: 'ativos', label: 'Ativos' }, { key: 'grupos', label: 'Grupos' }, { key: 'motoristas', label: 'Motoristas' }, { key: 'operacoes', label: 'Operações' }, { key: 'tipos', label: 'Tipos e modelos' }, { key: 'alteracoes', label: 'Alterações' }]} />;
-  useMobilePageAction(tab === 'ativos' ? { label: 'Novo ativo', icon: 'mais', onClick: () => setEdit(blank()) } : null);
+  const podeEditar = usePode('ativos.editar');
+  useMobilePageAction(tab === 'ativos' ? { label: 'Novo ativo', icon: 'mais', permissao: 'ativos.editar', onClick: () => setEdit(blank()) } : null);
   return (
     <div>
       <PageHeader icon="ativos" title="Gestão de ativos" subtitle="Veículos, linha amarela, máquinas e equipamentos rastreados" />
       <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
         {tabs}
-        {tab === 'ativos' && <Button onClick={() => setEdit(blank())} className="max-md:hidden"><Icon name="mais" size={18} />Novo ativo</Button>}
+        {tab === 'ativos' && podeEditar && <Button onClick={() => setEdit(blank())} className="max-md:hidden"><Icon name="mais" size={18} />Novo ativo</Button>}
       </div>
       <TabPanel id={tab} loading={carregando}>
         {tab === 'ativos' && <AssetList onOpen={(a: any) => setEdit(JSON.parse(JSON.stringify({ ...blank(a.kind), ...a, category: categoryOf(a) })))} />}
@@ -828,7 +830,7 @@ function Grupos() {
     if (!(await confirmAction({ title: `Excluir ${g.name}?`, detail: 'Os ativos deixam de fazer parte dele, mas não são apagados.' }))) return;
     try { await removerGrupo(g.id); toast(`${g.name} excluído.`); } catch (e: any) { toast('Não foi possível excluir: ' + (e.message || e), { tone: 'crit' }); }
   };
-  useMobilePageAction({ label: 'Novo grupo', icon: 'mais', onClick: () => setEdit({ name: '', assetIds: [] }) });
+  useMobilePageAction({ label: 'Novo grupo', icon: 'mais', permissao: 'ativos.editar', onClick: () => setEdit({ name: '', assetIds: [] }) });
   return (
     <Card title="Grupos de veículos" icon="equipe" actions={<Button size="sm" onClick={() => setEdit({ name: '', assetIds: [] })} className="max-md:hidden"><Icon name="mais" size={16} />Novo grupo</Button>}>
       <Table head={['Grupo', 'Ativos', '']} align={['left', 'left', 'right']}
@@ -1092,7 +1094,7 @@ function Drivers() {
   const assets = useStore((s) => s.assets);
   const { upsert, remove } = useStore.getState();
   const [d, setD] = useState<any>(null);
-  useMobilePageAction({ label: 'Novo motorista', icon: 'mais', onClick: () => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' }) });
+  useMobilePageAction({ label: 'Novo motorista', icon: 'mais', permissao: 'motoristas.editar', onClick: () => setD({ name: '', cnh: '', cnhCat: 'B', cnhDue: '', phone: '', regime: 'cargas' }) });
   return (
     <>
       <DriverConflicts />

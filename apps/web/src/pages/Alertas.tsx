@@ -89,7 +89,7 @@ function Rules() {
   const falhou = (e: any) => toast('Não foi possível salvar a regra: ' + (e?.message || e), { tone: 'crit' });
   const setCond = (i: number, k: string, v: string) => { const c = r.conditions.map((x: any, j: number) => (j === i ? { ...x, [k]: v, ...(k === 'field' ? { op: RULE_FIELDS[v].ops[0], value: RULE_FIELDS[v].values?.[0] || (v.includes('cerca') ? 'Cliente' : '') } : {}) } : x)); setR({ ...r, conditions: c }); };
   const describe = (rule: any) => rule.conditions.map((c: any) => `${RULE_FIELDS[c.field]?.label} ${c.op} ${c.value}`).join(' e ');
-  useMobilePageAction({ label: 'Nova regra', icon: 'mais', onClick: () => setR(blankRule()) });
+  useMobilePageAction({ label: 'Nova regra', icon: 'mais', permissao: 'regras.editar', onClick: () => setR(blankRule()) });
   return (
     <>
       <Card title="Regras ativas" icon="alerta" actions={<Button onClick={() => setR(blankRule())} className="max-md:hidden"><Icon name="mais" size={16} />Nova regra</Button>}>

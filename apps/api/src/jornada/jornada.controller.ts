@@ -20,12 +20,14 @@ export class JornadaController {
 
   /** Sem `motoristaId`, todas as marcações do cliente no período (carga inicial do front). */
   @Get('marcacoes')
+  @RequirePermission('jornada.ver')
   listar(@ClientId() clientId: string, @Query('motoristaId') motoristaId?: string, @Query('de') de?: string, @Query('ate') ate?: string) {
     const [inicio, fim] = periodo(de, ate);
     return this.repo.listar(clientId, uuidOpcional(motoristaId, 'motoristaId'), inicio, fim);
   }
 
   @Get('espelho')
+  @RequirePermission('jornada.ver')
   espelho(@ClientId() clientId: string, @Query('motoristaId') motoristaId: string, @Query('de') de?: string, @Query('ate') ate?: string) {
     const [inicio, fim] = periodo(de, ate);
     return this.service.espelho(clientId, uuid(motoristaId, 'motoristaId'), inicio, fim);

@@ -224,7 +224,7 @@ function Externas() {
   const [flt, setFlt] = useState('abertas');
   const all = s.trips.filter((x: any) => x.type === 'externo').sort((p: any, q: any) => (q.startedAt || Infinity) - (p.startedAt || Infinity));
   const list = all.filter((x: any) => (flt === 'abertas' ? ['aguardando', 'em_andamento'].includes(x.status) : x.status === flt));
-  useMobilePageAction({ label: 'Nova viagem', icon: 'mais', onClick: () => setT({ stops: [], visited: [] }) });
+  useMobilePageAction({ label: 'Nova viagem', icon: 'mais', permissao: 'viagens.editar', onClick: () => setT({ stops: [], visited: [] }) });
   return (
     <>
       <Card title="Viagens externas" icon="viagens" actions={<Button onClick={() => setT({ stops: [], visited: [] })} className="max-md:hidden"><Icon name="mais" size={16} />Nova viagem</Button>}>
@@ -266,7 +266,7 @@ function Recorrentes() {
   const [period, setPeriod] = useState<PeriodValue>(() => presetValue(BI_PRESETS[0], 'anterior'));
   const { a, b } = periodRanges(period);
   const novaRecorrente = () => setEdit({ name: '', assetId: '', driverId: '', days: [1, 2, 3, 4, 5], stops: [{ fenceId: '', time: '08:00' }], sleep: {} });
-  useMobilePageAction({ label: 'Nova viagem recorrente', icon: 'mais', onClick: novaRecorrente });
+  useMobilePageAction({ label: 'Nova viagem recorrente', icon: 'mais', permissao: 'viagens.editar', onClick: novaRecorrente });
   return (
     <Stack gap="grid">
       <div className="flex flex-wrap items-center gap-2"><p className="text-small text-ink-2 mr-auto max-w-[80ch]">Viagens que se repetem na semana: paradas com horário previsto e onde o veículo dorme. O cumprimento compara o planejado com as cercas em que o veículo entrou (tolerância de ±{TRIP_PARAMS.tolMin} min).</p><Button onClick={novaRecorrente} className="max-md:hidden"><Icon name="mais" size={16} />Nova viagem recorrente</Button></div>

@@ -5,6 +5,9 @@ import { alertaTiposCliente, setupApi, syncParametros, type AlertaTipoDoCliente,
 import { Badge, Button, Callout, Card, Field, Input, Modal, PageHeader, Pills, SearchInput, Select, Switch, Table, Tabs, TabPanel, TextButton, cx, toast, confirmAction, EmptyState, Skeleton, useUrlTab } from '../components/ui';
 import { Stack } from '../components/primitives';
 import { Icon } from '../components/icons';
+import { EquipeAcessos } from '../components/equipe/EquipeAcessos';
+import { usePode } from '../lib/permissoes';
+import { paginaLiberada } from '../lib/paginas';
 import { fmtDT } from '@localle/shared/utils';
 
 // Setup de parâmetros de operação (docs/PLANO-SETUP-ADMIN.md § 5): tela gerada do registro central da API
@@ -37,9 +40,14 @@ export default function Setup() {
   useEffect(() => { setParams(null); carregar(); }, [groupId]);
 
   const modulos = useMemo(() => [...new Set((params || []).map((p) => p.modulo))].filter((m) => !groupId || (params || []).some((p) => p.modulo === m && p.porGrupo)), [params, groupId]);
-  // "Alertas da plataforma" não é parâmetro do registro: só na camada da empresa (vale para a frota toda)
-  const abas = groupId ? modulos : [...modulos, ALERTAS];
+  // "Alertas da plataforma" não é parâmetro do registro: só na camada da empresa (vale para a frota toda). "Equipe e
+  // acessos" (antes /equipe) só para quem gerencia a equipe e se a página não foi desligada no contrato
+  const podeEquipe = usePode('permissoes.gerenciar');
+  const equipeLiberada = useStore((s) => paginaLiberada(s.revenda.modules, '/equipe'));
+  const gereEquipe = podeEquipe && equipeLiberada;
+  const abas = groupId ? modulos : [...modulos, ALERTAS, ...(gereEquipe ? [EQUIPE] : [])];
   useEffect(() => { if (modulos.length && !abas.includes(tab)) setTab(abas[0]); }, [abas.join()]);
+  const naEquipe = tab === EQUIPE && !groupId;
   const termo = q.trim().toLowerCase();
   const visiveis = (params || []).filter((p) => (termo ? (p.label + ' ' + p.key).toLowerCase().includes(termo) : p.modulo === tab) && (!groupId || p.porGrupo));
 
@@ -58,15 +66,16 @@ export default function Setup() {
     <div>
       <PageHeader title="Setup" subtitle="Padrões e limites de cada parâmetro de operação. A lei é piso: o valor só pode ser mais rigoroso." />
       <div className="flex flex-wrap items-center gap-tight mb-card-head max-md:mb-page-head">
-        {!termo && <Tabs value={tab} onChange={setTab} tabs={abas.map((m) => ({ key: m, label: m === ALERTAS ? 'Alertas da plataforma' : MODULOS[m] || m }))} />}
-        <div className="ml-auto flex flex-wrap items-center gap-tight max-md:ml-0 max-md:w-full">
+        {!termo && <Tabs value={tab} onChange={setTab} tabs={abas.map((m) => ({ key: m, label: m === ALERTAS ? 'Alertas da plataforma' : m === EQUIPE ? 'Equipe e acessos' : MODULOS[m] || m }))} />}
+        {!naEquipe && <div className="ml-auto flex flex-wrap items-center gap-tight max-md:ml-0 max-md:w-full">
           <Pills value={camada} onChange={setCamada} options={[{ key: 'empresa', label: 'Empresa' }, ...groups.map((g: any) => ({ key: g.id, label: g.name }))]} />
           <SearchInput className="w-56 max-md:w-full" value={q} onChange={setQ} placeholder="Buscar parâmetro" aria-label="Buscar parâmetro" />
-        </div>
+        </div>}
       </div>
       {groupId && <Callout className="mb-card-head">Camada do grupo: só os parâmetros que aceitam exceção por grupo aparecem. O que não for definido aqui herda da empresa.</Callout>}
       <TabPanel id={termo ? 'busca' : tab}>
-        {!termo && tab === ALERTAS && !groupId ? <AlertasDaPlataforma />
+        {!termo && naEquipe ? <EquipeAcessos />
+          : !termo && tab === ALERTAS && !groupId ? <AlertasDaPlataforma />
           : erro ? <Card><EmptyState illustration="ilu-erro" title="Não foi possível carregar o Setup" detail={erro} action={<Button onClick={carregar}>Tentar de novo</Button>} /></Card>
           : !params ? <Card><Stack gap="tight"><Skeleton className="h-10" /><Skeleton className="h-10" /><Skeleton className="h-10" /></Stack></Card>
           : visiveis.length === 0 ? <Card><EmptyState title="Nenhum parâmetro" detail={termo ? 'Nada encontrado com esse termo.' : 'Este módulo não tem parâmetro nesta camada.'} /></Card>
@@ -90,6 +99,7 @@ export default function Setup() {
 }
 
 const ALERTAS = 'alertas-plataforma';
+const EQUIPE = 'equipe';
 const PRIO: Record<string, string> = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
 const DISPARO: Record<string, string> = { condicao: 'Estado do rastreador', alarme: 'Alarme do rastreador', sistema: 'Plataforma' };
 

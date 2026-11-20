@@ -54,6 +54,8 @@ export const useStore = create<Store>()(
       ...estadoInicial(),
       maintGoals: { availability: 0.95 }, // meta de disponibilidade da frota (configurável)
       session: null,
+      // chaves de permissão do perfil logado (lib/permissoes.ts); null = ainda não carregou
+      permissoes: null,
       upsert: (c, item) => {
         const it = item.id ? item : { ...item, id: uid(c.slice(0, 2)) };
         set((s: any) => {

@@ -153,7 +153,7 @@ export class NotificacoesWorker implements OnModuleInit, OnModuleDestroy {
     );
     const idsComAcesso: string[] = [];
     for (const u of usuarios) {
-      if (!(await this.permissions.isAllowed(clientId, u.role, 'monitoramento.ver'))) continue;
+      if (!(await this.permissions.isAllowedForUser(clientId, u.id, 'monitoramento.ver'))) continue;
       const prefs = await this.preferencias.listar(clientId, u.id);
       const pref = prefs.find((p) => p.tipo === alerta.tipo);
       // sem preferência: o catálogo da plataforma decide; regra/cerca (fora dele) só prioridade alta. Sem posição
