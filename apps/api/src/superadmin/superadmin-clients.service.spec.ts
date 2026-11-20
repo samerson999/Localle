@@ -256,4 +256,25 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
       expect((await pool.query('select count(*)::int as n from instalacoes where rastreador_id = $1', [rastreadorId])).rows[0].n).toBe(1);
     });
   });
+  describe('redefinir senha pelo Console', () => {
+    it('define a senha, aceita login, revoga convite aberto, derruba sessão antiga e não alcança outro cliente', async () => {
+      const { client, admin } = await service.createClient(superadminId, { name: nome(), admin: { email: email() } });
+      const { client: outro } = await service.createClient(superadminId, { name: nome() });
+      criados.push(client.id, outro.id);
+      expect(await service.listarUsuarios(client.id)).toEqual([{ id: admin!.id, email: admin!.email, role: 'admin', ativo: true, pendente: true }]);
+
+      const antes = Math.floor(Date.now() / 1000) - 5;
+      await service.redefinirSenha(superadminId, client.id, admin!.id, 'senha-nova-do-suporte');
+      await expect(auth.login(admin!.email, 'senha-nova-do-suporte')).resolves.toHaveProperty('accessToken');
+      expect(await activeUsers.isActive(admin!.id, antes)).toBe(false);
+      const { rows: abertos } = await pool.query('select 1 from convites where user_id = $1 and usado_em is null and revogado_em is null', [admin!.id]);
+      expect(abertos).toHaveLength(0);
+      const { rows: log } = await pool.query("select actor_id, before, after from audit_log where action = 'user.redefinir_senha' and target = $1", [admin!.id]);
+      expect(log).toEqual([{ actor_id: superadminId, before: null, after: null }]);
+      expect((await service.listarUsuarios(client.id))[0].pendente).toBe(false);
+
+      await expect(service.redefinirSenha(superadminId, outro.id, admin!.id, 'tentativa-cruzada-1')).rejects.toMatchObject({ status: 404 });
+      await expect(auth.login(admin!.email, 'senha-nova-do-suporte')).resolves.toHaveProperty('accessToken');
+    });
+  });
 });

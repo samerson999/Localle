@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import bcrypt from 'bcryptjs';
 import type { Pool } from 'pg';
 import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { AuditLogRepository } from '../audit/audit-log.repository';
@@ -83,6 +84,26 @@ export class SuperadminClientsService {
       return t;
     });
     return this.convites.entregar(user.email, client.name, token);
+  }
+
+  /** Usuários do cliente para o Console — nunca devolve `password_hash`. */
+  async listarUsuarios(clientId: string) {
+    if (!(await this.clients.findById(clientId))) throw new NotFoundException('Cliente não encontrado');
+    const users = await this.users.findManyByClient(clientId);
+    return users.map((u) => ({ id: u.id, email: u.email, role: u.role, ativo: u.desativado_em === null, pendente: u.password_hash === null }));
+  }
+
+  /**
+   * Suporte: a Locale define a nova senha de um usuário do cliente (ex.: esqueceu e não recebe e-mail). As sessões
+   * abertas do usuário caem; convite aberto é revogado. Auditado, sem a senha no log nem na auditoria.
+   */
+  async redefinirSenha(superadminId: string, clientId: string, userId: string, novaSenha: string): Promise<void> {
+    const passwordHash = await bcrypt.hash(novaSenha, 10);
+    await withTransaction(this.pool, async (tx) => {
+      if (!(await this.users.definirSenha(clientId, userId, passwordHash, tx))) throw new NotFoundException('Usuário não encontrado');
+      await this.audit.record({ actorType: 'superadmin', actorId: superadminId, clientId, action: 'user.redefinir_senha', target: userId }, tx);
+    });
+    this.logger.log(`senha redefinida user_id=${userId} client_id=${clientId} por superadmin=${superadminId}`);
   }
 
   /**

@@ -91,4 +91,20 @@ describe('UsersService — convite de membro da equipe', () => {
     await convitesSemEmail.aceitar(novo.link!.split('/').at(-1)!, 'senha-definida-123');
     await expect(service(semEmail).reenviarConvite(clientA, adminA, r.user.id)).rejects.toThrow(/já definiu a senha/);
   });
+
+  it('convite vencido não abre nem define senha; convite já usado não vale de novo', async () => {
+    const mail = email();
+    const r = await service(semEmail).convidarMembro(clientA, adminA, { email: mail, role: 'gestor' });
+    const token = r.link!.split('/').at(-1)!;
+    await pool.query("update convites set expira_em = now() - interval '1 minute' where user_id = $1", [r.user.id]);
+
+    await expect(convitesSemEmail.consultar(token)).rejects.toThrow(/inválido ou expirado/);
+    await expect(convitesSemEmail.aceitar(token, 'senha-fora-do-prazo-1')).rejects.toThrow(/inválido ou expirado/);
+    await expect(auth.login(mail, 'senha-fora-do-prazo-1')).rejects.toThrow();
+
+    const novo = (await service(semEmail).reenviarConvite(clientA, adminA, r.user.id)).link!.split('/').at(-1)!;
+    await convitesSemEmail.aceitar(novo, 'senha-dentro-do-prazo-1');
+    await expect(convitesSemEmail.aceitar(novo, 'outra-senha-qualquer-1')).rejects.toThrow(/inválido ou expirado/);
+    await expect(auth.login(mail, 'senha-dentro-do-prazo-1')).resolves.toHaveProperty('accessToken');
+  });
 });

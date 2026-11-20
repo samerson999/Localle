@@ -78,6 +78,25 @@ export class SuperadminController {
     return this.clients.reenviarConvite(superadminId, clientId, userId);
   }
 
+  @Get('clients/:clientId/users')
+  @UseGuards(SuperadminGuard)
+  usuariosDoCliente(@Param('clientId', ParseUUIDPipe) clientId: string) {
+    return this.clients.listarUsuarios(clientId);
+  }
+
+  /** Corpo: `{ novaSenha }`. A Locale define a senha; as sessões abertas do usuário caem. */
+  @Post('clients/:clientId/users/:userId/senha')
+  @UseGuards(SuperadminGuard)
+  @HttpCode(204)
+  async redefinirSenha(
+    @CurrentUserId() superadminId: string,
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() body: { novaSenha?: unknown },
+  ) {
+    await this.clients.redefinirSenha(superadminId, clientId, userId, parseSenha(body?.novaSenha, 'novaSenha'));
+  }
+
   @Get('equipe')
   @UseGuards(SuperadminGuard)
   equipe() {

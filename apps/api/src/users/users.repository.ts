@@ -41,6 +41,21 @@ export class UsersRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * Senha definida por outra pessoa (superadmin): `senha_alterada_em` derruba as sessões abertas e convites ainda
+   * abertos deixam de valer — senão o link antigo trocaria de novo a senha recém-definida.
+   */
+  async definirSenha(clientId: string, id: string, passwordHash: string, executor: Queryable = this.pool): Promise<boolean> {
+    const { rowCount } = await executor.query(
+      `update users set password_hash = $3, email_confirmado_em = coalesce(email_confirmado_em, now()), senha_alterada_em = now(), updated_at = now()
+        where client_id = $1 and id = $2`,
+      [clientId, id, passwordHash],
+    );
+    if (!rowCount) return false;
+    await executor.query('update convites set revogado_em = now() where user_id = $1 and usado_em is null and revogado_em is null', [id]);
+    return true;
+  }
+
   async create(
     data: { clientId: string; email: string; passwordHash: string | null; role: Role },
     executor: Queryable = this.pool,

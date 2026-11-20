@@ -442,6 +442,8 @@ export const alertaTiposCliente = {
     apiSend<AlertaTipoDoCliente>('PUT', `/alerta-tipos/${encodeURIComponent(chave)}`, ajuste),
 };
 
+export type UsuarioDoCliente = { id: string; email: string; role: 'admin' | 'gestor' | 'operador'; ativo: boolean; pendente: boolean };
+
 export const adminApi = {
   alertaTipos: () => apiGet<AlertaTipo[]>('/superadmin/alerta-tipos'),
   criarAlertaTipo: (body: AlertaTipoBody & { disparo: 'alarme' | 'condicao'; chave?: string }) => apiSend<AlertaTipo>('POST', '/superadmin/alerta-tipos', body),
@@ -451,6 +453,8 @@ export const adminApi = {
   createClient: (body: { name: string; admin?: { email: string } }) => apiSend<{ client: AdminClient; conviteEnviado: boolean; link: string | null }>('POST', '/superadmin/clients', body),
   createInitialAdmin: (clientId: string, body: { email: string }) => apiSend<{ conviteEnviado: boolean; link: string | null }>('POST', `/superadmin/clients/${clientId}/admin-users`, body),
   reenviarConvite: (clientId: string, userId: string) => apiSend<{ conviteEnviado: boolean; link: string | null }>('POST', `/superadmin/clients/${clientId}/admin-users/${userId}/convite`),
+  usuariosDoCliente: (clientId: string) => apiGet<UsuarioDoCliente[]>(`/superadmin/clients/${clientId}/users`),
+  redefinirSenha: (clientId: string, userId: string, novaSenha: string) => apiSend('POST', `/superadmin/clients/${clientId}/users/${userId}/senha`, { novaSenha }),
   contratos: () => apiGet<AdminContrato[]>('/superadmin/contratos'),
   versoes: (contratoId: string) => apiGet<ContractVersion[]>(`/superadmin/contratos/${contratoId}/versoes`),
   criarContrato: (clientId: string, body: ContratoBody) => apiSend<AdminContrato>('POST', `/superadmin/clients/${clientId}/contrato`, body),

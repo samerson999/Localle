@@ -3,6 +3,7 @@
 // nunca a conhece). Situação vem do contrato (editado em Contratos); pagamento fica em Faturamento.
 import { useState } from 'react';
 import { ConviteLink } from '../components/ConviteLink';
+import { UsuariosDoClienteModal } from '../components/UsuariosDoClienteModal';
 import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Callout, toast, EmptyState, CardActions } from '../components/ui';
 import { useStore } from '../lib/store';
 import { adminApi, useAdminQuery, type AdminClient } from '../lib/localleApi';
@@ -18,6 +19,7 @@ export default function Clientes() {
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<AdminClient | null>(null);
   const [adminFor, setAdminFor] = useState<AdminClient | null>(null);
+  const [usuariosDe, setUsuariosDe] = useState<AdminClient | null>(null);
   const [excluindo, setExcluindo] = useState<AdminClient | null>(null);
   // sem SMTP o e-mail não sai: a API devolve o link do convite para repassar
   const [link, setLink] = useState<{ email: string; link: string } | null>(null);
@@ -60,6 +62,7 @@ export default function Clientes() {
                     </span>
                     <CardActions>
                       <TextButton onClick={() => setRenaming(c)}>Renomear</TextButton>
+                      <TextButton onClick={() => setUsuariosDe(c)}>Usuários</TextButton>
                       {c.admin_pendente_id && <TextButton onClick={() => reenviar(c)}>Reenviar convite</TextButton>}
                       {!c.usuarios_ativos && !c.convites_pendentes && <TextButton onClick={() => setAdminFor(c)}>Convidar admin</TextButton>}
                       <TextButton tone="danger" onClick={() => setExcluindo(c)}>Excluir</TextButton>
@@ -79,6 +82,7 @@ export default function Clientes() {
                 <span className="num text-small">{fmtD(Date.parse(c.created_at))}</span>,
                 <div className="flex gap-3 justify-end">
                   <TextButton onClick={() => setRenaming(c)}>Renomear</TextButton>
+                  <TextButton onClick={() => setUsuariosDe(c)}>Usuários</TextButton>
                   {c.admin_pendente_id && <TextButton onClick={() => reenviar(c)}>Reenviar convite</TextButton>}
                   {!c.usuarios_ativos && !c.convites_pendentes && <TextButton onClick={() => setAdminFor(c)}>Convidar admin</TextButton>}
                   <TextButton tone="danger" onClick={() => setExcluindo(c)}>Excluir</TextButton>
@@ -90,6 +94,7 @@ export default function Clientes() {
       </PageBody>
       {creating && <NewClientModal onClose={() => setCreating(false)} onDone={reload} onLink={setLink} />}
       {renaming && <RenameModal client={renaming} onClose={() => setRenaming(null)} onDone={reload} />}
+      {usuariosDe && <UsuariosDoClienteModal client={usuariosDe} onClose={() => setUsuariosDe(null)} />}
       {excluindo && <ExcluirModal client={excluindo} onClose={() => setExcluindo(null)} onDone={reload} />}
       {adminFor && <AdminModal client={adminFor} onClose={() => setAdminFor(null)} onDone={reload} onLink={setLink} />}
       {link && <ConviteLink email={link.email} link={link.link} onClose={() => setLink(null)} />}
