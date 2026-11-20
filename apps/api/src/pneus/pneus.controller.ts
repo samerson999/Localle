@@ -2,7 +2,7 @@ import { Body, ConflictException, Controller, Get, NotFoundException, Param, Par
 import { ClientId } from '../clients/client-id.decorator';
 import { UNIQUE, violouUnique } from '../db/pg-errors';
 import { CurrentUserId } from '../clients/current-role.decorator';
-import { dicionario, instante, numero, numeroOpcional, opcao, texto, textoOpcional, uuidOpcional } from '../common/validar';
+import { booleano, dicionario, instante, numero, numeroOpcional, opcao, texto, textoOpcional, uuidOpcional } from '../common/validar';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { RequirePermission } from '../permissions/require-permission.decorator';
 import { type MovimentoInput, type PneuInput, PneusRepository, STATUS_PNEU, TIPOS_MOVIMENTO } from './pneus.repository';
@@ -34,6 +34,8 @@ export function parseMovimento(body: unknown): MovimentoInput {
     sulcoMm: numeroOpcional(b.sulcoMm, 'sulcoMm', 0, 40),
     custo: numeroOpcional(b.custo, 'custo', 0, 100_000),
     obs: textoOpcional(b.obs, 'obs', 300),
+    dados: dicionario(b.dados, 'dados', 10),
+    troca: booleano(b.troca, 'troca'),
   };
 }
 
@@ -51,6 +53,11 @@ export class PneusController {
     return this.service.listarComNivel(clientId, status ? opcao(status, 'status', STATUS_PNEU) : null, uuidOpcional(assetId, 'assetId'));
   }
 
+  @Get('movimentos')
+  todosMovimentos(@ClientId() clientId: string) {
+    return this.repo.todosMovimentos(clientId);
+  }
+
   @Get(':id/movimentos')
   async movimentos(@ClientId() clientId: string, @Param('id', ParseUUIDPipe) id: string) {
     if (!(await this.repo.buscar(clientId, id))) throw new NotFoundException('Pneu não encontrado');
@@ -62,7 +69,7 @@ export class PneusController {
   async criar(@ClientId() clientId: string, @CurrentUserId() userId: string, @Body() body: unknown) {
     const b = (body ?? {}) as Record<string, unknown>;
     try {
-      return await this.repo.criar(clientId, parsePneu(body), b.ts === undefined ? new Date() : instante(b.ts, 'ts'), userId);
+      return await this.repo.criar(clientId, parsePneu(body), b.ts === undefined ? new Date() : instante(b.ts, 'ts'), userId, dicionario(b.dadosCompra, 'dadosCompra', 10));
     } catch (err) {
       if (violouUnique(err, UNIQUE.pneuNumeroFogo)) throw new ConflictException('Já existe um pneu com esse número de fogo');
       throw err;

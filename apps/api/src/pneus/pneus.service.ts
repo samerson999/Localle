@@ -58,7 +58,14 @@ export class PneusService {
         case 'rodizio': {
           exige(p.status === 'montado', 'Rodízio só de pneu montado');
           if (!m.posicao || m.kmVeiculo === null) throw new BadRequestException('"posicao" e "kmVeiculo" são obrigatórios no rodízio');
-          exige(!(await this.repo.posicaoOcupada(tx, clientId, p.asset_id!, m.posicao, p.id)), 'Já há um pneu montado nessa posição');
+          const outro = await this.repo.ocupante(tx, clientId, p.asset_id!, m.posicao, p.id);
+          exige(!outro || !!m.troca, 'Já há um pneu montado nessa posição');
+          if (outro) {
+            // troca: o pneu de lá vai para a posição de origem deste, com o próprio km rodado acumulado
+            const kmOutro = outro.km_montagem !== null ? Math.max(0, m.kmVeiculo - Number(outro.km_montagem)) : 0;
+            await this.repo.atualizarEstado(tx, clientId, outro.id, { posicao: p.posicao, km_acumulado: Number(outro.km_acumulado) + kmOutro, km_montagem: m.kmVeiculo });
+            await this.repo.registrarMovimento(tx, clientId, outro.id, { ...m, troca: undefined, assetId: p.asset_id, posicao: p.posicao, dados: {} }, userId);
+          }
           estado = { posicao: m.posicao, km_acumulado: Number(p.km_acumulado) + kmRodado(), km_montagem: m.kmVeiculo };
           m.assetId = p.asset_id;
           break;

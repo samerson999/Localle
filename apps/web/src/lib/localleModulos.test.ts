@@ -3,7 +3,9 @@ import {
   abastecimentoToFueling, ativoDaApi, driverToMotoristaBody, fichaDoAtivo, temFicha, eventToEventoRankingBody, fineToMultaBody, fuelingToAbastecimentoBody, groupIdsByAsset, grupoToGroup,
   marcacaoToMark, markToMarcacaoBody, matrizToMatrix, matrixToMatrizBody, modeloToTemplate, motoristaToDriver, multaToFine, osToWorkOrder, planoToPlan, planToPlanoBody,
   responseToRespostaBody, respostaToResponse, tiposToRankCfg, tripToViagemBody, viagemToTrip, workOrderToOsBody, mesclarVinculos, aplicarVinculoTempoReal,
+  pneuDaApi, pneuNovoBody,
 } from './localleModulos';
+import { movesOf, tireStats } from '@localle/shared/pneus';
 
 const U = '11111111-1111-4111-8111-111111111111';
 
@@ -156,5 +158,48 @@ describe('identificação do motorista pelo rastreador', () => {
     const fechado = aplicarVinculoTempoReal(ligado, { ...msg, acao: 'encerrou', motoristaId: 'm1', ts: '2026-11-18T11:00:00Z', encerradoPor: 'ignicao_desligada' });
     expect(fechado[1]).toMatchObject({ end: Date.parse('2026-11-18T11:00:00Z'), endedBy: 'ignicao_desligada' });
     expect(aplicarVinculoTempoReal(ligado, { ...msg, vinculoId: 'outro', acao: 'encerrou', motoristaId: null })).toBe(ligado);
+  });
+});
+
+describe('pneus (API → formato de packages/shared/pneus)', () => {
+  const P = '22222222-2222-4222-8222-222222222222';
+  const t0 = Date.parse('2026-10-01T12:00:00Z');
+  const em = (h: number) => new Date(t0 + h * 3_600_000).toISOString();
+  const m = (tipo: string, h: number, x: Record<string, unknown> = {}) => ({ id: `${tipo}-${h}`, tipo, ts: em(h), asset_id: null, posicao: null, km_veiculo: null, sulco_mm: null, custo: null, obs: null, dados: {}, ...x });
+  const row = { id: P, numero_fogo: 'LC-1024', marca: 'Michelin', modelo: 'X Multi', medida: '295/80 R22.5', vidas_max: 3, status: 'descartado', asset_id: null, posicao: null, sulco_inicial_mm: '14.0', custo_total: '2850.00', dados: { dot: '1225' }, created_at: em(0) };
+  const movs = [
+    m('compra', 0, { sulco_mm: '16.0', custo: '2200.00', dados: { fornecedor: 'Pneus Sul' } }),
+    m('montagem', 1, { asset_id: U, posicao: '1E', km_veiculo: '1000.0' }),
+    m('medicao', 2, { sulco_mm: '12.0', km_veiculo: '3000.0', dados: { fonte: 'profundimetro' } }),
+    m('rodizio', 3, { asset_id: U, posicao: '2E', km_veiculo: '6000.0' }),
+    m('retirada', 4, { asset_id: U, posicao: '2E', km_veiculo: '9000.0' }),
+    m('envio_recapagem', 5),
+    m('recapagem', 6, { sulco_mm: '14.0', custo: '650.00', dados: { fornecedor: 'Recap Norte', banda: 'BDR' } }),
+    m('descarte', 7, { obs: 'corte lateral' }),
+  ];
+
+  it('vidas, montagens, medições e descarte saem das movimentações em ordem', () => {
+    const t = pneuDaApi(row, movs);
+    expect(t).toMatchObject({ id: P, fireNumber: 'LC-1024', dot: '1225', status: 'sucata', recappable: true, maxLives: 3, supplier: 'Pneus Sul', scrapReason: 'corte lateral', location: '' });
+    expect(t.lives.map((l: any) => [l.n, l.kind, l.cost, l.tread, l.supplier])).toEqual([[1, 'novo', 2200, 16, 'Pneus Sul'], [2, 'recapagem', 650, 14, 'Recap Norte']]);
+    expect(t.mounts.map((x: any) => [x.position, x.kmFrom, x.kmTo, x.life])).toEqual([['1E', 1000, 6000, 1], ['2E', 6000, 9000, 1]]);
+    expect(t.mounts[0].assetId).toBe(`lc_${U}`);
+    expect(t.measurements).toEqual([expect.objectContaining({ mm: 12, km: 3000, life: 1, source: 'profundimetro' })]);
+    expect(t.recapSent).toEqual([Date.parse(em(5))]);
+  });
+
+  it('movesOf reconhece o rodízio e tireStats soma custo e km das vidas', () => {
+    const t = pneuDaApi(row, movs);
+    expect(movesOf(t).map((x) => x.kind).reverse()).toEqual(['compra', 'montagem', 'rodizio', 'retirada', 'envio_recapagem', 'recapagem', 'descarte']);
+    const st = tireStats({ assets: [], vehicles: [] }, t);
+    expect(st).toMatchObject({ lifeNo: 2, cost: 2850, kmAll: 8000, tread: 14 });
+  });
+
+  it('estoque mostra o local do cadastro; cadastro manda fornecedor na compra e data nunca no futuro', () => {
+    expect(pneuDaApi({ ...row, status: 'estoque', dados: { local: 'Filial Sul' } }, movs.slice(0, 1)).location).toBe('Filial Sul');
+    const amanha = Date.now() + 86_400_000;
+    const b = pneuNovoBody({ fire: 'lc-7', brand: '', size: '275/80 R22.5', dot: '', recappable: false, maxLives: 3, tread: 18, cost: 1900, supplier: 'Pneus Sul', location: 'Matriz', purchasedAt: amanha });
+    expect(b).toMatchObject({ numeroFogo: 'LC-7', marca: null, vidasMax: 1, sulcoInicialMm: 18, custo: 1900, dados: { local: 'Matriz' }, dadosCompra: { fornecedor: 'Pneus Sul' } });
+    expect(Date.parse(b.ts!)).toBeLessThanOrEqual(Date.now());
   });
 });

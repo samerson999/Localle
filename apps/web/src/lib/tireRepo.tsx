@@ -1,13 +1,12 @@
-// Fonte de dados do módulo de pneus (guardados no navegador). A tela usa sempre esta interface; no produto real
-// as mesmas operações são funções do backend: fn_mount_tire, fn_rotate_tires… em docs/especificacao-sql/20261016120100_pneus.sql.
-import { auditEntry } from '@localle/shared/audit';
+// Fonte de dados do módulo de pneus. Pneus e movimentações vivem na API (apps/api/src/pneus): cada ação grava lá e
+// recarrega `tires` (syncPneus), que a tela lê no formato de packages/shared/pneus. Ficam no navegador só a
+// identificação gravada no pneu (sigla/logo) e o estoque mínimo por medida — preferências da tela, sem endpoint ainda.
 import React, { createContext, useContext } from 'react';
-import { useStore, useStoreData } from './store';
+import { useStoreData } from './store';
 import { assetKm } from '@localle/shared/km';
 import { tireStats, DEFAULT_TIRE_CFG, positionsFor, LAYOUTS } from '@localle/shared/pneus';
 import { toast } from '../components/ui';
-import { salvarFichaAtivo } from './localleApi';
-import { uid } from '@localle/shared/utils';
+import { cadastrarPneu, movimentarPneus, salvarFichaAtivo, syncPneus } from './localleApi';
 
 export interface TireRepo {
   remote: boolean; loading: boolean; error?: string;
@@ -28,31 +27,31 @@ export interface TireRepo {
 const Ctx = createContext<TireRepo | null>(null);
 export const useTires = () => useContext(Ctx)!;
 
-function useLocalRepo(): TireRepo {
+// Erro da API vira aviso e é relançado: a tela não mostra o "salvo" que vem depois do await nem fecha o formulário.
+async function gravar(o: () => Promise<unknown>, falha: string) {
+  try { await o(); } catch (e: any) { toast(`${falha}: ${e?.message || e}`, { tone: 'crit' }); throw e; }
+}
+
+function useApiRepo(): TireRepo {
   const s = useStoreData();
-  const patchTire = (id: string, fn: (x: any) => any) => s.patch((st: any) => ({ tires: st.tires.map((x: any) => (x.id === id ? fn(x) : x)) }));
-  const close = (x: any, km: number) => ({ ...x, mounts: x.mounts.map((m: any) => (!m.to ? { ...m, to: Date.now(), kmTo: km } : m)) });
   const cfg = { ...DEFAULT_TIRE_CFG, ...(s.tireCfg || {}) };
+  const mov = (tireId: string, tipo: string, extra: Record<string, unknown> = {}) => ({ id: tireId, tipo, ...extra });
   return {
-    remote: false, loading: false, tires: s.tires || [], cfg, minStock: s.tireCfg?.minStock || {},
-    stats: (t) => tireStats(s, t), kmOf: (id) => assetKm(s, id), reload: async () => {},
-    mount: async (tireId, assetId, pos, km) => {
-      const t = s.tires.find((x: any) => x.id === tireId);
-      if (t?.status !== 'estoque') return void toast('Este pneu não está em estoque.', { tone: 'crit' });
-      if (s.tires.some((x: any) => x.status === 'montado' && x.assetId === assetId && x.position === pos)) return void toast('Esta posição já tem um pneu montado.', { tone: 'crit' });
-      patchTire(tireId, (x) => ({ ...x, status: 'montado', assetId, position: pos, location: '', mounts: [...x.mounts, { id: uid('mt'), assetId, position: pos, life: x.lives.length, from: Date.now(), kmFrom: km }] }));
+    remote: true, loading: false, tires: s.tires || [], cfg, minStock: s.tireCfg?.minStock || {},
+    stats: (t) => tireStats(s, t), kmOf: (id) => assetKm(s, id), reload: () => syncPneus(),
+    mount: (tireId, assetId, pos, km) => gravar(() => movimentarPneus([mov(tireId, 'montagem', { assetId, posicao: pos, kmVeiculo: km })]), 'Pneu não montado'),
+    unmount: (tireId, km, dest, reason) => gravar(() => movimentarPneus([
+      mov(tireId, 'retirada', { kmVeiculo: km }),
+      ...(dest === 'recapagem' ? [mov(tireId, 'envio_recapagem')] : dest === 'sucata' ? [mov(tireId, 'descarte', { obs: reason || 'Retirado do veículo' })] : []),
+    ]), 'Retirada não gravada'),
+    // troca as duas posições numa transação só; se uma delas estiver vazia, é um rodízio simples
+    rotate: (assetId, a, b, km) => {
+      const em = (pos: string) => (s.tires || []).find((x: any) => x.status === 'montado' && x.assetId === assetId && x.position === pos);
+      const ta = em(a), tb = em(b);
+      const m = ta ? mov(ta.id, 'rodizio', { posicao: b, kmVeiculo: km, troca: !!tb }) : tb ? mov(tb.id, 'rodizio', { posicao: a, kmVeiculo: km }) : null;
+      return m ? gravar(() => movimentarPneus([m]), 'Rodízio não gravado') : Promise.resolve();
     },
-    unmount: async (tireId, km, dest, reason) => patchTire(tireId, (x) => ({ ...close(x, km), status: dest, assetId: undefined, position: undefined, location: dest === 'estoque' ? 'Almoxarifado Matriz' : dest === 'recapagem' ? 'Recapadora' : '', ...(dest === 'sucata' ? { scrapDate: Date.now(), scrapReason: reason || 'Retirado do veículo' } : {}) })),
-    rotate: async (assetId, a, b, km) => {
-      const ta = s.tires.find((x: any) => x.status === 'montado' && x.assetId === assetId && x.position === a);
-      const tb = s.tires.find((x: any) => x.status === 'montado' && x.assetId === assetId && x.position === b);
-      s.patch((st: any) => ({ tires: st.tires.map((x: any) => {
-        if (ta && x.id === ta.id) { const u = close(x, km); return { ...u, position: b, mounts: [...u.mounts, { id: uid('mt'), assetId, position: b, life: x.lives.length, from: Date.now() + 1, kmFrom: km }] }; }
-        if (tb && x.id === tb.id) { const u = close(x, km); return { ...u, position: a, mounts: [...u.mounts, { id: uid('mt'), assetId, position: a, life: x.lives.length, from: Date.now() + 1, kmFrom: km }] }; }
-        return x;
-      }) }));
-    },
-    measure: async (items, km, source = 'manual') => { const now = Date.now(); s.patch((st: any) => ({ tires: st.tires.map((t: any) => { const it = items.find((i) => i.tireId === t.id); return it ? { ...t, measurements: [...t.measurements, { id: uid('me'), ts: now, km, mm: it.mm, life: t.lives.length, source }] } : t; }), ...(items.length > 1 ? auditEntry(st, { coll: 'tires', refId: '', label: 'Medição de sulco', action: `registrou a medição de ${items.length} pneus em lote`, count: items.length }) : {}) })); },
+    measure: (items, km, source = 'manual') => gravar(() => movimentarPneus(items.map((i) => mov(i.tireId, 'medicao', { sulcoMm: i.mm, kmVeiculo: km, dados: { fonte: source } }))), 'Medição não gravada'),
     // troca o tipo de eixo do veículo; recusa se algum pneu montado ficaria numa posição que deixa de existir
     setLayout: async (assetId, key) => {
       const a = s.assets.find((x: any) => x.id === assetId);
@@ -60,18 +59,17 @@ function useLocalRepo(): TireRepo {
       const orphan = s.tires.filter((x: any) => x.status === 'montado' && x.assetId === assetId && !slots.includes(x.position));
       if (orphan.length) { toast(`Não dá para trocar para ${LAYOUTS[key].label}.`, { tone: 'crit', detail: `Desmonte antes ${orphan.map((x: any) => x.fireNumber).join(', ')}: a posição deles não existe no novo tipo.` }); return false; }
       s.upsert('assets', { id: assetId, tireLayout: key });
-      // o tipo de eixo é do ativo (ficha na API), mesmo com os pneus ainda no navegador
+      // o tipo de eixo é do ativo (ficha na API)
       salvarFichaAtivo(assetId).catch((e: any) => toast('Tipo de eixo não gravado: ' + (e.message || e), { tone: 'crit' }));
       return true;
     },
-    create: async (f) => { const d = f.purchasedAt; s.upsert('tires', { fireNumber: f.fire.toUpperCase(), brand: f.brand, model: f.model, size: f.size, dot: f.dot, recappable: f.recappable, maxLives: f.recappable ? f.maxLives : 1, purchaseDate: d, supplier: f.supplier, location: f.location, status: 'estoque', lives: [{ n: 1, kind: 'novo', date: d, cost: f.cost, supplier: f.supplier, tread: f.tread }], mounts: [], measurements: [] }); },
-    sendRecap: async (tireId) => { const t = s.tires.find((x: any) => x.id === tireId); const st = tireStats(s, t); if (!t.recappable || st.livesLeft <= 0) return void toast('Este pneu não tem mais vidas de recapagem.', { tone: 'crit' }); patchTire(tireId, (x) => ({ ...x, status: 'recapagem', location: 'Recapadora', recapSent: [...(x.recapSent || []), Date.now()] })); },
-    returnRecap: async (tireId, r) => { const t = s.tires.find((x: any) => x.id === tireId); if (t.lives.length >= t.maxLives) return void toast('Vidas esgotadas.', { tone: 'crit' }); patchTire(tireId, (x) => ({ ...x, status: 'estoque', location: 'Almoxarifado Matriz', lives: [...x.lives, { n: x.lives.length + 1, kind: 'recapagem', date: Date.now(), cost: r.cost, supplier: r.supplier, band: r.band, tread: r.tread }] })); },
-    scrap: async (tireId, reason) => patchTire(tireId, (x) => ({ ...x, status: 'sucata', location: '', scrapDate: Date.now(), scrapReason: reason })),
+    create: (f) => gravar(() => cadastrarPneu(f), 'Pneu não cadastrado'),
+    sendRecap: (tireId) => gravar(() => movimentarPneus([mov(tireId, 'envio_recapagem')]), 'Envio à recapadora não gravado'),
+    returnRecap: (tireId, r) => gravar(() => movimentarPneus([mov(tireId, 'recapagem', { sulcoMm: r.tread, custo: r.cost, dados: { ...(r.supplier ? { fornecedor: r.supplier } : {}), ...(r.band ? { banda: r.band } : {}) } })]), 'Volta da recapagem não gravada'),
+    scrap: (tireId, reason) => gravar(() => movimentarPneus([mov(tireId, 'descarte', { obs: reason })]), 'Descarte não gravado'),
     setCfg: async (c) => s.patch((st: any) => ({ tireCfg: { ...DEFAULT_TIRE_CFG, ...st.tireCfg, ...c } })),
     setMinStock: async (size, qty) => s.patch((st: any) => ({ tireCfg: { ...DEFAULT_TIRE_CFG, ...st.tireCfg, minStock: { ...(st.tireCfg?.minStock || {}), [size]: qty } } })),
   };
 }
 
-function LocalProvider({ children }: { children: React.ReactNode }) { const r = useLocalRepo(); return <Ctx.Provider value={r}>{children}</Ctx.Provider>; }
-export function TireProvider({ children }: { children: React.ReactNode }) { return <LocalProvider>{children}</LocalProvider>; }
+export function TireProvider({ children }: { children: React.ReactNode }) { const r = useApiRepo(); return <Ctx.Provider value={r}>{children}</Ctx.Provider>; }

@@ -1081,6 +1081,32 @@ export async function salvarMulta(f: any) {
 }
 export async function indicarCondutor(id: string, driverId: string) { await apiSend('POST', `/multas/${id}/indicar`, { motoristaId: driverId }); await syncMultas(); }
 
+// ---------- pneus (apps/api/src/pneus): estado + movimentações; a tela lê `tires` no formato de packages/shared/pneus ----------
+export async function syncPneus() {
+  const [pneus, movimentos] = await Promise.all([apiGet<any[]>('/pneus'), apiGet<any[]>('/pneus/movimentos')]);
+  const porPneu = new Map<string, any[]>();
+  for (const m of movimentos) porPneu.set(m.pneu_id, [...(porPneu.get(m.pneu_id) || []), m]);
+  guardarPneusDoNavegador();
+  patch(() => ({ tires: pneus.map((p) => M.pneuDaApi(p, porPneu.get(p.id) || [])) }));
+}
+// Antes de 18/11/2026 os pneus ficavam só no navegador (id local, não uuid). A primeira carga da API os substitui;
+// guarda uma cópia para poderem ser recadastrados, sem sobrescrever uma cópia anterior.
+const PNEUS_LOCAIS_KEY = 'localle-pneus-do-navegador';
+function guardarPneusDoNavegador() {
+  const locais = (useStore.getState().tires || []).filter((t: any) => !/^[0-9a-f-]{36}$/i.test(String(t.id)));
+  if (!locais.length) return;
+  try { if (!localStorage.getItem(PNEUS_LOCAIS_KEY)) localStorage.setItem(PNEUS_LOCAIS_KEY, JSON.stringify(locais)); } catch { /* sem armazenamento */ }
+}
+export async function cadastrarPneu(f: any) { await apiSend('POST', '/pneus', M.pneuNovoBody(f)); await syncPneus(); }
+/** Uma ou mais movimentações em sequência (ex.: retirada e envio à recapadora); recarrega mesmo se uma falhar no meio. */
+export async function movimentarPneus(itens: { id: string; tipo: string; assetId?: string; posicao?: string; kmVeiculo?: number | null; sulcoMm?: number; custo?: number; obs?: string; troca?: boolean; dados?: Record<string, string> }[]) {
+  try {
+    for (const { id, assetId, ...m } of itens) await apiSend('POST', `/pneus/${id}/movimentos`, { ...m, ...(assetId ? { assetId: backendIdOf(assetId) } : {}) });
+  } finally {
+    await syncPneus();
+  }
+}
+
 export async function syncAbastecimentos() {
   const rows = await apiGet<any[]>(`/abastecimentos?${desde(2 * 366)}`);
   patch(() => ({ fuelings: rows.map(M.abastecimentoToFueling) }));
@@ -1168,7 +1194,7 @@ export async function cancelarViagem(id: string) { await apiSend('POST', `/viage
 /** Carga inicial de todos os módulos depois do login (cada um independente: um erro não derruba os outros). */
 const MODULOS_SYNC = ['motoristas', 'grupos', 'cadastro', 'empresa', 'jornada', 'multas', 'combustível', 'manutenção', 'checklist', 'ranking', 'viagens'];
 // módulo do contrato de cada carga; módulo fora do contrato não é pedido (a API responderia 403)
-const MODULO_DA_CARGA: Record<string, string> = { jornada: 'jornada', multas: 'multas', 'combustível': 'combustivel', 'manutenção': 'manutencao', checklist: 'checklist', ranking: 'ranking', viagens: 'viagens' };
+const MODULO_DA_CARGA: Record<string, string> = { jornada: 'jornada', multas: 'multas', 'combustível': 'combustivel', 'manutenção': 'manutencao', checklist: 'checklist', ranking: 'ranking', viagens: 'viagens', pneus: 'pneus' };
 
 /**
  * Módulos e páginas do contrato do cliente (GET /auth/acessos) viram o `revenda.modules` que menu e rotas já leem.
@@ -1186,7 +1212,7 @@ export async function syncModulos() {
   const todas: [string, () => Promise<unknown>][] = [
     // operações e listas de marca/modelo antes da ficha: o ativo aponta para elas já com o id da API
     ['motoristas', syncMotoristas], ['grupos', syncGrupos], ['cadastro', () => syncOperacoes().then(syncCatalogoAtivos).then(syncCadastroAtivos)], ['empresa', syncEmpresa], ['jornada', syncJornada], ['multas', syncMultas], ['combustível', syncAbastecimentos],
-    ['manutenção', syncManutencao], ['checklist', syncChecklist], ['ranking', syncRanking], ['viagens', syncViagens],
+    ['manutenção', syncManutencao], ['checklist', syncChecklist], ['ranking', syncRanking], ['viagens', syncViagens], ['pneus', syncPneus],
   ];
   const partes = todas.filter(([nome]) => contratado(nome));
   marcarPronto(...todas.filter(([nome]) => !contratado(nome)).map(([nome]) => nome));

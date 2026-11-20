@@ -84,4 +84,29 @@ describe('pneus — cadastro, máquina de estados das movimentações, nível de
     await expect(service.movimentar(clientA, pneu, mov('medicao', { sulcoMm: 1 }), null)).rejects.toMatchObject({ status: 409 });
     expect((await repo.movimentos(clientA, pneu)).map((m) => m.tipo)).toEqual(['descarte', 'recapagem', 'envio_recapagem', 'medicao', 'retirada', 'rodizio', 'montagem', 'compra']);
   });
+
+  it('rodízio com troca: os dois pneus trocam de posição, cada um acumula o próprio km; sem "troca" continua recusado', async () => {
+    const a = await repo.criar(clientA, parsePneu({ numeroFogo: 'T-A', sulcoInicialMm: 16 }), new Date(), null);
+    const b = await repo.criar(clientA, parsePneu({ numeroFogo: 'T-B', sulcoInicialMm: 16 }), new Date(), null);
+    await service.movimentar(clientA, a.id, mov('montagem', { assetId: assetA, posicao: '3E', kmVeiculo: 10_000 }), null);
+    await service.movimentar(clientA, b.id, mov('montagem', { assetId: assetA, posicao: '3D', kmVeiculo: 12_000 }), null);
+
+    await expect(service.movimentar(clientA, a.id, mov('rodizio', { posicao: '3D', kmVeiculo: 20_000 }), null)).rejects.toMatchObject({ status: 409 });
+    const r = await service.movimentar(clientA, a.id, mov('rodizio', { posicao: '3D', kmVeiculo: 20_000, troca: true }), null);
+    expect(r.pneu).toMatchObject({ posicao: '3D', km_acumulado: '10000.0', km_montagem: '20000.0' });
+    expect(await repo.buscar(clientA, b.id)).toMatchObject({ status: 'montado', asset_id: assetA, posicao: '3E', km_acumulado: '8000.0', km_montagem: '20000.0' });
+    expect((await repo.movimentos(clientA, b.id))[0]).toMatchObject({ tipo: 'rodizio', asset_id: assetA, posicao: '3E' });
+  });
+
+  it('detalhes da movimentação (fornecedor, banda, origem da medição) e histórico do cliente inteiro, sem vazar para outro', async () => {
+    const p = await repo.criar(clientA, parsePneu({ numeroFogo: 'D-001', sulcoInicialMm: 16, custo: 1800 }), new Date(), null, { fornecedor: 'Pneus Sul' });
+    await service.movimentar(clientA, p.id, mov('medicao', { sulcoMm: 12, dados: { fonte: 'profundimetro' } }), null);
+    await expect(Promise.resolve().then(() => mov('medicao', { sulcoMm: 12, dados: { fonte: true } }))).rejects.toThrow(/dados.fonte/);
+
+    const todos = await repo.todosMovimentos(clientA);
+    const deste = todos.filter((m) => m.pneu_id === p.id);
+    expect(deste.map((m) => [m.tipo, m.dados])).toEqual([['compra', { fornecedor: 'Pneus Sul' }], ['medicao', { fonte: 'profundimetro' }]]);
+    expect(todos.every((m) => m.client_id === clientA)).toBe(true);
+    expect((await repo.todosMovimentos(clientB)).some((m) => m.pneu_id === p.id)).toBe(false);
+  });
 });

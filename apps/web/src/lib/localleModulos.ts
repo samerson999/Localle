@@ -261,3 +261,56 @@ export function ativoDaApi(row: any, prev: any, catalogo: CatalogoAtivos = CATAL
 export function operacaoToOperation(o: any) {
   return { id: o.id, name: o.nome, metaKml: o.metaKml };
 }
+
+// ---------- pneus ----------
+// A API guarda o estado do pneu e as movimentações (apps/api/src/pneus); a tela e `tireStats`/`movesOf`
+// (packages/shared/src/pneus.ts) leem vidas, montagens e medições. As três saem das movimentações em ordem:
+// compra/recapagem abrem vida, montagem/rodízio/retirada abrem e fecham montagem, medição registra sulco.
+const STATUS_PNEU_FRONT: Record<string, string> = { descartado: 'sucata' };
+export function pneuDaApi(p: any, movimentos: any[]) {
+  const lives: any[] = [];
+  const mounts: any[] = [];
+  const measurements: any[] = [];
+  const recapSent: number[] = [];
+  let scrap: { scrapDate: number; scrapReason: string } | null = null;
+  const fecha = (ts: number, km: number | null) => { const m = mounts.find((x) => !x.to); if (m) Object.assign(m, { to: ts, kmTo: km ?? undefined }); };
+  for (const m of movimentos) {
+    const ts = Date.parse(m.ts);
+    const km = num(m.km_veiculo);
+    const d = m.dados || {};
+    switch (m.tipo) {
+      case 'compra': lives.push({ n: 1, kind: 'novo', date: ts, cost: Number(m.custo ?? 0), supplier: d.fornecedor || '', tread: Number(m.sulco_mm) }); break;
+      case 'recapagem': lives.push({ n: lives.length + 1, kind: 'recapagem', date: ts, cost: Number(m.custo ?? 0), supplier: d.fornecedor || '', band: d.banda || '', tread: Number(m.sulco_mm) }); break;
+      case 'montagem': mounts.push({ id: m.id, assetId: asset(m.asset_id), position: m.posicao, life: lives.length, from: ts, kmFrom: km ?? 0 }); break;
+      // rodízio = fecha a montagem e abre outra no mesmo veículo logo em seguida (é como `movesOf` reconhece)
+      case 'rodizio': fecha(ts, km); mounts.push({ id: m.id, assetId: asset(m.asset_id), position: m.posicao, life: lives.length, from: ts + 1, kmFrom: km ?? 0 }); break;
+      case 'retirada': fecha(ts, km); break;
+      case 'medicao': measurements.push({ id: m.id, ts, km, mm: Number(m.sulco_mm), life: lives.length, source: d.fonte || 'manual' }); break;
+      case 'envio_recapagem': recapSent.push(ts); break;
+      case 'descarte': scrap = { scrapDate: ts, scrapReason: m.obs || '' }; break;
+    }
+  }
+  // pneu sem a compra no histórico (não deveria acontecer): a vida 1 sai do próprio cadastro
+  if (!lives.length) lives.push({ n: 1, kind: 'novo', date: Date.parse(p.created_at), cost: Number(p.custo_total), supplier: '', tread: Number(p.sulco_inicial_mm) });
+  const status = STATUS_PNEU_FRONT[p.status] || p.status;
+  const dados = p.dados || {};
+  return {
+    id: p.id, fireNumber: p.numero_fogo, brand: p.marca || '', model: p.modelo || '', size: p.medida || '', dot: dados.dot ? String(dados.dot) : '',
+    recappable: p.vidas_max > 1, maxLives: p.vidas_max, purchaseDate: lives[0].date, supplier: lives[0].supplier,
+    status, assetId: p.asset_id ? asset(p.asset_id) : undefined, position: p.posicao || undefined,
+    location: status === 'estoque' ? dados.local || 'Almoxarifado' : status === 'recapagem' ? 'Recapadora' : '',
+    lives, mounts, measurements, recapSent, ...(scrap || {}),
+  };
+}
+/** Cadastro da tela (`TireRepo.create`) no corpo de `POST /pneus`; fornecedor da compra vai na movimentação. */
+export function pneuNovoBody(f: any) {
+  const dados: Record<string, string> = {};
+  if (f.dot) dados.dot = String(f.dot);
+  if (f.location) dados.local = String(f.location);
+  return {
+    numeroFogo: String(f.fire).toUpperCase(), marca: f.brand || null, modelo: f.model || null, medida: f.size || null,
+    vidasMax: f.recappable ? f.maxLives : 1, sulcoInicialMm: f.tread, custo: f.cost, dados,
+    // data de compra de hoje vira meio-dia: não pode ficar depois da montagem feita em seguida
+    ts: iso(f.purchasedAt ? Math.min(f.purchasedAt, Date.now()) : null) ?? undefined, dadosCompra: f.supplier ? { fornecedor: String(f.supplier) } : {},
+  };
+}

@@ -52,6 +52,7 @@ export interface MovimentoRow {
   sulco_mm: string | null;
   custo: string | null;
   obs: string | null;
+  dados: Record<string, string | number>;
 }
 
 export interface MovimentoInput {
@@ -63,6 +64,9 @@ export interface MovimentoInput {
   sulcoMm: number | null;
   custo: number | null;
   obs: string | null;
+  dados?: Record<string, string | number>;
+  /** Rodízio para posição ocupada: o pneu que está lá vai para a posição de origem (troca dos dois). */
+  troca?: boolean;
 }
 
 @Injectable()
@@ -83,7 +87,7 @@ export class PneusRepository {
   }
 
   /** Cadastro = compra: nasce em estoque na vida 1 com o custo de compra, e a movimentação `compra` registrada. */
-  async criar(clientId: string, p: PneuInput, ts: Date, userId: string | null): Promise<PneuRow> {
+  async criar(clientId: string, p: PneuInput, ts: Date, userId: string | null, compra: Record<string, string | number> = {}): Promise<PneuRow> {
     const client = await this.pool.connect();
     try {
       await client.query('begin');
@@ -92,7 +96,7 @@ export class PneusRepository {
          values ($1, $2, $3, $4, $5, $6, $7, $7, $8, $9::jsonb) returning *`,
         [clientId, p.numeroFogo, p.marca, p.modelo, p.medida, p.vidasMax, p.sulcoInicialMm, p.custo, JSON.stringify(p.dados)],
       );
-      await this.registrarMovimento(client, clientId, rows[0].id, { tipo: 'compra', ts, assetId: null, posicao: null, kmVeiculo: null, sulcoMm: p.sulcoInicialMm, custo: p.custo, obs: null }, userId);
+      await this.registrarMovimento(client, clientId, rows[0].id, { tipo: 'compra', ts, assetId: null, posicao: null, kmVeiculo: null, sulcoMm: p.sulcoInicialMm, custo: p.custo, obs: null, dados: compra }, userId);
       await client.query('commit');
       return rows[0];
     } catch (err) {
@@ -113,9 +117,9 @@ export class PneusRepository {
 
   async registrarMovimento(client: PoolClient, clientId: string, pneuId: string, m: MovimentoInput, userId: string | null): Promise<MovimentoRow> {
     const { rows } = await client.query<MovimentoRow>(
-      `insert into pneu_movimentos (client_id, pneu_id, tipo, ts, asset_id, posicao, km_veiculo, sulco_mm, custo, obs, criado_por)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning *`,
-      [clientId, pneuId, m.tipo, m.ts, m.assetId, m.posicao, m.kmVeiculo, m.sulcoMm, m.custo, m.obs, userId],
+      `insert into pneu_movimentos (client_id, pneu_id, tipo, ts, asset_id, posicao, km_veiculo, sulco_mm, custo, obs, dados, criado_por)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12) returning *`,
+      [clientId, pneuId, m.tipo, m.ts, m.assetId, m.posicao, m.kmVeiculo, m.sulcoMm, m.custo, m.obs, JSON.stringify(m.dados ?? {}), userId],
     );
     return rows[0];
   }
@@ -125,13 +129,27 @@ export class PneusRepository {
     return rows;
   }
 
+  /** Histórico de todos os pneus do cliente, para a tela montar vidas, montagens e medições numa chamada só. */
+  async todosMovimentos(clientId: string): Promise<MovimentoRow[]> {
+    const { rows } = await this.pool.query<MovimentoRow>('select * from pneu_movimentos where client_id = $1 order by ts, created_at', [clientId]);
+    return rows;
+  }
+
   async ativoDoCliente(client: PoolClient, clientId: string, assetId: string): Promise<boolean> {
     const { rowCount } = await client.query('select 1 from assets where client_id = $1 and id = $2', [clientId, assetId]);
     return (rowCount ?? 0) > 0;
   }
 
   async posicaoOcupada(client: PoolClient, clientId: string, assetId: string, posicao: string, exceto: string): Promise<boolean> {
-    const { rowCount } = await client.query(`select 1 from pneus where client_id = $1 and asset_id = $2 and posicao = $3 and status = 'montado' and id <> $4`, [clientId, assetId, posicao, exceto]);
-    return (rowCount ?? 0) > 0;
+    return (await this.ocupante(client, clientId, assetId, posicao, exceto)) !== null;
+  }
+
+  /** Pneu montado na posição (travado para a troca do rodízio), fora o próprio. */
+  async ocupante(client: PoolClient, clientId: string, assetId: string, posicao: string, exceto: string): Promise<PneuRow | null> {
+    const { rows } = await client.query<PneuRow>(
+      `select * from pneus where client_id = $1 and asset_id = $2 and posicao = $3 and status = 'montado' and id <> $4 for update`,
+      [clientId, assetId, posicao, exceto],
+    );
+    return rows[0] ?? null;
   }
 }
