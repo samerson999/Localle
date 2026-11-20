@@ -65,7 +65,10 @@ antigo pode ficar com estilo desatualizado até reiniciar — não reinicie voc�
 - Sem abstração especulativa: não mova função para `packages/shared` "porque pode ser reaproveitada";
   mova quando front e backend realmente precisarem da mesma regra (critério já registrado em
   `docs/ARQUITETURA-BACKEND.md` § 0).
-- Sem refatoração paralela à tarefa pedida. Mudança pequena e coesa.
+- Refatoração e componentização são premissa, não extra: ao tocar um arquivo grande (ex.: `components/ui.tsx`,
+  `lib/localleApi.ts`, telas com componentes locais), separar em arquivo próprio o pedaço que a tarefa toca e
+  reaproveitar componente existente em vez de repetir classes. Refatoração maior que a tarefa vai com plano e em
+  commit próprio, nunca misturada à mudança de comportamento.
 - Todo caminho que pode falhar silenciosamente (ingestão, fila, worker, integração com Traccar) loga com
   o `Logger` do Nest, no nível certo (`error`/`warn`/`log`) e com o identificador que permite diagnosticar
   sem reproduzir — ver `.claude/rules/observability.md`. Log é parte da implementação, não um extra.
