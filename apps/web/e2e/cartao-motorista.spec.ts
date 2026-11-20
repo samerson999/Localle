@@ -97,4 +97,33 @@ test.describe('cartão do motorista', () => {
     await expect(page.getByText(/Sem motorista/).filter({ visible: true }).first()).toBeVisible(CARGA);
     await expect(page.getByText(/Cartão não cadastrado/).filter({ visible: true })).toHaveCount(0);
   });
+
+  // 20/11/2026 (KOZ5H91 na HML): o "encerrou" do tempo real se perdeu com o celular bloqueado e o nome do motorista ficou
+  // no veículo desligado. Com o tempo real fora do ar, a reconexão tem que trazer o cartão encerrado da API.
+  test('Monitoramento: sem tempo real, a reconexão encerra o cartão sem recarregar a página', async ({ page }) => {
+    await page.route('**/monitoring/stream**', (route) => route.fulfill({ status: 503, body: '' }));
+    await page.reload(); // o login já abriu o stream; recarregando, toda conexão cai na rota acima
+    await page.goto('/#/monitoramento');
+    await page.getByPlaceholder('Buscar placa, motorista ou modelo').filter({ visible: true }).first().fill(dados.placa, CARGA);
+    await expect(page.getByText(/Cartão não cadastrado/).filter({ visible: true }).first()).toBeVisible(CARGA);
+
+    script('desligar', tag); // só no banco: nenhuma mensagem de tempo real chega
+    await expect(page.getByText(/Sem motorista/).filter({ visible: true }).first()).toBeVisible({ timeout: 45_000 });
+  });
+
+  // conexão pendurada (celular bloqueado): o stream nem cai nem entrega, então não há reconexão — vale a volta do app à tela
+  test('Monitoramento: conexão pendurada, o app volta à tela e o cartão encerrado aparece', async ({ page }) => {
+    await page.route('**/monitoring/stream**', () => { /* nunca responde: nem erro, nem dado */ });
+    await page.reload();
+    await page.goto('/#/monitoramento');
+    await page.getByPlaceholder('Buscar placa, motorista ou modelo').filter({ visible: true }).first().fill(dados.placa, CARGA);
+    await expect(page.getByText(/Cartão não cadastrado/).filter({ visible: true }).first()).toBeVisible(CARGA);
+
+    script('desligar', tag);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect(page.getByText(/Sem motorista/).filter({ visible: true }).first()).toBeVisible(CARGA);
+  });
 });

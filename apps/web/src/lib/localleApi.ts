@@ -729,6 +729,11 @@ export async function tratarAlerta(alertId: string, motivo: string, obs?: string
   if (alerta) useStore.getState().patch((s: any) => ({ alerts: upsertAlertas(s, [alerta]) }));
 }
 
+/** Cartões do motorista de novo da API. Falha aqui não segura a reconexão: fica o que já estava e a próxima tenta de novo. */
+async function recarregarMotoristas() {
+  try { await syncMotoristas(); } catch { /* idem */ }
+}
+
 /** Mantém o stream aberto, reconectando com `since` = último evento visto (a API reenvia o que faltou). */
 function runStream(signal: AbortSignal) {
   let since: string | null = null;
@@ -736,7 +741,9 @@ function runStream(signal: AbortSignal) {
   const connect = async () => {
     while (!signal.aborted) {
       try {
-        if (attempt > 0) await Promise.all([syncFrota(), syncAlertas(), syncComandos()]); // reconexão: o que mudou enquanto caído vem da API, não do pub/sub
+        // reconexão: o que mudou enquanto caído vem da API, não do pub/sub — inclusive o cartão do motorista (o
+        // "encerrou" perdido com o celular bloqueado deixava o nome do motorista no veículo já desligado)
+        if (attempt > 0) await Promise.all([syncFrota(), syncAlertas(), syncComandos(), recarregarMotoristas()]);
         const qs = since ? `?since=${encodeURIComponent(since)}` : '';
         const r = await fetchOuErro(`${BASE}/monitoring/stream${qs}`, { headers: { Authorization: `Bearer ${getToken()}` }, signal });
         if (r.status === 401) { encerrarSessao(); throw new Error(MSG_SESSAO); }
@@ -763,6 +770,9 @@ function runStream(signal: AbortSignal) {
       }
     }
   };
+  // app de volta à tela: com o celular bloqueado a conexão pode ficar pendurada (aberta, sem entregar nada e sem erro),
+  // e aí a reconexão acima nunca roda — o cartão encerrado nesse meio-tempo vem da API ao voltar
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void recarregarMotoristas(); }, { signal });
   if (!since) since = new Date().toISOString(); // primeira conexão: o painel começa daqui, sem lotar o sino com o passado
   void connect();
 }
