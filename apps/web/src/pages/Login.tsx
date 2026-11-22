@@ -19,13 +19,15 @@ export default function Login() {
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  // "esqueci minha senha": link de uso único por e-mail (só usuário de cliente; acesso da Localle é
-  // redefinido por outro membro da equipe). A resposta é sempre a mesma, exista o e-mail ou não.
-  const [modo, setModo] = useState<'entrar' | 'esqueci' | 'enviado'>('entrar');
-  const pedirLink = async () => {
+  // "esqueci minha senha": código de uso único por e-mail (só usuário de cliente; acesso da Localle é
+  // redefinido por outro membro da equipe). A resposta é sempre a mesma, exista o e-mail ou não; o código é
+  // digitado na tela seguinte (pages/CodigoAcesso.tsx).
+  const [modo, setModo] = useState<'entrar' | 'esqueci'>('entrar');
+  const pedirCodigo = async () => {
     if (!email.trim()) { setErr('Informe o e-mail da sua conta.'); return; }
     setBusy(true); setErr('');
-    try { await esqueciSenha(email.trim().toLowerCase()); setModo('enviado'); }
+    const alvo = email.trim().toLowerCase();
+    try { await esqueciSenha(alvo); nav(`/redefinir-senha?email=${encodeURIComponent(alvo)}`); }
     catch (e: any) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
   };
@@ -64,7 +66,7 @@ export default function Login() {
 
   const form = (
     <main className={cx('relative flex-1 min-h-screen flex items-center', pos === 'fundo' ? 'justify-end p-6 md:pr-20' : 'justify-center')}>
-      <form onSubmit={(e) => { e.preventDefault(); void (modo === 'esqueci' ? pedirLink() : enter()); }}
+      <form onSubmit={(e) => { e.preventDefault(); void (modo === 'esqueci' ? pedirCodigo() : enter()); }}
         // o app abre a 90% no desktop (base.css › --ui-zoom); o formulário do login volta a 100%, tudo na mesma proporção
         className={cx('flex flex-col text-center anim-fade [zoom:calc(1/var(--ui-zoom))]', pos === 'fundo' ? 'w-full max-w-[400px] bg-card rounded-card shadow-modal p-8' : 'w-[min(370px,calc(100%-48px))] pt-24 pb-16')}>
         <div className="flex justify-center mb-10">{marca}</div>
@@ -78,21 +80,16 @@ export default function Login() {
             <Button type="submit" size="lg" disabled={busy} className="w-full mt-1">{busy ? 'Entrando…' : 'Acessar plataforma'}</Button>
           </div>
           <TextButton type="button" className="self-center mt-4" onClick={() => { setErr(''); setModo('esqueci'); }}>Esqueci minha senha</TextButton>
-        </> : modo === 'esqueci' ? <>
+        </> : <>
           {voltar('Voltar para entrar')}
           {selo('cadeado')}
           <h1 className="mt-3 text-h2 font-semibold">Recupere seu acesso</h1>
-          <p className="text-body text-ink-2 mt-2 mb-6">Digite seu e-mail e enviaremos um link para criar uma nova senha.</p>
+          <p className="text-body text-ink-2 mt-2 mb-6">Digite seu e-mail e enviaremos um código para criar uma nova senha.</p>
           <div className="flex flex-col gap-4 text-left">
             <Field label="E-mail"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" placeholder="voce@empresa.com.br" autoFocus /></Field>
             {erro}
-            <Button type="submit" size="lg" loading={busy} className="w-full mt-1">Enviar link</Button>
+            <Button type="submit" size="lg" loading={busy} className="w-full mt-1">Enviar código</Button>
           </div>
-        </> : <>
-          {selo('email')}
-          <h1 className="mt-3 text-h2 font-semibold">Confira seu e-mail</h1>
-          <p className="text-body text-ink-2 mt-2 mb-6">Se <span className="font-medium text-ink">{email.trim()}</span> estiver cadastrado, enviamos um link para criar uma nova senha. Ele vale 30 minutos e só pode ser usado uma vez.</p>
-          <Button type="button" variant="secondary" size="lg" className="w-full" onClick={() => setModo('entrar')}>Voltar para o login</Button>
         </>}
         <footer className="mt-10 flex flex-col items-center gap-1 text-caption text-ink-3">
           <p>Gestão de frotas e rastreamento</p>

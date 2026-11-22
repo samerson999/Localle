@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Post, Req } from '@nestjs/common';
 import { ClientId } from '../clients/client-id.decorator';
 import { CurrentUserId } from '../clients/current-role.decorator';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -7,25 +7,14 @@ import type { RequestAuth } from './auth.guard';
 import { AuthService } from './auth.service';
 import type { LoginDto } from './dto/login.dto';
 import { signAuthToken } from './jwt';
+import { parseCodigoEmail, parseSenha } from './dto/parse-codigo';
 import { Public } from './public.decorator';
 import { SenhaService } from './senha.service';
 
-const TOKEN = /^[A-Za-z0-9_-]{43}$/; // 32 bytes em base64url
-
-function parseToken(v: unknown): string {
-  if (typeof v !== 'string' || !TOKEN.test(v)) throw new BadRequestException('Link de redefinição inválido ou expirado');
-  return v;
-}
-
-function parseSenha(v: unknown, campo: string): string {
-  if (typeof v !== 'string' || v.length < 8 || v.length > 200) throw new BadRequestException(`"${campo}" precisa ter de 8 a 200 caracteres`);
-  return v;
-}
-
 /**
  * Rotas públicas de propósito (`.claude/rules/security.md` item 2): login, "esqueci minha senha" e a
- * redefinição pelo link — quem chega aqui não tem token; a credencial do reset é o token de uso único do
- * e-mail. Rate limit por IP continua sendo débito do item 6 da mesma regra (o limite por conta está no service).
+ * redefinição pelo código — quem chega aqui não tem token; a credencial do reset é o código de uso único do
+ * e-mail, com teto de tentativas. Rate limit por IP continua sendo débito do item 6 da mesma regra (o limite por conta está no service).
  */
 @Controller('auth')
 export class AuthController {
@@ -52,16 +41,20 @@ export class AuthController {
     await this.senha.esqueci(email);
   }
 
-  @Get('redefinir-senha/:token')
+  @Post('redefinir-senha/verificar')
   @Public()
-  consultarRedefinicao(@Param('token') token: string) {
-    return this.senha.consultar(parseToken(token));
+  @HttpCode(200)
+  verificarRedefinicao(@Body() body: { email?: unknown; codigo?: unknown }) {
+    const { email, codigo } = parseCodigoEmail(body);
+    return this.senha.verificar(email, codigo);
   }
 
-  @Post('redefinir-senha/:token')
+  @Post('redefinir-senha')
   @Public()
-  redefinir(@Param('token') token: string, @Body() body: { password?: unknown }) {
-    return this.senha.redefinir(parseToken(token), parseSenha(body?.password, 'password'));
+  @HttpCode(200)
+  redefinir(@Body() body: { email?: unknown; codigo?: unknown; password?: unknown }) {
+    const { email, codigo } = parseCodigoEmail(body);
+    return this.senha.redefinir(email, codigo, parseSenha(body?.password, 'password'));
   }
 
   /**

@@ -10,6 +10,7 @@ export interface RedefinicaoAberta {
   client_id: string;
   email: string;
   role: Role;
+  token_hash: string;
 }
 
 /**
@@ -42,16 +43,29 @@ export class SenhaRepository {
     );
   }
 
-  async abertaPorHash(executor: Queryable, tokenHash: string, lock = false): Promise<RedefinicaoAberta | null> {
+  /** O pedido aberto mais recente da conta deste e-mail (o código é conferido no service). */
+  async abertaPorEmail(executor: Queryable, email: string, lock = false): Promise<RedefinicaoAberta | null> {
     const { rows } = await executor.query<RedefinicaoAberta>(
-      `select r.id, r.user_id, r.client_id, u.email, u.role
+      `select r.id, r.user_id, r.client_id, r.token_hash, u.email, u.role
          from senha_redefinicoes r join users u on u.id = r.user_id
-        where r.token_hash = $1 and r.usado_em is null and r.revogado_em is null and r.expira_em > now()
+        where u.email = $1 and r.usado_em is null and r.revogado_em is null and r.expira_em > now()
           and u.desativado_em is null
+        order by r.criado_em desc limit 1
         ${lock ? 'for update of r' : ''}`,
-      [tokenHash],
+      [email],
     );
     return rows[0] ?? null;
+  }
+
+  /** Código errado: conta a tentativa e revoga o pedido ao chegar no limite. Devolve quantas já foram. */
+  async registrarErro(executor: Queryable, id: string, max: number): Promise<number> {
+    const { rows } = await executor.query<{ tentativas: number }>(
+      `update senha_redefinicoes set tentativas = tentativas + 1,
+              revogado_em = case when tentativas + 1 >= $2 then now() end
+        where id = $1 returning tentativas`,
+      [id, max],
+    );
+    return rows[0].tentativas;
   }
 
   async marcarUsada(executor: Queryable, id: string): Promise<void> {

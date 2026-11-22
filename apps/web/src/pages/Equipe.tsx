@@ -4,8 +4,8 @@
 import { useState } from 'react';
 import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, Input, Callout, EmptyState, toast, confirmAction } from '../components/ui';
 import { useStore } from '../lib/store';
-import { adminApi, useAdminQuery, type AdminAuditEntry, type MembroLocalle } from '../lib/localleApi';
-import { ConviteLink, avisarEntrega } from '../components/ConviteLink';
+import { adminApi, useAdminQuery, type AdminAuditEntry, type Entrega, type MembroLocalle } from '../lib/localleApi';
+import { ConviteLink, avisarEntrega, type EntregaPendente } from '../components/ConviteLink';
 import { fmtD, fmtDT } from '@localle/shared/utils';
 
 const ACTION_LABEL: Record<string, string> = {
@@ -48,7 +48,7 @@ export default function Equipe() {
   const session = useStore((s) => s.session);
   const { data, error, loading, reload } = useAdminQuery(carregar);
   const [convidando, setConvidando] = useState(false);
-  const [link, setLink] = useState<{ email: string; link: string } | null>(null);
+  const [link, setLink] = useState<EntregaPendente | null>(null);
   if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com o acesso da Locale para ver o Console da Locale." /></Card>;
 
   const [equipe, log] = data || [[], []];
@@ -120,12 +120,12 @@ export default function Equipe() {
         </Section>
       </PageBody>
       {convidando && <ConvidarModal onClose={() => setConvidando(false)} onDone={(r, email) => { reload(); avisarEntrega(r, email, setLink); }} />}
-      {link && <ConviteLink email={link.email} link={link.link} onClose={() => setLink(null)} />}
+      {link && <ConviteLink {...link} onClose={() => setLink(null)} />}
     </div>
   );
 }
 
-function ConvidarModal({ onClose, onDone }: { onClose: () => void; onDone: (r: { conviteEnviado: boolean; link: string | null }, email: string) => void }) {
+function ConvidarModal({ onClose, onDone }: { onClose: () => void; onDone: (r: Entrega, email: string) => void }) {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const enviar = async () => {

@@ -6,25 +6,26 @@ import { AuditLogRepository } from '../audit/audit-log.repository';
 import { ActiveUserRepository } from '../auth/active-user.repository';
 import { AuthService } from '../auth/auth.service';
 import { ClientsRepository } from '../clients/clients.repository';
-import { ConvitesService, hashToken } from '../convites/convites.service';
+import { hashCodigo } from '../auth/codigo';
+import { ConvitesService } from '../convites/convites.service';
 import { MailService } from '../mail/mail.service';
 import { UsersRepository } from '../users/users.repository';
 import { SuperadminClientsService } from './superadmin-clients.service';
 
 /**
  * Contra o Postgres local e o Mailpit (infra/mail): o que está sob teste é a atomicidade da transação, o
- * unique de `users.email` e o convite chegando de verdade por SMTP, com um link que funciona uma vez só.
+ * unique de `users.email` e o convite chegando de verdade por SMTP, com um código que funciona uma vez só.
  */
 const MAILPIT = process.env.MAILPIT_API_URL || 'http://localhost:8025';
 
-async function linkRecebido(email: string): Promise<string> {
+async function codigoRecebido(email: string): Promise<string> {
   // o envio é síncrono no service (await do SMTP); o Mailpit indexa na hora — sem espera arbitrária
   const busca: any = await (await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`)).json();
   const id = busca.messages?.[0]?.ID;
   if (!id) throw new Error(`nenhum e-mail para ${email} no Mailpit`);
   const msg: any = await (await fetch(`${MAILPIT}/api/v1/message/${id}`)).json();
-  const m = /#\/convite\/([A-Za-z0-9_-]{43})/.exec(msg.Text);
-  if (!m) throw new Error('e-mail sem link de convite');
+  const m = /código de primeiro acesso é:\s+(\d{6})/.exec(msg.Text);
+  if (!m) throw new Error('e-mail sem código de convite');
   return m[1];
 }
 
@@ -45,6 +46,7 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
   beforeAll(() => {
     process.env.SMTP_HOST = 'localhost';
     process.env.SMTP_PORT = '1025';
+    process.env.SMTP_SECURE = 'false'; // o .env local pode apontar para o Gmail (465 com TLS)
     process.env.SMTP_FROM = 'Localle <nao-responda@localle.dev>';
     delete process.env.SMTP_USER;
   });
@@ -75,46 +77,48 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
     const log = await pool.query<{ action: string }>('select action from audit_log where actor_id = $1 and client_id = $2', [superadminId, client.id]);
     expect(log.rows.map((e) => e.action).sort()).toEqual(['client.create', 'user.create_initial_admin']);
 
-    const token = await linkRecebido(adminEmail);
+    const codigo = await codigoRecebido(adminEmail);
     const { rows } = await pool.query('select token_hash from convites where user_id = $1', [admin!.id]);
-    expect(rows).toEqual([{ token_hash: hashToken(token) }]); // o banco só tem o hash
+    expect(rows).toEqual([{ token_hash: hashCodigo(admin!.id, codigo) }]); // o banco só tem o HMAC
   });
 
-  it('aceitar o convite define a senha, confirma o e-mail e loga; o link não serve de novo', async () => {
+  it('aceitar o convite define a senha, confirma o e-mail e loga; o código não serve de novo', async () => {
     const adminEmail = email();
     const { client, admin } = await service.createClient(superadminId, { name: nome(), admin: { email: adminEmail } });
     criados.push(client.id);
-    const token = await linkRecebido(adminEmail);
+    const codigo = await codigoRecebido(adminEmail);
 
     // antes do aceite, nenhuma senha funciona
     await expect(auth.login(adminEmail, 'qualquer-senha')).rejects.toMatchObject({ status: 401 });
-    expect(await convites.consultar(token)).toEqual({ email: adminEmail, clientName: client.name });
+    expect(await convites.verificar(adminEmail, codigo)).toEqual({ email: adminEmail, clientName: client.name });
 
-    const { accessToken } = await convites.aceitar(token, 'minha-senha-forte');
+    const { accessToken } = await convites.aceitar(adminEmail, codigo, 'minha-senha-forte');
     expect(accessToken).toBeTruthy();
     expect((await usersRepo.findOneByClient(client.id, admin!.id))?.email_confirmado_em).toBeInstanceOf(Date);
     expect((await auth.login(adminEmail, 'minha-senha-forte')).accessToken).toBeTruthy();
 
-    await expect(convites.aceitar(token, 'outra-senha-forte')).rejects.toMatchObject({ status: 404 });
-    await expect(convites.consultar(token)).rejects.toMatchObject({ status: 404 });
+    await expect(convites.aceitar(adminEmail, codigo, 'outra-senha-forte')).rejects.toMatchObject({ status: 400 });
+    await expect(convites.verificar(adminEmail, codigo)).rejects.toMatchObject({ status: 400 });
   });
 
   it('reenviar revoga o link anterior; convite expirado não vale; quem já tem senha não recebe convite', async () => {
     const adminEmail = email();
     const { client, admin } = await service.createClient(superadminId, { name: nome(), admin: { email: adminEmail } });
     criados.push(client.id);
-    const primeiro = await linkRecebido(adminEmail);
+    const primeiro = await codigoRecebido(adminEmail);
+    const idPrimeiro = (await pool.query<{ id: string }>('select id from convites where user_id = $1', [admin!.id])).rows[0].id;
 
     await service.reenviarConvite(superadminId, client.id, admin!.id);
-    await expect(convites.consultar(primeiro)).rejects.toMatchObject({ status: 404 });
-    const segundo = await linkRecebido(adminEmail);
-    expect(segundo).not.toBe(primeiro);
+    const { rows: [rev] } = await pool.query('select revogado_em from convites where id = $1', [idPrimeiro]);
+    expect(rev.revogado_em).not.toBeNull();
+    const segundo = await codigoRecebido(adminEmail);
 
-    await pool.query("update convites set expira_em = now() - interval '1 minute' where token_hash = $1", [hashToken(segundo)]);
-    await expect(convites.aceitar(segundo, 'minha-senha-forte')).rejects.toMatchObject({ status: 404 });
+    await pool.query("update convites set expira_em = now() - interval '1 minute' where user_id = $1 and revogado_em is null", [admin!.id]);
+    await expect(convites.aceitar(adminEmail, segundo, 'minha-senha-forte')).rejects.toMatchObject({ status: 400 });
+    if (primeiro !== segundo) await expect(convites.aceitar(adminEmail, primeiro, 'minha-senha-forte')).rejects.toMatchObject({ status: 400 });
 
     await service.reenviarConvite(superadminId, client.id, admin!.id);
-    await convites.aceitar(await linkRecebido(adminEmail), 'minha-senha-forte');
+    await convites.aceitar(adminEmail, await codigoRecebido(adminEmail), 'minha-senha-forte');
     await expect(service.reenviarConvite(superadminId, client.id, admin!.id)).rejects.toMatchObject({ status: 400 });
     // usuário de outro cliente: 404, nunca alcança
     await expect(service.reenviarConvite(superadminId, randomUUID(), admin!.id)).rejects.toMatchObject({ status: 404 });
@@ -124,7 +128,7 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
     const adminEmail = email();
     const { client, admin } = await service.createClient(superadminId, { name: nome(), admin: { email: adminEmail } });
     criados.push(client.id);
-    await convites.aceitar(await linkRecebido(adminEmail), 'minha-senha-forte');
+    await convites.aceitar(adminEmail, await codigoRecebido(adminEmail), 'minha-senha-forte');
     expect(await activeUsers.isActive(admin!.id, Math.floor(Date.now() / 1000) + 60)).toBe(true); // sem contrato (implantação) acessa
 
     const { rows: [c] } = await pool.query<{ id: string }>("insert into contratos (client_id, status) values ($1, 'suspenso') returning id", [client.id]);
@@ -275,6 +279,26 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
 
       await expect(service.redefinirSenha(superadminId, outro.id, admin!.id, 'tentativa-cruzada-1')).rejects.toMatchObject({ status: 404 });
       await expect(auth.login(admin!.email, 'senha-nova-do-suporte')).resolves.toHaveProperty('accessToken');
+    });
+
+    it('sem senha digitada aplica SENHA_PADRAO_RESET; sem a variável (ou curta), recusa e não mexe na senha', async () => {
+      const { client, admin } = await service.createClient(superadminId, { name: nome(), admin: { email: email() } });
+      criados.push(client.id);
+      const original = process.env.SENHA_PADRAO_RESET;
+      try {
+        delete process.env.SENHA_PADRAO_RESET;
+        await expect(service.redefinirSenha(superadminId, client.id, admin!.id, null)).rejects.toMatchObject({ status: 400 });
+        process.env.SENHA_PADRAO_RESET = 'curta';
+        await expect(service.redefinirSenha(superadminId, client.id, admin!.id, null)).rejects.toMatchObject({ status: 400 });
+        expect((await service.listarUsuarios(client.id))[0].pendente).toBe(true);
+
+        process.env.SENHA_PADRAO_RESET = 'senha-padrao-do-teste';
+        await service.redefinirSenha(superadminId, client.id, admin!.id, null);
+        await expect(auth.login(admin!.email, 'senha-padrao-do-teste')).resolves.toHaveProperty('accessToken');
+      } finally {
+        if (original === undefined) delete process.env.SENHA_PADRAO_RESET;
+        else process.env.SENHA_PADRAO_RESET = original;
+      }
     });
   });
 });

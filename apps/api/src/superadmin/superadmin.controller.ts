@@ -43,8 +43,8 @@ export class SuperadminController {
   @Post('clients')
   @UseGuards(SuperadminGuard)
   async createClient(@CurrentUserId() superadminId: string, @Body() body: unknown) {
-    const { client, admin, conviteEnviado, link } = await this.clients.createClient(superadminId, parseNovoCliente(body));
-    return { client, admin: admin ? safeUser(admin) : null, conviteEnviado, link };
+    const { client, admin, conviteEnviado, codigo } = await this.clients.createClient(superadminId, parseNovoCliente(body));
+    return { client, admin: admin ? safeUser(admin) : null, conviteEnviado, codigo };
   }
 
   // `clientId` explícito no path — nunca inferido de token, porque o token de superadmin não tem um
@@ -56,8 +56,8 @@ export class SuperadminController {
     @Param('clientId', ParseUUIDPipe) clientId: string,
     @Body() body: unknown,
   ) {
-    const { user, conviteEnviado, link } = await this.clients.createInitialAdmin(superadminId, clientId, parseConvidado(body));
-    return { ...safeUser(user), conviteEnviado, link };
+    const { user, conviteEnviado, codigo } = await this.clients.createInitialAdmin(superadminId, clientId, parseConvidado(body));
+    return { ...safeUser(user), conviteEnviado, codigo };
   }
 
   /** Cadastro errado ou teste: apaga o cliente e tudo dele; com fatura ou pagamento, 409. Rastreadores voltam ao estoque. */
@@ -84,7 +84,7 @@ export class SuperadminController {
     return this.clients.listarUsuarios(clientId);
   }
 
-  /** Corpo: `{ novaSenha }`. A Locale define a senha; as sessões abertas do usuário caem. */
+  /** Corpo: `{ novaSenha }`, ou vazio para a senha padrão (`SENHA_PADRAO_RESET`). A Locale define a senha; as sessões abertas do usuário caem. */
   @Post('clients/:clientId/users/:userId/senha')
   @UseGuards(SuperadminGuard)
   @HttpCode(204)
@@ -94,7 +94,7 @@ export class SuperadminController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body() body: { novaSenha?: unknown },
   ) {
-    await this.clients.redefinirSenha(superadminId, clientId, userId, parseSenha(body?.novaSenha, 'novaSenha'));
+    await this.clients.redefinirSenha(superadminId, clientId, userId, body?.novaSenha === undefined ? null : parseSenha(body.novaSenha, 'novaSenha'));
   }
 
   @Get('equipe')

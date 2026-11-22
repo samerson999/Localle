@@ -2,7 +2,7 @@
 // com o admin inicial na mesma transação; o admin recebe um convite por e-mail e define a própria senha (a Locale
 // nunca a conhece). Situação vem do contrato (editado em Contratos); pagamento fica em Faturamento.
 import { useState } from 'react';
-import { ConviteLink } from '../components/ConviteLink';
+import { ConviteLink, type EntregaPendente } from '../components/ConviteLink';
 import { UsuariosDoClienteModal } from '../components/UsuariosDoClienteModal';
 import { Card, PageHeader, PageBody, Section, Table, Badge, Button, TextButton, Modal, Field, FormGroup, Input, Callout, toast, EmptyState, CardActions } from '../components/ui';
 import { useStore } from '../lib/store';
@@ -22,13 +22,13 @@ export default function Clientes() {
   const [usuariosDe, setUsuariosDe] = useState<AdminClient | null>(null);
   const [excluindo, setExcluindo] = useState<AdminClient | null>(null);
   // sem SMTP o e-mail não sai: a API devolve o link do convite para repassar
-  const [link, setLink] = useState<{ email: string; link: string } | null>(null);
+  const [link, setLink] = useState<EntregaPendente | null>(null);
   if (session?.role !== 'locale') return <Card><EmptyState illustration="ilu-sem-acesso" size="page" title="Acesso restrito à administração da plataforma" detail="Entre com o acesso da Locale para ver o Console da Locale." /></Card>;
 
   const reenviar = async (c: AdminClient) => {
     try {
-      const { conviteEnviado, link: l } = await adminApi.reenviarConvite(c.id, c.admin_pendente_id!);
-      if (l) setLink({ email: `o administrador de ${c.name}`, link: l });
+      const { conviteEnviado, codigo, link: l } = await adminApi.reenviarConvite(c.id, c.admin_pendente_id!);
+      if (codigo || l) setLink({ email: `o administrador de ${c.name}`, codigo, link: l });
       else conviteToast(conviteEnviado, 'Convite reenviado. O link anterior deixou de valer.');
     } catch (e: any) { toast(e.message || String(e), { tone: 'crit' }); }
   };
@@ -97,7 +97,7 @@ export default function Clientes() {
       {usuariosDe && <UsuariosDoClienteModal client={usuariosDe} onClose={() => setUsuariosDe(null)} />}
       {excluindo && <ExcluirModal client={excluindo} onClose={() => setExcluindo(null)} onDone={reload} />}
       {adminFor && <AdminModal client={adminFor} onClose={() => setAdminFor(null)} onDone={reload} onLink={setLink} />}
-      {link && <ConviteLink email={link.email} link={link.link} onClose={() => setLink(null)} />}
+      {link && <ConviteLink {...link} onClose={() => setLink(null)} />}
     </div>
   );
 }
@@ -123,14 +123,14 @@ function useSubmit<T>(run: () => Promise<T>, after: (r: T) => void, onDone: () =
 
 const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 
-type OnLink = (v: { email: string; link: string }) => void;
+type OnLink = (v: EntregaPendente) => void;
 
 function NewClientModal({ onClose, onDone, onLink }: { onClose: () => void; onDone: () => void; onLink: OnLink }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const { busy, submit } = useSubmit(
     () => adminApi.createClient({ name: name.trim(), admin: { email: email.trim() } }),
-    (r) => (r.link ? onLink({ email: email.trim(), link: r.link }) : conviteToast(r.conviteEnviado, `Cliente cadastrado. Convite enviado para ${email.trim()}.`)),
+    (r) => (r.codigo ? onLink({ email: email.trim(), codigo: r.codigo }) : conviteToast(r.conviteEnviado, `Cliente cadastrado. Convite enviado para ${email.trim()}.`)),
     onDone, onClose,
   );
   return (
@@ -146,7 +146,7 @@ function AdminModal({ client, onClose, onDone, onLink }: { client: AdminClient; 
   const [email, setEmail] = useState('');
   const { busy, submit } = useSubmit(
     () => adminApi.createInitialAdmin(client.id, { email: email.trim() }),
-    (r) => (r.link ? onLink({ email: email.trim(), link: r.link }) : conviteToast(r.conviteEnviado, `Convite enviado para ${email.trim()}.`)),
+    (r) => (r.codigo ? onLink({ email: email.trim(), codigo: r.codigo }) : conviteToast(r.conviteEnviado, `Convite enviado para ${email.trim()}.`)),
     onDone, onClose,
   );
   return (

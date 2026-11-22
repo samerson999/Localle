@@ -84,21 +84,24 @@ async function postLogin(path: string, email: string, password: string): Promise
   return (await r.json()).accessToken;
 }
 
-// ---------- convite de primeiro acesso (rotas públicas: a credencial é o token do e-mail) ----------
-export async function consultarConvite(token: string): Promise<{ email: string; clientName: string }> {
-  const r = await fetchOuErro(`${BASE}/auth/convites/${encodeURIComponent(token)}`);
-  if (!r.ok) throw r.status === 404 || r.status === 400 ? new Error('Convite inválido ou expirado. Peça um novo à Locale.') : erroHttp(r.status);
-  return r.json();
+// ---------- código de uso único por e-mail (rotas públicas: a credencial é o código) ----------
+// Convite de primeiro acesso e "esqueci minha senha" usam o mesmo desenho: verificar o código (passo 1) e,
+// com ele, definir a senha (passo 2). Código errado conta tentativa na API; no limite, é preciso pedir outro.
+async function postCodigo<T>(rota: string, body: Record<string, string>, invalido: string): Promise<T> {
+  const r = await fetchOuErro(`${BASE}${rota}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw r.status === 400 && /inválido ou expirado/.test(data?.message ?? '') ? new Error(invalido) : erroHttp(r.status, data);
+  return data as T;
 }
+const CONVITE_INVALIDO = 'Código inválido ou expirado. Confira o e-mail mais recente ou peça um novo convite a quem cadastrou você.';
+const REDEFINICAO_INVALIDA = 'Código inválido ou expirado. Confira o e-mail mais recente ou peça um novo código.';
+
+export const verificarConvite = (email: string, codigo: string) =>
+  postCodigo<{ email: string; clientName: string }>('/auth/convites/verificar', { email, codigo }, CONVITE_INVALIDO);
 
 /** Define a senha; em caso de sucesso já deixa a sessão aberta (token salvo). */
-export async function aceitarConvite(token: string, password: string): Promise<void> {
-  const r = await fetchOuErro(`${BASE}/auth/convites/${encodeURIComponent(token)}/aceitar`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }),
-  });
-  const data = await r.json().catch(() => null);
-  if (!r.ok) throw r.status === 404 ? new Error('Convite inválido ou expirado. Peça um novo à Locale.') : erroHttp(r.status, data);
-  setToken(data.accessToken);
+export async function aceitarConvite(email: string, codigo: string, password: string): Promise<void> {
+  setToken((await postCodigo<{ accessToken: string }>('/auth/convites/aceitar', { email, codigo, password }, CONVITE_INVALIDO)).accessToken);
 }
 
 /**
@@ -408,8 +411,11 @@ export type EscolhaDeModelo = { modeloId: string } | { aparelhoId: number };
 export interface AdminSimCard { id: string; iccid: string; operadora: string | null; numero: string | null; status: string; rastreador_id: string | null }
 export interface AdminAuditEntry { id: string; actor_type: 'user' | 'superadmin'; actor_email: string | null; client_name: string | null; action: string; target: string | null; before: unknown; after: unknown; created_at: string }
 
-/** Resultado de um convite: sem SMTP, `link` volta para quem convidou repassar. */
-export interface Entrega { conviteEnviado: boolean; link: string | null }
+/**
+ * Resultado de um convite: sem SMTP, volta para quem convidou repassar — o `codigo` (usuário de cliente) ou o
+ * `link` (equipe da Localle, que ainda entra por link).
+ */
+export interface Entrega { conviteEnviado: boolean; codigo?: string | null; link?: string | null }
 export interface MembroLocalle { id: string; email: string; created_at: string; desativado_em: string | null; pendente: boolean }
 export interface MembroEquipe { id: string; email: string; role: 'admin' | 'gestor' | 'operador'; perfilId: string | null; ativo: boolean; pendente: boolean; createdAt: string }
 
@@ -451,11 +457,12 @@ export const adminApi = {
   atualizarAlertaTipo: (chave: string, body: AlertaTipoBody) => apiSend<AlertaTipo>('PATCH', `/superadmin/alerta-tipos/${encodeURIComponent(chave)}`, body),
   excluirAlertaTipo: (chave: string) => apiSend('DELETE', `/superadmin/alerta-tipos/${encodeURIComponent(chave)}`),
   clients: () => apiGet<AdminClient[]>('/clients'),
-  createClient: (body: { name: string; admin?: { email: string } }) => apiSend<{ client: AdminClient; conviteEnviado: boolean; link: string | null }>('POST', '/superadmin/clients', body),
-  createInitialAdmin: (clientId: string, body: { email: string }) => apiSend<{ conviteEnviado: boolean; link: string | null }>('POST', `/superadmin/clients/${clientId}/admin-users`, body),
-  reenviarConvite: (clientId: string, userId: string) => apiSend<{ conviteEnviado: boolean; link: string | null }>('POST', `/superadmin/clients/${clientId}/admin-users/${userId}/convite`),
+  createClient: (body: { name: string; admin?: { email: string } }) => apiSend<{ client: AdminClient } & Entrega>('POST', '/superadmin/clients', body),
+  createInitialAdmin: (clientId: string, body: { email: string }) => apiSend<Entrega>('POST', `/superadmin/clients/${clientId}/admin-users`, body),
+  reenviarConvite: (clientId: string, userId: string) => apiSend<Entrega>('POST', `/superadmin/clients/${clientId}/admin-users/${userId}/convite`),
   usuariosDoCliente: (clientId: string) => apiGet<UsuarioDoCliente[]>(`/superadmin/clients/${clientId}/users`),
-  redefinirSenha: (clientId: string, userId: string, novaSenha: string) => apiSend('POST', `/superadmin/clients/${clientId}/users/${userId}/senha`, { novaSenha }),
+  /** `novaSenha` nula = a senha padrão de reset, configurada na API. */
+  redefinirSenha: (clientId: string, userId: string, novaSenha: string | null) => apiSend('POST', `/superadmin/clients/${clientId}/users/${userId}/senha`, novaSenha === null ? {} : { novaSenha }),
   contratos: () => apiGet<AdminContrato[]>('/superadmin/contratos'),
   versoes: (contratoId: string) => apiGet<ContractVersion[]>(`/superadmin/contratos/${contratoId}/versoes`),
   criarContrato: (clientId: string, body: ContratoBody) => apiSend<AdminContrato>('POST', `/superadmin/clients/${clientId}/contrato`, body),
@@ -574,16 +581,10 @@ export async function esqueciSenha(email: string) {
   const r = await fetchOuErro(`${BASE}/auth/esqueci-senha`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
   if (!r.ok && r.status !== 202) throw erroHttp(r.status, await r.json().catch(() => null));
 }
-export async function consultarRedefinicao(token: string): Promise<{ email: string }> {
-  const r = await fetchOuErro(`${BASE}/auth/redefinir-senha/${encodeURIComponent(token)}`);
-  if (!r.ok) throw r.status === 404 || r.status === 400 ? new Error('Link de redefinição inválido ou expirado. Peça um novo na tela de login.') : erroHttp(r.status);
-  return r.json();
-}
-export async function redefinirSenha(token: string, password: string): Promise<void> {
-  const r = await fetchOuErro(`${BASE}/auth/redefinir-senha/${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
-  const data = await r.json().catch(() => null);
-  if (!r.ok) throw r.status === 404 ? new Error('Link de redefinição inválido ou expirado. Peça um novo na tela de login.') : erroHttp(r.status, data);
-  setToken(data.accessToken);
+export const verificarRedefinicao = (email: string, codigo: string) =>
+  postCodigo<{ email: string }>('/auth/redefinir-senha/verificar', { email, codigo }, REDEFINICAO_INVALIDA);
+export async function redefinirSenha(email: string, codigo: string, password: string): Promise<void> {
+  setToken((await postCodigo<{ accessToken: string }>('/auth/redefinir-senha', { email, codigo, password }, REDEFINICAO_INVALIDA)).accessToken);
 }
 export async function consultarConviteLocalle(token: string): Promise<{ email: string }> {
   const r = await fetchOuErro(`${BASE}/superadmin/convites/${encodeURIComponent(token)}`);

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Button, Field, Input, Modal, Radio, toast } from '../ui';
-import { equipeApi, type PerfilAcesso } from '../../lib/localleApi';
+import { equipeApi, type Entrega, type PerfilAcesso } from '../../lib/localleApi';
 import { opcoesDePerfil } from './perfis';
 
-export function ConvidarModal({ perfis, onClose, onDone }: { perfis: PerfilAcesso[]; onClose: () => void; onDone: (r: { conviteEnviado: boolean; link: string | null }, email: string) => void }) {
+export function ConvidarModal({ perfis, onClose, onDone }: { perfis: PerfilAcesso[]; onClose: () => void; onDone: (r: Entrega, email: string) => void }) {
   const [email, setEmail] = useState('');
   const [perfil, setPerfil] = useState('gestor');
   const [busy, setBusy] = useState(false);

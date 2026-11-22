@@ -1,27 +1,21 @@
-// Criar senha por link de uso único (rotas públicas, link do e-mail): convite de usuário de cliente
-// (/convite/:token), convite da equipe da Localle (/convite-localle/:token) e "esqueci minha senha"
-// (/redefinir-senha/:token). Confirma o e-mail e define a senha num passo só; em seguida já entra.
+// Criar senha por link de uso único (rota pública, link do e-mail): convite da equipe da Localle
+// (/convite-localle/:token). Confirma o e-mail e define a senha num passo só; em seguida já entra. Usuário de
+// cliente (convite e "esqueci minha senha") entra por código: pages/CodigoAcesso.tsx.
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../lib/store';
 import { BrandMark } from '../components/Layout';
 import { homeOf } from '../lib/support';
-import { aceitarConvite, limparDadosDoCliente, aceitarConviteLocalle, consultarConvite, consultarConviteLocalle, consultarRedefinicao, redefinirSenha } from '../lib/localleApi';
+import { limparDadosDoCliente, aceitarConviteLocalle, consultarConviteLocalle } from '../lib/localleApi';
 
-type Tipo = 'cliente' | 'localle' | 'redefinir';
-const TIPOS: Record<Tipo, { consultar: (t: string) => Promise<{ email: string; clientName?: string }>; aceitar: (t: string, p: string) => Promise<void>; role: 'gestor' | 'locale'; titulo: string; botao: string; indisponivel: string }> = {
-  cliente: { consultar: consultarConvite, aceitar: aceitarConvite, role: 'gestor', titulo: 'Criar sua senha', botao: 'Criar senha e entrar', indisponivel: 'Convite indisponível' },
-  localle: { consultar: consultarConviteLocalle, aceitar: aceitarConviteLocalle, role: 'locale', titulo: 'Criar sua senha', botao: 'Criar senha e entrar', indisponivel: 'Convite indisponível' },
-  redefinir: { consultar: consultarRedefinicao, aceitar: redefinirSenha, role: 'gestor', titulo: 'Nova senha', botao: 'Salvar senha e entrar', indisponivel: 'Link indisponível' },
-};
+const t = { consultar: consultarConviteLocalle, aceitar: aceitarConviteLocalle, role: 'locale' as const, titulo: 'Criar sua senha', botao: 'Criar senha e entrar', indisponivel: 'Convite indisponível' };
 import { Button, Input, Field, Illustration } from '../components/ui';
 
-export default function Convite({ tipo = 'cliente' }: { tipo?: Tipo }) {
-  const t = TIPOS[tipo];
+export default function Convite() {
   const { token = '' } = useParams();
   const nav = useNavigate();
   const b = useStore((s) => s.revenda.branding);
-  const [convite, setConvite] = useState<{ email: string; clientName?: string } | null>(null);
+  const [convite, setConvite] = useState<{ email: string } | null>(null);
   const [erroConvite, setErroConvite] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
@@ -30,7 +24,7 @@ export default function Convite({ tipo = 'cliente' }: { tipo?: Tipo }) {
 
   useEffect(() => {
     t.consultar(token).then(setConvite).catch((e) => setErroConvite(e.message || String(e)));
-  }, [token, tipo]);
+  }, [token]);
 
   const invalida = pass.length < 8 ? 'A senha precisa ter pelo menos 8 caracteres.' : pass !== pass2 ? 'As duas senhas não conferem.' : '';
 
@@ -64,9 +58,7 @@ export default function Convite({ tipo = 'cliente' }: { tipo?: Tipo }) {
             <div>
               <h1 className="text-h2 font-semibold">{t.titulo}</h1>
               <p className="text-body text-ink-2 mt-1">
-                {tipo === 'cliente' ? <>Acesso a <span className="font-medium text-ink">{convite.clientName}</span>. Ao criar a senha, seu e-mail fica confirmado.</>
-                  : tipo === 'localle' ? 'Equipe da Localle (Painel da Localle). Ao criar a senha, seu e-mail fica confirmado.'
-                  : 'Defina uma nova senha para a sua conta. O link vale uma vez só.'}
+                Equipe da Localle (Painel da Localle). Ao criar a senha, seu e-mail fica confirmado.
               </p>
             </div>
             <Field label="E-mail"><Input type="email" value={convite.email} readOnly className="h-ctl-lg" autoComplete="username" /></Field>

@@ -46,11 +46,13 @@ describe('UsersService — convite de membro da equipe', () => {
     await pool.end();
   });
 
-  it('convida gestor: nasce sem senha, convite aberto, auditado; com SMTP o link não volta na resposta', async () => {
+  it('convida gestor: nasce sem senha, convite aberto, auditado; com SMTP o código não volta na resposta', async () => {
     const r = await service(comEmail).convidarMembro(clientA, adminA, { email: email(), role: 'gestor' });
     expect(r.user).toMatchObject({ client_id: clientA, role: 'gestor', password_hash: null });
-    expect(r).toMatchObject({ conviteEnviado: true, link: null });
+    expect(r).toMatchObject({ conviteEnviado: true, codigo: null });
     expect(enviados.at(-1)?.text).toMatch(/cadastrado como gestor de teste-convite-membro-a-/);
+    expect(enviados.at(-1)?.text).toMatch(/código de primeiro acesso é:\s+\d{6}/);
+    expect(enviados.at(-1)?.text).toContain(`/#/primeiro-acesso?email=${encodeURIComponent(r.user.email)}`);
 
     const { rows: cv } = await pool.query('select 1 from convites where user_id = $1 and usado_em is null and revogado_em is null', [r.user.id]);
     expect(cv).toHaveLength(1);
@@ -58,16 +60,33 @@ describe('UsersService — convite de membro da equipe', () => {
     expect(au).toEqual([{ actor_id: adminA }]);
   });
 
-  it('sem SMTP devolve o link; aceitar o convite define a senha e o login passa a funcionar', async () => {
+  it('sem SMTP devolve o código; aceitar o convite define a senha e o login passa a funcionar', async () => {
     const mail = email();
     const r = await service(semEmail).convidarMembro(clientA, adminA, { email: mail, role: 'operador' });
     expect(r.conviteEnviado).toBe(false);
-    expect(r.link).toMatch(/#\/convite\/[A-Za-z0-9_-]{43}$/);
+    expect(r.codigo).toMatch(/^\d{6}$/);
 
     await expect(auth.login(mail, 'qualquer-senha')).rejects.toThrow(); // sem senha ainda
-    const token = r.link!.split('/').at(-1)!;
-    await convitesSemEmail.aceitar(token, 'senha-do-operador-123');
+    expect(await convitesSemEmail.verificar(mail, r.codigo!)).toMatchObject({ email: mail });
+    await convitesSemEmail.aceitar(mail, r.codigo!, 'senha-do-operador-123');
     await expect(auth.login(mail, 'senha-do-operador-123')).resolves.toHaveProperty('accessToken');
+  });
+
+  it('código de outro usuário não serve; 5 erros revogam o convite, mesmo que depois venha o código certo', async () => {
+    const mailA = email();
+    const mailB = email();
+    const a = await service(semEmail).convidarMembro(clientA, adminA, { email: mailA, role: 'gestor' });
+    const b = await service(semEmail).convidarMembro(clientA, adminA, { email: mailB, role: 'gestor' });
+    if (a.codigo !== b.codigo) await expect(convitesSemEmail.verificar(mailA, b.codigo!)).rejects.toThrow(/inválido ou expirado/);
+
+    const errado = a.codigo === '000000' ? '111111' : '000000';
+    await pool.query('update convites set tentativas = 0 where user_id = $1', [a.user.id]);
+    for (let i = 0; i < 5; i++) await expect(convitesSemEmail.verificar(mailA, errado)).rejects.toThrow(/inválido ou expirado/);
+    const { rows: [cv] } = await pool.query('select tentativas, revogado_em from convites where user_id = $1', [a.user.id]);
+    expect(cv.tentativas).toBe(5);
+    expect(cv.revogado_em).not.toBeNull();
+    await expect(convitesSemEmail.aceitar(mailA, a.codigo!, 'senha-correta-123')).rejects.toThrow(/inválido ou expirado/);
+    await expect(auth.login(mailA, 'senha-correta-123')).rejects.toThrow();
   });
 
   it('recusa convidar admin e e-mail já cadastrado', async () => {
@@ -77,34 +96,32 @@ describe('UsersService — convite de membro da equipe', () => {
     await expect(service(semEmail).convidarMembro(clientA, adminA, { email: mail, role: 'gestor' })).rejects.toThrow(/Já existe/);
   });
 
-  it('reenviar: só do próprio cliente, só pendente; o link anterior deixa de valer', async () => {
-    const r = await service(semEmail).convidarMembro(clientA, adminA, { email: email(), role: 'gestor' });
-    const antigo = r.link!.split('/').at(-1)!;
+  it('reenviar: só do próprio cliente, só pendente; o código anterior deixa de valer', async () => {
+    const mail = email();
+    const r = await service(semEmail).convidarMembro(clientA, adminA, { email: mail, role: 'gestor' });
 
     await expect(service(semEmail).reenviarConvite(clientB, adminA, r.user.id)).rejects.toThrow(/não encontrado/);
     await expect(service(semEmail).reenviarConvite(clientA, adminA, adminA)).rejects.toThrow(/Locale/);
 
     const novo = await service(semEmail).reenviarConvite(clientA, adminA, r.user.id);
-    expect(novo.link).not.toBe(r.link);
-    await expect(convitesSemEmail.consultar(antigo)).rejects.toThrow(/inválido/);
+    if (novo.codigo !== r.codigo) await expect(convitesSemEmail.verificar(mail, r.codigo!)).rejects.toThrow(/inválido/);
 
-    await convitesSemEmail.aceitar(novo.link!.split('/').at(-1)!, 'senha-definida-123');
+    await convitesSemEmail.aceitar(mail, novo.codigo!, 'senha-definida-123');
     await expect(service(semEmail).reenviarConvite(clientA, adminA, r.user.id)).rejects.toThrow(/já definiu a senha/);
   });
 
   it('convite vencido não abre nem define senha; convite já usado não vale de novo', async () => {
     const mail = email();
     const r = await service(semEmail).convidarMembro(clientA, adminA, { email: mail, role: 'gestor' });
-    const token = r.link!.split('/').at(-1)!;
     await pool.query("update convites set expira_em = now() - interval '1 minute' where user_id = $1", [r.user.id]);
 
-    await expect(convitesSemEmail.consultar(token)).rejects.toThrow(/inválido ou expirado/);
-    await expect(convitesSemEmail.aceitar(token, 'senha-fora-do-prazo-1')).rejects.toThrow(/inválido ou expirado/);
+    await expect(convitesSemEmail.verificar(mail, r.codigo!)).rejects.toThrow(/inválido ou expirado/);
+    await expect(convitesSemEmail.aceitar(mail, r.codigo!, 'senha-fora-do-prazo-1')).rejects.toThrow(/inválido ou expirado/);
     await expect(auth.login(mail, 'senha-fora-do-prazo-1')).rejects.toThrow();
 
-    const novo = (await service(semEmail).reenviarConvite(clientA, adminA, r.user.id)).link!.split('/').at(-1)!;
-    await convitesSemEmail.aceitar(novo, 'senha-dentro-do-prazo-1');
-    await expect(convitesSemEmail.aceitar(novo, 'outra-senha-qualquer-1')).rejects.toThrow(/inválido ou expirado/);
+    const novo = (await service(semEmail).reenviarConvite(clientA, adminA, r.user.id)).codigo!;
+    await convitesSemEmail.aceitar(mail, novo, 'senha-dentro-do-prazo-1');
+    await expect(convitesSemEmail.aceitar(mail, novo, 'outra-senha-qualquer-1')).rejects.toThrow(/inválido ou expirado/);
     await expect(auth.login(mail, 'senha-dentro-do-prazo-1')).resolves.toHaveProperty('accessToken');
   });
 });

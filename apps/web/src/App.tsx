@@ -22,6 +22,7 @@ const RelatorioPassouPorAqui = lazy(() => import('./pages/RelatorioPassouPorAqui
 const RelatorioUso = lazy(() => import('./pages/RelatorioUso'));
 const Compartilhar = lazy(() => import('./pages/Compartilhar'));
 const Convite = lazy(() => import('./pages/Convite'));
+const CodigoAcesso = lazy(() => import('./pages/CodigoAcesso'));
 const Ativos = lazy(() => import('./pages/Ativos'));
 const Manutencao = lazy(() => import('./pages/Manutencao'));
 const Combustivel = lazy(() => import('./pages/Combustivel'));
@@ -105,9 +106,9 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/compartilhar/:token" element={<Compartilhar />} />
-        <Route path="/convite/:token" element={<Convite />} />
-        <Route path="/convite-localle/:token" element={<Convite tipo="localle" />} />
-        <Route path="/redefinir-senha/:token" element={<Convite tipo="redefinir" />} />
+        <Route path="/primeiro-acesso" element={<CodigoAcesso tipo="convite" />} />
+        <Route path="/convite-localle/:token" element={<Convite />} />
+        <Route path="/redefinir-senha" element={<CodigoAcesso tipo="redefinir" />} />
         <Route path="/portaria" element={<Guard m="viagens" portaria><PortariaApp /></Guard>} />
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />

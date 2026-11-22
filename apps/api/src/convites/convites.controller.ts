@@ -1,35 +1,30 @@
-import { BadRequestException, Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { parseCodigoEmail, parseSenha } from '../auth/dto/parse-codigo';
 import { Public } from '../auth/public.decorator';
 import { ConvitesService } from './convites.service';
 
-const TOKEN = /^[A-Za-z0-9_-]{43}$/; // 32 bytes em base64url
-
-function parseToken(v: unknown): string {
-  if (typeof v !== 'string' || !TOKEN.test(v)) throw new BadRequestException('Convite inválido ou expirado');
-  return v;
-}
-
 /**
- * Rotas públicas de propósito (justificativa exigida por `.claude/rules/security.md` item 2): quem abre o
- * convite ainda não tem senha nem token — a credencial é o próprio token de uso único do e-mail.
+ * Rotas públicas de propósito (justificativa exigida por `.claude/rules/security.md` item 2): quem chega com o
+ * código ainda não tem senha nem token — a credencial é o próprio código de uso único do e-mail, com teto de
+ * tentativas (src/auth/codigo.ts).
  */
 @Controller('auth/convites')
 export class ConvitesController {
   constructor(private readonly convites: ConvitesService) {}
 
-  @Get(':token')
+  @Post('verificar')
   @Public()
-  consultar(@Param('token') token: string) {
-    return this.convites.consultar(parseToken(token));
+  @HttpCode(200)
+  verificar(@Body() body: { email?: unknown; codigo?: unknown }) {
+    const { email, codigo } = parseCodigoEmail(body);
+    return this.convites.verificar(email, codigo);
   }
 
-  @Post(':token/aceitar')
+  @Post('aceitar')
   @Public()
-  aceitar(@Param('token') token: string, @Body() body: { password?: unknown }) {
-    const password = body?.password;
-    if (typeof password !== 'string' || password.length < 8 || password.length > 200) {
-      throw new BadRequestException('"password" precisa ter de 8 a 200 caracteres');
-    }
-    return this.convites.aceitar(parseToken(token), password);
+  @HttpCode(200)
+  aceitar(@Body() body: { email?: unknown; codigo?: unknown; password?: unknown }) {
+    const { email, codigo } = parseCodigoEmail(body);
+    return this.convites.aceitar(email, codigo, parseSenha(body?.password, 'password'));
   }
 }

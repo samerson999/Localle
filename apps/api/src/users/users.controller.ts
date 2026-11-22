@@ -36,13 +36,13 @@ export class UsersController {
     return users.map(toSafeUser);
   }
 
-  /** Corpo: `{ email, perfil: 'gestor' | 'operador' | <id de perfil> }` (ou `role`). Sem SMTP, `link` volta para o admin repassar. */
+  /** Corpo: `{ email, perfil: 'gestor' | 'operador' | <id de perfil> }` (ou `role`). Sem SMTP, `codigo` volta para o admin repassar. */
   @Post()
   @RequirePermission('permissoes.gerenciar')
   async convidar(@ClientId() clientId: string, @CurrentUserId() actingAdminId: string, @Body() body: unknown) {
     const { email, perfil } = parseConviteMembro(body);
-    const { user, conviteEnviado, link } = await this.service.convidarMembro(clientId, actingAdminId, { email, ...(await this.resolverPerfil(clientId, perfil)) });
-    return { ...toSafeUser(user), conviteEnviado, link };
+    const { user, conviteEnviado, codigo } = await this.service.convidarMembro(clientId, actingAdminId, { email, ...(await this.resolverPerfil(clientId, perfil)) });
+    return { ...toSafeUser(user), conviteEnviado, codigo };
   }
 
   @Post(':id/convite')

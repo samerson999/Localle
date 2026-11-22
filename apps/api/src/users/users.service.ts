@@ -30,7 +30,7 @@ export class UsersService {
   /**
    * O Admin convida Gestor/Operador para o próprio cliente — nunca outro Admin (isso só nasce pelo
    * superadmin, `src/superadmin/`, evitando que um Admin se multiplique sem controle da Locale). O usuário
-   * nasce sem senha e define a própria pelo link de uso único (mesmo fluxo do admin inicial): quem convida
+   * nasce sem senha e define a própria com o código de uso único do e-mail (mesmo fluxo do admin inicial): quem convida
    * nunca conhece a senha. `clientId` vem de `@ClientId()` (JWT), nunca do corpo. Usuário + convite +
    * auditoria na mesma transação; o e-mail sai depois do commit.
    */
@@ -60,7 +60,7 @@ export class UsersService {
     return { user: criado.user, ...entrega };
   }
 
-  /** Novo link (o anterior deixa de valer). Só para Gestor/Operador que ainda não definiu a senha. */
+  /** Novo código (o anterior deixa de valer). Só para Gestor/Operador que ainda não definiu a senha. */
   async reenviarConvite(clientId: string, actingAdminId: string, userId: string) {
     const cliente = await this.clients.findById(clientId);
     const user = cliente ? await this.repo.findOneByClient(clientId, userId) : null;

@@ -32,6 +32,7 @@ test.describe('redefinir senha pelo Console', () => {
 
     const dialogo = page.getByRole('dialog');
     await dialogo.locator('tr:visible, li:visible').filter({ hasText: email }).getByRole('button', { name: 'Redefinir senha' }).click();
+    await page.getByRole('dialog').getByText('Outra senha').click(); // o padrão é a senha de reset da API
     const senha = `nova-${randomUUID().slice(0, 8)}`;
     await page.getByLabel('Nova senha').fill(senha);
     await page.getByLabel('Repita a senha').fill(senha);

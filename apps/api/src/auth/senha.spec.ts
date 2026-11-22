@@ -10,7 +10,8 @@ import { ActiveUserRepository } from './active-user.repository';
 import { AuthService } from './auth.service';
 import { verifyAuthToken } from './jwt';
 import { SenhaRepository } from './senha.repository';
-import { hashToken, MAX_PEDIDOS_HORA, SenhaService } from './senha.service';
+import { hashCodigo, MAX_TENTATIVAS } from './codigo';
+import { MAX_PEDIDOS_HORA, SenhaService } from './senha.service';
 
 class MailFake extends MailService {
   enviados: MailMessage[] = [];
@@ -21,8 +22,9 @@ class MailFake extends MailService {
 }
 
 /**
- * Senha contra o Postgres real: "esqueci" (token só por e-mail, hash no banco, resposta igual para e-mail
- * desconhecido, limite por conta), redefinir pelo link (uso único, expira, revogado pelo pedido seguinte),
+ * Senha contra o Postgres real: "esqueci" (código só por e-mail, HMAC no banco, resposta igual para e-mail
+ * desconhecido, limite por conta), redefinir com o código (uso único, expira, revogado pelo pedido seguinte e
+ * pelo teto de tentativas),
  * trocar logado (exige a atual), e o login passa a valer com a senha nova.
  */
 describe('senha: esqueci, redefinir e trocar', () => {
@@ -60,27 +62,27 @@ describe('senha: esqueci, redefinir e trocar', () => {
     expect(mail.enviados).toEqual([]);
   });
 
-  it('e-mail conhecido: token só no e-mail (banco guarda o hash); link usa APP_URL', async () => {
-    const token = (await service.esqueci(email))!;
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  it('e-mail conhecido: código só no e-mail (banco guarda o HMAC)', async () => {
+    const codigo = (await service.esqueci(email))!;
+    expect(codigo).toMatch(/^\d{6}$/);
     expect(mail.enviados).toHaveLength(1);
     expect(mail.enviados[0].to).toBe(email);
-    expect(mail.enviados[0].text).toContain(`/#/redefinir-senha/${token}`);
+    expect(mail.enviados[0].text).toContain(codigo);
     const { rows } = await pool.query('select token_hash, usado_em from senha_redefinicoes where user_id = $1', [userId]);
-    expect(rows).toEqual([{ token_hash: hashToken(token), usado_em: null }]);
-    expect((await service.consultar(token)).email).toBe(email);
+    expect(rows).toEqual([{ token_hash: hashCodigo(userId, codigo), usado_em: null }]);
+    expect(await service.verificar(email, codigo)).toEqual({ email });
   });
 
   it('pedir de novo revoga o anterior; redefinir é uso único e já abre sessão; login passa a valer com a nova', async () => {
-    const anterior = (await pool.query<{ token_hash: string }>('select token_hash from senha_redefinicoes where user_id = $1', [userId])).rows[0].token_hash;
-    const token = (await service.esqueci(email))!;
-    const r = await pool.query('select revogado_em from senha_redefinicoes where token_hash = $1', [anterior]);
+    const anterior = (await pool.query<{ id: string }>('select id from senha_redefinicoes where user_id = $1', [userId])).rows[0].id;
+    const codigo = (await service.esqueci(email))!;
+    const r = await pool.query('select revogado_em from senha_redefinicoes where id = $1', [anterior]);
     expect(r.rows[0].revogado_em).not.toBeNull();
 
-    const { accessToken } = await service.redefinir(token, 'senha-nova-123');
+    const { accessToken } = await service.redefinir(email, codigo, 'senha-nova-123');
     expect(verifyAuthToken(accessToken)).toMatchObject({ sub: userId, clientId, role: 'gestor' });
-    await expect(service.redefinir(token, 'outra-senha-9')).rejects.toMatchObject({ status: 404 });
-    await expect(service.consultar(token)).rejects.toMatchObject({ status: 404 });
+    await expect(service.redefinir(email, codigo, 'outra-senha-9')).rejects.toMatchObject({ status: 400 });
+    await expect(service.verificar(email, codigo)).rejects.toMatchObject({ status: 400 });
 
     await expect(auth.login(email, 'senha-antiga-1')).rejects.toMatchObject({ status: 401 });
     expect((await auth.login(email, 'senha-nova-123')).accessToken).toBeTruthy();
@@ -88,10 +90,19 @@ describe('senha: esqueci, redefinir e trocar', () => {
     expect(audit.rowCount).toBe(1);
   });
 
-  it('link expirado → 404', async () => {
-    const token = (await service.esqueci(email))!;
-    await pool.query("update senha_redefinicoes set expira_em = now() - interval '1 minute' where token_hash = $1", [hashToken(token)]);
-    await expect(service.redefinir(token, 'senha-nova-456')).rejects.toMatchObject({ status: 404 });
+  it('código expirado → 400', async () => {
+    const codigo = (await service.esqueci(email))!;
+    await pool.query("update senha_redefinicoes set expira_em = now() - interval '1 minute' where user_id = $1 and revogado_em is null and usado_em is null", [userId]);
+    await expect(service.redefinir(email, codigo, 'senha-nova-456')).rejects.toMatchObject({ status: 400 });
+  });
+
+  it(`${MAX_TENTATIVAS} códigos errados revogam o pedido; depois nem o certo vale`, async () => {
+    await pool.query('delete from senha_redefinicoes where user_id = $1', [userId]);
+    const codigo = (await service.esqueci(email))!;
+    const errado = codigo === '000000' ? '111111' : '000000';
+    for (let i = 0; i < MAX_TENTATIVAS; i++) await expect(service.verificar(email, errado)).rejects.toMatchObject({ status: 400 });
+    await expect(service.redefinir(email, codigo, 'senha-nova-456')).rejects.toMatchObject({ status: 400 });
+    await expect(auth.login(email, 'senha-nova-456')).rejects.toMatchObject({ status: 401 });
   });
 
   it(`limite de ${MAX_PEDIDOS_HORA} pedidos por hora por conta: acima disso não envia (resposta igual)`, async () => {
@@ -135,7 +146,7 @@ describe('senha: esqueci, redefinir e trocar', () => {
     expect(await activeUsers.isActive(userId, iatNovo)).toBe(true);
   });
 
-  it('usuário desativado não recebe link de redefinição', async () => {
+  it('usuário desativado não recebe código de redefinição', async () => {
     await pool.query('update users set desativado_em = now() where id = $1', [userId]);
     mail.enviados = [];
     await pool.query('delete from senha_redefinicoes where user_id = $1', [userId]);

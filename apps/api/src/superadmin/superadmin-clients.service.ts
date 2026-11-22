@@ -20,7 +20,7 @@ import type { UserEntity } from '../users/user.entity';
  * (achado #4 da auditoria de 23/10/2026).
  *
  * Admin do cliente nasce sem senha, com convite por e-mail (decidido em 24/10/2026): a Locale nunca
- * conhece a senha; o próprio admin a define ao abrir o link, o que também confirma o e-mail.
+ * conhece a senha; o próprio admin a define com o código do e-mail, o que também confirma o e-mail.
  */
 @Injectable()
 export class SuperadminClientsService {
@@ -41,7 +41,7 @@ export class SuperadminClientsService {
   async createClient(
     superadminId: string,
     data: { name: string; revendaId?: string; admin?: { email: string } },
-  ): Promise<{ client: ClientEntity; admin: UserEntity | null; conviteEnviado: boolean; link: string | null }> {
+  ): Promise<{ client: ClientEntity; admin: UserEntity | null; conviteEnviado: boolean; codigo: string | null }> {
     const result = await this.emailUnico(() =>
       withTransaction(this.pool, async (tx) => {
         const created = await this.clients.create({ name: data.name, revendaId: data.revendaId }, tx);
@@ -53,12 +53,12 @@ export class SuperadminClientsService {
         return { client: created, admin };
       }),
     );
-    const entrega = result.admin ? await this.convites.entregar(result.admin.user.email, result.client.name, result.admin.token) : { conviteEnviado: false, link: null };
+    const entrega = result.admin ? await this.convites.entregar(result.admin.user.email, result.client.name, result.admin.token) : { conviteEnviado: false, codigo: null };
     this.logger.log(`cliente criado client_id=${result.client.id} por superadmin=${superadminId} admin_inicial=${result.admin?.user.id ?? 'nenhum'}`);
     return { client: result.client, admin: result.admin?.user ?? null, ...entrega };
   }
 
-  async createInitialAdmin(superadminId: string, clientId: string, data: { email: string }): Promise<{ user: UserEntity; conviteEnviado: boolean; link: string | null }> {
+  async createInitialAdmin(superadminId: string, clientId: string, data: { email: string }): Promise<{ user: UserEntity; conviteEnviado: boolean; codigo: string | null }> {
     const client = await this.clients.findById(clientId);
     if (!client) throw new NotFoundException('Cliente não encontrado');
     const { user, token } = await this.emailUnico(() =>
@@ -69,8 +69,8 @@ export class SuperadminClientsService {
     return { user, ...entrega };
   }
 
-  /** Novo link (o anterior deixa de valer). Só para quem ainda não definiu senha. */
-  async reenviarConvite(superadminId: string, clientId: string, userId: string): Promise<{ conviteEnviado: boolean; link: string | null }> {
+  /** Novo código (o anterior deixa de valer). Só para quem ainda não definiu senha. */
+  async reenviarConvite(superadminId: string, clientId: string, userId: string): Promise<{ conviteEnviado: boolean; codigo: string | null }> {
     const client = await this.clients.findById(clientId);
     const user = client ? await this.users.findOneByClient(clientId, userId) : null;
     if (!client || !user) throw new NotFoundException('Usuário não encontrado');
@@ -97,13 +97,15 @@ export class SuperadminClientsService {
    * Suporte: a Locale define a nova senha de um usuário do cliente (ex.: esqueceu e não recebe e-mail). As sessões
    * abertas do usuário caem; convite aberto é revogado. Auditado, sem a senha no log nem na auditoria.
    */
-  async redefinirSenha(superadminId: string, clientId: string, userId: string, novaSenha: string): Promise<void> {
-    const passwordHash = await bcrypt.hash(novaSenha, 10);
+  /** `novaSenha` nula = a senha padrão de reset (`SENHA_PADRAO_RESET` no .env da API), que nunca passa pelo front. */
+  async redefinirSenha(superadminId: string, clientId: string, userId: string, novaSenha: string | null): Promise<void> {
+    const senha = novaSenha ?? senhaPadraoReset();
+    const passwordHash = await bcrypt.hash(senha, 10);
     await withTransaction(this.pool, async (tx) => {
       if (!(await this.users.definirSenha(clientId, userId, passwordHash, tx))) throw new NotFoundException('Usuário não encontrado');
       await this.audit.record({ actorType: 'superadmin', actorId: superadminId, clientId, action: 'user.redefinir_senha', target: userId }, tx);
     });
-    this.logger.log(`senha redefinida user_id=${userId} client_id=${clientId} por superadmin=${superadminId}`);
+    this.logger.log(`senha redefinida user_id=${userId} client_id=${clientId} por superadmin=${superadminId} padrao=${novaSenha === null}`);
   }
 
   /**
@@ -166,4 +168,11 @@ export class SuperadminClientsService {
       throw err;
     }
   }
+}
+
+/** Senha que a Locale aplica ao resetar a de um usuário do cliente sem digitar outra. Sem ela (ou curta), o reset padrão recusa. */
+export function senhaPadraoReset(): string {
+  const v = process.env.SENHA_PADRAO_RESET ?? '';
+  if (v.length < 8 || v.length > 200) throw new BadRequestException('Senha padrão de reset não configurada na API (SENHA_PADRAO_RESET, mínimo de 8 caracteres)');
+  return v;
 }

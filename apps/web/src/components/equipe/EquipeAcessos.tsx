@@ -7,7 +7,7 @@ import { Badge, Button, Callout, Card, EmptyState, Section, Select, Table, TextB
 import { useStore } from '../../lib/store';
 import { equipeApi, type MembroEquipe, type PerfilAcesso, type PermissaoPapel } from '../../lib/localleApi';
 import { mensagemDeErro } from '../../lib/apiErro';
-import { ConviteLink, avisarEntrega } from '../ConviteLink';
+import { ConviteLink, avisarEntrega, type EntregaPendente } from '../ConviteLink';
 import { fmtD } from '@localle/shared/utils';
 import { ConvidarModal } from './ConvidarModal';
 import { MatrizPermissoes } from './MatrizPermissoes';
@@ -22,7 +22,7 @@ export function EquipeAcessos() {
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState('');
   const [convidando, setConvidando] = useState(false);
-  const [link, setLink] = useState<{ email: string; link: string } | null>(null);
+  const [link, setLink] = useState<EntregaPendente | null>(null);
   const [trocando, setTrocando] = useState('');
 
   // devolve a promessa: quem altera espera a tabela nova antes de soltar a caixa (sem piscar o valor antigo)
@@ -84,7 +84,7 @@ export function EquipeAcessos() {
       </Section>
       <MatrizPermissoes papeis={dados?.papeis ?? null} perfis={perfis} loading={!dados && !erro} error={dados ? erro : ''} onChange={carregar} />
       {convidando && <ConvidarModal perfis={perfis} onClose={() => setConvidando(false)} onDone={(r, email) => { void carregar(); avisarEntrega(r, email, setLink); }} />}
-      {link && <ConviteLink email={link.email} link={link.link} onClose={() => setLink(null)} />}
+      {link && <ConviteLink {...link} onClose={() => setLink(null)} />}
     </div>
   );
 }

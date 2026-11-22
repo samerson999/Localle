@@ -1,7 +1,7 @@
 // Console da Locale · Clientes › Usuários: lista quem acessa a conta do cliente e deixa a Locale definir a senha de
 // um usuário (suporte: esqueceu a senha e o e-mail não chega). As sessões abertas do usuário caem na hora.
 import { useState } from 'react';
-import { Badge, Button, Callout, EmptyState, Field, Input, Modal, Table, TextButton, toast } from './ui';
+import { Badge, Button, Callout, EmptyState, Field, Input, Modal, Radio, Table, TextButton, toast } from './ui';
 import { adminApi, useAdminQuery, type AdminClient, type UsuarioDoCliente } from '../lib/localleApi';
 
 const PAPEL: Record<UsuarioDoCliente['role'], string> = { admin: 'Administrador', gestor: 'Gestor', operador: 'Operador' };
@@ -30,6 +30,7 @@ export function UsuariosDoClienteModal({ client, onClose }: { client: AdminClien
 }
 
 function RedefinirSenhaModal({ client, usuario, onClose, onDone }: { client: AdminClient; usuario: UsuarioDoCliente; onClose: () => void; onDone: () => void }) {
+  const [padrao, setPadrao] = useState(true);
   const [senha, setSenha] = useState('');
   const [repetida, setRepetida] = useState('');
   const [busy, setBusy] = useState(false);
@@ -38,8 +39,8 @@ function RedefinirSenhaModal({ client, usuario, onClose, onDone }: { client: Adm
   const salvar = async () => {
     setBusy(true);
     try {
-      await adminApi.redefinirSenha(client.id, usuario.id, senha);
-      toast(`Senha de ${usuario.email} redefinida.`, { detail: 'Repasse a nova senha ao usuário por um canal seguro.' });
+      await adminApi.redefinirSenha(client.id, usuario.id, padrao ? null : senha);
+      toast(`Senha de ${usuario.email} redefinida.`, { detail: padrao ? 'O usuário entra com a senha padrão de reset.' : 'Repasse a nova senha ao usuário por um canal seguro.' });
       onDone();
       onClose();
     } catch (e: any) { toast(e.message || String(e), { tone: 'crit' }); }
@@ -47,10 +48,16 @@ function RedefinirSenhaModal({ client, usuario, onClose, onDone }: { client: Adm
   };
   return (
     <Modal open onClose={onClose} title={`Redefinir senha · ${usuario.email}`} width="max-w-md"
-      footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={senha.length < 8 || senha !== repetida} onClick={salvar}>Redefinir senha</Button></>}>
+      footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!padrao && (senha.length < 8 || senha !== repetida)} onClick={salvar}>Redefinir senha</Button></>}>
       <Callout tone="warn">O usuário sai de todas as sessões abertas e passa a entrar com a senha que você definir.{usuario.pendente ? ' O convite pendente deixa de valer.' : ''}</Callout>
-      <Field label="Nova senha" hint="Mínimo de 8 caracteres" error={curta ? 'Mínimo de 8 caracteres' : undefined}><Input type="password" autoFocus autoComplete="new-password" value={senha} onChange={(e) => setSenha(e.target.value)} /></Field>
-      <Field label="Repita a senha" error={diferente ? 'As senhas não conferem' : undefined}><Input type="password" autoComplete="new-password" value={repetida} onChange={(e) => setRepetida(e.target.value)} /></Field>
+      <div role="radiogroup" aria-label="Senha" className="flex flex-col gap-3">
+        <Radio name="senha-reset" checked={padrao} onChange={() => setPadrao(true)} label="Senha padrão" description="A senha de reset configurada na plataforma." />
+        <Radio name="senha-reset" checked={!padrao} onChange={() => setPadrao(false)} label="Outra senha" />
+      </div>
+      {!padrao && <>
+        <Field label="Nova senha" hint="Mínimo de 8 caracteres" error={curta ? 'Mínimo de 8 caracteres' : undefined}><Input type="password" autoFocus autoComplete="new-password" value={senha} onChange={(e) => setSenha(e.target.value)} /></Field>
+        <Field label="Repita a senha" error={diferente ? 'As senhas não conferem' : undefined}><Input type="password" autoComplete="new-password" value={repetida} onChange={(e) => setRepetida(e.target.value)} /></Field>
+      </>}
     </Modal>
   );
 }
