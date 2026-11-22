@@ -69,6 +69,10 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # e-mail de verdade nos testes do convite (superadmin-clients.service.spec.ts envia por SMTP e lê pela API do Mailpit)
+      mailpit:
+        image: axllent/mailpit:v1.21 # mesma versão de infra/mail
+        ports: ['1025:1025', '8025:8025']
     env:
       DATABASE_URL: postgres://plataforma:ci-password@localhost:5432/plataforma
       REDIS_URL: redis://localhost:6379

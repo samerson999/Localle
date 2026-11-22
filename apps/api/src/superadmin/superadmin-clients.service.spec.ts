@@ -16,7 +16,7 @@ import { SuperadminClientsService } from './superadmin-clients.service';
  * Contra o Postgres local e o Mailpit (infra/mail): o que está sob teste é a atomicidade da transação, o
  * unique de `users.email` e o convite chegando de verdade por SMTP, com um código que funciona uma vez só.
  */
-const MAILPIT = process.env.MAILPIT_API_URL || 'http://localhost:8025';
+const MAILPIT = process.env.MAILPIT_API_URL || 'http://127.0.0.1:8025'; // localhost pode virar ::1 (IPv6) e o Mailpit escuta no IPv4
 
 async function codigoRecebido(email: string): Promise<string> {
   // o envio é síncrono no service (await do SMTP); o Mailpit indexa na hora — sem espera arbitrária
@@ -44,7 +44,7 @@ describe('SuperadminClientsService + convite de primeiro acesso', () => {
   const env = { ...process.env };
 
   beforeAll(() => {
-    process.env.SMTP_HOST = 'localhost';
+    process.env.SMTP_HOST = '127.0.0.1';
     process.env.SMTP_PORT = '1025';
     process.env.SMTP_SECURE = 'false'; // o .env local pode apontar para o Gmail (465 com TLS)
     process.env.SMTP_FROM = 'Localle <nao-responda@localle.dev>';
