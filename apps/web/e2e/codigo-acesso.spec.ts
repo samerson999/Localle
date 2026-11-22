@@ -61,4 +61,19 @@ test.describe('código por e-mail', () => {
     const r = await request.post('http://127.0.0.1:3000/auth/login', { data: { email, password: senha } });
     expect(r.ok()).toBe(true);
   });
+
+  test('esqueci minha senha da equipe da Localle: com o código, entra no Painel da Localle', async ({ page, request }) => {
+    script('redefinicao-sa', email);
+    await page.goto(`/#/redefinir-senha?email=${encodeURIComponent(email)}`);
+    await page.getByLabel('Código de 6 dígitos').fill(CODIGO);
+    await expect(page.getByRole('heading', { name: 'Nova senha' })).toBeVisible(CARGA);
+    const senha = `nova-${randomUUID().slice(0, 8)}`;
+    await page.getByLabel('Nova senha').fill(senha);
+    await page.getByLabel('Repita a senha').fill(senha);
+    await page.getByRole('button', { name: 'Salvar senha e entrar' }).click();
+    await expect(page).toHaveURL(/#\/locale/, CARGA);
+
+    const r = await request.post('http://127.0.0.1:3000/superadmin/login', { data: { email, password: senha } });
+    expect(r.ok()).toBe(true);
+  });
 });

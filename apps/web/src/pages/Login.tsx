@@ -19,8 +19,8 @@ export default function Login() {
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  // "esqueci minha senha": código de uso único por e-mail (só usuário de cliente; acesso da Localle é
-  // redefinido por outro membro da equipe). A resposta é sempre a mesma, exista o e-mail ou não; o código é
+  // "esqueci minha senha": código de uso único por e-mail (usuário de cliente e equipe da Localle). A resposta é
+  // sempre a mesma, exista o e-mail ou não; o código é
   // digitado na tela seguinte (pages/CodigoAcesso.tsx).
   const [modo, setModo] = useState<'entrar' | 'esqueci'>('entrar');
   const pedirCodigo = async () => {

@@ -8,7 +8,7 @@ function Casa({ char, isActive, hasFakeCaret, invalid }: SlotProps & { invalid?:
   return (
     <div className={cx(
       'relative grid place-items-center size-12 rounded-ctl border bg-card text-h3 font-semibold num text-ink transition-colors',
-      invalid ? 'border-crit' : isActive ? 'border-brand outline outline-2 outline-offset-2 outline-[var(--focus-outer)]' : 'border-line-strong',
+      invalid ? 'border-crit' : isActive ? 'border-brand shadow-[0_0_0_3px_var(--brand-soft-line)]' : 'border-line-strong',
     )}>
       {char}
       {hasFakeCaret && <span aria-hidden="true" className="absolute h-5 w-px bg-ink animate-pulse" />}

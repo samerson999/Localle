@@ -1,5 +1,5 @@
 // Criar senha com o código de 6 dígitos do e-mail (rotas públicas): primeiro acesso de usuário de cliente
-// (/primeiro-acesso, o convite) e "esqueci minha senha" (/redefinir-senha). Passo 1 confere o código, passo 2
+// (/primeiro-acesso, o convite) e "esqueci minha senha" (/redefinir-senha, também para a equipe da Localle). Passo 1 confere o código, passo 2
 // define a senha e já entra. O e-mail vem preenchido pelo endereço do e-mail (?email=). Código errado conta
 // tentativa na API; no limite, ele deixa de valer e é preciso pedir outro.
 import { useState } from 'react';
@@ -52,9 +52,9 @@ export default function CodigoAcesso({ tipo }: { tipo: Tipo }) {
     if (!conta || invalida) { setErr(invalida); return; }
     setBusy(true); setErr('');
     try {
-      await t.salvar(conta.email, codigo, pass);
-      limparDadosDoCliente({ email: conta.email, role: 'gestor', name: conta.email });
-      nav(homeOf({ role: 'gestor' }), { replace: true });
+      const role = await t.salvar(conta.email, codigo, pass);
+      limparDadosDoCliente({ email: conta.email, role, name: conta.email });
+      nav(homeOf({ role }), { replace: true });
     } catch (e: any) {
       setErr(e.message || String(e));
     } finally { setBusy(false); }

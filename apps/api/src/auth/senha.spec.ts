@@ -9,6 +9,7 @@ import { UsersRepository } from '../users/users.repository';
 import { ActiveUserRepository } from './active-user.repository';
 import { AuthService } from './auth.service';
 import { verifyAuthToken } from './jwt';
+import { SenhaSuperadminRepository } from './senha-superadmin.repository';
 import { SenhaRepository } from './senha.repository';
 import { hashCodigo, MAX_TENTATIVAS } from './codigo';
 import { MAX_PEDIDOS_HORA, SenhaService } from './senha.service';
@@ -33,7 +34,7 @@ describe('senha: esqueci, redefinir e trocar', () => {
   const mail = new MailFake();
   const users = new UsersRepository(pool);
   const activeUsers = new ActiveUserRepository(pool);
-  const service = new SenhaService(new SenhaRepository(pool), users, activeUsers, mail, new AuditLogRepository(pool), pool);
+  const service = new SenhaService(new SenhaRepository(pool), new SenhaSuperadminRepository(pool), users, activeUsers, mail, new AuditLogRepository(pool), pool);
   const auth = new AuthService(users, activeUsers);
 
   let clientId: string;
@@ -152,5 +153,36 @@ describe('senha: esqueci, redefinir e trocar', () => {
     await pool.query('delete from senha_redefinicoes where user_id = $1', [userId]);
     expect(await service.esqueci(email)).toBeNull();
     expect(mail.enviados).toEqual([]);
+  });
+
+  it('equipe da Localle (superadmin): recebe o código, redefine e o token é de superadmin; desativado não recebe', async () => {
+    const saEmail = `senha-sa-${randomUUID()}@teste.local`;
+    const saId = (await pool.query<{ id: string }>('insert into superadmins (email, password_hash) values ($1, $2) returning id', [saEmail, await bcrypt.hash('antiga-do-sa-1', 10)])).rows[0].id;
+    try {
+      mail.enviados = [];
+      const codigo = (await service.esqueci(saEmail))!;
+      expect(codigo).toMatch(/^\d{6}$/);
+      expect(mail.enviados.map((m) => m.to)).toEqual([saEmail]);
+      const { rows } = await pool.query('select token_hash from superadmin_senha_redefinicoes where superadmin_id = $1', [saId]);
+      expect(rows).toEqual([{ token_hash: hashCodigo(saId, codigo) }]);
+
+      const errado = codigo === '000000' ? '111111' : '000000';
+      await expect(service.verificar(saEmail, errado)).rejects.toMatchObject({ status: 400 });
+      expect(await service.verificar(saEmail, codigo)).toEqual({ email: saEmail });
+      const r = await service.redefinir(saEmail, codigo, 'nova-do-sa-123');
+      expect(r.role).toBe('superadmin');
+      expect(verifyAuthToken(r.accessToken)).toMatchObject({ sub: saId, role: 'superadmin' });
+      const { rows: [sa] } = await pool.query<{ password_hash: string }>('select password_hash from superadmins where id = $1', [saId]);
+      expect(await bcrypt.compare('nova-do-sa-123', sa.password_hash)).toBe(true);
+      await expect(service.redefinir(saEmail, codigo, 'outra-do-sa-1')).rejects.toMatchObject({ status: 400 });
+
+      await pool.query('update superadmins set desativado_em = now() where id = $1', [saId]);
+      mail.enviados = [];
+      expect(await service.esqueci(saEmail)).toBeNull();
+      expect(mail.enviados).toEqual([]);
+    } finally {
+      await pool.query("delete from audit_log where actor_id = $1", [saId]);
+      await pool.query('delete from superadmins where id = $1', [saId]);
+    }
   });
 });

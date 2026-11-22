@@ -99,9 +99,10 @@ const REDEFINICAO_INVALIDA = 'Código inválido ou expirado. Confira o e-mail ma
 export const verificarConvite = (email: string, codigo: string) =>
   postCodigo<{ email: string; clientName: string }>('/auth/convites/verificar', { email, codigo }, CONVITE_INVALIDO);
 
-/** Define a senha; em caso de sucesso já deixa a sessão aberta (token salvo). */
-export async function aceitarConvite(email: string, codigo: string, password: string): Promise<void> {
+/** Define a senha; em caso de sucesso já deixa a sessão aberta (token salvo). Convite é sempre de usuário de cliente. */
+export async function aceitarConvite(email: string, codigo: string, password: string): Promise<'gestor'> {
   setToken((await postCodigo<{ accessToken: string }>('/auth/convites/aceitar', { email, codigo, password }, CONVITE_INVALIDO)).accessToken);
+  return 'gestor';
 }
 
 /**
@@ -583,8 +584,11 @@ export async function esqueciSenha(email: string) {
 }
 export const verificarRedefinicao = (email: string, codigo: string) =>
   postCodigo<{ email: string }>('/auth/redefinir-senha/verificar', { email, codigo }, REDEFINICAO_INVALIDA);
-export async function redefinirSenha(email: string, codigo: string, password: string): Promise<void> {
-  setToken((await postCodigo<{ accessToken: string }>('/auth/redefinir-senha', { email, codigo, password }, REDEFINICAO_INVALIDA)).accessToken);
+/** Vale para usuário de cliente e para a equipe da Localle: o papel devolvido diz para onde ir. */
+export async function redefinirSenha(email: string, codigo: string, password: string): Promise<'gestor' | 'locale'> {
+  const r = await postCodigo<{ accessToken: string; role: string }>('/auth/redefinir-senha', { email, codigo, password }, REDEFINICAO_INVALIDA);
+  setToken(r.accessToken);
+  return r.role === 'superadmin' ? 'locale' : 'gestor';
 }
 export async function consultarConviteLocalle(token: string): Promise<{ email: string }> {
   const r = await fetchOuErro(`${BASE}/superadmin/convites/${encodeURIComponent(token)}`);

@@ -4,15 +4,16 @@
 //
 //   node scripts/e2e-codigo.mjs convite <email>      → operador sem senha no "Cliente Demo", com convite aberto
 //   node scripts/e2e-codigo.mjs redefinicao <email>  → operador com senha, com pedido de redefinição aberto
-//   node scripts/e2e-codigo.mjs limpar <email>       → apaga esse usuário (e a auditoria dele)
+//   node scripts/e2e-codigo.mjs redefinicao-sa <email> → superadmin com senha, com pedido de redefinição aberto
+//   node scripts/e2e-codigo.mjs limpar <email>       → apaga esse usuário/superadmin (e a auditoria dele)
 import 'dotenv/config';
 import { createHmac } from 'node:crypto';
 import pg from 'pg';
 
 export const CODIGO = '123456';
 const [, , acao, email] = process.argv;
-if (!['convite', 'redefinicao', 'limpar'].includes(acao) || !/^e2e-codigo-[a-z0-9-]+@localle\.test$/.test(email ?? '')) {
-  console.error('uso: e2e-codigo.mjs convite|redefinicao|limpar e2e-codigo-<id>@localle.test');
+if (!['convite', 'redefinicao', 'redefinicao-sa', 'limpar'].includes(acao) || !/^e2e-codigo-[a-z0-9-]+@localle\.test$/.test(email ?? '')) {
+  console.error('uso: e2e-codigo.mjs convite|redefinicao|redefinicao-sa|limpar e2e-codigo-<id>@localle.test');
   process.exit(2);
 }
 const hash = (userId) => createHmac('sha256', process.env.JWT_SECRET).update(`${userId}:${CODIGO}`).digest('hex');
@@ -22,6 +23,17 @@ try {
   if (acao === 'limpar') {
     await pool.query('delete from audit_log where target = (select id::text from users where email = $1)', [email]);
     await pool.query('delete from users where email = $1', [email]);
+    await pool.query('delete from audit_log where actor_id = (select id from superadmins where email = $1)', [email]);
+    await pool.query('delete from superadmins where email = $1', [email]);
+  } else if (acao === 'redefinicao-sa') {
+    const { rows: [s] } = await pool.query(
+      "insert into superadmins (email, password_hash) values ($1, '$2a$04$invalidoinvalidoinvalidoinvalidoinvalidoinvalidoinvali') returning id",
+      [email],
+    );
+    await pool.query(
+      `insert into superadmin_senha_redefinicoes (superadmin_id, token_hash, expira_em) values ($1, $2, now() + interval '30 minutes')`,
+      [s.id, hash(s.id)],
+    );
   } else {
     const senha = acao === 'convite' ? null : '$2a$04$invalidoinvalidoinvalidoinvalidoinvalidoinvalidoinvali';
     const { rows: [u] } = await pool.query(
