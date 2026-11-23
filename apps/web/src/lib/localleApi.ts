@@ -318,7 +318,7 @@ export interface Saude {
   verificadoEm: number;
 }
 export interface AdminRastreador {
-  id: string; imei: string; modelo: string | null; protocolo: string | null; status: 'cadastrado' | 'ativo' | 'desativado';
+  id: string; imei: string; numero_serie: string | null; modelo: string | null; protocolo: string | null; status: 'cadastrado' | 'ativo' | 'desativado';
   traccar_device_id: string | null; criado_em: string;
   vinculo_id: string | null; client_id: string | null; client_name: string | null; vinculado_em: string | null;
   instalacao_id: string | null; asset_plate: string | null; instalado_em: string | null;
@@ -481,9 +481,10 @@ export const adminApi = {
   renameClient: (id: string, name: string) => apiSend('PATCH', `/clients/${id}`, { name }),
   excluirCliente: (id: string) => apiSend('DELETE', `/superadmin/clients/${id}`),
   rastreadores: () => apiGet<AdminRastreador[]>('/superadmin/rastreadores'),
-  createRastreador: (body: { imei: string } & EscolhaDeModelo) => apiSend<AdminRastreador>('POST', '/superadmin/rastreadores', body),
+  createRastreador: (body: { imei: string; numeroSerie?: string | null } & EscolhaDeModelo) => apiSend<AdminRastreador>('POST', '/superadmin/rastreadores', body),
   transmissao: () => apiGet<TransmissaoRastreador[]>('/superadmin/rastreadores/transmissao'),
   trocarModeloRastreador: (id: string, escolha: EscolhaDeModelo) => apiSend('PATCH', `/superadmin/rastreadores/${id}`, escolha),
+  numeroSerieRastreador: (id: string, numeroSerie: string | null) => apiSend<AdminRastreador>('PATCH', `/superadmin/rastreadores/${id}`, { numeroSerie }),
   modelos: () => apiGet<AdminRastreadorModelo[]>('/superadmin/rastreador-modelos'),
   criarModelo: (body: ModeloBody) => apiSend<AdminRastreadorModelo>('POST', '/superadmin/rastreador-modelos', body),
   atualizarModelo: (id: string, body: Partial<ModeloBody> & { ativo?: boolean }) => apiSend<AdminRastreadorModelo>('PATCH', `/superadmin/rastreador-modelos/${id}`, body),

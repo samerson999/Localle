@@ -28,6 +28,7 @@ export const UNIQUE = {
   chipPorRastreador: 'sim_cards_rastreador_id_uidx',
   modeloRastreador: 'rastreador_modelos_fabricante_nome_uidx',
   rastreadorImeiAtivo: 'rastreadores_imei_ativo_uidx',
+  rastreadorSerieAtivo: 'rastreadores_numero_serie_ativo_uidx',
   rastreadorDevice: 'rastreadores_traccar_device_id_key',
 } as const;
 

@@ -45,10 +45,14 @@ export default function Rastreadores() {
   const session = useStore((s) => s.session);
   const { data, error, loading, reload } = useAdminQuery(carregar);
   const [filtro, setFiltro] = useState('');
+  const [clienteId, setClienteId] = useState('');
+  const [placa, setPlaca] = useState('');
+  const [imei, setImei] = useState('');
   const [modal, setModal] = useState<'rastreador' | 'chip' | null>(null);
   const [vinculando, setVinculando] = useState<AdminRastreador | null>(null);
   const [aoCliente, setAoCliente] = useState<AdminRastreador | null>(null);
   const [trocandoModelo, setTrocandoModelo] = useState<AdminRastreador | null>(null);
+  const [editandoSerie, setEditandoSerie] = useState<AdminRastreador | null>(null);
   const [editandoModelo, setEditandoModelo] = useState<AdminRastreadorModelo | 'novo' | null>(null);
   const [diagnosticando, setDiagnosticando] = useState<{ r: Acompanhado; recemCadastrado?: boolean } | null>(null);
   const [tab, setTab] = useUrlTab('inventario');
@@ -56,7 +60,13 @@ export default function Rastreadores() {
 
   const [rastreadores, chips, clientes, modelos] = data || [[], [], [], []];
   const modelosAtivos = modelos.filter((m) => m.ativo);
-  const list = filtro ? rastreadores.filter((r) => situacao(r) === filtro) : rastreadores;
+  const placaBusca = placa.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const imeiBusca = imei.trim().toUpperCase();
+  const list = rastreadores.filter((r) => (!filtro || situacao(r) === filtro)
+    && (!clienteId || r.client_id === clienteId)
+    && (!placaBusca || (r.asset_plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '').includes(placaBusca))
+    && (!imeiBusca || [r.imei, r.numero_serie].some((v) => v?.toUpperCase().includes(imeiBusca))));
+  const filtrosAtivos = [filtro, clienteId, placaBusca].filter(Boolean).length;
   const count = (s: Situacao) => rastreadores.filter((r) => situacao(r) === s).length;
   const chipsLivres = chips.filter((c) => !c.rastreador_id && c.status !== 'inativo');
 
@@ -88,6 +98,7 @@ export default function Rastreadores() {
     if (s === 'desativado') return [{ label: 'Excluir', icon: 'excluir' as const, danger: true, onClick: () => excluir(r) }];
     return [
       { label: 'Diagnóstico', icon: 'sinal', onClick: () => setDiagnosticando({ r }) },
+      { label: r.numero_serie ? 'Editar número de série' : 'Informar número de série', icon: 'editar' as const, onClick: () => setEditandoSerie(r) },
       r.sim_card_id
         ? { label: 'Desvincular chip', icon: 'link' as const, danger: true, onClick: async () => { if (await confirmAction({ title: 'Desvincular o chip?', detail: `${r.imei} fica sem chip e para de comunicar até receber outro.`, confirmLabel: 'Desvincular' })) acao(() => adminApi.desvincularSimCard(r.sim_card_id!), 'Chip desvinculado.'); } }
         : { label: 'Vincular chip', icon: 'link', onClick: () => setVinculando(r) },
@@ -126,21 +137,25 @@ export default function Rastreadores() {
         </Section>
         <Section title={`${list.length} rastreadores`}>
           <Card>
-            <div className="mb-card-head empty:hidden">
-              <FilterSheet count={filtro ? 1 : 0}><Select aria-label="Filtrar por situação" className="w-full sm:w-64" value={filtro} onChange={(e) => setFiltro(e.target.value)}
-                options={[{ value: '', label: 'Todas as situações' }, { value: 'instalado', label: 'Instalado' }, { value: 'vinculado', label: 'Com o cliente' }, { value: 'estoque', label: 'Em estoque' }, { value: 'desativado', label: 'Desativado' }]} /></FilterSheet>
+            <div className="mb-card-head flex flex-wrap items-center gap-tight">
+              <FilterSheet count={filtrosAtivos}><Select aria-label="Filtrar por situação" className="w-full sm:w-56" value={filtro} onChange={(e) => setFiltro(e.target.value)}
+                options={[{ value: '', label: 'Todas as situações' }, { value: 'instalado', label: 'Instalado' }, { value: 'vinculado', label: 'Com o cliente' }, { value: 'estoque', label: 'Em estoque' }, { value: 'desativado', label: 'Desativado' }]} />
+                <SearchSelect aria-label="Filtrar por cliente" className="w-full sm:w-64" value={clienteId} onChange={setClienteId} placeholder="Todos os clientes" emptyLabel="Nenhum cliente com esse nome"
+                  options={[{ value: '', label: 'Todos os clientes' }, ...clientes.map((c) => ({ value: c.id, label: c.name }))]} />
+                <SearchInput aria-label="Filtrar por placa" className="w-full sm:w-44" value={placa} onChange={setPlaca} placeholder="Placa" /></FilterSheet>
+              <SearchInput aria-label="Buscar pelo IMEI ou número de série" className="w-full sm:w-72" value={imei} onChange={setImei} placeholder="IMEI ou número de série" />
             </div>
             <Table minWidth={1100} loading={loading && !data} align={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
               head={['IMEI', 'Modelo / protocolo', 'Chip', 'Cliente e ativo', 'Situação', 'Último sinal', '']}
               sort={{ 0: (i) => list[i].imei, 3: (i) => list[i].client_name, 4: (i) => SIT_BADGE[situacao(list[i])].label, 5: (i) => (list[i].ultimo_pacote_em ? Date.parse(list[i].ultimo_pacote_em!) : null) }}
-              emptyState={<EmptyState illustration="ilu-rastreador" title="Nenhum rastreador cadastrado" action={<Button onClick={() => setModal('rastreador')}>Cadastrar rastreador</Button>} />}
+              emptyState={rastreadores.length ? <EmptyState icon="busca" title="Nenhum rastreador com esse filtro" /> : <EmptyState illustration="ilu-rastreador" title="Nenhum rastreador cadastrado" action={<Button onClick={() => setModal('rastreador')}>Cadastrar rastreador</Button>} />}
               card={(i) => {
                 const r = list[i], s = situacao(r), acoes = acoesDe(r);
                 const [primeira, ...resto] = acoes[0]?.label === 'Diagnóstico' ? acoes : [undefined, ...acoes];
                 return (
                   <div className="flex flex-col gap-tight min-w-0">
                     <div className="flex items-start justify-between gap-stack">
-                      <span className="font-mono text-body font-medium break-all">{r.imei}</span>
+                      <span className="font-mono text-body font-medium break-all">{r.imei}{r.numero_serie && <span className="block text-caption font-normal text-ink-2">Série {r.numero_serie}</span>}</span>
                       <span className="shrink-0 pt-px"><Badge tone={SIT_BADGE[s].tone}>{SIT_BADGE[s].label}</Badge></span>
                     </div>
                     <div className="text-small"><ModeloCelula r={r} onTrocar={s !== 'desativado' ? () => setTrocandoModelo(r) : undefined} /></div>
@@ -165,7 +180,7 @@ export default function Rastreadores() {
               rows={list.map((r) => {
                 const s = situacao(r);
                 return [
-                  <span className="font-mono text-small">{r.imei}{!r.traccar_device_id && s !== 'desativado' && <span className="block text-caption text-warn-ink">sem device no Traccar</span>}</span>,
+                  <span className="font-mono text-small">{r.imei}{r.numero_serie && <span className="block text-caption text-ink-2">Série {r.numero_serie}</span>}{!r.traccar_device_id && s !== 'desativado' && <span className="block text-caption text-warn-ink">sem device no Traccar</span>}</span>,
                   <ModeloCelula r={r} onTrocar={s !== 'desativado' ? () => setTrocandoModelo(r) : undefined} />,
                   r.iccid ? <span className="text-small">{r.operadora || '—'}<span className="block text-caption text-ink-2 font-mono">{r.iccid}</span></span> : <span className="text-ink-3">—</span>,
                   r.client_name ? <span>{r.client_name}<span className="block text-caption text-ink-2">{r.asset_plate ? `${r.asset_plate} · desde ${fmtD(Date.parse(r.instalado_em!))}` : 'aguardando o cliente indicar o ativo'}</span></span> : <span className="text-ink-3">—</span>,
@@ -214,6 +229,7 @@ export default function Rastreadores() {
       {editandoModelo && <ModeloModal modelo={editandoModelo === 'novo' ? null : editandoModelo} conhecidos={protocolosConhecidos(modelos, rastreadores)} onClose={() => setEditandoModelo(null)} onDone={reload} />}
       {modal === 'chip' && <NovoChipModal onClose={() => setModal(null)} onDone={reload} />}
       {vinculando && <VincularModal rastreador={vinculando} chips={chipsLivres} onClose={() => setVinculando(null)} onDone={reload} />}
+      {editandoSerie && <NumeroSerieModal rastreador={editandoSerie} onClose={() => setEditandoSerie(null)} onDone={reload} />}
       {aoCliente && <ClienteModal rastreador={aoCliente} clientes={clientes} onClose={() => setAoCliente(null)} onDone={reload} />}
     </div>
   );
@@ -250,10 +266,11 @@ function ModeloCelula({ r, onTrocar }: { r: AdminRastreador; onTrocar?: () => vo
 function NovoRastreadorModal({ modelos, onClose, onDone, onCriado, onNovoModelo }: { modelos: AdminRastreadorModelo[]; onClose: () => void; onDone: () => void; onCriado: (r: AdminRastreador) => void; onNovoModelo: () => void }) {
   const [modelo, setModelo] = useState<ModeloEscolhido | null>(null);
   const [ident, setIdent] = useState('');
+  const [serie, setSerie] = useState('');
   const [tocado, setTocado] = useState(false);
   const invalido = modelo ? validarIdentificador(modelo.tipo_identificador, ident) : null;
   const pronto = !!modelo && !invalido;
-  const { busy, submit } = useSubmit(async () => onCriado(await adminApi.createRastreador({ imei: normalizarIdentificador(ident), ...escolha(modelo!) })), 'Rastreador cadastrado.', onDone, onClose);
+  const { busy, submit } = useSubmit(async () => onCriado(await adminApi.createRastreador({ imei: normalizarIdentificador(ident), numeroSerie: serie.trim() || null, ...escolha(modelo!) })), 'Rastreador cadastrado.', onDone, onClose);
   return (
     <Modal open onClose={onClose} title="Cadastrar rastreador" width="max-w-xl" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!pronto} onClick={submit}>Cadastrar</Button></>}>
       <>
@@ -264,10 +281,25 @@ function NovoRastreadorModal({ modelos, onClose, onDone, onCriado, onNovoModelo 
             <Input inputMode={modelo.tipo_identificador === 'outro' ? undefined : 'numeric'} value={ident} invalid={tocado && !!invalido}
               onChange={(e) => setIdent(e.target.value)} onBlur={() => setTocado(true)} />
           </Field>
+          <Field label="Número de série (opcional)" hint={SERIE_DICA}>
+            <Input value={serie} onChange={(e) => setSerie(e.target.value)} />
+          </Field>
           <p className="text-small text-ink-2 rounded-ctl bg-surface-muted px-3 py-2">Configure o aparelho para enviar ao servidor do Traccar na <b className="text-ink">porta {modelo.porta}</b> (protocolo {modelo.protocolo}). O device é criado no Traccar no cadastro; a primeira posição confirma o protocolo.</p>
         </>}
         <p className="text-caption text-ink-2">Aparelho que não está na lista do Traccar? <TextButton className="text-caption" onClick={onNovoModelo}>Cadastrar modelo à mão</TextButton></p>
       </>
+    </Modal>
+  );
+}
+
+const SERIE_DICA = 'O número impresso na etiqueta, quando não é o IMEI (como no JMAK). Se os dois forem iguais, deixe em branco.';
+
+function NumeroSerieModal({ rastreador, onClose, onDone }: { rastreador: AdminRastreador; onClose: () => void; onDone: () => void }) {
+  const [serie, setSerie] = useState(rastreador.numero_serie || '');
+  const { busy, submit } = useSubmit(() => adminApi.numeroSerieRastreador(rastreador.id, serie.trim() || null), 'Número de série salvo.', onDone, onClose);
+  return (
+    <Modal open onClose={onClose} title={`Número de série · ${rastreador.imei}`} width="max-w-md" footer={<><Button variant="quiet" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={serie.trim() === (rastreador.numero_serie || '')} onClick={submit}>Salvar</Button></>}>
+      <Field label="Número de série" hint={SERIE_DICA}><Input value={serie} onChange={(e) => setSerie(e.target.value)} /></Field>
     </Modal>
   );
 }

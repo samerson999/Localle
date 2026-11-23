@@ -172,6 +172,28 @@ describe('RastreadoresService', () => {
     expect(criado.status).toBe('cadastrado');
   });
 
+  it('número de série: guarda o da etiqueta, ignora igual ao IMEI, edita, e não repete entre ativos', async () => {
+    const serie = `JM-${randomUUID().slice(0, 8)}`;
+    const criado = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei(), numeroSerie: ` ${serie.toLowerCase()} ` });
+    rastreadoresCriados.push(criado.id);
+    expect(criado.numero_serie).toBe(serie.toUpperCase());
+
+    const imei = novoImei();
+    const igual = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei, numeroSerie: imei });
+    rastreadoresCriados.push(igual.id);
+    expect(igual.numero_serie).toBeNull();
+
+    await expect(service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei(), numeroSerie: serie }))
+      .rejects.toThrow(/número de série/);
+    await expect(service.atualizar(superadminId, igual.id, { numeroSerie: serie.toUpperCase() })).rejects.toThrow(/número de série/);
+
+    const editado = await service.atualizar(superadminId, criado.id, { numeroSerie: null });
+    expect(editado.numero_serie).toBeNull();
+    expect(editado.modelo_id).toBe(criado.modelo_id);
+    expect(() => parseUpdateRastreador({ numeroSerie: 'abc; drop' })).toThrow(/numeroSerie/);
+    expect(parseUpdateRastreador({ numeroSerie: '' })).toEqual({ numeroSerie: null });
+  });
+
   it('vincula rastreador a um cliente e audita; não vincula de novo nem a outro cliente sem desvincular', async () => {
     const rastreador = await service.cadastrarRastreador(superadminId, { modeloId: modeloTeste, imei: novoImei() });
     rastreadoresCriados.push(rastreador.id);
@@ -417,8 +439,8 @@ describe('RastreadoresService', () => {
       [rastreador.id],
     );
     expect(rows[0]).toEqual({
-      before: { modelo: nome, modeloId: modeloTeste, protocolo: null },
-      after: { modelo: nome, modeloId: modeloTeste, protocolo: 'gt06' },
+      before: { modelo: nome, modeloId: modeloTeste, protocolo: null, numeroSerie: null },
+      after: { modelo: nome, modeloId: modeloTeste, protocolo: 'gt06', numeroSerie: null },
     });
   });
 

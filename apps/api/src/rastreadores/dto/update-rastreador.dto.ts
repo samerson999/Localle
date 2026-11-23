@@ -6,12 +6,23 @@ export class UpdateRastreadorDto {
   aparelhoId?: number;
   modelo?: string | null;
   protocolo?: string | null;
+  numeroSerie?: string | null;
+}
+
+/** Número de série do aparelho: letras, números, hífen, ponto e barra, até 40; vazio = sem (igual ao IMEI). */
+export function parseNumeroSerie(valor: unknown): string | null {
+  if (valor === undefined || valor === null) return null;
+  if (typeof valor !== 'string') throw new BadRequestException('"numeroSerie" precisa ser texto');
+  const v = valor.trim().toUpperCase();
+  if (!v) return null;
+  if (!/^[A-Z0-9][A-Z0-9\-/.]{0,39}$/.test(v)) throw new BadRequestException('"numeroSerie" aceita letras, números, hífen, ponto e barra, até 40 caracteres');
+  return v;
 }
 
 /** Sem class-validator no projeto: validação explícita, antes do service. */
-export function parseUpdateRastreador(body: unknown): { modeloId?: string; aparelhoId?: number; modelo?: string | null; protocolo?: string | null } {
+export function parseUpdateRastreador(body: unknown): { modeloId?: string; aparelhoId?: number; modelo?: string | null; protocolo?: string | null; numeroSerie?: string | null } {
   const dto = (body ?? {}) as Record<string, unknown>;
-  const result: { modeloId?: string; aparelhoId?: number; modelo?: string | null; protocolo?: string | null } = {};
+  const result: { modeloId?: string; aparelhoId?: number; modelo?: string | null; protocolo?: string | null; numeroSerie?: string | null } = {};
   // trocar o modelo do catálogo (rastreador antigo sem modelo, ou modelo escolhido errado); ou um aparelho da lista do
   // Traccar ainda sem modelo, que vira modelo na troca
   if (dto.modeloId !== undefined && dto.aparelhoId !== undefined) throw new BadRequestException('Informe "modeloId" ou "aparelhoId", não os dois');
@@ -30,6 +41,7 @@ export function parseUpdateRastreador(body: unknown): { modeloId?: string; apare
     }
     result[campo] = valor === null ? null : valor.trim() || null;
   }
+  if (dto.numeroSerie !== undefined) result.numeroSerie = parseNumeroSerie(dto.numeroSerie);
   if (Object.keys(result).length === 0) throw new BadRequestException('Nada para atualizar');
   return result;
 }

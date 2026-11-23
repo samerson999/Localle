@@ -80,13 +80,13 @@ export class RastreadoresRepository {
   }
 
   async create(
-    data: { imei: string; traccarDeviceId?: string | null; modelo?: string | null; modeloId?: string | null; protocolo?: string | null },
+    data: { imei: string; numeroSerie?: string | null; traccarDeviceId?: string | null; modelo?: string | null; modeloId?: string | null; protocolo?: string | null },
     executor: Queryable = this.pool,
   ): Promise<RastreadorEntity> {
     const { rows } = await executor.query<RastreadorEntity>(
-      `insert into rastreadores (imei, traccar_device_id, modelo, modelo_id, protocolo)
-       values ($1, $2, $3, $4, $5) returning *`,
-      [data.imei, data.traccarDeviceId ?? null, data.modelo ?? null, data.modeloId ?? null, data.protocolo ?? null],
+      `insert into rastreadores (imei, traccar_device_id, modelo, modelo_id, protocolo, numero_serie)
+       values ($1, $2, $3, $4, $5, $6) returning *`,
+      [data.imei, data.traccarDeviceId ?? null, data.modelo ?? null, data.modeloId ?? null, data.protocolo ?? null, data.numeroSerie ?? null],
     );
     return rows[0];
   }
@@ -118,7 +118,7 @@ export class RastreadoresRepository {
   /** `undefined` mantém o valor atual; `null` limpa. */
   async updateDados(
     id: string,
-    data: { modelo?: string | null; modeloId?: string; protocolo?: string | null },
+    data: { modelo?: string | null; modeloId?: string; protocolo?: string | null; numeroSerie?: string | null },
     executor: Queryable = this.pool,
   ): Promise<RastreadorEntity> {
     const { rows } = await executor.query<RastreadorEntity>(
@@ -126,9 +126,10 @@ export class RastreadoresRepository {
          modelo = case when $2 then $3 else modelo end,
          protocolo = case when $4 then $5 else protocolo end,
          modelo_id = coalesce($6, modelo_id),
+         numero_serie = case when $7 then $8 else numero_serie end,
          atualizado_em = now()
        where id = $1 returning *`,
-      [id, data.modelo !== undefined, data.modelo ?? null, data.protocolo !== undefined, data.protocolo ?? null, data.modeloId ?? null],
+      [id, data.modelo !== undefined, data.modelo ?? null, data.protocolo !== undefined, data.protocolo ?? null, data.modeloId ?? null, data.numeroSerie !== undefined, data.numeroSerie ?? null],
     );
     return rows[0];
   }

@@ -24,6 +24,7 @@ import { SimCardsRepository } from './sim-cards.repository';
 import { RastreadorVinculosRepository } from './rastreador-vinculos.repository';
 import type { RastreadorVinculoEntity } from './rastreador-vinculo.entity';
 import { isPgError, PG_EXCLUSION_VIOLATION, PG_FOREIGN_KEY_VIOLATION, UNIQUE, violouUnique } from '../db/pg-errors';
+import { parseNumeroSerie } from './dto/update-rastreador.dto';
 import { nomeDoModelo, normalizarIdentificador, validarIdentificador } from '@localle/shared/rastreadorModelos';
 import { parseUuid } from '../common/parse-uuid';
 import { RastreadorModelosRepository } from './rastreador-modelos.repository';
@@ -71,7 +72,7 @@ export class RastreadoresService {
    */
   async cadastrarRastreador(
     superadminId: string,
-    data: { imei: string; modeloId?: string; aparelhoId?: number; traccarDeviceId?: string },
+    data: { imei: string; numeroSerie?: string | null; modeloId?: string; aparelhoId?: number; traccarDeviceId?: string },
   ): Promise<RastreadorEntity> {
     // modelo obrigatório (catálogo, decisão de 28/10/2026): o identificador é validado pelo tipo que o modelo manda
     const alvo = await this.modeloEscolhido(data);
@@ -80,14 +81,18 @@ export class RastreadoresService {
     const invalido = validarIdentificador(alvo.tipo_identificador, imei);
     if (invalido) throw new BadRequestException(invalido);
     const nomeModelo = nomeDoModelo(alvo);
+    const serie = parseNumeroSerie(data.numeroSerie);
+    // igual ao IMEI não precisa guardar: a etiqueta já é o próprio identificador
+    const numeroSerie = serie && serie !== imei.toUpperCase() ? serie : null;
     return withTransaction(this.pool, async (client) => {
       // aparelho da lista do Traccar sem modelo ainda: o modelo nasce aqui e some junto se o cadastro falhar
       const modelo = await this.aparelhos.criarModelo(superadminId, alvo, client);
       let criado: RastreadorEntity;
       try {
-        criado = await this.rastreadores.create({ imei, modelo: nomeModelo, modeloId: modelo.id }, client);
+        criado = await this.rastreadores.create({ imei, numeroSerie, modelo: nomeModelo, modeloId: modelo.id }, client);
       } catch (err) {
         if (violouUnique(err, UNIQUE.rastreadorImeiAtivo)) throw new ConflictException(`Já existe um rastreador ativo com o identificador ${imei}`);
+        if (violouUnique(err, UNIQUE.rastreadorSerieAtivo)) throw new ConflictException(`Já existe um rastreador ativo com o número de série ${numeroSerie}`);
         throw err;
       }
       // no Traccar vai só o nome: o decodificador compara o modelo do device (ex.: "VL100" no gt06), sem o fabricante
@@ -407,7 +412,7 @@ export class RastreadoresService {
   async atualizar(
     superadminId: string,
     rastreadorId: string,
-    data: { modeloId?: string; aparelhoId?: number; modelo?: string | null; protocolo?: string | null },
+    data: { modeloId?: string; aparelhoId?: number; modelo?: string | null; protocolo?: string | null; numeroSerie?: string | null },
   ): Promise<RastreadorEntity> {
     // trocar o modelo do catálogo também atualiza o nome exibido; o identificador já cadastrado não é revalidado
     // (o aparelho continua mandando o mesmo), só o protocolo esperado muda
@@ -417,8 +422,16 @@ export class RastreadoresService {
       const antes = await this.rastreadores.findById(rastreadorId, client);
       if (!antes) throw new NotFoundException('Rastreador não encontrado');
       const modelo = alvo ? await this.aparelhos.criarModelo(superadminId, alvo, client) : null;
-      const dados = modelo ? { ...campos, modeloId: modelo.id, modelo: nomeDoModelo(modelo) } : campos;
-      const depois = await this.rastreadores.updateDados(rastreadorId, dados, client);
+      const base = modelo ? { ...campos, modeloId: modelo.id, modelo: nomeDoModelo(modelo) } : campos;
+      // série igual ao IMEI não precisa guardar
+      const dados = base.numeroSerie && base.numeroSerie === antes.imei.toUpperCase() ? { ...base, numeroSerie: null } : base;
+      let depois: RastreadorEntity;
+      try {
+        depois = await this.rastreadores.updateDados(rastreadorId, dados, client);
+      } catch (err) {
+        if (violouUnique(err, UNIQUE.rastreadorSerieAtivo)) throw new ConflictException(`Já existe um rastreador ativo com o número de série ${dados.numeroSerie}`);
+        throw err;
+      }
       await this.audit.record(
         {
           actorType: 'superadmin',
@@ -426,8 +439,8 @@ export class RastreadoresService {
           clientId: null,
           action: 'rastreador.atualizar',
           target: rastreadorId,
-          before: { modelo: antes.modelo, modeloId: antes.modelo_id, protocolo: antes.protocolo },
-          after: { modelo: depois.modelo, modeloId: depois.modelo_id, protocolo: depois.protocolo },
+          before: { modelo: antes.modelo, modeloId: antes.modelo_id, protocolo: antes.protocolo, numeroSerie: antes.numero_serie },
+          after: { modelo: depois.modelo, modeloId: depois.modelo_id, protocolo: depois.protocolo, numeroSerie: depois.numero_serie },
         },
         client,
       );

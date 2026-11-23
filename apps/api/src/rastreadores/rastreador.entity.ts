@@ -2,6 +2,8 @@ export interface RastreadorEntity {
   id: string;
   traccar_device_id: string | null;
   imei: string;
+  /** Número de série impresso na etiqueta, quando diferente do IMEI (JMAK e outros); nulo quando são iguais. */
+  numero_serie: string | null;
   modelo: string | null;
   /** Modelo do catálogo (`rastreador_modelos`); nulo nos cadastrados antes do catálogo. */
   modelo_id: string | null;
