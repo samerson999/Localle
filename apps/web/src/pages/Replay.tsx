@@ -197,7 +197,7 @@ export default function Replay() {
             dela e as opções de exibição ficam no pé */}
         <aside className="flex-[1_1_300px] max-w-[380px] max-md:flex-none max-md:max-w-none max-md:order-1 flex flex-col md:h-[var(--livre,560px)] min-h-0">
           <Card title="Ponto atual" icon="rota" className="flex-1 min-h-0">
-            <div className="h-full flex flex-col min-h-0 md:overflow-y-auto">
+            <div className="h-full flex flex-col min-h-0 md:overflow-hidden">
               {cur ? <>
                 <DescList>
                   <DescRow label="Hora"><span className="font-medium">{fmtDT(cur[0])}</span></DescRow>
@@ -211,7 +211,7 @@ export default function Replay() {
               </> : <EmptyState icon="rota" title="Carregue um percurso" detail="Escolha o veículo e o período acima." />}
               {ocorrencias.length > 0 && <div className="no-print mt-card-head flex flex-col min-h-[96px] flex-1">
                 <h3 className="text-small font-semibold text-ink-2 mb-tight">Eventos e paradas <span className="num text-ink-3 font-normal">· {ocorrencias.length}</span></h3>
-                <ul className="flex-1 min-h-0 overflow-y-auto -mx-2">
+                <ul className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mx-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {ocorrencias.map((r, i) => <li key={i}>
                     <button type="button" onClick={() => { const j = pts.findIndex((p: any) => p[0] >= r.ts); if (j >= 0) { setIdx(j); setPlaying(false); } }}
                       className="w-full text-left px-2 py-1.5 rounded-btn hover:bg-card-2 flex items-baseline gap-tight text-small">
