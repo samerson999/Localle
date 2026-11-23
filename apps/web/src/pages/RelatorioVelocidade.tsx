@@ -86,8 +86,8 @@ export default function RelatorioVelocidade() {
     if (!rows.length) return toast('Nada para exportar neste período.', { tone: 'crit' });
     const meta = { empresa: `${revenda.clientName} — Velocidade`, periodo: `Período: ${periodoLabel}`, filtros: filtrosTxt, emitidoEm: fmtDT(Date.now()) };
     if (formato === 'csv') csv(nomeArq('csv'), head, rows);
-    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, head, rows, [{ title: 'Resumo por veículo', head: resumoHead, rows: resumoRows() }], 'Trechos acima do limite');
-    else pdf({
+    else if (formato === 'xlsx') await xlsx(nomeArq('xlsx'), meta, head, rows, [{ title: 'Resumo por veículo', head: resumoHead, rows: resumoRows() }], 'Trechos acima do limite');
+    else await pdf({
       file: pdfFileName('Velocidade', f, t, aid ? assets.find((a: any) => a.id === aid)?.plate : undefined),
       titulo: 'Relatório de Velocidade', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',
       meta: [

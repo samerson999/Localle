@@ -59,7 +59,8 @@ export default function Faturamento() {
   const exportar = () => xlsx(`Faturamento_${ym}.xlsx`,
     { empresa: 'Locale', periodo: mesLabel(ym), filtros: 'Todos os clientes', emitidoEm: fmtDT(Date.now()) },
     ['Cliente', 'Cobrança', 'Veículos-dia (média)', 'Apurado', 'Fechada', 'Vencimento', 'Pago', 'Em aberto', 'Dias de atraso'],
-    rows.map((r) => [r.clientName, BILLING_LABEL[r.billingType], num(r.veiculosMedia, 1), r.apurado, r.fatura ? 'Sim' : 'Não', r.fatura ? dia(r.fatura.vencimento) : '—', r.fatura?.pago ?? 0, r.fatura?.emAberto ?? 0, r.fatura?.diasAtraso ?? 0]));
+    rows.map((r) => [r.clientName, BILLING_LABEL[r.billingType], num(r.veiculosMedia, 1), r.apurado, r.fatura ? 'Sim' : 'Não', r.fatura ? dia(r.fatura.vencimento) : '—', r.fatura?.pago ?? 0, r.fatura?.emAberto ?? 0, r.fatura?.diasAtraso ?? 0]))
+    .catch((e: any) => toast('Não foi possível gerar a planilha', { tone: 'crit', detail: e.message || String(e) }));
 
   return (
     <div>

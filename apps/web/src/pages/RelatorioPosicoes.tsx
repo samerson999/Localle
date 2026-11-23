@@ -83,16 +83,16 @@ export default function RelatorioPosicoes() {
     ['Total', '', totalPosicoes, `${Math.round(distTotal)} km`, `${Math.round(porVeiculo.reduce((m: number, { stats }: any) => Math.max(m, stats.vmax), 0))} km/h`],
   ];
 
-  const exportar = (formato: ExportFormat) => {
+  const exportar = async (formato: ExportFormat) => {
     const rows = linhas();
     if (!rows.length) return toast('Nada para exportar neste período.', { tone: 'crit' });
     const meta = { empresa: `${revenda.clientName} — Posições`, periodo: `Período: ${periodoLabel}`, filtros: filtrosTxt, emitidoEm: fmtDT(Date.now()) };
     if (formato === 'csv') csv(nomeArq('csv'), PLANILHA_HEAD, rows);
-    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, PLANILHA_HEAD, rows, [
+    else if (formato === 'xlsx') await xlsx(nomeArq('xlsx'), meta, PLANILHA_HEAD, rows, [
       { title: 'Resumo por veículo', head: RESUMO_PLANILHA_HEAD, rows: resumoPlanilha(filtrados) },
       { title: 'Paradas', head: PARADAS_PLANILHA_HEAD, rows: paradasPlanilha(filtrados) },
     ], 'Posições');
-    else pdf({
+    else await pdf({
       file: pdfFileName('Posições', f, t, aid ? assets.find((a: any) => a.id === aid)?.plate : undefined),
       titulo: 'Relatório de Posições', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',
       meta: [

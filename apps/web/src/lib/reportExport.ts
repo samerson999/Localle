@@ -3,25 +3,28 @@
 // mas o conteúdo e as colunas são os mesmos.
 // xlsx e jspdf (~280 KB comprimidos) só baixam quando a pessoa exporta: antes vinham junto com a tela de cada relatório.
 import { useStore } from './store';
-import { toast } from '../components/ui';
 
 export { fmtCoord } from './geocode';
 
 export type ReportMeta = { empresa: string; periodo: string; filtros: string; emitidoEm: string };
 export type PdfSection = { title: string; head: string[]; rows: (string | number)[][] };
 
-// biblioteca baixada na hora: sem rede, avisa em vez de falhar calado (quem chama não espera o retorno)
+// biblioteca baixada na hora; sem rede (ou arquivo de um deploy anterior que já saiu do servidor), a falha sobe com
+// uma frase para a tela — quem chama (ExportReportModal, Faturamento) mostra o aviso
 async function carregar<T>(lib: () => Promise<T>): Promise<T> {
   try { return await lib(); } catch (e) {
-    toast('Não foi possível gerar o arquivo agora. Confira a conexão e tente de novo.', { tone: 'crit' });
-    throw e;
+    console.error('Gerador de arquivo não carregou', e);
+    throw new Error('Não foi possível carregar o gerador do arquivo. Confira a conexão ou recarregue a página e tente de novo.');
   }
 }
 
 export function csv(name: string, head: string[], rows: (string | number)[][]) {
   const esc = (x: any) => { const s = String(x ?? ''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const blob = new Blob(['﻿' + [head, ...rows].map((r) => r.map(esc).join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  // link no documento durante o clique (o Firefox e o Safari ignoram clique em link solto); endereço liberado depois
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.style.display = 'none';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
 }
 
 // Nome de aba do Excel: até 31 caracteres, sem : \ / ? * [ ], único na pasta de trabalho.

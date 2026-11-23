@@ -90,8 +90,8 @@ export default function RelatorioPassouPorAqui() {
     const filtrosComEndereco = `${filtrosTxt} · Endereço: ${endereco || '—'}`;
     const meta = { empresa: `${revenda.clientName} — Passou por aqui`, periodo: `Período: ${periodoLabel}`, filtros: filtrosComEndereco, emitidoEm: fmtDT(Date.now()) };
     if (formato === 'csv') csv(nomeArq('csv'), head, rows);
-    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, head, rows, [{ title: 'Resumo por veículo', head: resumoHead, rows: resumoRows() }], 'Passagens pelo ponto');
-    else pdf({
+    else if (formato === 'xlsx') await xlsx(nomeArq('xlsx'), meta, head, rows, [{ title: 'Resumo por veículo', head: resumoHead, rows: resumoRows() }], 'Passagens pelo ponto');
+    else await pdf({
       file: pdfFileName('Passou por aqui', f, t, aid ? assets.find((a: any) => a.id === aid)?.plate : undefined),
       titulo: 'Relatório Passou por Aqui', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',
       meta: [

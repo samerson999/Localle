@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ComponentType, SVGProps } from 'react';
-import { Modal, Button, Progress, cx } from './ui';
+import { Modal, Button, Progress, cx, toast } from './ui';
+import { mensagemDeErro } from '../lib/apiErro';
 import { Icon } from './icons';
 import IconExcel from '~icons/vscode-icons/file-type-excel2';
 import IconCsv from '~icons/vscode-icons/file-type-csv';
 import IconPdf from '~icons/vscode-icons/file-type-pdf2';
 
 // Modal padrão de exportação de relatório: formato (PDF principal; Excel e CSV secundários), resumo do que será
-// incluído e uma animação de progresso enquanto "gera" o arquivo. Reutilizado por toda tela de relatório
+// incluído e uma barra de progresso enquanto gera o arquivo. Reutilizado por toda tela de relatório
 // (Cercas, Velocidade, Posições, Passou por aqui, ...): só mudam título, período, itens e a exportação em si.
 export type ExportFormat = 'xlsx' | 'csv' | 'pdf';
 
@@ -25,7 +26,7 @@ export function ExportReportModal({ open, onClose, titulo, periodo, itens, resum
   periodo: string;
   itens: string[];
   resumo: string;
-  onExport: (format: ExportFormat) => void;
+  onExport: (format: ExportFormat) => void | Promise<unknown>;
 }) {
   const [formato, setFormato] = useState<ExportFormat>('pdf');
   const [gerando, setGerando] = useState(false);
@@ -33,19 +34,29 @@ export function ExportReportModal({ open, onClose, titulo, periodo, itens, resum
   const raf = useRef(0);
 
   useEffect(() => { if (!open) { setGerando(false); setProgresso(0); setFormato('pdf'); cancelAnimationFrame(raf.current); } }, [open]);
+  useEffect(() => () => cancelAnimationFrame(raf.current), []);
 
-  const gerar = () => {
+  // O modal fica aberto até o arquivo sair de verdade (endereços, biblioteca baixada na hora, montagem do PDF). Antes a
+  // barra enchia em 1,1 s e o modal fechava com a geração ainda correndo — num relatório com muitos endereços o
+  // download chegava minutos depois, ou nunca (a pessoa saía da tela), e uma falha sumia.
+  const gerar = async () => {
     setGerando(true);
     setProgresso(0);
-    const t0 = performance.now(), ms = 1100;
-    const step = (t: number) => {
-      const k = Math.min(1, (t - t0) / ms);
-      setProgresso(k);
-      if (k < 1) { raf.current = requestAnimationFrame(step); return; }
-      onExport(formato);
-      onClose();
-    };
+    // sem como medir o andamento real: a barra se aproxima de 90% e completa quando o arquivo é entregue
+    const t0 = performance.now();
+    const step = (t: number) => { setProgresso(0.9 * (1 - Math.exp(-(t - t0) / 1500))); raf.current = requestAnimationFrame(step); };
     raf.current = requestAnimationFrame(step);
+    try {
+      await onExport(formato);
+      cancelAnimationFrame(raf.current);
+      setProgresso(1);
+      onClose();
+    } catch (e) {
+      cancelAnimationFrame(raf.current);
+      console.error('Falha ao gerar o relatório', e);
+      toast('Não foi possível gerar o relatório', { tone: 'crit', detail: mensagemDeErro(e) });
+      setGerando(false);
+    }
   };
 
   const atual = FORMATOS.find((f) => f.key === formato)!;

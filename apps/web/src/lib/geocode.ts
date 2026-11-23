@@ -73,8 +73,19 @@ export function cachedAddress(lat: number, lng: number): string {
 // endereços de vários pontos, para relatórios exportados: usa o cache quando já tem (preenchido ao navegar
 // pelas telas) e busca o restante respeitando a mesma fila/limite de 1 consulta por segundo. Indicado só para
 // listas pequenas (eventos, paradas, entradas em cerca) — não para o histórico de posições inteiro.
-export async function resolveAddresses(points: [number, number][]): Promise<string[]> {
-  return Promise.all(points.map((p) => reverseGeocode(p[0], p[1]).then((x) => x || coords(p[0], p[1]))));
+// `prazoMs`: tempo máximo de espera. A fila anda a 1 ponto/s, então 100 trechos sem cache seguravam o download por quase
+// 2 minutos (parecia que o arquivo não vinha). Esgotado o prazo, o que faltou sai com as coordenadas.
+export const PRAZO_ENDERECOS_MS = 8000;
+export async function resolveAddresses(points: [number, number][], prazoMs = PRAZO_ENDERECOS_MS): Promise<string[]> {
+  let fim!: () => void;
+  const esgotou = new Promise<void>((r) => { fim = r; });
+  const timer = setTimeout(fim, prazoMs);
+  try {
+    return await Promise.all(points.map((p) => {
+      const fallback = () => cachedAddress(p[0], p[1]);
+      return Promise.race([reverseGeocode(p[0], p[1]).then((x) => x || fallback()), esgotou.then(fallback)]);
+    }));
+  } finally { clearTimeout(timer); }
 }
 
 export function useAddress(pos?: [number, number] | null) {

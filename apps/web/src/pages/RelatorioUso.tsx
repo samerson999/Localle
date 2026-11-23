@@ -63,13 +63,13 @@ export default function RelatorioUso() {
   const linha = ({ a, stats }: any) => [a.name, a.plate || '—', Math.round(stats.dist * 10) / 10, hm(stats.moving), hmOuTraco(stats.engineOn), hmOuTraco(stats.idle), stats.stops.length, hm(tempoParado(stats)), `${Math.round(stats.vmax)} km/h`];
   const linhas = () => [...filtrados.map(linha), ['Total', '', Math.round(soma('dist') * 10) / 10, hm(soma('moving')), hmOuTraco(somaIgnicao('engineOn')), hmOuTraco(somaIgnicao('idle')), paradasTotal, '', '']];
 
-  const exportar = (formato: ExportFormat) => {
+  const exportar = async (formato: ExportFormat) => {
     if (!filtrados.length) return toast('Nada para exportar neste período.', { tone: 'crit' });
     const rows = linhas();
     const meta = { empresa: `${revenda.clientName} — Uso da frota`, periodo: `Período: ${periodoLabel}`, filtros: filtrosTxt, emitidoEm: fmtDT(Date.now()) };
     if (formato === 'csv') csv(nomeArq('csv'), head, rows);
-    else if (formato === 'xlsx') xlsx(nomeArq('xlsx'), meta, head, rows, [], 'Uso por veículo');
-    else pdf({
+    else if (formato === 'xlsx') await xlsx(nomeArq('xlsx'), meta, head, rows, [], 'Uso por veículo');
+    else await pdf({
       file: pdfFileName('Uso da frota', f, t, aid ? assets.find((a: any) => a.id === aid)?.plate : undefined),
       titulo: 'Relatório de Uso da Frota', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',
       meta: [
