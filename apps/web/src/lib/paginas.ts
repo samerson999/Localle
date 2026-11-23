@@ -1,7 +1,8 @@
 // Páginas do cliente que a Locale libera ou desliga no contrato dele (Console › Contratos; `blockedPages`, desde
 // 14/11/2026). Chegam por GET /auth/acessos e ficam no mesmo `revenda.modules` dos módulos, com a rota como chave:
 // sem registro = liberada (página nova nasce ligada). A página principal de cada módulo (/monitoramento, /ativos…) não
-// tem chave própria: segue o módulo. Minha conta fica sempre liberada (é onde a pessoa troca a senha e sai).
+// tem chave própria: segue o módulo. Minha conta fica sempre liberada (é onde a pessoa troca a senha e sai), e a Equipe
+// (Setup › Equipe e acessos) também: criar os usuários da operação não é algo que o contrato desligue (23/11/2026).
 // Página é controle de tela; módulo a API também aplica (ModuloGuard).
 
 export interface Pagina { to: string; label: string; mod?: string }
@@ -26,7 +27,6 @@ export const PAGINAS_DO_MODULO: Record<string, Pagina[]> = {
 export const PAGINAS_GERAIS: Pagina[] = [
   { to: '/precisa-de-voce', label: 'Precisa de você' },
   { to: '/setup', label: 'Setup' },
-  { to: '/equipe', label: 'Equipe' },
 ];
 
 const todas = [...Object.values(PAGINAS_DO_MODULO).flat(), ...PAGINAS_GERAIS];

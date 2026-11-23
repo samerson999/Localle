@@ -45,6 +45,18 @@ test.describe('perfis de acesso', () => {
     await expect(page.getByRole('columnheader').filter({ hasText: nome })).toHaveCount(0, CARGA);
   });
 
+  test('contrato com /equipe bloqueada (contratos de antes de 23/11) não esconde a Equipe do admin', async ({ page }) => {
+    await page.route('**/auth/acessos', async (route) => {
+      const resposta = await route.fetch();
+      const corpo = await resposta.json();
+      await route.fulfill({ response: resposta, json: { ...corpo, blockedPages: [...(corpo.blockedPages ?? []), '/equipe'] } });
+    });
+    await entrar(page, E2E_EMAIL, E2E_SENHA);
+    await page.goto('/#/setup');
+    await page.getByRole('tab', { name: 'Equipe e acessos' }).click(CARGA);
+    await expect(page.getByRole('button', { name: 'Convidar pessoa' }).first()).toBeVisible(CARGA);
+  });
+
   test.describe('pessoa num perfil sem Multas e sem comandos', () => {
     let email: string;
     const senha = `senha-${randomUUID().slice(0, 8)}`;

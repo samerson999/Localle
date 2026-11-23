@@ -20,4 +20,7 @@ describe('paginaLiberada', () => {
   it('rota fora do catálogo sempre liberada (ex.: Minha conta)', () => {
     expect(paginaLiberada({ '/conta': false }, '/conta')).toBe(true);
   });
+  it('Equipe não é desligável pelo contrato (contrato antigo com /equipe bloqueada continua liberando)', () => {
+    expect(paginaLiberada({ '/equipe': false }, '/equipe')).toBe(true);
+  });
 });

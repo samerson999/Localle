@@ -7,7 +7,6 @@ import { Stack } from '../components/primitives';
 import { Icon } from '../components/icons';
 import { EquipeAcessos } from '../components/equipe/EquipeAcessos';
 import { usePode } from '../lib/permissoes';
-import { paginaLiberada } from '../lib/paginas';
 import { fmtDT } from '@localle/shared/utils';
 
 // Setup de parâmetros de operação (docs/PLANO-SETUP-ADMIN.md § 5): tela gerada do registro central da API
@@ -41,10 +40,8 @@ export default function Setup() {
 
   const modulos = useMemo(() => [...new Set((params || []).map((p) => p.modulo))].filter((m) => !groupId || (params || []).some((p) => p.modulo === m && p.porGrupo)), [params, groupId]);
   // "Alertas da plataforma" não é parâmetro do registro: só na camada da empresa (vale para a frota toda). "Equipe e
-  // acessos" (antes /equipe) só para quem gerencia a equipe e se a página não foi desligada no contrato
-  const podeEquipe = usePode('permissoes.gerenciar');
-  const equipeLiberada = useStore((s) => paginaLiberada(s.revenda.modules, '/equipe'));
-  const gereEquipe = podeEquipe && equipeLiberada;
+  // acessos" (antes /equipe) só para quem gerencia a equipe; o contrato não desliga (o cliente sempre cria os usuários dele)
+  const gereEquipe = usePode('permissoes.gerenciar');
   const abas = groupId ? modulos : [...modulos, ALERTAS, ...(gereEquipe ? [EQUIPE] : [])];
   useEffect(() => { if (modulos.length && !abas.includes(tab)) setTab(abas[0]); }, [abas.join()]);
   const naEquipe = tab === EQUIPE && !groupId;
