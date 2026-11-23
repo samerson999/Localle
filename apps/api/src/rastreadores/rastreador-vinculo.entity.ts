@@ -28,3 +28,6 @@ export interface RastreadorDoCliente {
   longitude: number | null;
   ultimo_pacote_em: Date | null;
 }
+
+/** Backup do ativo para o card do Monitoramento: só o aparelho e a última posição desde a instalação vigente. */
+export type BackupDoAtivo = Pick<RastreadorDoCliente, 'imei' | 'modelo' | 'tipo_aparelho' | 'posicao_em' | 'latitude' | 'longitude' | 'ultimo_pacote_em'>;

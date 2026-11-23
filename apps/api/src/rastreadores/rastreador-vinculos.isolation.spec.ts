@@ -115,4 +115,24 @@ describe('RastreadorVinculosRepository — isolamento por client_id', () => {
     await gravar('2026-03-01T13:00:00Z');
     expect((await repo.doCliente(clientA)).find((x) => x.id === r.id)).toMatchObject({ latitude: -23.5, longitude: -46.6 });
   });
+
+  it('backupDoAtivo traz a última posição do backup só para o dono do ativo', async () => {
+    const principal = await rastreador();
+    const backup = await rastreador();
+    await repo.vincular(clientA, principal.id);
+    await repo.vincular(clientA, backup.id);
+    const asset = await assets.insert(clientA, { plate: novaPlaca() });
+    const instaladoEm = new Date('2026-03-01T12:00:00Z');
+    await instalacoes.instalar(clientA, { rastreadorId: principal.id, assetId: asset.id, instaladoEm, tecnico: 'teste' });
+    expect(await repo.backupDoAtivo(clientA, asset.id)).toBeNull();
+
+    await instalacoes.instalar(clientA, { rastreadorId: backup.id, assetId: asset.id, papel: 'backup', instaladoEm, tecnico: 'teste' });
+    await pool.query(
+      `insert into ultima_posicao (rastreador_id, posicao_id, fix_time, geom) values ($1, 1, '2026-03-01T13:00:00Z', st_setsrid(st_makepoint(-46.6, -23.5), 4326))`,
+      [backup.id],
+    );
+
+    expect(await repo.backupDoAtivo(clientA, asset.id)).toMatchObject({ imei: backup.imei, latitude: -23.5, longitude: -46.6 });
+    expect(await repo.backupDoAtivo(clientB, asset.id)).toBeNull();
+  });
 });

@@ -26,6 +26,7 @@ import { SHARE_DURATIONS, shareUrl, shareState, createShare, revokeShare, useSha
 import { fmtDT, haversine, num, toInputDT, shortDT, DAY } from '@localle/shared/utils';
 import { sendRealCommand } from '../lib/rastreioApi';
 import { veSintaxeComando } from '../lib/support';
+import { useBackupDoAtivo } from '../lib/backupDoAtivo';
 
 // Lista ao vivo em lotes: com 600–2.000 veículos, montar todas as linhas de uma vez trava a rolagem. Mostra 80
 // e acrescenta mais 80 quando o fim da lista aparece (IntersectionObserver), sem biblioteca de virtualização.
@@ -553,6 +554,7 @@ function VehiclePanel({ x, kmToday, reasons, onClose, onCmd, onShare, closing }:
         <DescRow label="Posição"><span className="num text-caption text-ink-2">{v?.pos?.[0].toFixed(5)}, {v?.pos?.[1].toFixed(5)}</span></DescRow>
       </DescList>
       {v?.pos && <AbrirNoGoogle pos={v.pos} />}
+      <BackupDoAtivo asset={a} />
     </FloatingPanel>
   );
 }
@@ -576,6 +578,27 @@ function AbrirNoGoogle({ pos }: { pos: [number, number] }) {
         </a>
       ))}
     </div>
+  );
+}
+
+// backup do ativo (rastreador ou tag): o marcador do mapa é do principal; a última posição do backup aparece só aqui e na ficha
+function BackupDoAtivo({ asset }: { asset: any }) {
+  const b = useBackupDoAtivo(asset);
+  if (!b) return null;
+  const pos: [number, number] | null = b.latitude != null && b.longitude != null ? [b.latitude, b.longitude] : null;
+  return (
+    <section aria-label="Backup" className="mt-card-foot pt-card-foot border-t border-line">
+      <p className="text-small font-semibold">{b.tipo_aparelho === 'tag' ? 'Tag de backup' : 'Rastreador de backup'}</p>
+      <DescList className="mt-card-head">
+        <DescRow label="Aparelho"><span className="num">{b.imei}</span>{b.modelo ? <span className="text-ink-2"> · {b.modelo}</span> : null}</DescRow>
+        <DescRow label="Última posição">{b.posicao_em ? <time className="num">{fmtDT(Date.parse(b.posicao_em))}</time> : <span className="text-ink-2">Ainda não recebida</span>}</DescRow>
+        {pos && <>
+          <DescRow label="Endereço"><Address pos={pos} className="text-small" /></DescRow>
+          <DescRow label="Posição"><span className="num text-caption text-ink-2">{pos[0].toFixed(5)}, {pos[1].toFixed(5)}</span></DescRow>
+        </>}
+      </DescList>
+      {pos && <AbrirNoGoogle pos={pos} />}
+    </section>
   );
 }
 

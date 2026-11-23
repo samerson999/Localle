@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { BaseRepository } from '../db/base.repository';
 import { PG_POOL } from '../db/pg-pool.provider';
 import type { Queryable } from '../db/queryable';
-import type { RastreadorDoCliente, RastreadorVinculoEntity } from './rastreador-vinculo.entity';
+import type { BackupDoAtivo, RastreadorDoCliente, RastreadorVinculoEntity } from './rastreador-vinculo.entity';
 
 /**
  * Vínculo rastreador × cliente (`rastreador_vinculos`, tem `client_id`): estende `BaseRepository` e todo
@@ -78,5 +78,30 @@ export class RastreadorVinculosRepository extends BaseRepository<RastreadorVincu
       [clientId],
     );
     return rows;
+  }
+
+  /**
+   * Backup instalado agora no ativo do cliente, para o card do Monitoramento (o mapa continua só do principal).
+   * `null` quando o ativo não tem backup — ou é de outro cliente: instalação, vínculo e ativo filtram por `clientId`.
+   */
+  async backupDoAtivo(clientId: string, assetId: string): Promise<BackupDoAtivo | null> {
+    const { rows } = await this.pool.query<BackupDoAtivo>(
+      `select r.imei, r.modelo, coalesce(m.tipo_aparelho, 'rastreador') as tipo_aparelho,
+              case when up.fix_time >= i.instalado_em then up.fix_time end as posicao_em,
+              case when up.fix_time >= i.instalado_em then st_y(up.geom) end as latitude,
+              case when up.fix_time >= i.instalado_em then st_x(up.geom) end as longitude,
+              rc.ultimo_pacote_em
+         from instalacoes i
+         join rastreadores r on r.id = i.rastreador_id
+         join rastreador_vinculos v on v.rastreador_id = r.id and v.client_id = i.client_id and v.desvinculado_em is null
+         join assets a on a.id = i.asset_id and a.client_id = i.client_id
+         left join rastreador_comunicacao rc on rc.rastreador_id = r.id
+         left join rastreador_modelos m on m.id = r.modelo_id
+         left join ultima_posicao up on up.rastreador_id = r.id
+        where i.client_id = $1 and i.asset_id = $2 and i.papel = 'backup' and i.desinstalado_em is null
+        limit 1`,
+      [clientId, assetId],
+    );
+    return rows[0] ?? null;
   }
 }

@@ -536,6 +536,10 @@ export async function instalarRastreador(rastreadorId: string, assetId: string, 
   });
   await syncFrota();
 }
+/** Backup instalado no ativo (card do Monitoramento): o mapa é do principal, a posição do backup aparece só no card e na ficha. */
+export type BackupDoAtivo = Pick<MeuRastreador, 'imei' | 'modelo' | 'tipo_aparelho' | 'posicao_em' | 'latitude' | 'longitude' | 'ultimo_pacote_em'>;
+export const backupDoAtivo = (assetId: string) =>
+  apiGet<{ backup: BackupDoAtivo | null }>(`/rastreadores/ativos/${backendIdOf(assetId)}/backup`).then((r) => r.backup);
 /** Backup vira principal e vice-versa (o mapa passa a vir do outro aparelho). */
 export async function trocarPrincipal(assetId: string) {
   await apiSend('POST', `/rastreadores/ativos/${backendIdOf(assetId)}/trocar-principal`);

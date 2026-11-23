@@ -32,6 +32,7 @@ import { CommandModal, ShareModal, linksGoogle } from './Monitoramento';
 import { shortDT, isPlate } from '@localle/shared/utils';
 import { Plate } from '../components/story';
 import { useCountUp } from '../lib/motion';
+import { useBackupDoAtivo } from '../lib/backupDoAtivo';
 
 // Peso do carregamento (medido em 11/11/2026): cada bloco vetorial do OpenMapTiles no zoom do globo tem ~1,3 MB (o mundo
 // inteiro em vetor), e o globo pedia vários — segundos de tela vazia, com ou sem cache. Por isso, abaixo de Z_VETOR o mapa não
@@ -403,6 +404,9 @@ function Marca({ p, kind }: { p: Paleta; kind: Kind }) {
 // se faz na rua —, outros comandos, compartilhar e percurso. O envio passa pelo CommandModal, que exige a senha.
 function CartaoVeiculo({ p, it, onFechar, onCmd, onShare, onPercurso }: { p: Paleta; it: Item; onFechar: () => void; onCmd: (defId?: string) => void; onShare: () => void; onPercurso: () => void }) {
   const acao = 'h-11 rounded-full font-medium text-body flex items-center justify-center gap-2 active:scale-[0.97] transition-transform';
+  // backup: a posição dele não vai para o mapa (o marcador é do principal), só para este cartão
+  const backup = useBackupDoAtivo(it.asset);
+  const posBackup: [number, number] | null = backup?.latitude != null && backup.longitude != null ? [backup.latitude, backup.longitude] : null;
   return (
     <section aria-label={`Veículo ${it.plate}`} className="rounded-3xl p-4 flex flex-col gap-3" style={{ background: p.cartao }}>
       <div className="flex items-start gap-3">
@@ -427,6 +431,23 @@ function CartaoVeiculo({ p, it, onFechar, onCmd, onShare, onPercurso }: { p: Pal
           </a>
         ))}
       </div>
+      {backup && (
+        <div className="flex flex-col gap-2 pt-3 border-t" style={{ borderColor: p.botao }}>
+          <p className="text-small" style={{ color: p.texto2 }}>
+            <span className="font-medium" style={{ color: p.texto }}>{backup.tipo_aparelho === 'tag' ? 'Tag de backup' : 'Backup'}</span>
+            {' · '}{backup.posicao_em ? <>última posição <time className="num">{shortDT(Date.parse(backup.posicao_em))}</time></> : 'posição ainda não recebida'}
+          </p>
+          {posBackup && (
+            <div className="grid grid-cols-2 gap-2">
+              {linksGoogle(posBackup).map((l) => (
+                <a key={l.icon} href={l.href} target="_blank" rel="noreferrer" aria-label={`${l.label} (backup)`} className={cx(acao, 'min-w-0 px-3')} style={{ background: p.botao }}>
+                  <Icon name={l.icon} size={18} className="shrink-0" /><span className="truncate">{l.curto}</span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

@@ -28,6 +28,14 @@ export class RastreadoresClienteController {
     return this.vinculos.doCliente(clientId);
   }
 
+  /** Última posição do backup do ativo, no card do Monitoramento (quem vê o mapa vê o backup; não exige `ativos.ver`). */
+  @Get('ativos/:assetId/backup')
+  @RequirePermission('monitoramento.ver')
+  async backupDoAtivo(@ClientId() clientId: string, @Param('assetId', ParseUUIDPipe) assetId: string) {
+    // embrulhado: `null` puro sai como corpo vazio e o front não consegue ler como JSON
+    return { backup: await this.vinculos.backupDoAtivo(clientId, assetId) };
+  }
+
   @Post(':id/instalar')
   @RequirePermission('ativos.editar')
   instalar(
