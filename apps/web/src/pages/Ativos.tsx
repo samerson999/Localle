@@ -113,6 +113,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0 flex flex-col gap-1">
                 <span className="flex items-center justify-between gap-3"><AssetName name={a.name} className="truncate" /><span className="text-caption text-ink-2 whitespace-nowrap">{nomeDoTipo(a, tipos)}</span></span>
+                {a.plate && a.apelido && <span className="text-small text-ink truncate">{a.apelido}</span>}
                 <span className="text-small text-ink-2 truncate">{[`${a.brand || ''} ${a.model || ''}`.trim(), group(a)].filter(Boolean).join(' · ') || '—'}</span>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-ink-2">{d && <DocStatus d={d} />}{a.tracker ? <IdChip size="sm">{a.tracker.imei}</IdChip> : <span>Sem rastreador</span>}</span>
               </div>

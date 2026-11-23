@@ -284,8 +284,8 @@ function TrackerIcons({ t }: { t: LeituraRastreador }) {
 
 // Linha de veículo das listas ao vivo: silhueta, placa em chip, status, modelo, motorista, local, leitura do rastreador,
 // velocidade (com tendência) e hora.
-export function VehicleListItem({ silhouette, icon, photo, plate, kind, statusLabel, model, driver, pos, detail, tracker, speed, time, selected, onClick, menu }: {
-  silhouette: SilhouetteKey; icon?: string; photo?: string; plate: string; kind: StatusKind; statusLabel?: string; model?: React.ReactNode; driver?: React.ReactNode; pos?: [number, number] | null;
+export function VehicleListItem({ silhouette, icon, photo, plate, apelido, kind, statusLabel, model, driver, pos, detail, tracker, speed, time, selected, onClick, menu }: {
+  silhouette: SilhouetteKey; icon?: string; photo?: string; plate: string; apelido?: string; kind: StatusKind; statusLabel?: string; model?: React.ReactNode; driver?: React.ReactNode; pos?: [number, number] | null;
   detail?: React.ReactNode; tracker?: LeituraRastreador | null; speed?: number | null; time?: React.ReactNode; selected?: boolean; onClick?: () => void; menu?: MenuItem[];
 }) {
   const iconUrl = icon && pngIconUrl(icon);
@@ -309,7 +309,8 @@ export function VehicleListItem({ silhouette, icon, photo, plate, kind, statusLa
           </span>
         </span>
         <StatusDot kind={kind} label={<span className="truncate">{statusLabel ?? STATUS_LABEL[kind]}</span>} className="text-caption min-w-0 max-w-full" />
-        {model && <span className="text-body font-medium text-ink truncate">{model}</span>}
+        {apelido && <span className="text-body font-medium text-ink truncate">{apelido}</span>}
+        {model && <span className={cx('truncate', apelido ? 'text-small text-ink-2' : 'text-body font-medium text-ink')}>{model}</span>}
         {driver && <span className="flex items-center gap-1 text-small text-ink-2 min-w-0"><Icon name="usuario" size={14} className="text-ink-3 shrink-0" /><span className="truncate">{driver}</span></span>}
         {pos && <span className="flex items-center gap-1 text-small text-ink-2 min-w-0"><Icon name="centralizar" size={14} className="text-ink-3 shrink-0" /><Address pos={pos} className="truncate" /></span>}
         {detail && <span className="text-small text-ink-2 truncate">{detail}</span>}

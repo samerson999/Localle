@@ -157,7 +157,7 @@ function MonitoramentoMapa() {
   ];
   const [limit, setLimit] = useState(BATCH);
   useEffect(() => setLimit(BATCH), [q, st, grp]);
-  const recorte = list.filter((x: any) => (!grp || x.a.groupIds?.includes(grp)) && (!q || (x.a.name + x.a.plate + x.m + x.a.model).toLowerCase().includes(q.toLowerCase())));
+  const recorte = list.filter((x: any) => (!grp || x.a.groupIds?.includes(grp)) && (!q || [x.a.name, x.a.plate, x.a.apelido, x.m, x.a.model].join(' ').toLowerCase().includes(q.toLowerCase())));
   const shown = recorte.filter((x: any) => st === 'todos' || x.s.key === st);
   const cur = list.find((x: any) => x.a.id === sel);
   // os KPIs contam o veículo aberto no painel ou, sem ele, o recorte da busca e do grupo; o filtro de status não entra,
@@ -212,7 +212,7 @@ function MonitoramentoMapa() {
     <ul className="flex-1 min-h-0 overflow-y-auto -mx-2 pb-16" aria-label={`${shown.length} veículos`}>
       {shown.slice(0, Math.max(limit, shown.findIndex((x: any) => x.a.id === sel) + 1)).map(({ a, v, s, k, m }: any) => (
         <li key={a.id}>
-          <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)}
+          <VehicleListItem silhouette={silhouetteOf(a)} icon={a.icon} photo={a.photo} plate={a.name} kind={k} selected={sel === a.id} onClick={() => pick(a.id)} apelido={a.plate ? a.apelido : undefined}
             model={[a.brand, a.model].filter(Boolean).join(' ')} driver={m} pos={v?.pos}
             tracker={v ? { ignition: ignicaoAtual(v), gps: v.gps, gsm: v.gsm, battery: v.battery, blocked: v.blocked, power: v.power, comunicacao: v.comunicacao, em: v.telemetriaEm } : null}
             speed={v && s.key !== 'sem' && !s.semPosicao ? Math.round(v.speed) : null} time={v ? shortDT(v.lastUpdate) : ''}

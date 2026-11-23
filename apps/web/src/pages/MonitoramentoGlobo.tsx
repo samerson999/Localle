@@ -47,7 +47,7 @@ const CONTINENTES = `${import.meta.env.BASE_URL}geo/continentes.json`;
 const KIND_DE: Record<string, Kind> = { mov: 'mov', par: 'parado', des: 'off', pnd: 'off', sem: 'nosignal' };
 const CONTADORES: { k: 'mov' | 'par' | 'sem'; label: string }[] = [{ k: 'mov', label: 'Em movimento' }, { k: 'par', label: 'Parados ligados' }, { k: 'sem', label: 'Sem sinal' }];
 
-type Item = { id: string; plate: string; model: string; driver: string; pos?: [number, number]; key: string; kind: Kind; label: string; speed: number | null; ts?: number; blocked: boolean; asset: any };
+type Item = { id: string; plate: string; apelido: string; model: string; driver: string; pos?: [number, number]; key: string; kind: Kind; label: string; speed: number | null; ts?: number; blocked: boolean; asset: any };
 
 // raio do globo em px no zoom z é 512·2^z/(2π); escolhe o zoom em que ele ocupa ~92% do menor lado da área livre
 const zoomDoGlobo = (w: number, h: number) => Math.log2((Math.max(120, Math.min(w, h)) * 0.92 * Math.PI) / 512);
@@ -68,6 +68,9 @@ function contem(geom: any, p: [number, number]) {
   const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
   return polys.some((poly: number[][][]) => dentro(p, poly[0]) && !poly.slice(1).some((furo) => dentro(p, furo)));
 }
+
+// placa, apelido, modelo e motorista
+const casaBusca = (i: Item, q: string) => `${i.plate} ${i.apelido} ${i.model} ${i.driver}`.toLowerCase().includes(q.toLowerCase());
 
 export default function MonitoramentoGlobo() {
   const nav = useNavigate();
@@ -92,21 +95,21 @@ export default function MonitoramentoGlobo() {
   const itens: Item[] = useMemo(() => assets.map((a: any) => {
     const v = vehicles[a.id], s = vehicleStatus(v, agora);
     return {
-      id: a.id, plate: a.name, model: [a.brand, a.model].filter(Boolean).join(' '), driver: rotuloMotorista({ drivers, driverLinks, leitorCartao }, a),
+      id: a.id, plate: a.name, apelido: a.plate && a.apelido ? a.apelido : '', model: [a.brand, a.model].filter(Boolean).join(' '), driver: rotuloMotorista({ drivers, driverLinks, leitorCartao }, a),
       pos: v?.pos, key: s.key, kind: crit.has(a.id) ? 'crit' : KIND_DE[s.key] || 'off', label: crit.has(a.id) ? 'Crítico' : s.label, speed: v && s.key !== 'sem' && !s.semPosicao ? Math.round(v.speed || 0) : null, ts: v?.lastUpdate,
       blocked: !!v?.blocked, asset: a,
     };
   }), [assets, vehicles, drivers, driverLinks, leitorCartao, crit, agora]);
   // os contadores contam o veículo aberto no cartão ou, sem ele, o recorte da busca; o filtro de status não entra, senão
   // tocar num contador zerava os outros
-  const buscados = useMemo(() => itens.filter((i) => !q || (i.plate + i.model + i.driver).toLowerCase().includes(q.toLowerCase())), [itens, q]);
+  const buscados = useMemo(() => itens.filter((i) => !q || casaBusca(i, q)), [itens, q]);
   const lista = buscados.filter((i) => !st || i.key === st);
   const atual = itens.find((i) => i.id === sel);
   const contagem = useMemo(() => { const c = { mov: 0, par: 0, des: 0, pnd: 0, sem: 0, agu: 0 } as Record<string, number>; for (const i of atual ? [atual] : buscados) c[i.key]++; return c; }, [buscados, atual]);
   const ultima = Math.max(0, ...itens.filter((i) => i.speed !== null && i.ts).map((i) => i.ts as number));
 
   // o globo mostra o mesmo recorte da lista (contador e busca); o veículo aberto fica mesmo fora dele
-  const noMapa = useMemo(() => itens.filter((i) => i.id === sel || ((!st || i.key === st) && (!q || (i.plate + i.model + i.driver).toLowerCase().includes(q.toLowerCase())))), [itens, st, q, sel]);
+  const noMapa = useMemo(() => itens.filter((i) => i.id === sel || ((!st || i.key === st) && (!q || casaBusca(i, q)))), [itens, st, q, sel]);
   const { box: mapaBox, map, pronto } = useGlobo(noMapa, sel, (id) => { setSel(id); if (id) setParada('baixa'); }, P);
   const alturaFolha = useRef(0);
   const [visivel, setVisivel] = useState(0); // quanto da folha aparece (px): o mapa centraliza no que sobra acima dela
@@ -211,6 +214,7 @@ export default function MonitoramentoGlobo() {
                 <Marca p={P} kind={i.kind} />
                 <span className="min-w-0 flex-1 flex flex-col">
                   {isPlate(i.plate) ? <span className="mb-1"><Plate name={i.plate} size="md" /></span> : <span className="text-[16px] font-semibold truncate">{i.plate}</span>}
+                  {i.apelido && <span className="text-small font-medium truncate">{i.apelido}</span>}
                   <span className="text-caption truncate" style={{ color: P.texto2 }}>{i.label}{i.blocked ? ' · bloqueado' : ''} · {i.driver}</span>
                 </span>
                 <span className="shrink-0 flex flex-col items-end">
@@ -413,6 +417,7 @@ function CartaoVeiculo({ p, it, onFechar, onCmd, onShare, onPercurso }: { p: Pal
         <Marca p={p} kind={it.kind} />
         <div className="min-w-0 flex-1">
           <h2 className="text-[17px] font-semibold truncate">{isPlate(it.plate) ? <span className="block mb-1.5"><Plate name={it.plate} size="lg" /></span> : it.plate}</h2>
+          {it.apelido && <p className="text-small font-medium truncate">{it.apelido}</p>}
           <p className="text-small truncate" style={{ color: p.texto2 }}>{it.label}{it.speed !== null ? ` · ${it.speed} km/h` : ''}{it.ts ? ` · ${shortDT(it.ts)}` : ''}</p>
           <p className="text-small truncate" style={{ color: p.texto2 }}>{it.driver}{it.model ? ` · ${it.model}` : ''}{it.blocked ? ' · bloqueado' : ''}</p>
         </div>
