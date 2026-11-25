@@ -55,7 +55,7 @@ function Board({ period }: { period: PeriodValue }) {
     let alive = true;
     Promise.all([getRanking(s, a[0], a[1]), b ? getRanking(s, b[0], b[1]) : Promise.resolve(undefined)]).then(([A, B]) => alive && setD({ A, B })).catch((e) => alive && setD({ err: e.message }));
     return () => { alive = false; };
-  }, [JSON.stringify(period), s.events.length, s.journey.length, JSON.stringify(s.rankCfg), JSON.stringify(s.journeyCfg)]);
+  }, [JSON.stringify(period), s.events, s.journey, JSON.stringify(s.rankCfg), JSON.stringify(s.journeyCfg)]);
   const { A, B } = d;
   const toolbar = A ? <p className="text-small text-ink-2">{`Limite de ${num(A.limit)} pontos por ${PERIOD[A.limit_period]} = ${num(A.limit_scaled, 1)} pontos neste período`}</p> : null;
   if (d.err) return <Stack gap="grid">{toolbar}<Card><ErrorState illustration="ilu-erro" layout="row" title="Não foi possível calcular o ranking" detail={d.err} /></Card></Stack>;

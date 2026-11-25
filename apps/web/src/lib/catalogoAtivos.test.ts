@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aplicarTipo, chaveCatalogo, marcaModeloDoAtivo, mesmoNome, nomeDoTipo, parecidos, tipoDoAtivo, tiposDoCliente } from './catalogoAtivos';
+import { aplicarTipo, chaveCatalogo, marcaModeloDoAtivo, mesmoNome, nomeDoTipo, parecidos, tipoDoAtivo, tiposDoCliente, tiposEmUso } from './catalogoAtivos';
 
 describe('chaveCatalogo / mesmoNome', () => {
   it('ignora acento, pontuação, espaço e maiúsculas (mesma regra do banco)', () => {
@@ -43,6 +43,19 @@ describe('tipos', () => {
     expect(nomeDoTipo({ kind: 'linha_amarela' }, ops)).toBe('Outra máquina (linha amarela)');
     expect(aplicarTipo(ops.find((o) => o.value === 'retroescavadeira')!)).toEqual({ tipo: 'retroescavadeira', category: 'linha_amarela', kind: 'linha_amarela' });
     expect(nomeDoTipo({ tipo: 'retroescavadeira', category: 'linha_amarela' }, ops)).toBe('Retroescavadeira');
+  });
+
+  it('filtro "Tipo" da lista: só os tipos em uso, com o nome da coluna (renomeado e criado pelo cliente)', () => {
+    const ops = tiposDoCliente([
+      { id: 'r1', nome: 'Compactador', base: 'veiculo', padrao: 'caminhao', icone: null },
+      { id: 'c1', nome: 'Guindaste', base: 'linha_amarela', padrao: null, icone: null },
+    ]);
+    const assets = [{ tipo: 'retroescavadeira', category: 'linha_amarela' }, { tipo: 't:c1', category: 'linha_amarela' }, { kind: 'veiculo', model: 'Atego 2426' }, { tipo: 'retroescavadeira' }];
+    expect(tiposEmUso(assets, ops)).toEqual([
+      { value: 'caminhao', label: 'Compactador' },
+      { value: 't:c1', label: 'Guindaste' },
+      { value: 'retroescavadeira', label: 'Retroescavadeira' },
+    ]);
   });
 });
 

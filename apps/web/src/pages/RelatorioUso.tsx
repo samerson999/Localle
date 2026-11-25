@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { hadTracker, operatedIn } from '@localle/shared/assetStatus';
 import { routeStats } from '@localle/shared/routeStats';
 import { fmtDT, hm, DAY, toInputDT } from '@localle/shared/utils';
 import { hmOuTraco } from '../lib/relatorioPosicoes';
 import { useStore, useStoreData } from '../lib/store';
+import { useFiltrosRelatorio } from '../lib/useFiltrosRelatorio';
 import { isRealAsset, useRelatorioApi, registrarRelatorio } from '../lib/localleApi';
 import { Button, Card, Field, Input, Select, SearchSelect, Table, EmptyState, Stack, Grid, Panel, PageHeader, toast } from '../components/ui';
 import { AssetName } from '../components/story';
-import { Icon, type IconName } from '../components/icons';
+import { Icon } from '../components/icons';
+import { StatTile, BuscaChip } from '../components/RelatorioBits';
 import { csv, xlsx, pdf, pdfFileName } from '../lib/reportExport';
 import { ExportReportModal, type ExportFormat } from '../components/ExportReportModal';
 
@@ -15,37 +16,27 @@ import { ExportReportModal, type ExportFormat } from '../components/ExportReport
 // por veículo. Veículos reais: calculado na API (GET /reports/percurso, routeStats sobre as posições do
 // banco); demais: routeStats aqui sobre o histórico local — a mesma função nos dois casos.
 export default function RelatorioUso() {
-  const all = useStore((s) => s.assets);
-  const accessLog = useStore((s) => s.accessLog);
   const history = useStoreData(15000).history;
   const revenda = useStore((s) => s.revenda);
-  const groups = useStore((s) => s.groups);
   const session = useStore((s) => s.session);
 
-  const [from, setFrom] = useState(toInputDT(new Date().setHours(0, 0, 0, 0)));
-  const [to, setTo] = useState(toInputDT(Date.now()));
-  const [grp, setGrp] = useState('');
-  const [aid, setAid] = useState('');
-  const [busca, setBusca] = useState('');
+  const F = useFiltrosRelatorio();
+  const { from, setFrom, to, setTo, grp, setGrp, aid, setAid, busca, setBusca, f, t, groups, scope } = F;
   const [geradoEm, setGeradoEm] = useState(() => Date.now());
   const [exportOpen, setExportOpen] = useState(false);
 
-  const f = new Date(from).getTime(), t = new Date(to).getTime();
-  const assets = all.filter((a: any) => hadTracker({ accessLog }, a) && operatedIn(a, f));
-  const scope = assets.filter((a: any) => (!grp || a.groupIds?.includes(grp)) && (!aid || a.id === aid));
   const posOf = (a: any) => ((history[a.id] || []) as any[]).filter((p: any) => p[0] >= f && p[0] <= t);
 
   const api = useRelatorioApi<{ assetId: string; posicoes: number; stats: any }>('percurso', { from: new Date(f).toISOString(), to: new Date(t).toISOString() }, scope);
   useEffect(() => { if (api.error) toast('Não foi possível carregar o relatório: ' + api.error, { tone: 'crit' }); }, [api.error]);
 
-  const porVeiculo = useMemo(() => [
+  const todos = useMemo(() => [
     ...scope.filter((a: any) => !isRealAsset(a)).map((a: any) => ({ a, stats: routeStats(posOf(a)), n: posOf(a).length })),
     ...api.rows.map((r) => ({ a: r.a, stats: r.stats, n: r.posicoes })),
   ].filter((x) => x.n).sort((x, y) => y.stats.dist - x.stats.dist), [scope.map((a: any) => a.id).join(), history, f, t, api.rows]);
 
-  const filtrados = busca.trim()
-    ? porVeiculo.filter(({ a }: any) => [a.name, a.plate].some((s) => (s || '').toLowerCase().includes(busca.trim().toLowerCase())))
-    : porVeiculo;
+  // a busca vale para o relatório inteiro: números, tabela, total e arquivo exportado
+  const porVeiculo = todos.filter(({ a }: any) => F.casa(a));
 
   const soma = (k: 'dist' | 'moving') => porVeiculo.reduce((s, x) => s + x.stats[k], 0);
   // motor/ocioso: só dos veículos cujo rastreador informa ignição; nenhum informa → desconhecido ("—"), não 0
@@ -54,34 +45,35 @@ export default function RelatorioUso() {
   const tempoParado = (st: any) => st.stops.reduce((s: number, p: any) => s + (p.end - p.ts), 0);
 
   const quick = (ms: number, label: string) => <Button variant="secondary" size="sm" onClick={() => { setFrom(toInputDT(ms)); setTo(toInputDT(Date.now())); }}>{label}</Button>;
-  const limparFiltros = () => { setGrp(''); setAid(''); setFrom(toInputDT(new Date().setHours(0, 0, 0, 0))); setTo(toInputDT(Date.now())); };
+  const limparFiltros = F.limpar;
 
   const periodoLabel = `${fmtDT(f)} → ${fmtDT(t)}`;
-  const filtrosTxt = `Grupo: ${groups.find((g: any) => g.id === grp)?.name || 'todos'} · Veículo: ${assets.find((a: any) => a.id === aid)?.name || 'todos'}`;
+  const filtrosTxt = F.filtrosTxt();
   const nomeArq = (ext: string) => `uso-da-frota-${from.slice(0, 10)}-a-${to.slice(0, 10)}.${ext}`;
   const head = ['Veículo', 'Placa', 'Km', 'Em movimento', 'Motor ligado', 'Ocioso (parado ligado)', 'Paradas', 'Tempo parado', 'Vel. máxima'];
   const linha = ({ a, stats }: any) => [a.name, a.plate || '—', Math.round(stats.dist * 10) / 10, hm(stats.moving), hmOuTraco(stats.engineOn), hmOuTraco(stats.idle), stats.stops.length, hm(tempoParado(stats)), `${Math.round(stats.vmax)} km/h`];
-  const linhas = () => [...filtrados.map(linha), ['Total', '', Math.round(soma('dist') * 10) / 10, hm(soma('moving')), hmOuTraco(somaIgnicao('engineOn')), hmOuTraco(somaIgnicao('idle')), paradasTotal, '', '']];
+  const linhas = () => [...porVeiculo.map(linha), ['Total', '', Math.round(soma('dist') * 10) / 10, hm(soma('moving')), hmOuTraco(somaIgnicao('engineOn')), hmOuTraco(somaIgnicao('idle')), paradasTotal, '', '']];
 
   const exportar = async (formato: ExportFormat) => {
-    if (!filtrados.length) return toast('Nada para exportar neste período.', { tone: 'crit' });
+    if (!porVeiculo.length) return toast('Nada para exportar neste período.', { tone: 'crit' });
     const rows = linhas();
     const meta = { empresa: `${revenda.clientName} — Uso da frota`, periodo: `Período: ${periodoLabel}`, filtros: filtrosTxt, emitidoEm: fmtDT(Date.now()) };
     if (formato === 'csv') csv(nomeArq('csv'), head, rows);
     else if (formato === 'xlsx') await xlsx(nomeArq('xlsx'), meta, head, rows, [], 'Uso por veículo');
     else await pdf({
-      file: pdfFileName('Uso da frota', f, t, aid ? assets.find((a: any) => a.id === aid)?.plate : undefined),
+      file: pdfFileName('Uso da frota', f, t, aid ? F.veiculo?.plate : undefined),
       titulo: 'Relatório de Uso da Frota', cliente: revenda.clientName, usuario: session?.name || '—', role: session?.role || '—',
       meta: [
         { label: 'Período', value: periodoLabel },
-        { label: 'Veículo', value: assets.find((a: any) => a.id === aid)?.name || 'Todos' },
-        { label: 'Grupo', value: groups.find((g: any) => g.id === grp)?.name || 'Todos' },
+        { label: 'Veículo', value: F.veiculo?.name || 'Todos' },
+        { label: 'Grupo', value: F.grupoNome || 'Todos' },
+        ...(busca.trim() ? [{ label: 'Busca', value: busca.trim() }] : []),
       ],
       sections: [{ title: 'Uso por veículo', head, rows }],
       nota: 'Parada = mais de 5 min a até 3 km/h. Ocioso = parado com a ignição ligada.',
     });
-    registrarRelatorio({ tipo: 'uso', inicio: f, fim: t, filtros: filtrosTxt, registros: filtrados.length, formato });
-    toast(`Relatório de uso gerado com ${filtrados.length} ${filtrados.length === 1 ? 'veículo' : 'veículos'}.`);
+    registrarRelatorio({ tipo: 'uso', inicio: f, fim: t, filtros: filtrosTxt, registros: porVeiculo.length, formato });
+    toast(`Relatório de uso gerado com ${porVeiculo.length} ${porVeiculo.length === 1 ? 'veículo' : 'veículos'}.`);
   };
 
   return (
@@ -93,7 +85,7 @@ export default function RelatorioUso() {
           <div className="flex flex-wrap items-end gap-field">
             <Field label="Período"><div className="flex items-center gap-tight max-md:flex-col max-md:items-stretch"><Input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} /><Icon name="chevron" size={16} className="text-ink-3 shrink-0 max-md:hidden" /><Input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} /></div></Field>
             <Field label="Veículos" className="w-64"><SearchSelect value={aid} onChange={setAid} placeholder="Todos os veículos"
-              options={assets.map((a: any) => ({ value: a.id, label: a.name, sub: a.plate }))} /></Field>
+              options={F.opcoesVeiculo.map((a: any) => ({ value: a.id, label: a.name, sub: a.plate }))} /></Field>
             <Field label="Grupo de veículos"><Select value={grp} onChange={(e) => setGrp(e.target.value)} options={[{ value: '', label: 'Todos os grupos' }, ...groups.map((g: any) => ({ value: g.id, label: g.name }))]} /></Field>
             <div className="flex gap-tight">{quick(new Date().setHours(0, 0, 0, 0), 'Hoje')}{quick(Date.now() - DAY, '24 h')}{quick(Date.now() - 7 * DAY, '7 dias')}</div>
             <span className="flex-1" />
@@ -104,8 +96,9 @@ export default function RelatorioUso() {
         <Panel tone="muted" className="flex flex-wrap items-center gap-stack">
           <span className="text-small font-medium text-ink-2">Filtros aplicados</span>
           <span className="flex items-center gap-tight text-small text-ink"><Icon name="calendario" size={16} className="text-ink-2" />{periodoLabel}</span>
-          <span className="flex items-center gap-tight text-small text-ink"><Icon name="ativos" size={16} className="text-ink-2" />{assets.find((a: any) => a.id === aid)?.name || 'Todos os veículos'}</span>
-          <span className="flex items-center gap-tight text-small text-ink"><Icon name="equipe" size={16} className="text-ink-2" />{groups.find((g: any) => g.id === grp)?.name || 'Todos os grupos'}</span>
+          <span className="flex items-center gap-tight text-small text-ink"><Icon name="ativos" size={16} className="text-ink-2" />{F.veiculo?.name || 'Todos os veículos'}</span>
+          <span className="flex items-center gap-tight text-small text-ink"><Icon name="equipe" size={16} className="text-ink-2" />{F.grupoNome || 'Todos os grupos'}</span>
+          <BuscaChip busca={busca} />
           <span className="ml-auto text-caption text-ink-2">Relatório gerado em {fmtDT(geradoEm)}</span>
           <Button variant="quiet" size="sm" onClick={limparFiltros}><Icon name="reiniciar" size={14} />Limpar filtros</Button>
         </Panel>
@@ -118,10 +111,10 @@ export default function RelatorioUso() {
         </Grid>
 
         <Card title="Uso por veículo" subtitle={api.loading ? 'Carregando os dados do período…' : 'Ordenado pelo km rodado.'}
-          actions={<div className="w-56"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por veículo ou placa…" /></div>}>
+          actions={<div className="w-56"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por veículo, placa ou apelido…" aria-label="Buscar no relatório" /></div>}>
           <Table head={head}
             emptyState={<EmptyState illustration="ilu-periodo-vazio" title="Nenhum veículo com posições no período" detail="Ajuste o período ou os filtros." />}
-            rows={filtrados.map((x: any) => { const l = linha(x); return [<AssetName name={x.a.name} />, ...l.slice(1).map((v: any, i: number) => <span key={i} className={i > 0 ? 'num' : ''}>{i === 1 ? `${v} km` : v}</span>)]; })} />
+            rows={porVeiculo.map((x: any) => { const l = linha(x); return [<AssetName name={x.a.name} />, ...l.slice(1).map((v: any, i: number) => <span key={i} className={i > 0 ? 'num' : ''}>{i === 1 ? `${v} km` : v}</span>)]; })} />
         </Card>
       </Stack>
 
@@ -133,16 +126,3 @@ export default function RelatorioUso() {
   );
 }
 
-function StatTile({ icon, value, label, sub }: { icon: IconName; value: React.ReactNode; label: string; sub: string }) {
-  return (
-    <Card dense>
-      <div className="flex items-center gap-stack">
-        <span className="w-10 h-10 rounded-ctl bg-brand-soft flex items-center justify-center shrink-0 text-brand-ink"><Icon name={icon} size={20} /></span>
-        <div className="min-w-0">
-          <p className="text-h3 font-semibold num"><span>{value}</span> <span className="text-small font-normal text-ink-2">{label}</span></p>
-          <p className="text-caption text-ink-2 truncate">{sub}</p>
-        </div>
-      </div>
-    </Card>
-  );
-}

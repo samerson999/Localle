@@ -24,14 +24,15 @@ export function useMaintKpis(period: PeriodValue, grp: string) {
   // inclui vendidos/baixados que tiveram rastreador: o cálculo de cada período só conta quem operou nele (maintKpis)
   const assetIds = useMemo(() => s.assets.filter((a: any) => a.kind === 'veiculo' && hadTracker(s, a) && (!grp || a.groupIds.includes(grp))).map((a: any) => a.id), [s.assets, s.accessLog, grp]);
   const { a, b } = periodRanges(period);
-  const key = JSON.stringify([period, assetIds, s.workOrders.length]);
+  const key = JSON.stringify([period, assetIds]);
   useEffect(() => {
     let alive = true; setData((d) => ({ ...d, state: 'loading' }));
     Promise.all([fetchKpis(s, a[0], a[1], assetIds), b ? fetchKpis(s, b[0], b[1], assetIds) : Promise.resolve(undefined)])
       .then(([A, B]) => alive && setData({ A, B, state: A && A.vehicles ? 'ready' : 'empty' }))
       .catch((e) => alive && setData({ err: e.message, state: 'error' }));
     return () => { alive = false; };
-  }, [key]);
+    // a lista de OS inteira (não só a quantidade): concluir uma OS ou mudar o custo também recalcula
+  }, [key, s.workOrders]);
   return { ...data, a, b, vehicles: assetIds.length };
 }
 

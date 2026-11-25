@@ -81,6 +81,12 @@ export function tiposDoCliente(tipos: TipoCliente[]): OpcaoTipo[] {
 /** Valor do tipo no ativo: o escolhido (`tipo` na ficha) ou, em ativo antigo, o deduzido da categoria. */
 export const tipoDoAtivo = (a: any): string => a?.tipo || categoryOf(a);
 
+/** Filtro "Tipo" da lista de ativos: só os tipos que algum ativo usa, com o mesmo nome da coluna (nomeDoTipo). */
+export function tiposEmUso(assets: any[], opcoes: OpcaoTipo[]): { value: string; label: string }[] {
+  const usados = new Set(assets.map(tipoDoAtivo));
+  return [...usados].map((v) => ({ value: v, label: nomeDoTipo({ tipo: v }, opcoes) })).sort((x, y) => x.label.localeCompare(y.label, 'pt-BR'));
+}
+
 /** Campos do ativo ao escolher um tipo (categoria e kind vêm dele; `tipo` guarda a escolha). */
 export function aplicarTipo(op: OpcaoTipo) {
   return { tipo: op.value, category: op.category, kind: op.kind };

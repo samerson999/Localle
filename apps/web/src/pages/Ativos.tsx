@@ -12,8 +12,8 @@ import { Num, StatusDot, AssetName, IdChip, KpiTile, type StatusKind } from '../
 import { Icon } from '../components/icons';
 import { linksGoogle } from './Monitoramento';
 import { Dropzone } from '../components/Dropzone';
-import { CATEGORIES, categoryOf } from '../components/assetArt';
-import { CATALOGO_VAZIO, aplicarTipo, chaveCatalogo, marcaModeloDoAtivo, mesmoNome, nomeDoTipo, parecidos, tipoDoAtivo, tiposDoCliente, type CatalogoAtivos, type OpcaoTipo } from '../lib/catalogoAtivos';
+import { categoryOf } from '../components/assetArt';
+import { CATALOGO_VAZIO, aplicarTipo, chaveCatalogo, marcaModeloDoAtivo, mesmoNome, nomeDoTipo, parecidos, tipoDoAtivo, tiposDoCliente, tiposEmUso, type CatalogoAtivos, type OpcaoTipo } from '../lib/catalogoAtivos';
 import { PNG_ICON_IDS, PNG_ICON_SUGGESTION, pngIconUrl, pngIconLabel } from '../lib/pngIcons';
 import { SPECS_DB, MODEL_BRAND } from '@localle/shared/catalog';
 import { num, fmtD, fmtDT, isPlate } from '@localle/shared/utils';
@@ -63,7 +63,7 @@ const KM_SOURCE: Record<string, string> = { rastreador: 'Rastreador', manual: 'L
 
 function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
   const s = useStoreData();
-  const [cat, setCat] = useState('');
+  const [tipo, setTipo] = useState(''); // o mesmo tipo da coluna "Tipo" (renomeado ou criado pelo cliente)
   const [noTracker, setNoTracker] = useState(false);
   const [docDue, setDocDue] = useState(false); // só ativos com documento vencido ou a vencer no mês
   const [q, setQ] = useState('');
@@ -76,7 +76,7 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
   const t = q.trim().toLowerCase();
   const driver = (id: string) => s.drivers.find((d: any) => d.id === id)?.name || '';
   const tipos = tiposDoCliente((s.catalogoAtivos || CATALOGO_VAZIO).tipos);
-  const list = all.filter((a: any) => (!cat || categoryOf(a) === cat) && (!noTracker || !a.tracker) && (!docDue || docAlert(a)) && (!t || [a.name, a.plate, a.apelido, a.brand, a.model, driver(a.driverId), a.tracker?.imei].some((x) => (x || '').toLowerCase().includes(t))));
+  const list = all.filter((a: any) => (!tipo || tipoDoAtivo(a) === tipo) && (!noTracker || !a.tracker) && (!docDue || docAlert(a)) && (!t || [a.name, a.plate, a.apelido, a.brand, a.model, driver(a.driverId), a.tracker?.imei].some((x) => (x || '').toLowerCase().includes(t))));
   const group = (a: any) => (a.groupIds || []).map((g: string) => s.groups.find((x: any) => x.id === g)?.name).filter(Boolean).join(' · ');
   return (
     <>
@@ -95,19 +95,19 @@ function AssetList({ onOpen }: { onOpen: (a: any) => void }) {
       <Card>
         <div className="flex flex-wrap items-center gap-stack mb-card-head">
           <SearchInput className="w-full sm:w-80" placeholder="Buscar placa, modelo, motorista ou IMEI" aria-label="Buscar ativo" value={q} onChange={setQ} />
-          <FilterSheet count={cat ? 1 : 0}>
-            <div className="w-48 max-md:w-full"><Select aria-label="Categoria" value={cat} onChange={(e) => setCat(e.target.value)} options={[{ value: '', label: 'Todas as categorias' }, ...CATEGORIES.map((c) => ({ value: c.key, label: c.label }))]} /></div>
+          <FilterSheet count={tipo ? 1 : 0}>
+            <div className="w-48 max-md:w-full"><Select aria-label="Tipo" value={tipo} onChange={(e) => setTipo(e.target.value)} options={[{ value: '', label: 'Todos os tipos' }, ...tiposEmUso(all, tipos)]} /></div>
           </FilterSheet>
           <p className="text-small text-ink-2 num" aria-live="polite">{list.length === all.length ? `${all.length} ativos` : `${list.length} de ${all.length} ativos`}</p>
           <RetiredToggle />
-          {(cat || noTracker || docDue || q) && <Button variant="link" size="sm" onClick={() => { setCat(''); setNoTracker(false); setDocDue(false); setQ(''); }}>Limpar filtros</Button>}
+          {(tipo || noTracker || docDue || q) && <Button variant="link" size="sm" onClick={() => { setTipo(''); setNoTracker(false); setDocDue(false); setQ(''); }}>Limpar filtros</Button>}
           <span className="flex-1" />
           <Button variant="secondary" size="sm" onClick={() => setImportar(true)}><Icon name="importar" size={16} />Importar planilha</Button>
           <Button variant="ghost" size="sm" onClick={() => downloadAssets(s)}><Icon name="exportar" size={16} />Exportar</Button>
         </div>
         <Table minWidth={1160} onRow={(i) => onOpen(list[i])}
           sort={{ 1: (i) => list[i].name, 2: (i) => nomeDoTipo(list[i], tipos), 3: (i) => `${list[i].brand || ''} ${list[i].model || ''}`.trim(), 5: (i) => (list[i].meter === 'km' ? assetKm(s, list[i].id) : null) }}
-          emptyState={all.length ? <EmptyState illustration="ilu-busca-veiculo" layout="row" title="Nenhum ativo com esses filtros" detail="Tente outra busca ou limpe os filtros." action={<Button variant="dark" size="sm" onClick={() => { setCat(''); setNoTracker(false); setDocDue(false); setQ(''); }}>Limpar filtros</Button>} />
+          emptyState={all.length ? <EmptyState illustration="ilu-busca-veiculo" layout="row" title="Nenhum ativo com esses filtros" detail="Tente outra busca ou limpe os filtros." action={<Button variant="dark" size="sm" onClick={() => { setTipo(''); setNoTracker(false); setDocDue(false); setQ(''); }}>Limpar filtros</Button>} />
             : <EmptyState illustration="ilu-onboarding-frota" title="Nenhum ativo cadastrado" detail="Cadastre o primeiro ativo ou importe a sua frota por planilha." />}
           card={(i) => { const a = list[i]; const d = worstDoc(a); return (
             <div className="flex items-start gap-3">

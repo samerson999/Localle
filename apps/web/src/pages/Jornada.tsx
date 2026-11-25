@@ -40,7 +40,7 @@ export default function Jornada() {
 // critério de "muitos apontamentos": parâmetro do Setup "jornada.apontamentos_atencao" (camada cliente)
 const REPEAT = { min: 3, days: 30 };
 const useCfg = () => useStore((s) => s.journeyCfg || { maxExtra: 2 });
-const useDays = (driverId: string) => { const marks = useStore(useShallow((s) => s.journey.filter((m: any) => m.driverId === driverId))); const d = useStore((s) => s.drivers.find((x: any) => x.id === driverId)); const cfg = useCfg(); return useMemo(() => computeDays(marks, d?.regime, cfg), [marks.length, JSON.stringify(cfg), d?.regime]); };
+const useDays = (driverId: string) => { const marks = useStore(useShallow((s) => s.journey.filter((m: any) => m.driverId === driverId))); const d = useStore((s) => s.drivers.find((x: any) => x.id === driverId)); const cfg = useCfg(); return useMemo(() => computeDays(marks, d?.regime, cfg), [marks, JSON.stringify(cfg), d?.regime]); };
 
 // Descumprimentos são atenção (laranja), não crítico: não entram no "Precisa de você".
 const CODES = [{ key: 'pausa', label: 'Pausa não respeitada', short: 'Pausa' }, { key: 'interjornada', label: 'Interjornada abaixo do mínimo', short: 'Interjornada' }, { key: 'jornada', label: 'Jornada excedida', short: 'Jornada' }, { key: 'refeicao', label: 'Refeição abaixo do mínimo', short: 'Refeição' }, { key: 'semanal', label: 'Descanso semanal abaixo do mínimo', short: 'Semanal' }];
@@ -50,7 +50,7 @@ function Painel({ goDocs, period }: { goDocs: () => void; period: PeriodValue })
   const s = useStoreData();
   const cfg = useCfg();
   const { a, b } = periodRanges(period);
-  const data = useMemo(() => s.drivers.map((d: any) => ({ d, days: computeDays(s.journey.filter((m: any) => m.driverId === d.id), d.regime, cfg) })), [s.journey.length, JSON.stringify(cfg), s.drivers]);
+  const data = useMemo(() => s.drivers.map((d: any) => ({ d, days: computeDays(s.journey.filter((m: any) => m.driverId === d.id), d.regime, cfg) })), [s.journey, JSON.stringify(cfg), s.drivers]);
   const violIn = (r: [number, number]) => data.flatMap(({ d, days }) => days.filter((x) => x.day >= r[0] && x.day <= r[1]).flatMap((x) => x.violations.map((v) => ({ d, x, v })))).sort((p, q) => q.x.day - p.x.day);
   const extraIn = (r: [number, number]) => sum(data.flatMap(({ days }) => days.filter((x) => x.day >= r[0] && x.day <= r[1]).map((x) => x.extra)));
   const A = violIn(a), B = b ? violIn(b) : null;

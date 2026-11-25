@@ -11,6 +11,8 @@ import { KpiTile, KpiHero, ChartCard, StatusDot, NeedsList, Num, AssetName, IdCh
 import { ColumnChart, TipItem } from '../components/charts';
 import { Icon } from '../components/icons';
 import { CTB } from '@localle/shared/catalog';
+import { casaBusca } from '../lib/busca';
+import { A_PAGAR, FILTROS_MULTA, casaFiltroMulta } from '../lib/multasFiltro';
 
 import { FINE_PARAMS, SEVERITIES, driverAt, validateFine, indicationDue, indicationState, notifiedOf, notifiedEstimated, PENDING, cnhRisk, type IndicationState } from '@localle/shared/fines';
 import { brl, fmtD, fmtDT, num, pct, sum, groupBy, monthKey, monthLabel, toInputD, toInputDT, isPlate, DAY } from '@localle/shared/utils';
@@ -80,7 +82,7 @@ function Visao({ onOpen, period }: { onOpen: (f: any) => void; period: PeriodVal
   const cost = sum(A.map((x: any) => x.value)), costB = B && B.length ? sum(B.map((x: any) => x.value)) : null;
   const rel = (x: number, y: number | null) => (y ? ((x - y) / y) * 100 : null);
   const pending = s.fines.filter((x: any) => ['critica', 'aviso'].includes(indicationState(x))).sort((p: any, q: any) => indicationDue(p) - indicationDue(q));
-  const openCost = sum(s.fines.filter((x: any) => ['aberta', 'condutor_indicado', 'recurso'].includes(x.status)).map((x: any) => x.value));
+  const openCost = sum(s.fines.filter((x: any) => A_PAGAR.includes(x.status)).map((x: any) => x.value));
   // custo por mês do período (barras crescem pelo padrão de motion: --t-bar, em cascata)
   const months = Object.entries(groupBy(A, (x: any) => monthKey(x.ts))).sort(([p], [q]) => p.localeCompare(q)).map(([k, arr]: any) => ({ mes: monthLabel(k), valor: Math.round(sum(arr.map((x: any) => x.value))), qtd: arr.length }));
   const peak = months.reduce((m: any, x) => (!m || x.valor > m.valor ? x : m), null);
@@ -158,17 +160,16 @@ function Lista({ onOpen }: { onOpen: (f: any) => void }) {
   const [flt, setFlt] = useState('indicar');
   const [q, setQ] = useState('');
   const blank = () => ({ auto: '', assetId: '', driverId: '', ts: '', notifiedAt: toInputD(Date.now()), place: '', code: '', description: '', severity: '', points: 0, value: '', dueDate: toInputD(Date.now() + FINE_PARAMS.dueDays * DAY), status: 'aberta', source: 'manual', org: 'DETRAN-PE' });
-  const norm = (x: string) => (x || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '');
   const list = [...s.fines]
-    .filter((f: any) => (flt === 'indicar' ? PENDING.includes(indicationState(f)) : flt === 'perdido' ? indicationState(f) === 'vencida' : flt === 'todas' || f.status === flt))
-    .filter((f: any) => !q || [f.auto, N.a(f.assetId), N.d(f.driverId), f.description, f.code].some((x) => norm(x).includes(norm(q))))
+    .filter((f: any) => casaFiltroMulta(f, flt))
+    .filter((f: any) => casaBusca(q, f.auto, N.a(f.assetId), N.d(f.driverId), f.description, f.code))
     .sort((p: any, r: any) => (flt === 'indicar' ? indicationDue(p) - indicationDue(r) : r.ts - p.ts));
   const podeEditar = usePode('multas.editar');
   useMobilePageAction({ label: 'Lançar multa', icon: 'mais', permissao: 'multas.editar', onClick: () => onOpen(blank()) });
   return (
     <Card title="Multas" icon="multas" actions={podeEditar && <Button onClick={() => onOpen(blank())} className="max-md:hidden"><Icon name="mais" size={16} />Lançar multa</Button>}>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <FilterSheet count={flt !== 'indicar' ? 1 : 0}><Pills value={flt} onChange={setFlt} options={[{ key: 'indicar', label: 'Indicar condutor' }, { key: 'perdido', label: 'Prazo perdido' }, { key: 'aberta', label: 'Em aberto' }, { key: 'recurso', label: 'Em recurso' }, { key: 'paga', label: 'Pagas' }, { key: 'todas', label: 'Todas' }]} /></FilterSheet>
+        <FilterSheet count={flt !== 'indicar' ? 1 : 0}><Pills value={flt} onChange={setFlt} options={FILTROS_MULTA} /></FilterSheet>
         <SearchInput className="ml-auto w-full sm:w-72" aria-label="Buscar multa" value={q} onChange={setQ} placeholder="Auto, placa, motorista ou infração" />
       </div>
       <Table minWidth={1120} align={['left', 'left', 'left', 'left', 'right', 'right', 'left', 'left', 'right']}
