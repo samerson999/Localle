@@ -8,6 +8,7 @@ import { signAuthToken, type Role } from '../auth/jwt';
 import { PG_POOL } from '../db/pg-pool.provider';
 import type { Queryable } from '../db/queryable';
 import { withTransaction } from '../db/with-transaction';
+import { escapeHtml } from '../mail/escape-html';
 import { MailService } from '../mail/mail.service';
 
 export const VALIDADE_CONVITE_H = 48;
@@ -139,8 +140,4 @@ export class ConvitesService {
     this.logger.log(`convite aceito user_id=${aceito.user_id} client_id=${aceito.client_id}`);
     return { accessToken: signAuthToken({ sub: aceito.user_id, clientId: aceito.client_id, role: aceito.role }) };
   }
-}
-
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }

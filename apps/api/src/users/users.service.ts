@@ -1,16 +1,24 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import bcrypt from 'bcryptjs';
 import type { Pool } from 'pg';
 import { AuditLogRepository } from '../audit/audit-log.repository';
 import { PG_POOL } from '../db/pg-pool.provider';
+import type { Queryable } from '../db/queryable';
 import { withTransaction } from '../db/with-transaction';
-import { ClientsRepository } from '../clients/clients.repository';
-import { ConvitesService } from '../convites/convites.service';
 import { UNIQUE, violouUnique } from '../db/pg-errors';
 import type { UserEntity } from './user.entity';
-import { UsersRepository } from './users.repository';
+import { UsersRepository, type EscopoUsuario } from './users.repository';
 
 const CREATABLE_ROLES = ['gestor', 'operador'] as const;
+type Perfil = { role: 'gestor' | 'operador'; perfilId: string | null };
 
+/**
+ * Equipe do cliente pelo Admin (Setup › Equipe e acessos). Desde 25/11/2026 sem convite por e-mail: o Admin cria o
+ * acesso com nome de usuário + senha e repassa à pessoa, que informa o próprio e-mail no primeiro acesso
+ * (`EmailContaService`). Nunca cria outro Admin (isso só nasce pelo superadmin, `src/superadmin/`), nem mexe no
+ * próprio acesso (ficaria sem admin) ou no de outro Admin. `clientId` vem sempre de `@ClientId()` (JWT).
+ * Toda mutação grava auditoria na mesma transação.
+ */
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
@@ -18,8 +26,6 @@ export class UsersService {
   constructor(
     private readonly repo: UsersRepository,
     private readonly audit: AuditLogRepository,
-    private readonly clients: ClientsRepository,
-    private readonly convites: ConvitesService,
     @Inject(PG_POOL) private readonly pool: Pool,
   ) {}
 
@@ -27,93 +33,63 @@ export class UsersService {
     return this.repo.findManyByClient(clientId);
   }
 
-  /**
-   * O Admin convida Gestor/Operador para o próprio cliente — nunca outro Admin (isso só nasce pelo
-   * superadmin, `src/superadmin/`, evitando que um Admin se multiplique sem controle da Locale). O usuário
-   * nasce sem senha e define a própria com o código de uso único do e-mail (mesmo fluxo do admin inicial): quem convida
-   * nunca conhece a senha. `clientId` vem de `@ClientId()` (JWT), nunca do corpo. Usuário + convite +
-   * auditoria na mesma transação; o e-mail sai depois do commit.
-   */
-  async convidarMembro(clientId: string, actingAdminId: string, data: { email: string; role: 'gestor' | 'operador'; perfilId?: string | null }) {
+  async criarMembro(clientId: string, actingAdminId: string, data: { username: string; senha: string; escopo: EscopoUsuario } & Perfil) {
     if (!CREATABLE_ROLES.includes(data.role)) {
-      throw new BadRequestException('Papel inválido — só "gestor" ou "operador" podem ser convidados por aqui');
+      throw new BadRequestException('Papel inválido — só "gestor" ou "operador" podem ser criados por aqui');
     }
-    const cliente = await this.clients.findById(clientId);
-    if (!cliente) throw new NotFoundException('Cliente não encontrado');
-    let criado: { user: UserEntity; token: string };
+    const passwordHash = await bcrypt.hash(data.senha, 10);
+    let user: UserEntity;
     try {
-      criado = await withTransaction(this.pool, async (client) => {
-        const user = await this.repo.create({ clientId, email: data.email, passwordHash: null, role: data.role, perfilId: data.perfilId }, client);
-        const token = await this.convites.emitir(client, { userId: user.id, clientId, criadoPor: actingAdminId });
+      user = await withTransaction(this.pool, async (tx) => {
+        const u = await this.repo.create({ clientId, username: data.username, passwordHash, role: data.role, perfilId: data.perfilId }, tx);
+        await this.repo.definirEscopo(clientId, u.id, data.escopo, tx);
         await this.audit.record(
-          { actorType: 'user', actorId: actingAdminId, clientId, action: 'user.create', target: user.id, after: { email: user.email, role: user.role, perfilId: user.perfil_id } },
-          client,
+          {
+            actorType: 'user',
+            actorId: actingAdminId,
+            clientId,
+            action: 'user.create',
+            target: u.id,
+            after: { username: u.username, role: u.role, perfilId: u.perfil_id, escopo: data.escopo },
+          },
+          tx,
         );
-        return { user, token };
+        return u;
       });
     } catch (err) {
-      if (violouUnique(err, UNIQUE.usuarioEmail)) throw new ConflictException('Já existe um usuário com este e-mail');
+      if (violouUnique(err, UNIQUE.usuarioUsername)) throw new ConflictException('Este nome de usuário já está em uso');
       throw err;
     }
-    const entrega = await this.convites.entregar(criado.user.email, cliente.name, criado.token, criado.user.role);
-    this.logger.log(`membro convidado user_id=${criado.user.id} client_id=${clientId} por user_id=${actingAdminId} email_enviado=${entrega.conviteEnviado}`);
-    return { user: criado.user, ...entrega };
+    this.logger.log(`membro criado user_id=${user.id} client_id=${clientId} por user_id=${actingAdminId} restrito=${data.escopo.restrito}`);
+    return user;
   }
 
-  /** Novo código (o anterior deixa de valer). Só para Gestor/Operador que ainda não definiu a senha. */
-  async reenviarConvite(clientId: string, actingAdminId: string, userId: string) {
-    const cliente = await this.clients.findById(clientId);
-    const user = cliente ? await this.repo.findOneByClient(clientId, userId) : null;
-    if (!cliente || !user) throw new NotFoundException('Usuário não encontrado');
-    if (user.role === 'admin') throw new ForbiddenException('Convite de admin é reenviado pela Locale');
-    if (user.password_hash) throw new BadRequestException('Usuário já definiu a senha — o convite não se aplica mais');
-    if (user.desativado_em) throw new BadRequestException('Usuário desativado — reative antes de reenviar o convite');
-    const token = await withTransaction(this.pool, async (client) => {
-      const t = await this.convites.emitir(client, { userId, clientId, criadoPor: actingAdminId });
-      await this.audit.record({ actorType: 'user', actorId: actingAdminId, clientId, action: 'user.reenviar_convite', target: userId }, client);
-      return t;
-    });
-    return this.convites.entregar(user.email, cliente.name, token, user.role);
-  }
-
-  /**
-   * Mesma política da criação: o Admin só desativa/reativa Gestor e Operador do próprio cliente — nunca a
-   * si mesmo (ficaria sem admin) nem outro Admin (isso é da Locale). Mutação + auditoria na mesma transação.
-   */
-  async setAtivo(clientId: string, actingAdminId: string, userId: string, ativo: boolean) {
+  /** Alvo editável pelo Admin: do cliente, não excluído, não é ele mesmo nem outro Admin. */
+  private async alvo(clientId: string, actingAdminId: string, userId: string, tx: Queryable): Promise<UserEntity> {
     if (userId === actingAdminId) throw new BadRequestException('Você não pode alterar o próprio acesso');
+    const alvo = await this.repo.findOneByClient(clientId, userId, tx);
+    if (!alvo) throw new NotFoundException('Usuário não encontrado');
+    if (alvo.role === 'admin') throw new ForbiddenException('O acesso do admin só é alterado pela Locale');
+    return alvo;
+  }
+
+  async setAtivo(clientId: string, actingAdminId: string, userId: string, ativo: boolean) {
     return withTransaction(this.pool, async (client) => {
-      const alvo = await this.repo.findOneByClient(clientId, userId, client);
-      if (!alvo) throw new NotFoundException('Usuário não encontrado');
-      if (alvo.role === 'admin') throw new ForbiddenException('Admin só é desativado pela Locale');
+      const alvo = await this.alvo(clientId, actingAdminId, userId, client);
       if ((alvo.desativado_em === null) === ativo) return alvo;
       const atualizado = (await this.repo.setDesativadoEm(clientId, userId, ativo ? null : new Date(), client))!;
       await this.audit.record(
-        {
-          actorType: 'user',
-          actorId: actingAdminId,
-          clientId,
-          action: ativo ? 'user.reativar' : 'user.desativar',
-          target: userId,
-          before: { ativo: !ativo },
-          after: { ativo },
-        },
+        { actorType: 'user', actorId: actingAdminId, clientId, action: ativo ? 'user.reativar' : 'user.desativar', target: userId, before: { ativo: !ativo }, after: { ativo } },
         client,
       );
       return atualizado;
     });
   }
 
-  /**
-   * Troca o perfil de alguém da equipe. Mesma política de `setAtivo`: nunca o próprio (ficaria sem admin) nem um
-   * Admin (isso é da Locale). Vale na próxima requisição da pessoa — a autorização lê papel e perfil do banco.
-   */
-  async definirPerfil(clientId: string, actingAdminId: string, userId: string, perfil: { role: 'gestor' | 'operador'; perfilId: string | null }) {
-    if (userId === actingAdminId) throw new BadRequestException('Você não pode alterar o próprio acesso');
+  /** Vale na próxima requisição da pessoa — a autorização lê papel e perfil do banco. */
+  async definirPerfil(clientId: string, actingAdminId: string, userId: string, perfil: Perfil) {
     const atualizado = await withTransaction(this.pool, async (client) => {
-      const alvo = await this.repo.findOneByClient(clientId, userId, client);
-      if (!alvo) throw new NotFoundException('Usuário não encontrado');
-      if (alvo.role === 'admin') throw new ForbiddenException('O perfil do admin só é alterado pela Locale');
+      const alvo = await this.alvo(clientId, actingAdminId, userId, client);
       const novo = (await this.repo.setPerfil(clientId, userId, perfil.role, perfil.perfilId, client))!;
       await this.audit.record(
         {
@@ -131,5 +107,41 @@ export class UsersService {
     });
     this.logger.log(`perfil alterado user_id=${userId} client_id=${clientId} perfil=${perfil.perfilId ?? perfil.role} por user_id=${actingAdminId}`);
     return atualizado;
+  }
+
+  /** Quais veículos a pessoa vê. Vale na próxima requisição (o `AuthGuard` resolve o escopo do banco a cada uma). */
+  async definirEscopo(clientId: string, actingAdminId: string, userId: string, escopo: EscopoUsuario) {
+    await withTransaction(this.pool, async (tx) => {
+      await this.alvo(clientId, actingAdminId, userId, tx);
+      const antes = await this.repo.escopo(clientId, userId, tx);
+      await this.repo.definirEscopo(clientId, userId, escopo, tx);
+      await this.audit.record({ actorType: 'user', actorId: actingAdminId, clientId, action: 'user.escopo', target: userId, before: antes, after: escopo }, tx);
+    });
+    this.logger.log(`escopo de veículos alterado user_id=${userId} client_id=${clientId} restrito=${escopo.restrito} por user_id=${actingAdminId}`);
+    return (await this.repo.escopo(clientId, userId))!;
+  }
+
+  /** O Admin define uma senha nova (a pessoa esqueceu e ainda não tem e-mail). As sessões abertas dela caem. */
+  async definirSenha(clientId: string, actingAdminId: string, userId: string, senha: string) {
+    const passwordHash = await bcrypt.hash(senha, 10);
+    await withTransaction(this.pool, async (tx) => {
+      await this.alvo(clientId, actingAdminId, userId, tx);
+      await this.repo.definirSenha(clientId, userId, passwordHash, tx);
+      await this.audit.record({ actorType: 'user', actorId: actingAdminId, clientId, action: 'user.redefinir_senha', target: userId }, tx);
+    });
+    this.logger.log(`senha definida pelo admin user_id=${userId} client_id=${clientId} por user_id=${actingAdminId}`);
+  }
+
+  /** Some da equipe e perde o acesso na hora; o histórico (comandos, alertas tratados, auditoria) continua com a pessoa. */
+  async excluir(clientId: string, actingAdminId: string, userId: string) {
+    await withTransaction(this.pool, async (tx) => {
+      const alvo = await this.alvo(clientId, actingAdminId, userId, tx);
+      await this.repo.excluir(clientId, userId, tx);
+      await this.audit.record(
+        { actorType: 'user', actorId: actingAdminId, clientId, action: 'user.excluir', target: userId, before: { username: alvo.username, email: alvo.email, role: alvo.role } },
+        tx,
+      );
+    });
+    this.logger.log(`membro excluído user_id=${userId} client_id=${clientId} por user_id=${actingAdminId}`);
   }
 }

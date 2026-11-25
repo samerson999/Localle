@@ -54,6 +54,8 @@ function NotificacoesPush() {
 // Foto do avatar: a imagem é recortada em quadrado e reduzida no navegador (fotoAvatar) antes de ir para a conta.
 function FotoAvatar({ role }: { role: 'locale' | 'gestor' }) {
   const session = useStore((s) => s.session)!;
+  // e-mail e usuário da conta pela API (quem entra pelo usuário tem o usuário em `session.email`); null no Painel da Localle
+  const conta = useStore((s) => s.conta) as { email: string | null; usuario: string | null } | null;
   const patch = useStore((s) => s.patch);
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<'' | 'salvar' | 'remover'>(''); // um de cada vez: os dois botões travam juntos
@@ -83,7 +85,8 @@ function FotoAvatar({ role }: { role: 'locale' | 'gestor' }) {
     <div className="flex flex-wrap items-center gap-field">
       <Avatar name={session.name} src={session.avatar} size="lg" />
       <div className="flex flex-col gap-hair min-w-0 mr-auto">
-        <span className="text-body font-semibold truncate">{session.email}</span>
+        <span className="text-body font-semibold truncate">{conta ? conta.email || 'E-mail não cadastrado' : session.email}</span>
+        {conta?.usuario && <span className="text-small text-ink-2 truncate">Usuário: {conta.usuario}</span>}
         <span className="text-small text-ink-2">{role === 'locale' ? 'Equipe da Localle (Painel da Localle)' : 'Usuário da plataforma'}</span>
       </div>
       <div className="flex flex-wrap gap-tight">

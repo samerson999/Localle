@@ -419,7 +419,10 @@ export interface AdminAuditEntry { id: string; actor_type: 'user' | 'superadmin'
  */
 export interface Entrega { conviteEnviado: boolean; codigo?: string | null; link?: string | null }
 export interface MembroLocalle { id: string; email: string; created_at: string; desativado_em: string | null; pendente: boolean }
-export interface MembroEquipe { id: string; email: string; role: 'admin' | 'gestor' | 'operador'; perfilId: string | null; ativo: boolean; pendente: boolean; createdAt: string }
+/** Quais veículos a pessoa vê (Setup › Equipe). `restrito: false` = a frota toda. */
+export interface EscopoVeiculos { restrito: boolean; semGrupo: boolean; grupoIds: string[]; operacaoIds: string[] }
+/** `email` nulo: criado por usuário e ainda não informou o e-mail (pede no primeiro acesso). */
+export interface MembroEquipe { id: string; email: string | null; usuario: string | null; role: 'admin' | 'gestor' | 'operador'; perfilId: string | null; ativo: boolean; pendente: boolean; createdAt: string; escopo: EscopoVeiculos }
 
 /** Catálogo de tipos de alerta da plataforma (apps/api/src/alertas/alerta-tipos.repository.ts). */
 export interface CondicaoAlerta { field: string; op: string; value: string; attr?: string }
@@ -608,12 +611,20 @@ export async function aceitarConviteLocalle(token: string, password: string): Pr
   setToken(data.accessToken);
 }
 /** Equipe do próprio cliente (admin): convite por e-mail para Gestor/Operador. */
+/** Primeiro acesso de quem foi criado por usuário: informa e confirma o próprio e-mail (apps/api/src/users/email-conta.service.ts). */
+export const emailContaApi = {
+  pedir: (email: string) => apiSend<{ enviado: boolean }>('POST', '/conta/email', { email }),
+  confirmar: (codigo: string) => apiSend<{ email: string }>('POST', '/conta/email/confirmar', { codigo }),
+};
+
 export const equipeApi = {
   listar: () => apiGet<MembroEquipe[]>('/users'),
   /** `perfil`: 'gestor', 'operador' ou o id de um perfil próprio. */
-  convidar: (email: string, perfil: string) => apiSend<MembroEquipe & Entrega>('POST', '/users', { email, perfil }),
+  criar: (m: { usuario: string; senha: string; perfil: string; escopo: EscopoVeiculos }) => apiSend<MembroEquipe>('POST', '/users', m),
   definirPerfil: (id: string, perfil: string) => apiSend<MembroEquipe>('PUT', `/users/${id}/perfil`, { perfil }),
-  reenviarConvite: (id: string) => apiSend<Entrega>('POST', `/users/${id}/convite`),
+  definirEscopo: (id: string, escopo: EscopoVeiculos) => apiSend<EscopoVeiculos>('PUT', `/users/${id}/escopo`, escopo),
+  definirSenha: (id: string, senha: string) => apiSend<void>('PUT', `/users/${id}/senha`, { senha }),
+  excluir: (id: string) => apiSend<void>('DELETE', `/users/${id}`),
   desativar: (id: string) => apiSend<MembroEquipe>('POST', `/users/${id}/desativar`),
   reativar: (id: string) => apiSend<MembroEquipe>('POST', `/users/${id}/reativar`),
   permissoes: () => apiGet<PermissaoPapel[]>('/permissions'),
@@ -1237,10 +1248,10 @@ const MODULO_DA_CARGA: Record<string, string> = { jornada: 'jornada', multas: 'm
  * Substitui o mapa inteiro: nada do que ficou salvo no navegador (ou de outro cliente) sobrevive. Sem contrato, tudo ligado.
  */
 export async function syncAcessos() {
-  const a = await apiGet<{ modules: string[] | null; blockedPages: string[]; permissoes?: string[] }>('/auth/acessos');
+  const a = await apiGet<{ modules: string[] | null; blockedPages: string[]; permissoes?: string[]; precisaEmail?: boolean; conta?: { email: string | null; usuario: string | null } }>('/auth/acessos');
   const modules: Record<string, boolean> = Object.fromEntries(MODULES.map((m) => [m.key, !a.modules || a.modules.includes(m.key)]));
   for (const p of a.blockedPages) modules[p] = false;
-  patch((s) => ({ revenda: { ...s.revenda, modules }, permissoes: a.permissoes ?? null }));
+  patch((s) => ({ revenda: { ...s.revenda, modules }, permissoes: a.permissoes ?? null, precisaEmail: !!a.precisaEmail, conta: a.conta ?? null }));
 }
 
 export async function syncModulos() {

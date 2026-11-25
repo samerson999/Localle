@@ -24,7 +24,7 @@ export default function Login() {
   // digitado na tela seguinte (pages/CodigoAcesso.tsx).
   const [modo, setModo] = useState<'entrar' | 'esqueci'>('entrar');
   const pedirCodigo = async () => {
-    if (!email.trim()) { setErr('Informe o e-mail da sua conta.'); return; }
+    if (!email.includes('@')) { setErr('Informe o e-mail da sua conta. Ainda não tem e-mail cadastrado? Peça ao administrador da sua empresa uma senha nova.'); return; }
     setBusy(true); setErr('');
     const alvo = email.trim().toLowerCase();
     try { await esqueciSenha(alvo); nav(`/redefinir-senha?email=${encodeURIComponent(alvo)}`); }
@@ -72,9 +72,10 @@ export default function Login() {
         <div className="flex justify-center mb-10">{marca}</div>
         {modo === 'entrar' ? <>
           <h1 className="text-title font-semibold">Bem-vindo de volta</h1>
-          <p className="text-body text-ink-2 mt-3 mb-8">Use o e-mail cadastrado pela sua central.</p>
+          <p className="text-body text-ink-2 mt-3 mb-8">Use o e-mail ou o usuário que o administrador da sua empresa criou.</p>
           <div className="flex flex-col gap-4 text-left">
-            <Field label="E-mail"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" placeholder="voce@empresa.com.br" /></Field>
+            {/* texto, não "email": o usuário criado no Setup não tem @ e o navegador barraria o envio */}
+            <Field label="E-mail ou usuário"><Input type="text" value={email} onChange={(e) => setEmail(e.target.value)} className="h-ctl-lg" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="voce@empresa.com.br" /></Field>
             <Field label="Senha"><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} className="h-ctl-lg" autoComplete="current-password" placeholder="Sua senha" /></Field>
             {erro}
             <Button type="submit" size="lg" disabled={busy} className="w-full mt-1">{busy ? 'Entrando…' : 'Acessar plataforma'}</Button>

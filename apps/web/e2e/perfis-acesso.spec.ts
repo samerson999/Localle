@@ -54,7 +54,7 @@ test.describe('perfis de acesso', () => {
     await entrar(page, E2E_EMAIL, E2E_SENHA);
     await page.goto('/#/setup');
     await page.getByRole('tab', { name: 'Equipe e acessos' }).click(CARGA);
-    await expect(page.getByRole('button', { name: 'Convidar pessoa' }).first()).toBeVisible(CARGA);
+    await expect(page.getByRole('button', { name: 'Novo acesso' }).first()).toBeVisible(CARGA);
   });
 
   test.describe('pessoa num perfil sem Multas e sem comandos', () => {

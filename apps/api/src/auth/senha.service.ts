@@ -46,7 +46,7 @@ export class SenhaService {
    */
   async esqueci(email: string): Promise<string | null> {
     const user = await this.users.findByEmail(email);
-    if (user && !user.desativado_em) return this.emitirUsuario(user);
+    if (user?.email && !user.desativado_em) return this.emitirUsuario({ ...user, email: user.email });
     const superadmin = user ? null : await this.superadmins.ativoPorEmail(email);
     if (superadmin) return this.emitirSuperadmin(superadmin);
     this.logger.log(`Redefinição de senha pedida para e-mail desconhecido ou desativado (não enviada)`);

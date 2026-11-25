@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { EscopoInterceptor } from './escopo/escopo.interceptor';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 import { ApiPublicaModule } from './api-publica/api-publica.module';
 import { AssetsModule } from './assets/assets.module';
@@ -97,6 +98,7 @@ import { ViagensModule } from './viagens/viagens.module';
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    { provide: APP_INTERCEPTOR, useClass: EscopoInterceptor },
   ],
 })
 export class AppModule {}

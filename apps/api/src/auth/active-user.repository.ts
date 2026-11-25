@@ -32,14 +32,39 @@ export class ActiveUserRepository {
    * troca, na virada do segundo, era recusado. O custo é um token emitido até 1 s antes da troca continuar valendo.
    */
   async isActive(userId: string, tokenIat: number): Promise<boolean> {
-    const { rowCount } = await this.pool.query(
-      `select 1 from users u
+    return (await this.situacao(userId, tokenIat)) !== null;
+  }
+
+  /**
+   * Mesma checagem de `isActive`, devolvendo também se a pessoa vê só parte da frota — o `AuthGuard` faz uma consulta só
+   * para quem vê tudo (o caso comum) e a segunda (`ativosVisiveis`) só para quem é restrito. Admin nunca é restrito.
+   */
+  async situacao(userId: string, tokenIat: number): Promise<{ escopoRestrito: boolean } | null> {
+    const { rows } = await this.pool.query<{ escopo_restrito: boolean }>(
+      `select u.escopo_restrito and u.role <> 'admin' as escopo_restrito from users u
          left join contratos c on c.client_id = u.client_id
-        where u.id = $1 and u.desativado_em is null and (c.status is null or c.status not in ('suspenso', 'cancelado'))
+        where u.id = $1 and u.desativado_em is null and u.excluido_em is null and (c.status is null or c.status not in ('suspenso', 'cancelado'))
           and to_timestamp($2) + ${TOLERANCIA_RELOGIO} >= date_trunc('second', u.senha_alterada_em)`,
       [userId, tokenIat],
     );
-    return (rowCount ?? 0) > 0;
+    return rows[0] ? { escopoRestrito: rows[0].escopo_restrito } : null;
+  }
+
+  /**
+   * Veículos que um usuário restrito vê (migration 1794490000000): está num grupo marcado, OU numa operação marcada,
+   * OU — com "sem grupo/operação" — não está em grupo nenhum e não tem operação. Inclui ativos inativos (o
+   * histórico deles continua do escopo de quem os via).
+   */
+  async ativosVisiveis(clientId: string, userId: string): Promise<string[]> {
+    const { rows } = await this.pool.query<{ id: string }>(
+      `select a.id from assets a join users u on u.id = $2 and u.client_id = a.client_id
+        where a.client_id = $1 and (
+          exists (select 1 from asset_group_members m join user_escopo_grupos ug on ug.group_id = m.group_id and ug.user_id = u.id where m.asset_id = a.id)
+          or exists (select 1 from user_escopo_operacoes uo where uo.user_id = u.id and uo.operacao_id = a.operacao_id)
+          or (u.escopo_sem_grupo and a.operacao_id is null and not exists (select 1 from asset_group_members m where m.asset_id = a.id)))`,
+      [clientId, userId],
+    );
+    return rows.map((r) => r.id);
   }
 
   /** Para o login: o cliente está com o contrato suspenso/cancelado? */
@@ -62,6 +87,15 @@ export class ActiveUserRepository {
       [clientId],
     );
     return rows[0] ? { modules: rows[0].modulos, blockedPages: rows[0].paginas_bloqueadas } : { modules: null, blockedPages: [] };
+  }
+
+  /**
+   * E-mail e usuário da própria conta, para o perfil (Minha conta). `email` nulo = nasceu por nome de usuário e ainda não
+   * confirmou um e-mail — o front pede no primeiro acesso.
+   */
+  async conta(userId: string): Promise<{ email: string | null; usuario: string | null }> {
+    const { rows } = await this.pool.query<{ email: string | null; username: string | null }>('select email, username from users where id = $1', [userId]);
+    return { email: rows[0]?.email ?? null, usuario: rows[0]?.username ?? null };
   }
 
   /** Superadmin removido perde o acesso na hora, não só quando o token de 8h expirar. */

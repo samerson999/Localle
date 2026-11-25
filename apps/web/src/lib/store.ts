@@ -56,6 +56,10 @@ export const useStore = create<Store>()(
       session: null,
       // chaves de permissão do perfil logado (lib/permissoes.ts); null = ainda não carregou
       permissoes: null,
+      // conta criada por usuário, ainda sem e-mail: o Layout pede no primeiro acesso (components/PrimeiroAcessoEmail.tsx)
+      precisaEmail: false,
+      // e-mail e usuário da conta logada (GET /auth/acessos). `session.email` é o que foi digitado no login — pode ser o usuário
+      conta: null,
       upsert: (c, item) => {
         const it = item.id ? item : { ...item, id: uid(c.slice(0, 2)) };
         set((s: any) => {

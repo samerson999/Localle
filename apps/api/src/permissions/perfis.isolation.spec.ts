@@ -3,10 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AuditLogRepository } from '../audit/audit-log.repository';
-import { ActiveUserRepository } from '../auth/active-user.repository';
-import { ClientsRepository } from '../clients/clients.repository';
-import { ConvitesService } from '../convites/convites.service';
-import type { MailService } from '../mail/mail.service';
 import { UsersRepository } from '../users/users.repository';
 import { UsersService } from '../users/users.service';
 import { PerfisRepository } from './perfis.repository';
@@ -27,8 +23,7 @@ describe('Perfis de acesso — resolução, isolamento e troca de perfil', () =>
   const perfis = new PerfisService(perfisRepo, rolesRepo, audit, pool);
   const permissions = new PermissionsService(rolesRepo, perfisRepo, audit, pool);
   const usersRepo = new UsersRepository(pool);
-  const semEmail = { send: async () => false } as unknown as MailService;
-  const users = new UsersService(usersRepo, audit, new ClientsRepository(pool), new ConvitesService(pool, semEmail, new ActiveUserRepository(pool), audit), pool);
+  const users = new UsersService(usersRepo, audit, pool);
 
   let clientA: string;
   let clientB: string;

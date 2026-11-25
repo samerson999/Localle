@@ -8,6 +8,7 @@ import ContaTela, { AvatarVidro } from './ContaTela';
 import { Icon, type IconName } from './icons';
 import { OdometerAsk } from './RemoteBits';
 import { useRastreioSync } from '../lib/rastreioApi';
+import { PrimeiroAcessoEmail } from './PrimeiroAcessoEmail';
 import { lerAvatar, logout, syncFrota, syncModulos, useLocalle, useLocalleSync } from '../lib/localleApi';
 import { useMaintJobs } from '../lib/maintJobs';
 import NeedsPanel from './NeedsPanel';
@@ -131,6 +132,7 @@ function LayoutBody() {
   const nav = useNavigate();
   const loc = useLocation();
   const session = useStore((s) => s.session)!;
+  const precisaEmail = useStore((s) => s.precisaEmail);
   // direção da troca de tela (base.css › .tela-entra/.tela-volta): POP é o voltar do aparelho/navegador; a primeira
   // carga também chega como POP, mas entra como ida. Decidida só quando a rota muda: o voltar da Conta (pushState próprio)
   // é um POP na mesma rota, e trocar a classe ali reanimaria a tela de baixo
@@ -302,6 +304,9 @@ function LayoutBody() {
     </button>
     </Tooltip>
   );
+
+  // conta criada por usuário no Setup, ainda sem e-mail: pede antes de abrir o sistema
+  if (precisaEmail) return <PrimeiroAcessoEmail />;
 
   return (
     <MobileActionCtx.Provider value={{ action: mobileAction, set: setMobileAction }}>

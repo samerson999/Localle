@@ -17,7 +17,7 @@ const clientId = existing[0]?.id ?? (await pool.query(
 const passwordHash = await bcrypt.hash(password, 10);
 await pool.query(
   `insert into users (client_id, email, password_hash, role) values ($1, $2, $3, 'admin')
-   on conflict (email) do update set password_hash = excluded.password_hash`,
+   on conflict (email) where excluido_em is null do update set password_hash = excluded.password_hash`,
   [clientId, email, passwordHash],
 );
 

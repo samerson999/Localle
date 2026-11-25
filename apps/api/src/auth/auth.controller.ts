@@ -64,12 +64,15 @@ export class AuthController {
   @Get('acessos')
   async acessos(@Req() req: { auth: RequestAuth }) {
     if (!req.auth.clientId) throw new ForbiddenException('Rota de usuário de cliente');
-    const [contrato, permissoes] = await Promise.all([
+    const [contrato, permissoes, conta] = await Promise.all([
       this.activeUsers.acessosDoCliente(req.auth.clientId),
       this.permissions.permissoesDoUsuario(req.auth.clientId, req.auth.userId),
+      this.activeUsers.conta(req.auth.userId),
     ]);
-    // permissões do perfil de quem está logado: o front esconde tela e botão; a API continua decidindo (PermissionsGuard)
-    return { ...contrato, permissoes };
+    // permissões do perfil de quem está logado: o front esconde tela e botão; a API continua decidindo (PermissionsGuard).
+    // conta: e-mail e usuário para o perfil; precisaEmail: conta criada por usuário, sem e-mail — o front pede
+    // (src/users/email-conta.service.ts)
+    return { ...contrato, permissoes, conta, precisaEmail: conta.email === null };
   }
 
   /** Logado: troca exige a senha atual. */

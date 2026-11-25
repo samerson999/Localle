@@ -4,6 +4,7 @@ import { ActiveUserRepository } from '../auth/active-user.repository';
 import { ClientId } from '../clients/client-id.decorator';
 import { CurrentSessionStart, CurrentUserId } from '../clients/current-role.decorator';
 import { parseDate } from '../common/parse-date';
+import { AtivosVisiveis } from '../escopo/ativos-visiveis.decorator';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RequirePermission } from '../permissions/require-permission.decorator';
@@ -38,6 +39,7 @@ export class RealtimeController {
     @ClientId() clientId: string,
     @CurrentUserId() userId: string,
     @CurrentSessionStart() sessionStart: number,
+    @AtivosVisiveis() ativos: ReadonlySet<string> | null,
     @Query('since') since?: string,
   ): Observable<MessageEvent> {
     const sinceDate = since ? parseDate('since', since) : null;
@@ -48,7 +50,12 @@ export class RealtimeController {
       filter((autorizado) => !autorizado),
     );
     return merge(
-      this.stream.open(clientId, sinceDate).pipe(map((data) => ({ data }))),
+      // escopo do usuário (src/escopo): a mensagem isolada não passa pelo filtro de listas do interceptor. Fica o escopo
+      // da abertura; mudou, vale na próxima reconexão.
+      this.stream.open(clientId, sinceDate).pipe(
+        filter((m) => !ativos || !('assetId' in m) || m.assetId === null || ativos.has(m.assetId)),
+        map((data) => ({ data })),
+      ),
       heartbeat.pipe(map(() => ({ type: 'ping', data: '' }))),
     ).pipe(takeUntil(revogado));
   }

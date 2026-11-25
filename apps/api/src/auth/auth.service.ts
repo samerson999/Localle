@@ -14,12 +14,13 @@ export class AuthService {
     private readonly activeUsers: ActiveUserRepository,
   ) {}
 
-  async login(email: unknown, password: unknown): Promise<{ accessToken: string }> {
+  /** `login`: e-mail ou nome de usuário (equipe criada pelo admin no Setup, 25/11/2026). */
+  async login(login: unknown, password: unknown): Promise<{ accessToken: string }> {
     // sem ValidationPipe global: corpo sem string aqui fazia o bcrypt lançar (500) — mesma resposta genérica
-    if (typeof email !== 'string' || typeof password !== 'string') {
+    if (typeof login !== 'string' || typeof password !== 'string' || login.length > 254) {
       throw new UnauthorizedException('E-mail ou senha inválidos');
     }
-    const user = await this.users.findByEmail(email);
+    const user = await this.users.findByLogin(login);
     // e-mail inexistente também paga o custo do bcrypt: o tempo de resposta não revela quem existe
     const valid = await bcrypt.compare(password, user?.password_hash ?? HASH_FICTICIO);
     if (!user || !valid || user.desativado_em) {

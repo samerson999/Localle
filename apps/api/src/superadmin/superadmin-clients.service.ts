@@ -53,7 +53,7 @@ export class SuperadminClientsService {
         return { client: created, admin };
       }),
     );
-    const entrega = result.admin ? await this.convites.entregar(result.admin.user.email, result.client.name, result.admin.token) : { conviteEnviado: false, codigo: null };
+    const entrega = result.admin ? await this.convites.entregar(result.admin.user.email!, result.client.name, result.admin.token) : { conviteEnviado: false, codigo: null };
     this.logger.log(`cliente criado client_id=${result.client.id} por superadmin=${superadminId} admin_inicial=${result.admin?.user.id ?? 'nenhum'}`);
     return { client: result.client, admin: result.admin?.user ?? null, ...entrega };
   }
@@ -64,7 +64,7 @@ export class SuperadminClientsService {
     const { user, token } = await this.emailUnico(() =>
       withTransaction(this.pool, (tx) => this.insertAdmin(tx, superadminId, clientId, data.email)),
     );
-    const entrega = await this.convites.entregar(user.email, client.name, token);
+    const entrega = await this.convites.entregar(user.email!, client.name, token);
     this.logger.log(`admin inicial convidado user_id=${user.id} client_id=${clientId} por superadmin=${superadminId}`);
     return { user, ...entrega };
   }
@@ -75,6 +75,8 @@ export class SuperadminClientsService {
     const user = client ? await this.users.findOneByClient(clientId, userId) : null;
     if (!client || !user) throw new NotFoundException('Usuário não encontrado');
     if (user.password_hash) throw new BadRequestException('Usuário já definiu a senha — o convite não se aplica mais');
+    const email = user.email;
+    if (!email) throw new BadRequestException('Usuário sem e-mail — defina uma senha para ele');
     const token = await withTransaction(this.pool, async (tx) => {
       const t = await this.convites.emitir(tx, { userId, clientId, criadoPor: superadminId });
       await this.audit.record(
@@ -83,14 +85,14 @@ export class SuperadminClientsService {
       );
       return t;
     });
-    return this.convites.entregar(user.email, client.name, token);
+    return this.convites.entregar(email, client.name, token);
   }
 
   /** Usuários do cliente para o Console — nunca devolve `password_hash`. */
   async listarUsuarios(clientId: string) {
     if (!(await this.clients.findById(clientId))) throw new NotFoundException('Cliente não encontrado');
     const users = await this.users.findManyByClient(clientId);
-    return users.map((u) => ({ id: u.id, email: u.email, role: u.role, ativo: u.desativado_em === null, pendente: u.password_hash === null }));
+    return users.map((u) => ({ id: u.id, email: u.email ?? u.username, role: u.role, ativo: u.desativado_em === null, pendente: u.password_hash === null }));
   }
 
   /**
