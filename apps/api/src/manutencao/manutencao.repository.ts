@@ -152,6 +152,22 @@ export class ManutencaoRepository {
     return rows;
   }
 
+  /** API pública: ordens de serviço abertas no período, mais recentes primeiro, keyset por (aberta_em em milissegundos, id). */
+  async osParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; assetId: string | null; abertas: boolean; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<OsRow[]> {
+    const { rows } = await this.pool.query<OsRow>(
+      `select * from ordens_servico
+        where client_id = $1 and aberta_em >= $2 and aberta_em <= $3 and ($4::uuid is null or asset_id = $4)
+          and (not $5 or status not in ('concluida', 'cancelada'))
+          and ($6::timestamptz is null or (date_trunc('milliseconds', aberta_em), id) < ($6, $7::uuid))
+        order by date_trunc('milliseconds', aberta_em) desc, id desc limit $8`,
+      [clientId, f.de, f.ate, f.assetId, f.abertas, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
+
   async buscarOs(clientId: string, id: string): Promise<OsRow | null> {
     const { rows } = await this.pool.query<OsRow>('select * from ordens_servico where client_id = $1 and id = $2', [clientId, id]);
     return rows[0] ?? null;

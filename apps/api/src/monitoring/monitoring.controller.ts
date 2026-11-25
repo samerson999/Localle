@@ -8,13 +8,13 @@ import { lerTelemetriaComIdade, mapeamentoDaLinha } from '../telemetria/leitura'
 import { comunicacaoDaLinha } from './comunicacao-status';
 import type { EventosQueryDto } from './dto/eventos-query.dto';
 import type { HistoryQueryDto } from './dto/history-query.dto';
+import { FUSO_OPERACAO } from './fuso-operacao';
 import { MonitoringRepository } from './monitoring.repository';
 
 // Limita o custo da consulta (o `limit` só corta a resposta, não o scan em `eventos`/`posicoes`).
 const PERIODO_MAX_DIAS = 93;
 // Resumo de uso da Home: hoje + 7 dias anteriores, no fuso da operação (mesmo do faturamento, contratos.repository).
 const RESUMO_DIAS = 7;
-const FUSO_OPERACAO = 'America/Recife';
 
 @Controller('monitoring')
 @UseGuards(PermissionsGuard)

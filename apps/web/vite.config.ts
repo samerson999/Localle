@@ -23,6 +23,12 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       rewrite: (p: string) => p.replace(/^\/api-localle/, ''),
     },
+    // API pública de consulta (docs/PLANO-API-PUBLICA.md): /api/v1/... vai para /v1/... da API, como no nginx.conf
+    '/api/v1': {
+      target: env.LOCALLE_API_URL || 'http://localhost:3000',
+      changeOrigin: true,
+      rewrite: (p: string) => p.replace(/^\/api\/v1/, '/v1'),
+    },
   });
   return {
     plugins: [react(), Icons({ compiler: 'jsx', jsx: 'react' })],

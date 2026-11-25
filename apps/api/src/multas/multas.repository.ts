@@ -62,6 +62,20 @@ export class MultasRepository extends BaseRepository<MultaRow> {
     return rows;
   }
 
+  /** API pública: multas pela data da infração, mais recentes primeiro, keyset por (ts em milissegundos, id). */
+  async paginaParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; assetId: string | null; motoristaId: string | null; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<MultaRow[]> {
+    const { rows } = await this.pool.query<MultaRow>(
+      `${SELECT} where client_id = $1 and ts >= $2 and ts <= $3 and ($4::uuid is null or asset_id = $4) and ($5::uuid is null or motorista_id = $5)
+          and ($6::timestamptz is null or (date_trunc('milliseconds', ts), id) < ($6, $7::uuid))
+        order by date_trunc('milliseconds', ts) desc, id desc limit $8`,
+      [clientId, f.de, f.ate, f.assetId, f.motoristaId, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
+
   async buscar(clientId: string, id: string): Promise<MultaRow | null> {
     const { rows } = await this.pool.query<MultaRow>(`${SELECT} where client_id = $1 and id = $2`, [clientId, id]);
     return rows[0] ?? null;

@@ -79,6 +79,21 @@ export class RankingRepository {
     return rows;
   }
 
+  /** API pública: eventos do ranking no período em ordem de tempo, keyset por (ts em milissegundos, id). */
+  async eventosParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; motoristaId: string | null; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<EventoRow[]> {
+    const { rows } = await this.pool.query<EventoRow>(
+      `select * from ranking_eventos
+        where client_id = $1 and ts >= $2 and ts <= $3 and ($4::uuid is null or motorista_id = $4)
+          and ($5::timestamptz is null or (date_trunc('milliseconds', ts), id) > ($5, $6::uuid))
+        order by date_trunc('milliseconds', ts), id limit $7`,
+      [clientId, f.de, f.ate, f.motoristaId, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
+
   /** Motorista (e ativo, se houver) precisam ser do cliente. */
   async criarEvento(clientId: string, e: EventoInput): Promise<EventoRow | null> {
     const { rows } = await this.pool.query<EventoRow>(

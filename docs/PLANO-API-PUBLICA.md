@@ -1,6 +1,9 @@
 # Plano — API pública de consulta (REST, Swagger, chaves de acesso)
 
-Status: **proposto em 23/11/2026**, nada implementado. Decisões do usuário em 23/11 registradas na § 9.
+Status: decisões de 23/11/2026 na § 9. **Fases 0 a 3 implementadas em 23/11** (sem commit): as 42 rotas do catálogo
+(§ 4.1), chaves de cliente e mestra, Swagger. Pendentes: `security-review` e configuração da HML (§ 10). Desvios em
+relação ao texto abaixo: limite no Redis (§ 5); sem `api_uso_diario` e sem `codigoExterno` por enquanto; pontuação de CNH
+em `/multas/pontuacao-cnh` (em `/motoristas/...` colidia com `motoristas/{id}`); percurso no escopo `relatorios`.
 
 ## 1. Objetivo
 
@@ -35,10 +38,11 @@ clientes: cada chave pertence a **um** `client_id` (o isolamento multi-tenant co
 
 ### 3.2 Formato e armazenamento
 
-- Chave: `lcl_live_<32 bytes aleatórios em base62>`; `lcl_test_` para o sandbox (§ 7). O prefixo é reconhecido
-  por scanners de segredo (GitHub etc.).
-- No banco só o **hash SHA-256** e os 8 primeiros caracteres (para reconhecer qual é qual). A chave completa
-  aparece **uma vez**, na criação. SHA-256 sem salt basta: 256 bits de entropia, não é senha.
+- Chave (decisão de 24/11/2026): **64 caracteres** sorteados entre letras, números e os símbolos `! # % * + - . = @ ^ _ ~`
+  (fora `$`, `&`, aspas, barra, dois-pontos e espaço, que quebram cabeçalho ou linha de comando) — ≈ 397 bits. Sem
+  prefixo: a autenticação procura o hash nas chaves de cliente e depois nas mestras.
+- No banco só o **hash SHA-256** e os 6 primeiros caracteres (para reconhecer qual é qual). A chave completa
+  aparece **uma vez**, na geração ou no reset. SHA-256 sem salt basta: não é senha.
 - Migration nova `api_chaves`:
 
   | coluna | |
@@ -58,7 +62,7 @@ clientes: cada chave pertence a **um** `client_id` (o isolamento multi-tenant co
 
 ### 3.3 Guard
 
-- Header **`Authorization: Bearer lcl_live_...`**.
+- Header **`Authorization: Bearer <chave de 64 caracteres>`**.
 - Novo `ApiChaveGuard` aplicado só às controllers `/v1` (decorator `@ApiPublica()`), que:
   1. resolve a chave pelo hash, recusa revogada/expirada — sempre `401` genérico;
   2. recusa cliente com contrato em `BLOCKED_STATUSES` (`401`) e módulo fora do contrato (`403`), reaproveitando
@@ -83,17 +87,20 @@ Só dá para marcar escopo de módulo contratado; se o módulo sair do contrato,
 
 ### 3.5 Gestão das chaves (tela)
 
-- **Setup do gestor** (`/setup`), aba "API", com permissão nova `api.gerir_chaves` (padrão: só admin do cliente).
-- Criar (nome, escopos, validade opcional) → mostra a chave uma vez, com copiar; listar (prefixo, escopos, último
-  uso, criada por); revogar; rotacionar (nova chave, a antiga vale mais 7 dias).
-- Tudo em `audit`. E-mail ao admin quando uma chave é criada.
+- **Só no Console da Localle** (decisão de 24/11/2026; antes ficava no Setup do cliente): `/locale/api`, aba "Chaves
+  dos clientes", rotas `/superadmin/api-chaves`. O cliente não gera nem vê chaves.
+- Gerar vinculada a um cliente (cliente, nome, escopos do contrato dele, validade opcional) → mostra a chave uma vez,
+  com copiar; listar (todas ou por cliente: início, escopos, último uso, quem gerou); **resetar** (valor novo na mesma
+  chave, mesmos escopos e validade — o anterior para na hora); revogar.
+- Tudo em `audit`. E-mail aos admins do cliente quando uma chave é gerada.
 - Máximo de 10 chaves ativas por cliente.
 
 ### 3.6 Chave mestra (admin da Localle)
 
 Para a equipe da Localle consultar qualquer cliente pela API.
 
-- Emitida **só pelo superadmin**, no Console da Localle; prefixo `lcl_master_`; tabela própria
+- Emitida **só pelo superadmin**, no Console da Localle (`/locale/api`, aba "Chaves mestras"); mesmo formato de 64
+  caracteres, com reset; tabela própria
   `api_chaves_mestras` (mesmas colunas de `api_chaves`, **sem** `client_id`, mais `ips_permitidos cidr[] not null`).
 - O cliente vem **do caminho**, nunca de header/corpo — mesmo padrão do superadmin hoje (`auth.guard.ts`):
   `GET /v1/clientes` lista os clientes; `GET /v1/clientes/{clientId}/veiculos`, `.../posicoes/ultimas` etc. espelham
@@ -113,7 +120,7 @@ Para a equipe da Localle consultar qualquer cliente pela API.
 
 - **JSON**, campos em `camelCase` **em português** (`placa`, `ignicao`, `velocidadeKmh`, `dataHora`), datas ISO 8601
   UTC, km, km/h, `latitude`/`longitude` decimais.
-- **IDs**: os uuid internos. Filtros por `?placa=` e, quando existir, `?codigoExterno=` (campo opcional novo em
+- **IDs**: os uuid internos. Filtros por `?placa=`, `?identificador=` (código interno do ativo) e, quando existir, `?codigoExterno=` (campo opcional novo em
   veículo/motorista, preenchido na tela, para casar com o ERP).
 - **Paginação por cursor**: `?limite=100&cursor=...` → `{ dados: [], proximoCursor }`. Nada de `offset` (hypertables
   grandes).
@@ -155,7 +162,7 @@ equivalente de consulta. Todas sob `app.lclfleet.com/api/v1`; "fonte" é o servi
 |---|---|---|---|
 | `GET /posicoes/ultimas` | `posicoes` | última posição, ignição, velocidade, status de cada veículo | `monitoring/current` |
 | `GET /veiculos/{id}/posicoes` | `posicoes` | histórico de posições (máx. 7 dias) | `monitoring/.../history` |
-| `GET /veiculos/{id}/percurso` | `posicoes` | trajeto simplificado do período, com paradas | `reports/percurso` |
+| `GET /veiculos/{id}/percurso` | `relatorios` | resumo do percurso do período (distância, tempos, paradas) | `reports/percurso` |
 | `GET /eventos` | `eventos` | eventos do rastreador (ignição, SOS, bateria, CAN…) | `monitoring/events` |
 | `GET /alertas`, `/alertas/{id}` | `alertas` | ocorrências e avisos, situação e tratativa | `alertas` |
 | `GET /comandos` | `comandos` | histórico de comandos enviados (bloqueio etc.) e resultado | `comandos` |
@@ -205,7 +212,7 @@ equivalente de consulta. Todas sob `app.lclfleet.com/api/v1`; "fonte" é o servi
 |---|---|---|
 | `GET /multas`, `/multas/{id}` | infrações, valor, situação | `multas` |
 | `GET /multas/indicacoes` | indicações de condutor | `multas/indicacoes` |
-| `GET /motoristas/pontuacao-cnh` | pontos e risco de suspensão da CNH | `multas/cnh-risco` |
+| `GET /multas/pontuacao-cnh` | pontos e risco de suspensão da CNH | `multas/cnh-risco` |
 
 **Manutenção** — escopo `manutencao`, módulo `manutencao`
 
@@ -229,7 +236,17 @@ equivalente de consulta. Todas sob `app.lclfleet.com/api/v1`; "fonte" é o servi
 | `GET /pneus`, `/pneus/{id}` | pneus, posição atual, sulco, vida | `pneus` |
 | `GET /pneus/movimentos`, `/pneus/{id}/movimentos` | montagens, rodízios, recapagens | `pneus/movimentos` |
 
-São **~50 rotas**. Ficam de fora de propósito: usuários, perfis e permissões; configurações do Setup; notificações
+Regras comuns às rotas acima (implementadas):
+
+- **Listas de cadastro** (veículos à parte, que pagina) vêm inteiras numa página, com `proximoCursor: null`.
+- **Séries temporais** exigem `de`/`ate` e paginam por cursor; janela de 31 dias, exceto posições de um veículo (7 dias).
+- **Relatórios por veículo** (`quilometragem`, `excessos-velocidade`, `paradas`, percurso) exigem `veiculoId` do cliente.
+- **Relatórios da frota** (`velocidade`, `cercas`, `passou-por-aqui`) aceitam `veiculoIds` (até 50) com 31 dias, ou a
+  frota toda com no máximo 7 dias — o cálculo é ponto a ponto.
+- Fora do contrato por segurança: o código do cartão do motorista (`temCartao` no lugar) e as fotos do checklist
+  (`temFoto` no lugar).
+
+São **42 rotas** (52 caminhos no Swagger, contando as de `{id}`). Ficam de fora de propósito: usuários, perfis e permissões; configurações do Setup; notificações
 e avatar; links de localização compartilhada; arquivos de relatório gerados; tudo de `superadmin/` (contratos,
 faturamento, Traccar, conciliação).
 
@@ -249,10 +266,10 @@ faturamento, Traccar, conciliação).
 Excedeu → `429` com `Retry-After`. Os números ficam no registro `setting-definitions.ts` (camada plataforma),
 ajustáveis sem deploy de código quando um cliente precisar de mais.
 
-Implementação: token bucket **em memória** (a API roda em uma instância e não há Redis; a fila é no Postgres),
-atrás de uma interface `LimitadorDeTaxa` para trocar por contador no Postgres quando houver 2+ instâncias. Tabela
-`api_uso_diario (client_id, chave_id, dia, requisicoes, erros)` gravada em lote a cada minuto — base para o limite
-diário e para enxergar uso no Painel da Localle.
+Implementação (fase 0): janela fixa por minuto e por dia num contador do **Redis** que a API já usa (tempo real) —
+`api-publica/auth/limitador.ts`; vale com várias instâncias. Os números estão em código (`LIMITES`), ainda não no
+registro de `setting-definitions.ts`. A tabela `api_uso_diario` (uso por chave e dia, base para cobrança e para o
+Painel) fica para quando a cobrança for decidida; até lá o contador diário vive só no Redis.
 
 ## 6. Swagger / OpenAPI
 
@@ -260,7 +277,7 @@ diário e para enxergar uso no Painel da Localle.
   tipos TypeScript dos DTOs; descrições e exemplos em JSDoc (`introspectComments`).
 - **Só as controllers `/v1`** entram no documento (`include: [ApiPublicaModule]`).
 - **Nenhuma referência à chave mestra** (decisão 23/11): os caminhos `/v1/clientes/...`, a rota `GET /v1/clientes`,
-  o prefixo `lcl_master_` e as controllers de gestão de chaves mestras ficam fora do documento (`@ApiExcludeEndpoint`
+  e as controllers de gestão de chaves mestras ficam fora do documento (`@ApiExcludeEndpoint`
   no caminho mestre e `@ApiExcludeController` na gestão). Teste: o `openapi-v1.json` não contém `clientes`,
   `master` nem `mestra`.
 - Servido em `app.lclfleet.com/api/v1/docs` (UI) e `/api/v1/openapi.json`. Página neutra, sem marca obrigatória
@@ -269,26 +286,19 @@ diário e para enxergar uso no Painel da Localle.
   teste falha — mudança de contrato vira revisão explícita.
 - Guia curto de primeiros passos no próprio Swagger: gerar chave → `curl` → paginação → limites → erros.
 
-## 7. Sandbox
+## 7. Ambiente de testes para o integrador
 
-Para o integrador desenvolver sem tocar dados reais:
-
-- Um **cliente de sandbox** por ambiente, com frota fictícia (veículos, motoristas e um gerador de posições/
-  eventos que alimenta o banco como se viesse do Traccar), isolado como qualquer outro cliente.
-- Chaves `lcl_test_` só autenticam nesse cliente; `lcl_live_` nunca autentica nele.
-- O gestor gera a chave de teste na mesma aba "API" do Setup.
-- Os dados fictícios ficam **só na API pública**: não aparecem no front de nenhum cliente real (coerente com a
-  decisão de 28/10 de não ter modo demo no front).
+Sem sandbox (decisão 23/11): a API só consulta, então o integrador desenvolve com uma chave real do cliente,
+de poucos escopos e validade curta, e o cliente a revoga ao trocar pela definitiva.
 
 ## 8. Fases
 
 | Fase | Entrega | Testes |
 |---|---|---|
-| **0 — Fundação** | migration `api_chaves` e `api_uso_diario`; repository via `BaseRepository`; `ApiChaveGuard` + `@ApiPublica()`; limitador; `X-Request-Id`; permissão `api.gerir_chaves`; aba "API" no Setup; audit; Swagger; rota `/api/v1` no proxy do web; **chave mestra** (§ 3.6): migration `api_chaves_mestras`, tela no Console, rotas `/v1/clientes/{clientId}/...`, auditoria por requisição | chave mestra: IP fora da lista → 401; sem validade → recusada na criação; chave de cliente em `/v1/clientes/...` → 401; só superadmin cria/revoga; toda consulta gera linha de auditoria; isolamento (chave de A não lê nada de B; admin de A não lista/revoga chave de B); chave revogada/expirada/errada → 401; JWT em `/v1` → 401; chave em rota interna → 401; método ≠ GET → 405; módulo fora do contrato → 403; escopo faltando → 403; contrato suspenso → 401; 429 no limite; E2E da aba "API" |
+| **0 — Fundação** | migration `api_chaves` e `api_uso_diario`; repository via `BaseRepository`; `ApiChaveGuard` + `@ApiPublica()`; limitador; `X-Request-Id`; aba "API" no Console (chaves dos clientes e mestras, 24/11); audit; Swagger; rota `/api/v1` no proxy do web; **chave mestra** (§ 3.6): migration `api_chaves_mestras`, tela no Console, rotas `/v1/clientes/{clientId}/...`, auditoria por requisição | chave mestra: IP fora da lista → 401; sem validade → recusada na criação; chave de cliente em `/v1/clientes/...` → 401; só superadmin cria/revoga; toda consulta gera linha de auditoria; isolamento (chave de A não lê nada de B; admin de A não lista/revoga chave de B); chave revogada/expirada/errada → 401; JWT em `/v1` → 401; chave em rota interna → 401; método ≠ GET → 405; módulo fora do contrato → 403; escopo faltando → 403; contrato suspenso → 401; 429 no limite; E2E do Console › API |
 | **1 — Frota, cercas e telemetria** | § 4.1: frota e cadastros, cercas e regras, telemetria (posições, percurso, eventos, alertas, comandos) | integração contra o Postgres local por rota; cursor estável; janela acima do limite → 400; snapshot do `openapi-v1.json` |
 | **2 — Relatórios e operação** | § 4.1: relatórios, viagens, jornada, ranking | idem |
 | **3 — Módulos de custo** | § 4.1: combustível, multas, manutenção, checklist, pneus | idem |
-| **4 — Sandbox** | cliente de sandbox, gerador de dados, chaves `lcl_test_` | `lcl_test_` não lê cliente real e vice-versa |
 | Futuro | webhooks de saída (avisos ao sistema do cliente, com HMAC e bloqueio SSRF); limite por contrato; cobrança | — |
 
 Cada fase com `security-review` e `pentester-isolamento`/`pentester-input` antes de dar como concluída
@@ -305,7 +315,7 @@ Cada fase com `security-review` e `pentester-isolamento`/`pentester-input` antes
 | 4 | Limites | Os da § 5 |
 | 5 | Lista de IPs | Não, por enquanto |
 | 6 | Idioma dos campos | Português |
-| 7 | Sandbox | Sim (§ 7) |
+| 7 | Sandbox | Não — integrador usa chave real de escopo restrito (§ 7) |
 | 8 | Chave mestra da Localle | Sim, na fase 0 (§ 3.6) |
 | 9 | Cliente vê que a Localle o consultou pela chave mestra? | Não — a auditoria da chave mestra fica só no Console da Localle |
 | 10 | Chave mestra no Swagger | Nenhuma referência (§ 6) |

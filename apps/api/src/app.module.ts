@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/http-exception.filter';
+import { ApiPublicaModule } from './api-publica/api-publica.module';
 import { AssetsModule } from './assets/assets.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthGuard } from './auth/auth.guard';
@@ -88,6 +89,7 @@ import { ViagensModule } from './viagens/viagens.module';
     PainelModule,
     UsersModule,
     AvatarModule,
+    ApiPublicaModule,
   ],
   controllers: [HealthController],
   // AuthGuard global (achado #1 da auditoria de 23/10/2026) — fail-closed por padrão, ver auth/auth.guard.ts.

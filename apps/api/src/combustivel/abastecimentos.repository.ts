@@ -57,6 +57,21 @@ export class AbastecimentosRepository extends BaseRepository<AbastecimentoRow> {
     return rows;
   }
 
+  /** API pública: abastecimentos do período, mais recentes primeiro, keyset por (ts em milissegundos, id). */
+  async paginaParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; assetId: string | null; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<AbastecimentoRow[]> {
+    const { rows } = await this.pool.query<AbastecimentoRow>(
+      `select * from abastecimentos
+        where client_id = $1 and ts >= $2 and ts <= $3 and ($4::uuid is null or asset_id = $4)
+          and ($5::timestamptz is null or (date_trunc('milliseconds', ts), id) < ($5, $6::uuid))
+        order by date_trunc('milliseconds', ts) desc, id desc limit $7`,
+      [clientId, f.de, f.ate, f.assetId, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
+
   /** Último odômetro lançado antes de `ts` para o ativo — detecta salto de km suspeito. */
   async odometroAnterior(clientId: string, assetId: string, ts: Date, exceto: string | null = null): Promise<number | null> {
     const { rows } = await this.pool.query<{ odometro: string }>(

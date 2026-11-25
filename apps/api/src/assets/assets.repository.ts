@@ -4,9 +4,41 @@ import { isPgError, PG_CHECK_VIOLATION, PG_FOREIGN_KEY_VIOLATION } from '../db/p
 import type { AssetEntity } from './asset.entity';
 import type { UpdateAssetData } from './dto/update-asset.dto';
 
+/** Linha da listagem da API pública: o ativo com marca/modelo do catálogo e os grupos. */
+export type AssetParaApi = AssetEntity & { marca_nome: string | null; modelo_nome: string | null; grupo_ids: string[] };
+
 @Injectable()
 export class AssetsRepository extends BaseRepository<AssetEntity> {
   protected readonly table = 'assets';
+
+  /**
+   * Página da API pública (docs/PLANO-API-PUBLICA.md § 4): ordem estável por (rótulo, id), cursor keyset — nunca offset.
+   * Devolve `limite + 1` linhas para quem monta a página saber se há próxima.
+   */
+  async paginaParaApi(
+    clientId: string,
+    f: { limite: number; apos: { rotulo: string; id: string } | null; incluirInativos: boolean; placa?: string; identificador?: string; id?: string },
+  ): Promise<AssetParaApi[]> {
+    const { rows } = await this.pool.query<AssetParaApi>(
+      `select a.*, mc.nome as marca_nome, md.nome as modelo_nome,
+              coalesce((select array_agg(m.group_id order by m.group_id) from asset_group_members m
+                         join asset_groups g on g.id = m.group_id and g.client_id = a.client_id
+                        where m.asset_id = a.id), '{}') as grupo_ids
+         from assets a
+         left join ativo_modelos md on md.id = a.modelo_id and md.client_id = a.client_id
+         left join ativo_marcas mc on mc.id = md.marca_id and mc.client_id = a.client_id
+        where a.client_id = $1
+          and ($2 or a.status = 'ativo')
+          and ($3::text is null or upper(replace(a.plate, '-', '')) = upper(replace($3, '-', '')))
+          and ($4::text is null or a.identificador = $4)
+          and ($5::uuid is null or a.id = $5)
+          and ($6::text is null or (a.rotulo, a.id) > ($6, $7::uuid))
+        order by a.rotulo, a.id
+        limit $8`,
+      [clientId, f.incluirInativos, f.placa ?? null, f.identificador ?? null, f.id ?? null, f.apos?.rotulo ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
 
   /** `status_desde` só muda quando o status de fato muda — reenviar o mesmo status não reescreve a data. */
   async atualizar(

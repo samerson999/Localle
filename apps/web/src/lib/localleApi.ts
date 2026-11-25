@@ -131,7 +131,8 @@ export async function confirmarSenha(email: string, password: string): Promise<b
   return !!(await postLogin('/auth/login', email, password));
 }
 
-async function apiGet<T>(path: string): Promise<T> {
+/** Leitura autenticada da API (exportada para os arquivos de API por domínio, ex.: `apiChavesApi.ts`). */
+export async function apiGet<T>(path: string): Promise<T> {
   const r = await fetchOuErro(BASE + path, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (r.status === 401) { encerrarSessao(); throw new Error(MSG_SESSAO); }
   if (!r.ok) throw erroHttp(r.status, await r.json().catch(() => null));
@@ -201,7 +202,7 @@ export async function removerCerca(id: string) {
 }
 
 /** Escrita: devolve o corpo JSON; erro da API (400/409…) vira Error com a mensagem dela, para o toast. */
-async function apiSend<T>(method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+export async function apiSend<T>(method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
   const r = await fetchOuErro(BASE + path, {
     method,
     headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },

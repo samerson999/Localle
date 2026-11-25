@@ -107,6 +107,26 @@ export class ChecklistRepository {
     return (rowCount ?? 0) > 0;
   }
 
+  /** API pública: checklists finalizados no período, mais recentes primeiro, keyset por (finalizado_em em milissegundos, id). */
+  async respostasParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; modeloId: string | null; assetId: string | null; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<RespostaRow[]> {
+    const { rows } = await this.pool.query<RespostaRow>(
+      `select * from checklist_respostas
+        where client_id = $1 and finalizado_em >= $2 and finalizado_em <= $3 and ($4::uuid is null or modelo_id = $4) and ($5::uuid is null or asset_id = $5)
+          and ($6::timestamptz is null or (date_trunc('milliseconds', finalizado_em), id) < ($6, $7::uuid))
+        order by date_trunc('milliseconds', finalizado_em) desc, id desc limit $8`,
+      [clientId, f.de, f.ate, f.modeloId, f.assetId, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
+
+  async buscarResposta(clientId: string, id: string): Promise<RespostaRow | null> {
+    const { rows } = await this.pool.query<RespostaRow>('select * from checklist_respostas where client_id = $1 and id = $2', [clientId, id]);
+    return rows[0] ?? null;
+  }
+
   async listarRespostas(clientId: string, de: Date, ate: Date, modeloId: string | null): Promise<RespostaRow[]> {
     const { rows } = await this.pool.query<RespostaRow>(
       `select * from checklist_respostas where client_id = $1 and finalizado_em >= $2 and finalizado_em <= $3 and ($4::uuid is null or modelo_id = $4)

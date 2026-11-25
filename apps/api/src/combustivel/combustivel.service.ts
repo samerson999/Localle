@@ -70,7 +70,12 @@ export class CombustivelService {
 
   /** Lista com as divergências de cada lançamento (nota, km do rastreador, salto contra o anterior). */
   async listar(clientId: string, de: Date, ate: Date, assetId: string | null) {
-    const [t, linhas] = await Promise.all([this.tolerancias(clientId), this.repo.listar(clientId, de, ate, assetId)]);
+    return this.comDivergencias(clientId, await this.repo.listar(clientId, de, ate, assetId));
+  }
+
+  /** As divergências de cada lançamento já lido (também usado pela API pública, que lê por página). */
+  async comDivergencias(clientId: string, linhas: AbastecimentoRow[]) {
+    const t = await this.tolerancias(clientId);
     const out = [];
     for (const a of linhas) {
       const anterior = await this.repo.odometroAnterior(clientId, a.asset_id, a.ts, a.id);

@@ -233,6 +233,7 @@ function LayoutBody() {
       { key: 'locale-despesas', label: 'Despesas', to: '/locale/despesas', icon: 'dinheiro' },
       { key: 'locale-rastreadores', label: 'Rastreadores e chips', to: '/locale/rastreadores', icon: 'sinal' },
       { key: 'locale-alertas', label: 'Tipos de alerta', to: '/locale/alertas', icon: 'alerta' },
+      { key: 'locale-api', label: 'API', to: '/locale/api', icon: 'chave' },
       { key: 'locale-juridico', label: 'Jurídico', to: '/locale/juridico', icon: 'documento' },
       { key: 'locale-saude', label: 'Saúde da plataforma', to: '/locale/saude', icon: 'monitoramento' },
       { key: 'locale-equipe', label: 'Equipe e auditoria', to: '/locale/equipe', icon: 'historico' },

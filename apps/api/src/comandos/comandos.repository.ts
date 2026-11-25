@@ -63,6 +63,20 @@ export class ComandosRepository extends BaseRepository<ComandoRow> {
     return rows.map(toComando);
   }
 
+  /** API pública: comandos solicitados no período, mais recentes primeiro, keyset por (solicitado_em, id). */
+  async paginaParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; assetId: string | null; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<Comando[]> {
+    const { rows } = await this.pool.query<ComandoRow>(
+      `${SELECT} where c.client_id = $1 and c.solicitado_em between $2 and $3 and ($4::uuid is null or c.asset_id = $4)
+         and ($5::timestamptz is null or (date_trunc('milliseconds', c.solicitado_em), c.id) < ($5, $6::uuid))
+       order by date_trunc('milliseconds', c.solicitado_em) desc, c.id desc limit $7`,
+      [clientId, f.de, f.ate, f.assetId, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows.map(toComando);
+  }
+
   async buscar(clientId: string, id: string, executor: Queryable = this.pool): Promise<ComandoRow | null> {
     const { rows } = await executor.query<ComandoRow>(`${SELECT} where c.client_id = $1 and c.id = $2`, [clientId, id]);
     return rows[0] ?? null;

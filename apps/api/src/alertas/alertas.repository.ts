@@ -109,6 +109,21 @@ export class AlertasRepository extends BaseRepository<AlertaRow> {
     return rows.map(toAlerta);
   }
 
+  /** API pública: alertas do período, mais recentes primeiro, keyset por (ts, id). `abertos`: só os sem tratamento. */
+  async paginaParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; assetId: string | null; abertos: boolean; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<Alerta[]> {
+    const { rows } = await this.pool.query<AlertaRow>(
+      `${SELECT} where a.client_id = $1 and a.ts between $2 and $3 and ($4::uuid is null or a.asset_id = $4)
+         and (not $5 or (a.exige_tratamento and a.tratado_em is null))
+         and ($6::timestamptz is null or (date_trunc('milliseconds', a.ts), a.id) < ($6, $7::uuid))
+       order by date_trunc('milliseconds', a.ts) desc, a.id desc limit $8`,
+      [clientId, f.de, f.ate, f.assetId, f.abertos, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows.map(toAlerta);
+  }
+
   async buscar(clientId: string, id: string, executor: Queryable = this.pool): Promise<Alerta | null> {
     const { rows } = await executor.query<AlertaRow>(`${SELECT} where a.client_id = $1 and a.id = $2`, [clientId, id]);
     return rows[0] ? toAlerta(rows[0]) : null;

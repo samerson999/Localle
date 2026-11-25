@@ -45,6 +45,7 @@ const Despesas = lazy(() => import('./pages/Despesas'));
 const Juridico = lazy(() => import('./pages/Juridico'));
 const Rastreadores = lazy(() => import('./pages/Rastreadores'));
 const TiposAlerta = lazy(() => import('./pages/TiposAlerta'));
+const ApiConsole = lazy(() => import('./pages/ApiConsole'));
 const Design = lazy(() => import('./pages/Design'));
 const PrecisaDeVoce = lazy(() => import('./pages/PrecisaDeVoce'));
 const PortariaApp = lazy(() => import('./pages/PortariaApp'));
@@ -147,6 +148,7 @@ export default function App() {
           <Route path="/locale/juridico" element={<RoleOnly roles={['locale']}><Juridico /></RoleOnly>} />
           <Route path="/locale/rastreadores" element={<RoleOnly roles={['locale']}><Rastreadores /></RoleOnly>} />
           <Route path="/locale/alertas" element={<RoleOnly roles={['locale']}><TiposAlerta /></RoleOnly>} />
+          <Route path="/locale/api" element={<RoleOnly roles={['locale']}><ApiConsole /></RoleOnly>} />
           <Route path="/revenda" element={<Revenda />} />
           <Route path="/design" element={<RoleOnly roles={['locale']}><Design /></RoleOnly>} />
         </Route>

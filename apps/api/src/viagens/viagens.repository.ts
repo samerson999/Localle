@@ -114,6 +114,26 @@ export class ViagensRepository {
     return rows;
   }
 
+  /**
+   * API pública: viagens iniciadas (ou criadas, se ainda aguardando) no período, mais recentes primeiro, keyset por
+   * (instante, id) — o instante em milissegundos (ver api-publica/comum/paginacao.ts).
+   */
+  async paginaParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; assetId: string | null; abertas: boolean; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<(ViagemRow & { referencia: Date })[]> {
+    const { rows } = await this.pool.query<ViagemRow & { referencia: Date }>(
+      `select * from (
+         select v.*, date_trunc('milliseconds', coalesce(v.iniciada_em, v.created_at)) as referencia from viagens v
+          where v.client_id = $1 and ($4::uuid is null or v.asset_id = $4) and (not $5 or v.status in ('aguardando', 'em_andamento'))
+       ) v
+       where v.referencia between $2 and $3 and ($6::timestamptz is null or (v.referencia, v.id) < ($6, $7::uuid))
+       order by v.referencia desc, v.id desc limit $8`,
+      [clientId, f.de, f.ate, f.assetId, f.abertas, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
+
   async buscarViagem(clientId: string, id: string): Promise<ViagemRow | null> {
     const { rows } = await this.pool.query<ViagemRow>('select * from viagens where client_id = $1 and id = $2', [clientId, id]);
     return rows[0] ?? null;

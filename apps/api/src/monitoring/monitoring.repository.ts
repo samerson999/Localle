@@ -159,6 +159,45 @@ export class MonitoringRepository {
     return rows;
   }
 
+  /**
+   * API pública: posições de um ativo no período, em ordem de tempo, keyset por `fix_time` (a ingestão não grava duas
+   * posições do mesmo rastreador no mesmo instante). Devolve `limite + 1` para quem monta a página.
+   */
+  async posicoesParaApi(clientId: string, assetId: string, de: Date, ate: Date, apos: Date | null, limite: number): Promise<HistoryPositionRow[]> {
+    const { rows } = await this.pool.query<HistoryPositionRow>(
+      `select fix_time, st_x(geom) as longitude, st_y(geom) as latitude, speed_kmh, course, ignition, valid
+       from posicoes
+       where client_id = $1 and asset_id = $2 and fix_time between $3 and $4 and ($5::timestamptz is null or fix_time > $5)
+       order by fix_time asc
+       limit $6`,
+      [clientId, assetId, de, ate, apos, limite + 1],
+    );
+    return rows;
+  }
+
+  /** API pública: eventos do período, mais recentes primeiro, keyset por (ts, id). Mesmo SELECT de `eventos`. */
+  async eventosParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; assetId: string | null; tipo: string | null; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<EventoRow[]> {
+    const { rows } = await this.pool.query<EventoRow>(
+      `select e.id::text as id, e.asset_id, a.plate, a.rotulo, e.tipo, e.origem, e.ts,
+         st_x(p.geom) as longitude, st_y(p.geom) as latitude, p.speed_kmh, e.attributes
+       from eventos e
+       left join assets a on a.id = e.asset_id and a.client_id = e.client_id
+       left join posicoes p
+         on p.id = e.posicao_id and p.rastreador_id = e.rastreador_id
+         and p.fix_time = coalesce((e.attributes->>'posicaoEm')::timestamptz, e.ts)
+       where e.client_id = $1 and e.ts between $2 and $3 and ($4::uuid is null or e.asset_id = $4)
+         and ($5::text is null or e.tipo = $5)
+         and ($6::timestamptz is null or (date_trunc('milliseconds', e.ts), e.id) < ($6, $7::bigint))
+       order by date_trunc('milliseconds', e.ts) desc, e.id desc
+       limit $8`,
+      [clientId, f.de, f.ate, f.assetId, f.tipo, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
+
   async historicoDoAtivo(clientId: string, assetId: string, from: Date, to: Date): Promise<HistoryPositionRow[]> {
     const { rows } = await this.pool.query<HistoryPositionRow>(
       `select fix_time, st_x(geom) as longitude, st_y(geom) as latitude, speed_kmh, course, ignition, valid

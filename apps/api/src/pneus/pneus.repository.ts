@@ -129,6 +129,21 @@ export class PneusRepository {
     return rows;
   }
 
+  /** API pública: movimentos de pneu no período, mais recentes primeiro, keyset por (ts em milissegundos, id). */
+  async movimentosParaApi(
+    clientId: string,
+    f: { de: Date; ate: Date; pneuId: string | null; assetId: string | null; apos: { ts: Date; id: string } | null; limite: number },
+  ): Promise<MovimentoRow[]> {
+    const { rows } = await this.pool.query<MovimentoRow>(
+      `select * from pneu_movimentos
+        where client_id = $1 and ts >= $2 and ts <= $3 and ($4::uuid is null or pneu_id = $4) and ($5::uuid is null or asset_id = $5)
+          and ($6::timestamptz is null or (date_trunc('milliseconds', ts), id) < ($6, $7::uuid))
+        order by date_trunc('milliseconds', ts) desc, id desc limit $8`,
+      [clientId, f.de, f.ate, f.pneuId, f.assetId, f.apos?.ts ?? null, f.apos?.id ?? null, f.limite + 1],
+    );
+    return rows;
+  }
+
   /** Histórico de todos os pneus do cliente, para a tela montar vidas, montagens e medições numa chamada só. */
   async todosMovimentos(clientId: string): Promise<MovimentoRow[]> {
     const { rows } = await this.pool.query<MovimentoRow>('select * from pneu_movimentos where client_id = $1 order by ts, created_at', [clientId]);
