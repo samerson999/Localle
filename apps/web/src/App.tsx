@@ -20,6 +20,7 @@ const RelatorioVelocidade = lazy(() => import('./pages/RelatorioVelocidade'));
 const RelatorioPosicoes = lazy(() => import('./pages/RelatorioPosicoes'));
 const RelatorioPassouPorAqui = lazy(() => import('./pages/RelatorioPassouPorAqui'));
 const RelatorioUso = lazy(() => import('./pages/RelatorioUso'));
+const RelatorioMotoristas = lazy(() => import('./pages/RelatorioMotoristas'));
 const Compartilhar = lazy(() => import('./pages/Compartilhar'));
 const Convite = lazy(() => import('./pages/Convite'));
 const CodigoAcesso = lazy(() => import('./pages/CodigoAcesso'));
@@ -125,6 +126,7 @@ export default function App() {
           <Route path="/relatorios/posicoes" element={<Guard m="monitoramento"><RelatorioPosicoes /></Guard>} />
           <Route path="/relatorios/passou-por-aqui" element={<Guard m="monitoramento"><RelatorioPassouPorAqui /></Guard>} />
           <Route path="/relatorios/uso" element={<Guard m="monitoramento"><RelatorioUso /></Guard>} />
+          <Route path="/relatorios/motoristas" element={<Guard m="monitoramento"><RelatorioMotoristas /></Guard>} />
           <Route path="/ativos" element={<Guard m="ativos"><Ativos /></Guard>} />
           <Route path="/manutencao" element={<Guard m="manutencao"><Manutencao /></Guard>} />
           <Route path="/combustivel" element={<Guard m="combustivel"><Combustivel /></Guard>} />

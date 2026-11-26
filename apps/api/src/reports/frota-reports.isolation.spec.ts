@@ -116,10 +116,31 @@ describe('relatórios de frota', () => {
     expect(r.passagens[0].speedAtClosest).toBe(120);
   });
 
+  // vínculo do cartão lido às 10:01 (a ignição ligou às 10:00) até o pacote de ignição desligada às 10:04
+  it('motoristas: uma linha por motorista × veículo × dia, da ignição ao desligamento', async () => {
+    const motoristaId = (await pool.query<{ id: string }>("insert into motoristas (client_id, nome) values ($1, 'Ana Teste') returning id", [clientA])).rows[0].id;
+    await pool.query(
+      `insert into motorista_vinculos (client_id, asset_id, motorista_id, origem, codigo, inicio, fim, encerrado_por)
+       values ($1, $2, $3, 'rastreador', 'A1B2', '2026-09-01T10:01:00Z', '2026-09-01T10:04:00Z', 'ignicao_desligada')`,
+      [clientA, assetA, motoristaId],
+    );
+    const r = await service.motoristas(clientA, null, null, periodo);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({
+      motoristaId, motorista: 'Ana Teste', assetId: assetA, plate: 'RFT1A22', dia: '2026-09-01',
+      primeiraIgnicao: Date.parse('2026-09-01T10:00:00Z'), ultimoDesligamento: Date.parse('2026-09-01T10:04:00Z'),
+      jornadaMs: 4 * 60_000, motorLigadoMs: 4 * 60_000, ignicoes: 1,
+    });
+    expect(r[0].km).toBeGreaterThan(4);
+    expect(await service.motoristas(clientA, null, [randomUUID()], periodo)).toEqual([]);
+    expect(await service.motoristas(clientB, null, [motoristaId], periodo)).toEqual([]);
+  });
+
   it('outro cliente não vê nada — nem pedindo o ativo do primeiro pelo id', async () => {
     expect(await service.velocidade(clientB, null, periodo, 0)).toEqual([]);
     expect(await service.percurso(clientB, [assetA], periodo)).toEqual([]);
     expect(await service.cercas(clientB, [assetA], periodo, null)).toEqual([]);
     expect(await service.passouPorAqui(clientB, [assetA], periodo, [-8.05, -34.86], 100)).toEqual([]);
+    expect(await service.motoristas(clientB, [assetA], null, periodo)).toEqual([]);
   });
 });

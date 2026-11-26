@@ -22,6 +22,7 @@ const TIPOS: { tipo: TipoRelatorio; icon: IconName; title: string; detail: strin
   { tipo: 'posicoes', icon: 'rota', title: 'Posições', detail: 'Consulte o histórico de posições detalhado da sua frota.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/posicoes' },
   { tipo: 'passou_por_aqui', icon: 'alvo', title: 'Passou por aqui', detail: 'Verifique quais veículos passaram por um ponto específico no mapa.', img: imgPassouPorAqui, webp: imgPassouPorAquiWeb, path: '/relatorios/passou-por-aqui' },
   { tipo: 'uso', icon: 'odometro', title: 'Uso da frota', detail: 'Km rodado, motor ligado, ociosidade e paradas de cada veículo.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/uso' },
+  { tipo: 'motoristas', icon: 'usuario', title: 'Motoristas', detail: 'Jornada de cada motorista: 1ª ignição, último desligamento, motor ligado, km e paradas.', img: imgPosicoes, webp: imgPosicoesWeb, path: '/relatorios/motoristas' },
 ];
 
 export default function Relatorios() {

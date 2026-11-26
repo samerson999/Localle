@@ -20,6 +20,7 @@ export const PAGINAS_DO_MODULO: Record<string, Pagina[]> = {
     { to: '/relatorios/posicoes', label: 'Relatório de posições', mod: 'monitoramento' },
     { to: '/relatorios/passou-por-aqui', label: 'Passou por aqui', mod: 'monitoramento' },
     { to: '/relatorios/uso', label: 'Uso da frota', mod: 'monitoramento' },
+    { to: '/relatorios/motoristas', label: 'Relatório de motoristas', mod: 'monitoramento' },
   ],
 };
 

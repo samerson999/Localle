@@ -36,6 +36,12 @@ export class FrotaReportsController {
     return this.service.percurso(clientId, ativos(q.assetIds), periodo(q));
   }
 
+  /** Jornada por motorista × veículo × dia: primeira ignição, último desligamento, motor ligado, km e paradas. */
+  @Get('motoristas')
+  motoristas(@ClientId() clientId: string, @Query() q: FrotaQuery & { motoristaIds?: string }) {
+    return this.service.motoristas(clientId, ativos(q.assetIds), lista('motoristaIds', q.motoristaIds), periodo(q));
+  }
+
   @Get('cercas')
   cercas(@ClientId() clientId: string, @Query() q: FrotaQuery & { cercaId?: string }) {
     const cercaId = q.cercaId ? parseUuid('cercaId', q.cercaId) : null;
@@ -64,9 +70,13 @@ function periodo(q: FrotaQuery): Periodo {
 }
 
 function ativos(raw: string | undefined): string[] | null {
+  return lista('assetIds', raw);
+}
+
+function lista(nome: string, raw: string | undefined): string[] | null {
   if (raw === undefined || raw === '') return null;
-  if (typeof raw !== 'string') throw new BadRequestException('"assetIds" precisa ser uma lista separada por vírgula');
-  const ids = raw.split(',').map((s, i) => parseUuid(`assetIds[${i}]`, s.trim()));
-  if (ids.length > MAX_ATIVOS) throw new BadRequestException(`No máximo ${MAX_ATIVOS} ativos por relatório`);
+  if (typeof raw !== 'string') throw new BadRequestException(`"${nome}" precisa ser uma lista separada por vírgula`);
+  const ids = raw.split(',').map((s, i) => parseUuid(`${nome}[${i}]`, s.trim()));
+  if (ids.length > MAX_ATIVOS) throw new BadRequestException(`No máximo ${MAX_ATIVOS} itens em "${nome}"`);
   return ids;
 }

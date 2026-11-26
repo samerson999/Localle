@@ -654,7 +654,7 @@ export async function criarAtivo(plate: string, identificador = ''): Promise<str
 }
 
 // ---------- histórico de relatórios (tela Relatórios › Relatórios recentes; visível para a empresa toda) ----------
-export type TipoRelatorio = 'cercas' | 'velocidade' | 'posicoes' | 'passou_por_aqui' | 'uso';
+export type TipoRelatorio = 'cercas' | 'velocidade' | 'posicoes' | 'passou_por_aqui' | 'uso' | 'motoristas';
 export interface RelatorioGerado { id: string; tipo: TipoRelatorio; inicio: string; fim: string; filtros: string; registros: number; formato: 'pdf' | 'xlsx' | 'csv'; geradoEm: string; geradoPor: string | null }
 export const listarRelatoriosGerados = () => apiGet<RelatorioGerado[]>('/reports/historico');
 /** Registro de que um relatório foi exportado. Falhar aqui não desfaz a exportação: só avisa no console. */

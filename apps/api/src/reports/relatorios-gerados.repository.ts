@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '../db/base.repository';
 
-export const TIPOS_RELATORIO = ['cercas', 'velocidade', 'posicoes', 'passou_por_aqui', 'uso'] as const;
+export const TIPOS_RELATORIO = ['cercas', 'velocidade', 'posicoes', 'passou_por_aqui', 'uso', 'motoristas'] as const;
 export type TipoRelatorio = (typeof TIPOS_RELATORIO)[number];
 export const FORMATOS_RELATORIO = ['pdf', 'xlsx', 'csv'] as const;
 export type FormatoRelatorio = (typeof FORMATOS_RELATORIO)[number];

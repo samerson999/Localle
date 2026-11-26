@@ -15,6 +15,19 @@ const ignicao = (i: boolean | null) => (i === null ? null : i ? 1 : 0);
 /** Teto de pontos por ativo num relatório (31 dias a 1 posição/30 s ≈ 90 mil): protege a memória da API. */
 export const MAX_PONTOS_POR_ATIVO = 120_000;
 
+/** Teto de vínculos num relatório de motoristas (31 dias de uma frota grande, vários turnos por dia). */
+const MAX_VINCULOS = 50_000;
+
+export interface VinculoDoRelatorio {
+  asset_id: string;
+  motorista_id: string | null;
+  motorista_nome: string | null;
+  codigo: string | null;
+  inicio: Date;
+  fim: Date | null;
+  piso: Date | null;
+}
+
 /**
  * Leitura das posições para os relatórios de frota. `client_id` é sempre o primeiro filtro, e toda
  * consulta em `posicoes` filtra por ativo + intervalo de `fix_time` (docs/ARQUITETURA-BACKEND.md § 2.5),
@@ -92,5 +105,25 @@ export class FrotaReportsRepository {
         points: anel ? anel.slice(0, -1).map(([lon, lat]) => [lat, lon]) : undefined,
       };
     });
+  }
+  /**
+   * Vínculos motorista × veículo que começaram no período (relatório de motoristas), com o fim do vínculo anterior no
+   * mesmo veículo (`piso`). Filtro de motorista exclui os cartões não cadastrados (motorista_id null).
+   */
+  async vinculosNoPeriodo(clientId: string, from: Date, to: Date, assetIds: string[] | null, motoristaIds: string[] | null): Promise<VinculoDoRelatorio[]> {
+    const { rows } = await this.pool.query<VinculoDoRelatorio>(
+      `select v.asset_id, v.motorista_id, m.nome as motorista_nome, v.codigo, v.inicio, v.fim,
+         (select max(a.fim) from motorista_vinculos a
+           where a.client_id = v.client_id and a.asset_id = v.asset_id and a.fim is not null and a.fim <= v.inicio and a.id <> v.id) as piso
+       from motorista_vinculos v
+       left join motoristas m on m.id = v.motorista_id and m.client_id = v.client_id
+       where v.client_id = $1 and v.inicio between $2 and $3
+         and ($4::uuid[] is null or v.asset_id = any($4::uuid[]))
+         and ($5::uuid[] is null or v.motorista_id = any($5::uuid[]))
+       order by v.asset_id, v.inicio
+       limit $6`,
+      [clientId, from, to, assetIds, motoristaIds, MAX_VINCULOS],
+    );
+    return rows;
   }
 }
